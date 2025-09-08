@@ -1,144 +1,120 @@
+# ws.py
 from __future__ import annotations
 import socketio
 from typing import Any, Callable, Optional
 
-BASE_IO = "https://io.brager.pl"
+from .const import IO_BASE, ONE_BASE, WS_NAMESPACE
+
 SOCK_PATH = "/socket.io"
-ORIGIN = "https://one.brager.pl"
-REFERER = "https://one.brager.pl/"
-NS = "/ws"
 
 class WsClient:
-    def __init__(self, token_getter):
-        """
-        token_getter: funkcja bezargumentowa zwracająca aktualny JWT (str)
-        """
+    def __init__(self, api, logger=None):
+        self.api = api
+        self.log = logger
         self.sio: Optional[socketio.AsyncClient] = None
-        self._get_token = token_getter
-        self.wsid: Optional[str] = None
-        self.on_event: list[Callable[[str, Any], None]] = []
-        self.on_change: list[Callable[[dict], None]] = []
+        self._ws_sid: Optional[str] = None
+        self._ns: str = WS_NAMESPACE
+        self._on_event: list[Callable[[str, Any], None]] = []
+        self._on_change: list[Callable[[dict], None]] = []
 
-    # --- API callbacków ---
-    def add_event_cb(self, cb: Callable[[str, Any], None]) -> None:
-        self.on_event.append(cb)
+    # --- kompatybilność: używa tego Gateway ---
+    @property
+    def wsid(self) -> Optional[str]:
+        return self.get_sid()
 
-    def add_change_cb(self, cb: Callable[[dict], None]) -> None:
-        self.on_change.append(cb)
-
-    # --- wewnętrzne emitery do callbacków ---
-    def _emit_event(self, name: str, data: Any):
-        for cb in list(self.on_event):
+    def get_sid(self) -> Optional[str]:
+        if self._ws_sid:
+            return self._ws_sid
+        if self.sio:
             try:
-                cb(name, data)
+                sid_ns = self.sio.get_sid(self._ns)
             except Exception:
-                pass
+                sid_ns = None
+            return sid_ns or getattr(self.sio, "sid", None)
+        return None
+
+    # --- callbacki opcjonalne (jeśli ich używasz gdzie indziej) ---
+    def add_event_cb(self, cb): self._on_event.append(cb)
+    def add_change_cb(self, cb): self._on_change.append(cb)
+
+    def _emit_event(self, name: str, data: Any):
+        for cb in list(self._on_event):
+            try: cb(name, data)
+            except Exception: pass
 
     def _emit_change(self, payload: dict):
-        for cb in list(self.on_change):
-            try:
-                cb(payload)
-            except Exception:
-                pass
+        for cb in list(self._on_change):
+            try: cb(payload)
+            except Exception: pass
 
-    # --- połączenie ---
-    async def connect(self):
-        """
-        Łączy z io.brager.pl na namespace /ws.
-        Uwierzytelnia przez nagłówek Authorization: Bearer <jwt>.
-        NIE wymusza 'websocket' — pozwalamy libce dobrać transport (bez 400).
-        """
-        if self.sio is None:
-            self.sio = socketio.AsyncClient(
-                reconnection=True,
-                request_timeout=20,
-            )
-            self._wire()
-
-        token = self._get_token()
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Origin": ORIGIN,
-            "Referer": REFERER,
-        }
-
-        await self.sio.connect(
-            BASE_IO,                 # baza: https://io.brager.pl
-            namespaces=[NS],         # od razu /ws
-            socketio_path=SOCK_PATH  # /socket.io
-            # bez transports=[] i bez auth=...
-        )
-
-        # SID z namespaca /ws (jeśli dostępny), inaczej engine SID
-        try:
-            ns_sid = self.sio.get_sid(NS)
-        except Exception:
-            ns_sid = None
-        self.wsid = ns_sid or getattr(self.sio, "sid", None)
-        return self.wsid
-
-    async def disconnect(self):
-        if self.sio:
-            await self.sio.disconnect()
-
-    async def subscribe(self, devs: list[str], group_id: int | None = None):
-        """
-        Subskrypcje zdarzeń parametrów i aktywności. Dodajemy group_id gdy jest.
-        """
-        if not self.sio:
-            return
-        payload = {"modules": devs}
-        if group_id is not None:
-            payload["group_id"] = group_id
-
-        await self.sio.emit("app:modules:parameters:listen", payload, namespace=NS)
-        await self.sio.emit("app:modules:activity:quantity:listen", payload, namespace=NS)
-
-        # Opcjonalnie jednorazowy snapshot z WS (nie zawsze potrzebny):
-        await self.sio.emit("app:modules:parameters:snapshot", devs, namespace=NS)
-
-    async def bind_modules(self, api, object_id: int, devs: list[str]) -> bool:
-        """
-        Powiązanie sesji WS z modułami po stronie REST (to co mamy w client.py).
-        """
-        if not self.wsid:
-            return False
-        try:
-            return await api.modules_connect(self.wsid, devs, object_id=object_id)
-        except Exception:
-            return False
-
-    # --- rejestracja handlerów ---
-    def _wire(self):
+    def _wire_handlers(self, namespace: str):
         sio = self.sio
 
-        # Połączenie / rozłączenie na namespacu /ws
-        @sio.event(namespace=NS)
-        async def connect():
-            self._emit_event("socket.connect", {"ns": NS})
+        @sio.on("connect", namespace=namespace)
+        async def _on_conn():
+            if self.log:
+                self.log.info("WS connected %s", namespace)
+            self._emit_event("socket.connect", {"ns": namespace})
 
-        @sio.event(namespace=NS)
-        async def disconnect():
-            self._emit_event("socket.disconnect", {"ns": NS})
+        @sio.on("disconnect", namespace=namespace)
+        async def _on_disc():
+            if self.log:
+                self.log.info("WS disconnected %s", namespace)
+            self._emit_event("socket.disconnect", {"ns": namespace})
 
-        # Błąd połączenia (czasem backend wyrzuca)
         @sio.event
         async def connect_error(err):
+            if self.log:
+                self.log.warning("WS connect_error: %s", err)
             self._emit_event("socket.connect_error", err)
 
-        # Zmiana parametrów – główny kanał
-        @sio.on("app:modules:parameters:change", namespace=NS)
-        async def _pc(payload):
-            if isinstance(payload, dict):
-                self._emit_change(payload)
-            else:
-                self._emit_event("app:modules:parameters:change(raw)", payload)
+        @sio.on("app:modules:parameters:change", namespace=namespace)
+        async def _on_params_change(payload):
+            self._emit_change(payload)
 
-        # Dodatkowe aliasy (niektóre backendy używają skróconych nazw)
-        sio.on("modules:parameters:change", namespace=NS)(_pc)
-        sio.on("parameters:change", namespace=NS)(_pc)
-
-        # Ilości aktywności – przekazujemy do event_cb
-        @sio.on("app:modules:activity:quantity", namespace=NS)
-        async def _aq(payload):
+        @sio.on("app:modules:activity:quantity", namespace=namespace)
+        async def _on_act_qty(payload):
             self._emit_event("app:modules:activity:quantity", payload)
+
+    async def start_ws(self, jwt: str, namespace: str | None = None) -> None:
+        ns = namespace or self._ns
+        self._ns = ns
+        if self.sio is None:
+            self.sio = socketio.AsyncClient(reconnection=True)
+            self._wire_handlers(ns)
+
+        headers = {
+            "Authorization": f"Bearer {jwt}",
+            "Origin": ONE_BASE,
+            "Referer": f"{ONE_BASE}/",
+        }
+        await self.sio.connect(
+            IO_BASE,                      # python-socketio sam zrobi upgrade do WS
+            namespaces=[ns],
+            transports=["websocket"],
+            socketio_path=SOCK_PATH,
+            headers=headers,
+        )
+        # zapamiętaj SID (zarówno namespacowy jak i engine.io fallback)
+        try:
+            sid_ns = self.sio.get_sid(ns)
+        except Exception:
+            sid_ns = None
+        self._ws_sid = sid_ns or getattr(self.sio, "sid", None)
+
+    async def subscribe(self, devs: list[str], namespace: str | None = None) -> None:
+        if not self.sio:
+            return
+        ns = namespace or self._ns
+        await self.sio.emit("app:modules:parameters:listen", {"modules": devs}, namespace=ns)
+        await self.sio.emit("app:modules:activity:quantity:listen", {"modules": devs}, namespace=ns)
+
+    async def wait(self) -> None:
+        if self.sio:
+            await self.sio.wait()
+
+    async def disconnect(self) -> None:
+        if self.sio:
+            await self.sio.disconnect()
+            self._ws_sid = None
+

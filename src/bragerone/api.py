@@ -3,13 +3,9 @@ import json
 import aiohttp
 from typing import Any, Optional
 
-BASE_IO = "https://io.brager.pl"
-BASE_API = f"{BASE_IO}/v1"
-AUTH_URL = f"{BASE_API}/auth/user"
-ORIGIN = "https://one.brager.pl"
-REFERER = "https://one.brager.pl/"
+from .const import API_BASE, AUTH_URL, ORIGIN, REFERER
 
-DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=20)
+DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=25)
 
 class Api:
     def __init__(self, session: Optional[aiohttp.ClientSession] = None):
@@ -39,7 +35,7 @@ class Api:
             txt = await r.text()
             ct = r.headers.get("content-type", "")
             if r.status >= 400:
-                raise RuntimeError(f"{method} {url} -> {r.status}: {txt[:300]}")
+                raise RuntimeError(f"{method} {url} -> {r.status}: {txt[:400]}")
             if "application/json" in ct or txt.startswith(("{","[")):
                 try:
                     return json.loads(txt)
@@ -47,20 +43,19 @@ class Api:
                     return txt
             return txt
 
-    # ---------- high-level endpoints ----------
-    async def login(self, email: str, password: str) -> str:
+    # ---------- high-level ----------
+    async def login(self, email: str, password: str) -> dict:
         data = await self._req("POST", AUTH_URL, json={"email": email, "password": password})
         tok = data.get("accessToken") if isinstance(data, dict) else None
         if not tok:
             raise RuntimeError("Brak accessToken w odpowiedzi logowania")
         self.jwt = tok
-        return tok
+        return data
 
     async def list_objects(self) -> list[dict]:
-        # robust
         objs: list[dict] = []
         try:
-            d = await self._req("GET", f"{BASE_API}/objects")
+            d = await self._req("GET", f"{API_BASE}/objects")
             items = d.get("data") or d.get("items") or d.get("objects") or d
             if isinstance(items, list):
                 for it in items:
@@ -72,7 +67,7 @@ class Api:
             pass
         if not objs:
             try:
-                u = await self._req("GET", f"{BASE_API}/user")
+                u = await self._req("GET", f"{API_BASE}/user")
                 cand = u.get("objects") or u.get("groups") or u.get("data", {}).get("groups") or []
                 for it in cand:
                     oid = it.get("id") or it.get("group_id")
@@ -81,20 +76,19 @@ class Api:
                         objs.append({"id": int(oid), "name": name})
             except Exception:
                 pass
-        # dedupe
         return list({o["id"]: o for o in objs}.values())
 
     async def list_modules(self, object_id: int) -> list[dict]:
-        d = await self._req("GET", f"{BASE_API}/modules?page=1&limit=999&group_id={object_id}")
+        d = await self._req("GET", f"{API_BASE}/modules?page=1&limit=999&group_id={object_id}")
         items = d.get("data") or d.get("items") or d.get("modules") or d
         return items if isinstance(items, list) else []
 
     async def snapshot_parameters(self, devs: list[str]) -> dict:
-        res = await self._req("POST", f"{BASE_API}/modules/parameters", json={"modules": devs})
+        res = await self._req("POST", f"{API_BASE}/modules/parameters", json={"modules": devs})
         return res if isinstance(res, dict) else {}
 
     async def activity_quantity(self, devs: list[str]) -> dict:
-        res = await self._req("POST", f"{BASE_API}/modules/activity/quantity", json={"modules": devs})
+        res = await self._req("POST", f"{API_BASE}/modules/activity/quantity", json={"modules": devs})
         return res if isinstance(res, dict) else {}
 
     async def modules_connect(self, wsid: str, devs: list[str], object_id: int | None = None) -> bool:
@@ -110,9 +104,10 @@ class Api:
         for pl in payloads:
             if not pl: continue
             try:
-                res = await self._req("POST", f"{BASE_API}/modules/connect", json=pl, headers=headers)
+                res = await self._req("POST", f"{API_BASE}/modules/connect", json=pl, headers=headers)
                 if isinstance(res, dict):
                     return True
             except Exception:
                 continue
         return False
+

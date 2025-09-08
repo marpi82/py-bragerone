@@ -22,6 +22,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*.pyc
+*.pyo
 
 # PyInstaller
 *.manifest
@@ -45,7 +47,6 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-.assets/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -76,3 +77,9 @@ venv.bak/
 # Mac / Windows system files
 .DS_Store
 Thumbs.db
+
+# local
+labels_debug.log
+.assets/
+*.save
+py-bragerone.*

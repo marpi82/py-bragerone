@@ -1,23 +1,51 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=69", "setuptools-scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "py-bragerone"
-version = "0.1.0"
-description = "Asynchroniczny klient Brager (one.brager.pl / io.brager.pl) z dynamicznymi opisami parametrów"
+dynamic = ["version"]  # wersja zaciągana z tagów git (setuptools-scm)
+description = "Brager One client: REST + WebSocket + label resolver for Home Assistant & tools"
 readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+  { name = "MarPi82", email = "marpi82@users.noreply.github.com" },
+  { name = "ChatGPT5" }
+]
+maintainers = [
+  { name = "MarPi82", email = "marpi82@users.noreply.github.com" }
+]
 requires-python = ">=3.10"
-authors = [{ name = "MarPi82" }, { name = "ChatGPT5" }]
-maintainers = [{ name = "MarPi82", email = "marpi82@gmail.com" }]
-license = { text = "MIT" }
 dependencies = [
   "aiohttp>=3.9",
-  "python-socketio[client]>=5.11",
+  "python-socketio[asyncio_client]>=5.11",
 ]
 
-[tool.setuptools]
-package-dir = {"" = "src"}
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: OS Independent",
+  "Topic :: Home Automation",
+]
+
+[project.urls]
+Homepage = "https://github.com/marpi82/py-bragerone"
+Issues   = "https://github.com/marpi82/py-bragerone/issues"
+
+[project.scripts]
+bragerone-cli = "bragerone.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# --- setuptools-scm konfiguracja ---
+[tool.setuptools_scm]
+# Domyślnie akceptuje tagi w stylu v1.2.3 lub 1.2.3; nie musisz nic zmieniać.
+# Jeśli budujesz z commita bez taga, dostaniesz wersję dev/post:
+version_scheme = "guess-next-dev"
+local_scheme = "no-local-version"
+fallback_version = "0.0.0"
+
