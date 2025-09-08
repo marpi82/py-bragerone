@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyBragerOne"
+name = "py-bragerone"
 version = "0.1.0"
 description = "Asynchroniczny klient Brager (one.brager.pl / io.brager.pl) z dynamicznymi opisami parametrów"
 readme = "README.md"
