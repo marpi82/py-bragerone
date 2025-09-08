@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyBragerOne"
+version = "0.1.0"
+description = "Asynchroniczny klient Brager (one.brager.pl / io.brager.pl) z dynamicznymi opisami parametrów"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "MarPi82" }, { name = "ChatGPT5" }]
+maintainers = [{ name = "MarPi82", email = "marpi82@gmail.com" }]
+license = { text = "MIT" }
+dependencies = [
+  "aiohttp>=3.9",
+  "python-socketio[client]>=5.11",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
