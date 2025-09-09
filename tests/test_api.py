@@ -1,11 +1,11 @@
 import pytest
 from bragerone.api import Api
 
-def test_client_is_exposed_on_top_level():
+def test_gateway_is_exposed_on_top_level():
     import bragerone
-    assert hasattr(bragerone, "BragerOneClient"), "BragerOneClient nie jest eksportowany w __all__"
+    assert hasattr(bragerone, "Gateway"), "Gateway nie jest eksportowany w __all__"
     # opcjonalnie: sprawdź, że to klasa
-    assert isinstance(bragerone.BragerOneClient, type)
+    assert isinstance(bragerone.Gateway, type)
 
 @pytest.mark.asyncio
 async def test_api_construct():
