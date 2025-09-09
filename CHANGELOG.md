@@ -1,9 +1,27 @@
 ---
 
-## `CHANGELOG.md`
+### `CHANGELOG.md`
 
 ```markdown
 # Changelog
+
+## [0.2.5] - 2025-09-09
+### Added
+- Labels cache extended: support for unit IDs, plain unit labels, and enum maps.
+- CLI `labels` subcommands:
+  - `set-param`, `set-alias`, `set-param-unit`, `set-unit-label`, `show`.
+- Pretty-print values with unit or enum label in snapshot and WS changes.
+- Task events (`app:module:task:*`) handled and logged in WS client.
+
+### Changed
+- CLI refactored: now has subcommands (`run`, `labels`) instead of only flags.
+- `Gateway` split into `login()` + `pick_modules()` (explicit module selection).
+- Ctrl-C handling is graceful, without traceback.
+
+### Fixed
+- Stable WS disconnect/close.
+- Clean shutdown sequence (`Gateway.close()` closes WS + API).
+- CancelledError on exit suppressed.
 
 ## [0.2.0] - 2025-09-08
 ### Added

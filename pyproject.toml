@@ -55,3 +55,11 @@ test = [
   "pytest-asyncio>=0.23",
   "packaging>=24",
 ]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.7",
+    "twine>=5.0",
+    "build>=1.2",
+]

@@ -2,11 +2,13 @@
 
 Python client library for [one.brager.pl](https://one.brager.pl).
 
-Features:
-- **REST API**: login, list modules, parameters snapshot
-- **WebSocket (Socket.IO)**: real-time parameter changes
-- **Labels**: human-readable names & units (safe fallbacks, parser WIP)
-- **Gateway**: thin facade for HA/integrations or console usage
+## Features
+
+- **REST API**: login, list modules, fetch parameters snapshot  
+- **WebSocket (Socket.IO)**: real-time parameter & activity changes  
+- **Labels cache**: human-readable names, units and enums (lazy + persistent)  
+- **Gateway**: thin facade for Home Assistant integrations or console usage  
+- **CLI**: `bragerone run` for live session, `bragerone labels` for cache management  
 
 ## Install
 
@@ -24,17 +26,44 @@ async def main():
     await g.pick_modules()
     await g.bootstrap_labels()
     await g.initial_snapshot()
-    await g.start_ws()  # keeps listening
+    await g.start_ws()  # keeps listening until closed
 
 asyncio.run(main())
 ```
 
 ## CLI
+Run and listen for changes:
 ```bash
-python -m bragerone --email you@example.com --password secret --object-id 439 --lang en --log-level DEBUG
+bragerone run \
+  --email you@example.com \
+  --password secret \
+  --object-id 439 \
+  --lang en \
+  --log-level DEBUG
 ```
 
-## DEV
+Manage labels cache:
+```bash
+# map param to alias
+bragerone labels set-param P6 7 parameters.PARAM_7 --lang en
+
+# alias → label translation
+bragerone labels set-alias parameters.PARAM_7 "Pump activation temperature" --lang en
+
+# param → unit id
+bragerone labels set-param-unit P6 7 0 --lang en
+
+# unit label
+bragerone labels set-unit-label 0 "°C" --lang en
+
+# enum map
+bragerone labels set-unit-label 6 '{"11":"Return protection","12":"Heat exchanger"}' --lang en
+
+# show current cache
+bragerone labels show --lang en
+```
+
+## Development
 Code under src/bragerone/
 Tests in tests/
 Run tests: pytest -q

@@ -2,38 +2,87 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from .gateway import Gateway
+import signal
 
-def setup_logging(level: str):
-    lvl = getattr(logging, level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=lvl,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+from .gateway import Gateway
+from .labels_cli import add_subparser as add_labels_subparser
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser("bragerone")
+    p.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Global log level",
     )
 
-async def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--email", required=True)
-    p.add_argument("--password", required=True)
-    p.add_argument("--object-id", type=int, required=True)
-    p.add_argument("--lang", default="en")
-    p.add_argument("--log-level", default="INFO")
-    args = p.parse_args()
+    sub = p.add_subparsers(dest="cmd", required=True)
 
-    setup_logging(args.log_level)
-    log = logging.getLogger("bragerone")
+    # ---- run ----
+    pr = sub.add_parser("run", help="Login + pick modules + snapshot + WebSocket listen")
+    pr.add_argument("--email", required=True)
+    pr.add_argument("--password", required=True)
+    pr.add_argument("--object-id", type=int, required=True)
+    pr.add_argument("--lang", default="en")
 
-    g = Gateway(args.email, args.password, object_id=args.object_id, lang=args.lang)
+    # ---- labels (imported from labels_cli.py) ----
+    add_labels_subparser(sub)
+
+    return p
+
+
+async def run_cmd(ns: argparse.Namespace) -> None:
+    log = logging.getLogger("BragerOne")
+    g = Gateway(ns.email, ns.password, object_id=ns.object_id, lang=ns.lang, logger=log)
+
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except NotImplementedError:
+            pass
+
     try:
         await g.login()
         await g.pick_modules()
         await g.bootstrap_labels()
         await g.initial_snapshot()
         await g.start_ws()
-        while True:
-            await asyncio.sleep(3600)
+
+        log.info("listening for changes… (Ctrl-C to exit)")
+        try:
+            await stop.wait()   # <-- tu „śpimy”
+        except asyncio.CancelledError:
+            # Ctrl-C / SIGTERM — bez hałasu
+            pass
     finally:
-        await g.close()
+        try:
+            await g.close()
+        except Exception:
+            pass
+
+
+def main() -> None:
+    ns = build_parser().parse_args()
+
+    logging.basicConfig(
+        level=getattr(logging, ns.log_level),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
+    if ns.cmd == "run":
+        asyncio.run(run_cmd(ns))
+        return
+
+    if ns.cmd == "labels":
+        rc = ns.func(ns)  # set by labels_cli
+        raise SystemExit(rc)
+
+    raise SystemExit("Unknown command")
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
+
