@@ -1,11 +1,12 @@
 name: CI / Publish (TestPyPI & PyPI)
 
-on:
-  push:
-    branches: [ "main" ]
-    tags:
-      - "v*.*.*"
-  workflow_dispatch: {}
+on: workflow_dispatch
+#on:
+#  push:
+#    branches: [ "main" ]
+#    tags:
+#      - "v*.*.*"
+#  workflow_dispatch: {}
 
 jobs:
   build-and-test:

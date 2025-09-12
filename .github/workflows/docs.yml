@@ -1,0 +1,64 @@
+name: Docs
+on: workflow_dispatch
+#on:
+#  push:
+#    branches: [ main ]
+#    tags: [ 'v*.*.*' ]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # mike będzie pushował do gh-pages
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # <- potrzebne dla setuptools-scm i tagów!
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install docs deps
+        run: |
+          python -m pip install -U pip
+          # zakładam, że masz to w optional-deps: docs
+          python -m pip install .[docs]
+          # lub jawnie:
+          # pip install mkdocs mkdocs-material mike setuptools-scm
+
+      - name: Resolve version (setuptools-scm)
+        id: ver
+        run: |
+          # zwróci np. 0.2.5.dev14+gabcdef
+          echo "SCM_VERSION=$(python -m setuptools_scm)" >> $GITHUB_OUTPUT
+
+      - name: Configure git user for mike
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Build & deploy docs with mike
+        env:
+          # udostępniamy wersję do szablonu (np. w mkdocs.yml przez {{ env.VERSION }})
+          VERSION: ${{ steps.ver.outputs.SCM_VERSION }}
+        run: |
+          # Upewnij się, że gh-pages istnieje (mike sam ogarnia, ale pierwszy push bywa wygodny):
+          git fetch origin gh-pages:gh-pages || true
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            # Stabilne wydanie: numer z taga (bez "v"):
+            STABLE="${GITHUB_REF_NAME#v}"
+            echo "Deploying stable docs: ${STABLE}"
+            mike deploy --push --update-aliases "${STABLE}" latest
+          else
+            # Commit na main: publikuj do "dev" i opcjonalnie nadpisz "latest"
+            echo "Deploying dev docs, scm=${VERSION}"
+            mike deploy --push --force dev #latest
+          fi
+
+      - name: Set default docs version (first time only)
+        if: ${{ github.ref == 'refs/heads/main' }}
+        run: |
+          # jednorazowo można ustawić domyślną wersję (np. 'latest'):
+          mike set-default --push latest

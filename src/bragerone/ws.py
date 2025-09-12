@@ -1,9 +1,15 @@
 from __future__ import annotations
+
+import contextlib
 import json
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
+
 import socketio
 
-from .const import IO_BASE, ONE_BASE, WS_NAMESPACE as NS
+from .const import IO_BASE, ONE_BASE
+from .const import WS_NAMESPACE as NS
+
 
 class WsClient:
     """
@@ -15,12 +21,12 @@ class WsClient:
     Gateway handles REST 'modules.connect' and business logic.
     """
 
-    def __init__(self, token_getter: Callable[[], Optional[str]], logger=None):
+    def __init__(self, token_getter: Callable[[], str | None], logger=None):
         self._get_token = token_getter
         self.log = logger
-        self.sio: Optional[socketio.AsyncClient] = None
-        self._on_change: Optional[Callable[[dict], None]] = None
-        self._on_event: Optional[Callable[[str, Any], None]] = None
+        self.sio: socketio.AsyncClient | None = None
+        self._on_change: Callable[[dict], None] | None = None
+        self._on_event: Callable[[str, Any], None] | None = None
 
     # ---- public API ----
 
@@ -47,7 +53,7 @@ class WsClient:
 
         # Connect to base host; python-socketio handles upgrade internally.
         await self.sio.connect(
-            IO_BASE,                      # keep https; engine does WS upgrade itself
+            IO_BASE,  # keep https; engine does WS upgrade itself
             headers=headers,
             transports=["websocket"],
             socketio_path="/socket.io",
@@ -69,7 +75,9 @@ class WsClient:
 
         await self.sio.emit("app:modules:activity:quantity:listen", {"modules": devs}, namespace=NS)
         if self.log:
-            self.log.debug("[emit] app:modules:activity:quantity:listen %s ns=%s", {"modules": devs}, NS)
+            self.log.debug(
+                "[emit] app:modules:activity:quantity:listen %s ns=%s", {"modules": devs}, NS
+            )
 
     async def close(self) -> None:
         """Gracefully close the socket (idempotent)."""
@@ -81,7 +89,7 @@ class WsClient:
         finally:
             self.sio = None
 
-    def sid(self) -> Optional[str]:
+    def sid(self) -> str | None:
         """Return namespace SID if available, fallback to engine SID."""
         if not self.sio:
             return None
@@ -95,17 +103,13 @@ class WsClient:
 
     def _fire_event(self, name: str, data: Any) -> None:
         if self._on_event:
-            try:
+            with contextlib.suppress(Exception):
                 self._on_event(name, data)
-            except Exception:
-                pass
 
     def _fire_change(self, payload: dict) -> None:
         if self._on_change:
-            try:
+            with contextlib.suppress(Exception):
                 self._on_change(payload)
-            except Exception:
-                pass
 
     def _wire(self) -> None:
         sio = self.sio
@@ -182,4 +186,3 @@ class WsClient:
         @sio.on("63", namespace=NS)
         async def _ev63(payload):
             self._fire_event("app:module:task:completed", payload)
-

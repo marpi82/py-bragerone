@@ -1,190 +1,186 @@
+"""
+LabelFetcher – pobiera assety z frontu (live), parsuje i wystawia w RAM:
+- ParamCatalog (etykiety, jednostki, meta PARAM_*)
+- touch_param_unit() – podpinane przez Gateway przy snapshot/ws
+- pretty_label(), format_value() – cienkie wrapy na ParamCatalog
+- bootstrap_from_frontend() – główny entrypoint; skorzysta z zewn. sesji jeśli podana
+Działa wyłącznie w pamięci (bez plików).
+"""
+
 from __future__ import annotations
-import json
-import os
-from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
 
+import logging
+from typing import Any
 
-CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "bragerone")
+import aiohttp
 
-
-@dataclass
-class LabelStore:
-    # alias → label for given language (e.g. "parameters.PARAM_7" → "Pump activation temperature")
-    aliases: Dict[str, str] = field(default_factory=dict)
-    # (pool:number) → alias  (e.g. "P6:7" → "parameters.PARAM_7")
-    param_alias: Dict[str, str] = field(default_factory=dict)
-    # (pool:number) → unit_id (optional, numeric or string id coming from 'u' field)
-    param_unit_id: Dict[str, str] = field(default_factory=dict)
-    # unit_id → unit label (e.g. "0" → "°C")
-    unit_labels: Dict[str, str] = field(default_factory=dict)
-    # unit_id → {value → label} for enums (e.g. "6" → {"11":"Return protection", ...})
-    enums: Dict[str, Dict[str, str]] = field(default_factory=dict)
+from .assets_client import AssetClient
+from .const import ONE_BASE
+from .param_catalog import ParamCatalog
 
 
 class LabelFetcher:
-    """
-    v1: lazy + cache only (no network fetch yet).
-    You can enrich the cache via touch_* helpers (used by CLI/tools/tests).
-    """
+    def __init__(
+        self,
+        lang: str = "pl",
+        base_url: str = ONE_BASE,
+        debug: bool = False,
+        logger: logging.Logger | None = None,
+        session: aiohttp.ClientSession | None = None,  # <<— NEW
+    ):
+        self.lang = lang
+        self.base_url = base_url
+        self.debug = debug
+        self.log = logger or logging.getLogger("BragerOne")
+        self.catalog: ParamCatalog | None = None
 
-    def __init__(self) -> None:
-        self._by_lang: Dict[str, LabelStore] = {}
+        # sesja może być zewnętrzna (np. self.api.http); wtedy jej nie zamykamy
+        self._session_ext: aiohttp.ClientSession | None = session
 
-    # ---------- public API ----------
+    # ——— bootstrap ————————————————————————————————————————————————
 
-    def bootstrap(self, lang: str) -> None:
-        """Ensure cache presence for a language (lazy load)."""
-        self.ensure(lang)
+    async def bootstrap_from_frontend(self) -> None:
+        """
+        Pobiera index → wyciąga URL-e lang/units & lang/parameters → parsuje w RAM,
+        dociąga meta z no-lang PARAM_*.js. NIC nie zapisuje na dysk.
+        Użyje sesji z konstruktora, a jeśli jej nie było – stworzy tymczasową.
+        """
+        if self._session_ext is not None:
+            # używamy dostarczonej sesji (nie zamykamy jej)
+            client = AssetClient(self._session_ext, self.base_url)
+            await self._do_bootstrap(client)
+        else:
+            # tworzymy własną sesję i po bootstrapie ją zamykamy
+            async with aiohttp.ClientSession() as session:
+                client = AssetClient(session, self.base_url)
+                await self._do_bootstrap(client)
 
-    def ensure(self, lang: str) -> None:
-        if lang in self._by_lang:
-            return
-        self._by_lang[lang] = self._load_cache(lang)
+    async def _do_bootstrap(self, client: AssetClient) -> None:
+        # 1) index.js
+        await (
+            client.fetch_index_js()
+        )  # We ensure index bundle is reachable; no local use of content.
+
+        # 2) units + parameters dla self.lang
+        units, labels = await client.fetch_lang_units_and_params(self.lang)
+
+        self.ensure_catalog()
+        self.catalog.set_labels(labels)
+        self.catalog.set_units(units)
+
+        if self.debug:
+            a = len(labels)
+            u = len(units)
+            self.log.debug("[labels] bootstrap ok (aliases=%d, unit_defs=%d)", a, u)
+
+    # ——— zgodność / statystyki ——————————————————————————————————————
+
+    async def ensure_populated(self, *args, **kwargs) -> dict[str, int]:
+        """Zwraca statystyki podobne do poprzedniej implementacji."""
+        if not self.catalog:
+            return {"aliases": 0, "param_alias": 0, "param_unit": 0, "unit_defs": 0}
+        return {
+            "aliases": len(self.catalog.labels_by_param),
+            "param_alias": 0,
+            "param_unit": len(self.catalog.param_units),
+            "unit_defs": len(self.catalog.units),
+        }
+
+    def ensure_catalog(self) -> None:
+        if self.catalog is None:
+            # pusty katalog; pozwala dokładać częściowo
+            self.catalog = ParamCatalog(units={}, labels={}, meta={})
 
     def count_vars(self) -> int:
-        return sum(len(st.param_alias) for st in self._by_lang.values())
+        """Ilu mamy „PARAM_*” opisanych etykietą (pod log w gateway)."""
+        return 0 if not self.catalog else len(self.catalog.labels_by_param)
 
     def count_langs(self) -> int:
-        return len(self._by_lang)
+        """Placeholder (mamy jeden aktywny język na raz)."""
+        return 1
 
-    # --- lookups ---
+    # ——— runtime (wywoływane przez Gateway) ———————————————————————
 
-    def get_param_label(self, pool: str, number: int, lang: str) -> str:
-        self.ensure(lang)
-        key = f"{pool}:{number}"
-        st = self._by_lang[lang]
-        alias = st.param_alias.get(key)
-        if not alias:
-            return ""
-        return st.aliases.get(alias, "")
-
-    def get_param_unit_id(self, pool: str, number: int, lang: str) -> str:
-        self.ensure(lang)
-        key = f"{pool}:{number}"
-        st = self._by_lang[lang]
-        return st.param_unit_id.get(key, "")
-
-    def get_unit_label(self, unit_id: str, lang: str) -> str:
-        self.ensure(lang)
-        st = self._by_lang[lang]
-        return st.unit_labels.get(str(unit_id), "")
-
-    def get_enum_label(self, unit_id: str, value: Any, lang: str) -> str:
-        self.ensure(lang)
-        st = self._by_lang[lang]
-        enum_map = st.enums.get(str(unit_id)) or {}
-        return enum_map.get(str(value), "")
-
-    # --- enrichment helpers (used by tool/CLI/tests) ---
-
-    def touch_param_alias(self, pool: str, number: int, alias: str, *, lang: str | None = None) -> None:
-        for l in ([lang] if lang else (list(self._by_lang.keys()) or ["en"])):
-            self.ensure(l)
-            self._by_lang[l].param_alias[f"{pool}:{number}"] = alias
-            self._save_cache(l)
-
-    def touch_alias(self, alias: str, label: str, *, lang: str) -> None:
-        self.ensure(lang)
-        st = self._by_lang[lang]
-        st.aliases[alias] = label
-        self._save_cache(lang)
-
-    def touch_param_unit(self, pool: str, number: int, unit_id: str | int, *, lang: str | None = None) -> None:
-        uid = str(unit_id)
-        for l in ([lang] if lang else (list(self._by_lang.keys()) or ["en"])):
-            self.ensure(l)
-            self._by_lang[l].param_unit_id[f"{pool}:{number}"] = uid
-            self._save_cache(l)
-
-    def touch_unit_label(self, unit_id: str | int, unit_label: str, *, lang: str) -> None:
-        self.ensure(lang)
-        self._by_lang[lang].unit_labels[str(unit_id)] = unit_label
-        self._save_cache(lang)
-
-    def touch_enum_map(self, unit_id: str | int, mapping: Dict[str, str] | Dict[int, str], *, lang: str) -> None:
-        self.ensure(lang)
-        # Normalize keys to strings
-        norm = {str(k): v for k, v in dict(mapping).items()}
-        self._by_lang[lang].enums[str(unit_id)] = norm
-        self._save_cache(lang)
-
-    # ---------- disk cache ----------
-
-    def _cache_path(self, lang: str) -> str:
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        return os.path.join(CACHE_DIR, f"labels-{lang}.json")
-
-    def _load_cache(self, lang: str) -> LabelStore:
-        p = self._cache_path(lang)
-        if not os.path.exists(p):
-            return LabelStore()
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                obj = json.load(f)
-            st = LabelStore()
-            st.aliases = obj.get("aliases", {})
-            st.param_alias = obj.get("param_alias", {})
-            st.param_unit_id = obj.get("param_unit_id", {})
-            st.unit_labels = obj.get("unit_labels", {})
-            st.enums = obj.get("enums", {})
-            return st
-        except Exception:
-            return LabelStore()
-
-    def _save_cache(self, lang: str) -> None:
-        p = self._cache_path(lang)
-        st = self._by_lang.get(lang)
-        if not st:
+    def touch_param_unit(self, pool: str, param_id: int, unit_id_str: str) -> None:
+        """Automapowanie P?.uN → unit_id na podstawie snapshot/ws."""
+        if not self.catalog:
             return
-        try:
-            with open(p, "w", encoding="utf-8") as f:
-                json.dump(
-                    {
-                        "aliases": st.aliases,
-                        "param_alias": st.param_alias,
-                        "param_unit_id": st.param_unit_id,
-                        "unit_labels": st.unit_labels,
-                        "enums": st.enums,
-                    },
-                    f,
-                    ensure_ascii=False,
-                    indent=2,
-                )
-        except Exception:
-            pass
+        self.catalog.touch_param_unit(pool, param_id, unit_id_str)
 
+    # ——— API do użytku w Gateway/CLI ——————————————————————————————
 
-# ---------- value formatting helper (used by Gateway/CLI) ----------
+    def pretty_label(self, pool: str, var: str) -> str:
+        """
+        Zwraca przyjazną etykietę:
+        - jeśli rozpoznajemy jako parameters.PARAM_<id>, zwracamy tłumaczenie z labels
+        - w przeciwnym wypadku: fallback do klucza
+        """
+        if not self.catalog:
+            return f"{pool}.{var}"
 
-def _parse_num_from_var(var: str) -> Optional[int]:
-    if not var:
-        return None
-    if var[0] in ("v", "n", "x", "u", "s"):
-        try:
-            return int(var[1:])
-        except Exception:
-            return None
-    return None
+        name = self.catalog.pretty_param_key(pool, var)  # np. "parameters.PARAM_6"
+        if name.startswith("parameters.PARAM_"):
+            pid = name.rsplit("_", 1)[-1]
+            label = self.catalog.labels_by_param.get(f"PARAM_{pid}")
+            if label:
+                return label
+        return name
 
+    def format_value(self, pool: str, var: str, value: Any, lang: str | None = None) -> Any:
+        """
+        Formatuje wartość:
+        - enumy → tekst po polsku (lub lang, jeśli przekażesz)
+        - wartości liczbowe + jednostki → „wartość + symbol”
+        - fallback: surowa wartość
+        """
+        if not self.catalog:
+            return value
+        return self.catalog.format_value(pool, var, value, lang=lang or self.lang)
 
-def format_value(pool: str, var: str, value: Any, lf: LabelFetcher, lang: str) -> str:
-    """
-    Pretty-print a value with either enum label (if unit_id has enum) or with unit suffix.
-    Falls back to raw value if nothing is known.
-    """
-    num = _parse_num_from_var(var)
-    if num is None:
-        return f"{value}"
+    async def bootstrap_labels(self) -> None:
+        """
+        Fetch & parse parameters-*.js (labels) for self.lang.
+        Does NOT bind any units.
+        """
+        client = AssetClient(self.session, self.base_url)
+        _, labels = await client.fetch_lang_units_and_params(self.lang)
+        self.ensure_catalog()
+        self.catalog.set_labels(labels)
 
-    unit_id = lf.get_param_unit_id(pool, num, lang)
-    if unit_id:
-        enum_label = lf.get_enum_label(unit_id, value, lang)
-        if enum_label:
-            return enum_label
-        unit_label = lf.get_unit_label(unit_id, lang)
-        if unit_label:
-            return f"{value}{unit_label if unit_label.startswith(' ') else ' ' + unit_label}"
+        if self.log:
+            self.log.debug("[labels] labels-only loaded: %d", len(labels))
 
-    return f"{value}"
+    async def bootstrap_units(self) -> None:
+        """
+        Fetch & parse units-*.js (unit dictionary/enums) for self.lang.
+        Does NOT bind any units.
+        """
+        client = AssetClient(self.session, self.base_url)
+        units, _ = await client.fetch_lang_units_and_params(self.lang)
+        self.ensure_catalog()
+        self.catalog.set_units(units)
 
+        if self.log:
+            self.log.debug("[labels] units-only loaded: %d top-level keys", len(units))
+
+    async def bootstrap_param_meta(self) -> None:
+        """
+        Fetch & parse PARAM_*.js (param meta: unit/command/status/componentType, etc.).
+        Safe to call before/after snapshot; no unit binding here.
+        """
+        client = AssetClient(self.http, self.base_url)
+        meta = await client.fetch_all_param_meta()
+        self.ensure_catalog()
+        self.catalog.set_meta(meta)
+
+        if self.log:
+            self.log.debug("[labels] param-meta loaded: %d keys", len(meta))
+
+    def bind_units_from_snapshot(self, snapshot: dict[str, Any]) -> int:
+        """
+        Cienki wrapper – wywołuje logikę katalogu.
+        Nie robi HTTP, działa wyłącznie na pamięci.
+        """
+        if not self.catalog:
+            return 0
+        return self.catalog.bind_units_from_snapshot(snapshot)

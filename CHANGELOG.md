@@ -2,8 +2,26 @@
 
 ### `CHANGELOG.md`
 
-```markdown
 # Changelog
+
+All notable changes to this project will be documented in this file.
+
+## [0.2.6] - 2025-09-12
+### Added
+- **Live label/unit fetching** from frontend bundles via `AssetClient` (`index-*.js`, language chunks, `PARAM_*.js`).
+- `LabelFetcher` now bootstraps labels/units in-memory (no local files) and exposes `ParamCatalog`.
+- `ParamCatalog` binds units using current `uN` values from snapshot and formats enums/units for CLI/HA.
+- Tests for asset fetching and Unicode handling (diacritics).
+- GitHub Actions: CI (lint+tests) and optional Release/Docs workflows.
+
+### Changed
+- CLI logs show **human-friendly** values with units/enums right after initial snapshot.
+- Refactor of parsing utilities in `jsparse.py` (robust JSON-ish normalization, alias parsing, Unicode safety).
+- `Gateway.initial_snapshot(prefetch_assets: bool = False)` to optionally fetch assets before binding.
+
+### Fixed
+- Unicode decoding issues (e.g. `kotÅ‚a` → `kotła`) in parameter labels and unit enums.
+- Safer parsing of `PARAM_*.js` (handles `icon`, `status`, `componentType`, `raw`, conditional blocks).
 
 ## [0.2.5] - 2025-09-09
 ### Added

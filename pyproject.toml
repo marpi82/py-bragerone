@@ -10,7 +10,6 @@ readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
   { name = "MarPi82", email = "marpi82@users.noreply.github.com" },
-  { name = "ChatGPT5" }
 ]
 maintainers = [
   { name = "MarPi82", email = "marpi82@users.noreply.github.com" }
@@ -32,34 +31,55 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/marpi82/py-bragerone"
-Issues   = "https://github.com/marpi82/py-bragerone/issues"
+Homepage      = "https://github.com/marpi82/py-bragerone"
+Issues        = "https://github.com/marpi82/py-bragerone/issues"
+Documentation = "https://marpi82.github.io/py-bragerone/latest/"
 
 [project.scripts]
 bragerone-cli = "bragerone.__main__:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[project.optional-dependencies]
+dev = ["pre-commit", "ruff>=0.5", "black>=24.3", "isort>=5.13", "mypy>=1.7"]
+test = ["pytest>=8", "pytest-asyncio>=0.23", "pytest-cov>=5.0", "aioresponses>=0.7", "packaging>=24"]
+docs = ["sphinx>=7.3", "sphinx-autodoc-typehints>=2.3", "sphinxcontrib-napoleon>=0.7", "mike>=2.1.0"]
 
-# --- setuptools-scm konfiguracja ---
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["bragerone"]
+
 [tool.setuptools_scm]
-# Domyślnie akceptuje tagi w stylu v1.2.3 lub 1.2.3; nie musisz nic zmieniać.
-# Jeśli budujesz z commita bez taga, dostaniesz wersję dev/post:
 version_scheme = "guess-next-dev"
 local_scheme = "no-local-version"
 fallback_version = "0.0.0"
 
-[project.optional-dependencies]
-test = [
-  "pytest>=8",
-  "pytest-asyncio>=0.23",
-  "packaging>=24",
-]
-dev = [
-    "pytest>=7.0",
-    "pytest-asyncio>=0.23",
-    "ruff>=0.5",
-    "mypy>=1.7",
-    "twine>=5.0",
-    "build>=1.2",
-]
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-q --cov=bragerone --cov-report=term-missing"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.isort]
+profile = "black"
+src_paths = ["src", "tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+fix = true
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+disallow_untyped_defs = true
+mypy_path = "src"

@@ -1,17 +1,20 @@
 from __future__ import annotations
+
 import json
+from typing import Any
+
 import aiohttp
-from typing import Any, Optional
 
 from .const import API_BASE, AUTH_URL, ORIGIN, REFERER
 
 DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=25)
 
+
 class Api:
-    def __init__(self, session: Optional[aiohttp.ClientSession] = None):
+    def __init__(self, session: aiohttp.ClientSession | None = None):
         self.http = session
         self._own = False
-        self.jwt: Optional[str] = None
+        self.jwt: str | None = None
 
     async def ensure(self):
         if self.http is None:
@@ -36,7 +39,7 @@ class Api:
             ct = r.headers.get("content-type", "")
             if r.status >= 400:
                 raise RuntimeError(f"{method} {url} -> {r.status}: {txt[:400]}")
-            if "application/json" in ct or txt.startswith(("{","[")):
+            if "application/json" in ct or txt.startswith(("{", "[")):
                 try:
                     return json.loads(txt)
                 except json.JSONDecodeError:
@@ -88,10 +91,14 @@ class Api:
         return res if isinstance(res, dict) else {}
 
     async def activity_quantity(self, devs: list[str]) -> dict:
-        res = await self._req("POST", f"{API_BASE}/modules/activity/quantity", json={"modules": devs})
+        res = await self._req(
+            "POST", f"{API_BASE}/modules/activity/quantity", json={"modules": devs}
+        )
         return res if isinstance(res, dict) else {}
 
-    async def modules_connect(self, wsid: str, devs: list[str], object_id: int | None = None) -> bool:
+    async def modules_connect(
+        self, wsid: str, devs: list[str], object_id: int | None = None
+    ) -> bool:
         headers = {
             "X-Requested-With": "XMLHttpRequest",
             "Content-Type": "application/json;charset=UTF-8",
@@ -102,12 +109,14 @@ class Api:
             {"wsid": wsid, "group_id": object_id, "modules": devs} if object_id else None,
         ]
         for pl in payloads:
-            if not pl: continue
+            if not pl:
+                continue
             try:
-                res = await self._req("POST", f"{API_BASE}/modules/connect", json=pl, headers=headers)
+                res = await self._req(
+                    "POST", f"{API_BASE}/modules/connect", json=pl, headers=headers
+                )
                 if isinstance(res, dict):
                     return True
             except Exception:
                 continue
         return False
-

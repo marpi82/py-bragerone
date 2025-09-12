@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import argparse
 import asyncio
+import contextlib
 import logging
 import signal
 
@@ -39,29 +41,24 @@ async def run_cmd(ns: argparse.Namespace) -> None:
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, stop.set)
-        except NotImplementedError:
-            pass
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            with contextlib.suppress(NotImplementedError):
+                loop.add_signal_handler(sig, stop.set)
 
     try:
         await g.login()
         await g.pick_modules()
-        await g.bootstrap_labels()
-        await g.initial_snapshot()
+        # await g.bootstrap_labels()
+        await g.initial_snapshot(prefetch_assets=True)
         await g.start_ws()
 
         log.info("listening for changes… (Ctrl-C to exit)")
-        try:
-            await stop.wait()   # <-- tu „śpimy”
-        except asyncio.CancelledError:
-            # Ctrl-C / SIGTERM — bez hałasu
-            pass
+        with contextlib.suppress(asyncio.CancelledError):
+            await stop.wait()
     finally:
-        try:
+        with contextlib.suppress(Exception):
             await g.close()
-        except Exception:
-            pass
 
 
 def main() -> None:
@@ -85,4 +82,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

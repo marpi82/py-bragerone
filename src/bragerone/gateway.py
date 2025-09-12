@@ -1,10 +1,12 @@
 from __future__ import annotations
+
+import contextlib
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .api import Api
+from .labels import LabelFetcher
 from .ws import WsClient
-from .labels import LabelFetcher, format_value
 
 
 class Gateway:
@@ -24,7 +26,7 @@ class Gateway:
         *,
         object_id: int,
         lang: str = "en",
-        logger: Optional[logging.Logger] = None,
+        logger: logging.Logger | None = None,
     ):
         self.email = email
         self.password = password
@@ -33,7 +35,7 @@ class Gateway:
 
         self.log = logger or logging.getLogger("BragerOne")
         self.api = Api()
-        self.labels = LabelFetcher()
+        self.labels = LabelFetcher(lang=self.lang, session=self.api.http, logger=self.log)
 
         # WS client (token on demand from Api)
         self.ws = WsClient(lambda: self.api.jwt, logger=self.log.getChild("ws"))
@@ -43,8 +45,8 @@ class Gateway:
         # chosen device ids
         self.devids: list[str] = []
 
-        # current flat state: "P6.v7" -> value
-        self._state: Dict[str, Any] = {}
+        # current snap state: "P6.v7" -> value
+        self._state: dict[str, Any] = {}
 
     # ---------------------------------------------------------------------
     # High-level steps (used by CLI)
@@ -64,25 +66,28 @@ class Gateway:
             raise RuntimeError("No modules found for this object_id")
         self.log.info("Modules: %s", self.devids)
 
-    async def bootstrap_labels(self) -> None:
-        """Ensure labels cache (v1: cache-only)."""
-        self.labels.bootstrap(self.lang)
-        self.log.debug(
-            "[labels] bootstrap ok (vars=%d, langs=%d)",
-            self.labels.count_vars(),
-            self.labels.count_langs(),
-        )
+    async def bootstrap(self) -> None:
+        await self.labels.bootstrap_from_frontend()
 
-    async def initial_snapshot(self) -> None:
+    async def initial_snapshot(self, prefetch_assets: bool = False) -> None:
         """
         Fetch & flatten snapshot for current devids. Update _state and log.
         """
-        flat = await self.snapshot_flat()
-        self.log.info("[init] snapshot items: %d", len(flat))
-        for key, val in flat.items():
+        snap = await self.snapshot_flat()
+        self.log.info("[init] snapshot items: %d", len(snap))
+
+        # --- po snapshot – doważ jednostki, jeżeli mamy już katalog ---
+        if prefetch_assets:
+            await self.bootstrap()
+            if self.labels and self.labels.catalog:
+                bound = self.labels.bind_units_from_snapshot(snap)
+                if self.log:
+                    self.log.debug("[labels] bound %d unit(s) from snapshot", bound)
+
+        for key, val in snap.items():
             pool, var = key.split(".", 1)
-            pretty = self.pretty_label(pool, var)
-            formatted = format_value(pool, var, val, self.labels, self.lang)
+            pretty = self.labels.pretty_label(pool, var)
+            formatted = self.labels.format_value(pool, var, val, self.lang)
             self.log.debug("[init] %s = %s", pretty, formatted)
 
     async def start_ws(self) -> None:
@@ -106,17 +111,15 @@ class Gateway:
 
     async def close(self) -> None:
         """Graceful shutdown (WS + HTTP)."""
-        try:
+        with contextlib.suppress(Exception):
             await self.stop_ws()
-        except Exception:
-            pass
         await self.api.close()
 
     # ---------------------------------------------------------------------
     # Utilities
     # ---------------------------------------------------------------------
 
-    async def snapshot_flat(self) -> Dict[str, Any]:
+    async def snapshot_flat(self) -> dict[str, Any]:
         """
         Fresh snapshot as flat dict: "P4.v2" -> value
         Also updates internal baseline (_state).
@@ -125,7 +128,7 @@ class Gateway:
             raise RuntimeError("Call pick_modules() first to populate devids")
 
         snap = await self.api.snapshot_parameters(self.devids)
-        flat: Dict[str, Any] = {}
+        flat: dict[str, Any] = {}
         for _devid, pools in (snap or {}).items():
             if not isinstance(pools, dict):
                 continue
@@ -140,23 +143,6 @@ class Gateway:
         self._state.update(flat)
         return flat
 
-    def pretty_label(self, pool: str, var: str) -> str:
-        """
-        Human label for variable name (e.g. P6.v7). Adds param label if available.
-        """
-        num = None
-        if var and var[0] in ("v", "n", "x", "u", "s"):
-            try:
-                num = int(var[1:])
-            except Exception:
-                num = None
-
-        if num is not None:
-            label = self.labels.get_param_label(pool, num, self.lang)
-            if label:
-                return f"{pool}.{var} [{label}]"
-        return f"{pool}.{var}"
-
     # ---------------------------------------------------------------------
     # WS callbacks
     # ---------------------------------------------------------------------
@@ -165,12 +151,10 @@ class Gateway:
         # keep engine chatter quiet; still handy for diagnostics at DEBUG
         if name in ("socket.connect", "socket.disconnect"):
             return
-        try:
+        with contextlib.suppress(Exception):
             self.log.debug("[ws %s] %r", name, data)
-        except Exception:
-            pass
 
-    def _on_ws_change(self, payload: Dict[str, Any]) -> None:
+    def _on_ws_change(self, payload: dict[str, Any]) -> None:
         """
         Called by WsClient on parameter changes.
         Payload example:
@@ -193,9 +177,8 @@ class Gateway:
                         old_val = self._state.get(key)
                         if new_val != old_val:
                             self._state[key] = new_val
-                            pretty = self.pretty_label(pool, var)
-                            formatted = format_value(pool, var, new_val, self.labels, self.lang)
+                            pretty = self.labels.pretty_label(pool, var)
+                            formatted = self.labels.format_value(pool, var, new_val, self.lang)
                             self.log.debug("[change] %s: %s -> %s", pretty, old_val, formatted)
         except Exception as e:
             self.log.debug("on_change parse error: %s | raw=%r", e, payload)
-
