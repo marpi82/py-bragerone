@@ -1,0 +1,20 @@
+title = "py-bragerone gitleaks configuration"
+
+[allowlist]
+description = "Global allowlist for false positives"
+# Ignore generated build/fixtures/docs artifacts
+paths = [
+  '''^src/docs/_build/''',
+  '''^dist/''',
+  '''^build/''',
+  '''^tests/fixtures/'''
+]
+
+# Regex allowlist: tokens that look like secrets but are safe
+regexes = [
+  '''(?i)example''',
+  '''(?i)dummy''',
+  '''(?i)sample''',
+  '''(?i)placeholder''',
+  '''(?i)changeme'''
+]

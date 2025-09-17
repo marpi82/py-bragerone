@@ -52,9 +52,9 @@ Artifacts can be downloaded from the Actions run page.
 - Builds Sphinx docs and deploys with `mike`.
 
 **Deployment rules:**
-- **Stable docs**: when the commit has a final tag (`YYYY.M.D`).  
+- **Stable docs**: when the commit has a final tag (`YYYY.M.D`).
   Deployed under that version number and aliased as `latest`.
-- **Dev docs**: when building from `main` without a tag, or from pre-release tags.  
+- **Dev docs**: when building from `main` without a tag, or from pre-release tags.
   Deployed under the alias `dev`.
 
 ---

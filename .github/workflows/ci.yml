@@ -12,6 +12,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  secrets:
+    name: secrets (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Install gitleaks
+        run: |
+          curl -sSL https://raw.githubusercontent.com/gitleaks/gitleaks/master/scripts/install.sh | bash
+          sudo mv gitleaks /usr/local/bin/
+      - name: Scan for secrets
+        run: gitleaks detect --redact --no-git -v
+
   lint:
     name: lint
     runs-on: ubuntu-latest
@@ -21,7 +37,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - name: Install Poetry
         run: pipx install poetry
       - name: Cache virtualenv
@@ -47,7 +63,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - name: Install Poetry
         run: pipx install poetry
       - name: Cache virtualenv
@@ -68,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.13', '3.14-dev']
+        python: ["3.13", "3.14-dev"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -99,7 +115,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - name: Install Poetry
         run: pipx install poetry
       - name: Cache virtualenv
@@ -111,13 +127,13 @@ jobs:
         run: |
           poetry config virtualenvs.in-project true
           poetry install --with docs --no-interaction
-#      - name: Debug repo layout
-#        run: |
-#          pwd
-#          echo "--- tree level 1"; ls -la
-#          echo "--- tree src"; ls -la src || true
-#          echo "--- tree src/docs"; ls -la src/docs || true
-#          echo "--- git tracked under src/docs"; git ls-files | grep -E '^src/docs/' || true
+      #      - name: Debug repo layout
+      #        run: |
+      #          pwd
+      #          echo "--- tree level 1"; ls -la
+      #          echo "--- tree src"; ls -la src || true
+      #          echo "--- tree src/docs"; ls -la src/docs || true
+      #          echo "--- git tracked under src/docs"; git ls-files | grep -E '^src/docs/' || true
       - name: Build Sphinx docs
         run: poetry run sphinx-build -b html docs docs/_build/html
 
@@ -131,7 +147,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - name: Install Poetry
         run: pipx install poetry
       - name: Cache virtualenv
