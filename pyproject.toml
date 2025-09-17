@@ -121,8 +121,6 @@ extend-exclude = ["docs/_build"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 #select = ["E", "F"]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
-#select = ["E", "F"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
