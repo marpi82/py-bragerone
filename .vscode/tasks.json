@@ -1,0 +1,94 @@
+{
+  "version": "2.0.0",
+  "options": {
+    "cwd": "${workspaceFolder}"
+  },
+  "tasks": [
+    {
+      "label": "Bootstrap (poetry+groups)",
+      "type": "shell",
+      "command": "poetry run poe bootstrap",
+      "detail": "poetry install --with dev,test,docs"
+    },
+    {
+      "label": "Lint (ruff via poe)",
+      "type": "shell",
+      "command": "poetry run poe lint",
+      "group": "build"
+    },
+    {
+      "label": "Format (black+ruff+isort via poe)",
+      "type": "shell",
+      "command": "poetry run poe fmt"
+    },
+    {
+      "label": "Quick fix (ruff --fix + format via poe)",
+      "type": "shell",
+      "command": "poetry run poe fix"
+    },
+    {
+      "label": "Type-check (mypy via poe)",
+      "type": "shell",
+      "command": "poetry run poe typecheck",
+      "group": "build"
+    },
+    {
+      "label": "Tests (pytest via poe)",
+      "type": "shell",
+      "command": "poetry run poe test",
+      "group": "test"
+    },
+    {
+      "label": "Coverage (pytest-cov via poe)",
+      "type": "shell",
+      "command": "poetry run poe cov",
+      "group": "test"
+    },
+    {
+      "label": "Docs: build (Sphinx via poe)",
+      "type": "shell",
+      "command": "poetry run poe docs-build",
+      "group": "build"
+    },
+    {
+      "label": "Docs: serve (local http.server)",
+      "type": "shell",
+      "command": "poetry run poe docs-serve",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Build dist (poetry build via poe)",
+      "type": "shell",
+      "command": "poetry run poe build",
+      "group": "build"
+    },
+    {
+      "label": "Publish: TestPyPI (via poe)",
+      "type": "shell",
+      "command": "poetry run poe publish-testpypi"
+    },
+    {
+      "label": "Publish: PyPI (via poe)",
+      "type": "shell",
+      "command": "poetry run poe publish-pypi"
+    },
+    {
+      "label": "All: lint + type + tests",
+      "type": "shell",
+      "command": "poetry run poe lint && poetry run poe typecheck && poetry run poe test",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "pytestExpr",
+      "type": "promptString",
+      "description": "Optional -k/::test for filtering tests (leave empty to run all)",
+      "default": ""
+    }
+  ]
+}

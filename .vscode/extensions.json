@@ -1,0 +1,21 @@
+{
+  "recommendations": [
+    "charliermarsh.ruff",                    // Ruff (lint/format Python)
+    "matangover.mypy",                       // Mypy type checker
+    "ms-python.python",                      // Python (konieczne do Pylance)
+    "ms-python.vscode-pylance",              // Pylance (intellisense, type hints)
+    "yzhang.markdown-all-in-one",            // Markdown wygodne pisanie
+//    "shd101wyy.markdown-preview-enhanced",  // Markdown podgląd zaawansowany (mermaid, latex)
+//    "bierner.markdown-mermaid",             // Mermaid diagrams w Markdown
+    "github.vscode-pull-request-github",     // PR/Issues GitHub
+    "github.vscode-github-actions",          // Podgląd Actions
+    "eamodio.gitlens",                       // GitLens (historia, blame, diff)
+    "samuelcolvin.jinjahtml",                // Jinja2 w HTML
+    "zeshuaro.vscode-python-poetry",         // Poetry (dependency management)
+    "redhat.vscode-yaml"                     // YAML (GitHub Actions)
+  ],
+  "unwantedRecommendations": [
+    "ms-python.autopep8",                   // żeby nie nadpisywało Ruff
+    "ms-python.black-formatter"              // żeby nie nadpisywało Ruff
+  ]
+}

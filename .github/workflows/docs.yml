@@ -1,0 +1,76 @@
+name: Docs
+
+on:
+  workflow_dispatch:
+  workflow_run:
+     workflows: ["CI"]
+     types: [completed]
+  # push:
+  #   branches: [ main ]
+  #   tags: [ "v*.*.*" ]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.2"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.8.3
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Enable dynamic versioning (poetry plugin)
+        run: |
+          poetry self add "poetry-dynamic-versioning[plugin]==1.4.0"
+          poetry dynamic-versioning enable
+
+      - name: Cache .venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.13.2-${{ hashFiles('poetry.lock') }}
+
+      - name: Install docs deps
+        run: |
+          poetry env use 3.13
+          poetry install --with docs
+
+      - name: Compute version
+        id: ver
+        run: |
+          echo "VERSION=$(poetry version -s)" >> "$GITHUB_OUTPUT"
+
+      - name: Configure git for mike
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Build & deploy docs (mike)
+        env:
+          VERSION: ${{ steps.ver.outputs.VERSION }}
+        run: |
+          git fetch origin gh-pages:gh-pages || true
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            STABLE="${GITHUB_REF_NAME#v}"
+            echo "Deploying stable docs: ${STABLE}"
+            poetry run mike deploy --push --update-aliases "${STABLE}" latest
+          else
+            echo "Deploying dev docs (${VERSION})"
+            poetry run mike deploy --push --force dev
+          fi
+
+      - name: Set default docs version (first time only)
+        if: ${{ github.ref == 'refs/heads/main' }}
+        run: poetry run mike set-default --push latest

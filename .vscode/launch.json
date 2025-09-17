@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [    
+    {
+      "name": "Debug pybragerone CLI (module)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pybragerone.__main__",
+      "args": ["--log-level", "DEBUG", "run"],
+      "console": "integratedTerminal",
+      "justMyCode": true,
+    },
+    {
+      "name": "Debug pybragerone CLI (script alias)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/pybragerone/__main__.py",
+      "args": ["--log-level", "DEBUG", "run"],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Debug tests (pytest)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-q", "tests"],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ]
+}
