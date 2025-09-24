@@ -1,94 +1,99 @@
 from __future__ import annotations
+import json
+import re
+from dataclasses import dataclass
+from typing import Any, Optional, Iterable, Set
+from aiohttp import ClientSession
 
-from dataclasses import dataclass, field
+from ..api import BragerOneApiClient
+from ..parsers.index_resolver import IndexResolver
+from ..parsers.js_extract import extract_embedded_json
 
-from .labels import Labels
-from .param_meta import ParamMeta
-from .types import JSON, ParamId, ParamKey, Pool, UnitId
-from .units import Units
+def _collect_symbols_from_menu(menu: dict[str, Any] | list[Any],
+                               permissions: Iterable[str]) -> Set[str]:
+    perms = set(permissions or [])
+    out: set[str] = set()
 
+    def _consume(node: Any) -> None:
+        if isinstance(node, dict):
+            pm = node.get("permissionModule")
+            params = node.get("parameters") or node.get("params") or node.get("keys")
+            # bez permissionModule albo z dozwolonym → zbieramy
+            if (pm is None) or (pm in perms):
+                if isinstance(params, list):
+                    for s in params:
+                        if isinstance(s, str):
+                            out.add(s)
+            # rekurencja po standardowych polach
+            for k in ("children", "items", "sections", "groups"):
+                ch = node.get(k)
+                if isinstance(ch, list):
+                    for sub in ch:
+                        _consume(sub)
+        elif isinstance(node, list):
+            for sub in node:
+                _consume(sub)
+
+    _consume(menu)
+    return out
 
 @dataclass(slots=True)
-class ParamCatalog:
-    """In-memory view over labels/units/meta + runtime unit bindings."""
+class TranslationConfig:
+    translations: list[dict[str, Any]]
+    default_translation: str
 
-    labels: Labels = field(default_factory=Labels)
-    units: Units = field(default_factory=Units)
-    meta: ParamMeta = field(default_factory=ParamMeta)
-    # runtime (pool, param) -> unit id
-    param_units: dict[ParamKey, UnitId] = field(default_factory=dict)
+class LiveAssetCatalog:
+    """Unified live access to i18n, parameter-mapping assets and module.menu."""
+    def __init__(self, api: BragerOneApiClient) -> None:
+        self.api = api
+        self.base_url = api.base_one
+        self.session = api.session
+        self.resolver = IndexResolver(self.base_url, self.session)
 
-    def set_labels(self, labels: Labels) -> None:
-        self.labels = labels
+    async def get_i18n(self, lang: str, namespace: str) -> dict:
+        url = await self.resolver.url_for_i18n(lang, namespace)
+        status, js = await self.api.fetch_text_one(url)
+        if status != 200:
+            raise RuntimeError(f"i18n fetch failed: {status} {url}")
+        data = extract_embedded_json(js)
+        if not isinstance(data, dict):
+            raise TypeError("i18n chunk did not decode to a dict.")
+        return data
 
-    def set_units(self, units: Units) -> None:
-        self.units = units
+    async def get_param_mapping(self, symbol: str) -> dict:
+        url = await self.resolver.url_for_param(symbol)
+        status, js = await self.api.fetch_text_one(url)
+        if status != 200:
+            raise RuntimeError(f"mapping fetch failed: {status} {url}")
+        data = extract_embedded_json(js)
+        if not isinstance(data, dict):
+            raise TypeError("parameter mapping did not decode to a dict.")
+        return data
 
-    def set_meta(self, meta: ParamMeta) -> None:
-        self.meta = meta
+    async def get_module_menu(self) -> dict:
+        url = await self.resolver.url_for_module_menu()
+        status, js = await self.api.fetch_text_one(url)
+        if status != 200:
+            raise RuntimeError(f"module.menu fetch failed: {status} {url}")
+        data = extract_embedded_json(js)
+        if not isinstance(data, dict):
+            raise TypeError("module.menu did not decode to a dict.")
+        return data
 
-    def touch_param_unit(self, pool: Pool, param_id: ParamId, unit_id: UnitId) -> None:
-        self.param_units[(pool, param_id)] = unit_id
-
-    def pretty_param_key(self, pool: Pool, var: str) -> str:
-        """Return unified key name like 'parameters.PARAM_6' or 'pool.var' fallback."""
-        if not var or var[0] not in "vunsx":
-            return f"{pool}.{var}"
+    async def list_language_config(self) -> Optional[TranslationConfig]:
+        txt = await self.resolver._fetch_index_text()
+        m = re.search(r"var\s+YL\s*=\s*(\{.*?\})\s*;", txt, re.DOTALL)
+        if not m:
+            return None
         try:
-            pid = int(var[1:])
+            obj = json.loads(re.sub(r",\s*(?=[}\]])", "", m.group(1)))
         except Exception:
-            return f"{pool}.{var}"
-        return f"parameters.PARAM_{pid}"
+            return None
+        translations = obj.get("translations") or []
+        default = obj.get("defaultTranslation") or "en"
+        return TranslationConfig(translations=translations, default_translation=default)
 
-    def describe_param(self, pid: ParamId) -> str | None:
-        return self.labels.for_param(pid)
-
-    def format_value(
-        self, pool: Pool, var: str, value: object, *, lang: str | None = None
-    ) -> object:
-        """Format value using bound unit definition (enum or symbol)."""
-        if not isinstance(var, str):
-            return value
-        if var.startswith("u"):
-            return value
-
-        unit_id: UnitId | None = None
-        if var and var[0] in "vnxs":
-            try:
-                pid = int(var[1:])
-            except Exception:
-                pid = None
-            if pid is not None:
-                unit_id = self.param_units.get((pool, pid))
-
-        if unit_id is None:
-            return value
-
-        enum_text = self.units.enum_label(unit_id, value)
-        if enum_text is not None:
-            return enum_text
-
-        sym = self.units.symbol(unit_id)
-        return f"{value} {sym}" if sym else value
-
-    def bind_units_from_snapshot(self, snapshot: dict[str, JSON]) -> int:
-        """Bind units from snapshot keys like 'P6.u12' -> ('P6', 12) -> unit id in value."""
-        if not snapshot:
-            return 0
-        bound = 0
-        for k, v in snapshot.items():
-            if "." not in k:
-                continue
-            pool, var = k.split(".", 1)
-            if not var.startswith("u"):
-                continue
-            try:
-                pid = int(var[1:])
-            except Exception:
-                continue
-            uid = str(v) if v is not None else ""
-            if not uid:
-                continue
-            self.touch_param_unit(pool, pid, uid)
-            bound += 1
-        return bound
+    async def list_symbols_for_permissions(self, permissions: Iterable[str]) -> set[str]:
+        """Zwróć zbiór symboli (PARAM_* oraz inne), które są widoczne dla podanych uprawnień."""
+        menu = await self.get_module_menu()
+        return _collect_symbols_from_menu(menu, permissions)

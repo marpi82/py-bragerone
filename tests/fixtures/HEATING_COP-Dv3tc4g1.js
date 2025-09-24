@@ -1,0 +1,1 @@
+import{aq as e,I as o}from"./index-CJ9nfHq5.js";const a={id:888046,icon:o.BOLT,name:"parameters.HEATING_COP",unit:[{group:"P35",number:327,use:"u"}],value:[{group:"P35",number:327,use:"v"}],componentType:e.TEXT_FIELD};export{a as default};

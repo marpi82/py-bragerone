@@ -1,0 +1,69 @@
+"""Module src/pybragerone/utils/jsonlogs.py."""
+# utils/jsonlog.py
+from __future__ import annotations
+
+import json
+from contextlib import suppress
+from pathlib import Path
+from typing import Any
+
+
+def json_preview(obj: Any, *, maxlen: int = 2000) -> str:
+    """Jednolinijkowy podgląd JSON (ucięty do maxlen, bez wcięć).
+    Nie wybucha na prymitywach.
+    """
+    try:
+        s = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    except Exception:
+        s = str(obj)
+    if len(s) > maxlen:
+        s = s[:maxlen] + "…"
+    return s
+
+def log_json_payload(logger, tag: str, payload: Any, *, maxlen: int = 2000) -> None:
+    """LOG.debug jednowierszowego podglądu payloadu JSON.
+    """
+    with suppress(Exception):
+      logger.debug("%s → %s", tag, json_preview(payload, maxlen=maxlen))
+
+def save_json_payload(payload: Any, path: str | Path) -> Path:
+    """Zapisz JSON do pliku (UTF-8), zwróć ścieżkę.
+    """
+    p = Path(path)
+    p.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return p
+
+def summarize_top_level(obj: Any) -> dict[str, Any]:
+    """Return a quick summary of a top-level JSON-like object.
+
+    This function inspects the provided object and produces a simple
+    overview:
+      - For dictionaries: lists the top-level keys and counts elements.
+      - For lists: reports the number of elements.
+      - For scalar values: returns them unchanged.
+
+    Args:
+        obj: The JSON-like object to summarize. Typically a dict, list,
+            or scalar (str, int, float, bool).
+
+    Returns:
+        A dictionary with:
+          - Keys representing top-level fields or type names.
+          - Values representing counts or original scalars.
+    """
+    if isinstance(obj, dict):
+        return {
+            "type": "dict",
+            "keys": list(obj.keys())[:10],
+            "len": len(obj),
+        }
+    if isinstance(obj, list):
+        return {
+            "type": "list",
+            "len": len(obj),
+            "first_type": type(obj[0]).__name__ if obj else None,
+        }
+    return {"type": type(obj).__name__}

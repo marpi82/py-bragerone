@@ -84,7 +84,8 @@ Thumbs.db
 # local
 .assets/
 *.save
-py-bragerone.*
+pybragerone.*
+/*.log
 /src/bragerone/
 /docs/[a-z]*.md
 /examples/

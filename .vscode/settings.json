@@ -47,5 +47,10 @@
   // ─────────────────────────────────────────────────────────────
   "yaml.schemas": {
     "https://json.schemastore.org/github-workflow.json": ".github/workflows/*.yml"
-  }
+  },
+  "mypy.targets": [
+    "src/pybragerone",
+    "tests"
+  ],
+  "python-envs.defaultEnvManager": "ms-python.python:poetry",
 }

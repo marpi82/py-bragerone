@@ -1,189 +1,373 @@
 from __future__ import annotations
 
-import contextlib
-import json
+"""Module src/pybragerone/realtime/ws.py."""
+import asyncio
+import logging
 from collections.abc import Callable
-from logging import Logger
 from typing import Any
 
-from socketio import AsyncClient
+import socketio
 
-from .const import IO_BASE, ONE_BASE
-from .const import WS_NAMESPACE as NS
+IO_BASE = "https://io.brager.pl"
+SOCK_PATH = "/socket.io"
+WS_NAMESPACE = "/ws"
+
+LOG = logging.getLogger("pybragerone.ws")
+EventHandler = Callable[[str, Any], None]
 
 
-class WsClient:
+class RealtimeManager:
+    """Wzorowane na Twojej działającej implementacji:
+    - autoryzacja tylko przez headers (Authorization/Origin/Referer)
+    - SID bierzemy z namespace (`get_sid('/ws')`)
+    - słuchamy *zmian* (`…:change`) + `snapshot`
+    - listen wysyłamy w kilku wariantach payloadu (modules/devids + opcjonalnie group_id)
     """
-    Thin Socket.IO wrapper responsible only for:
-      - connecting/disconnecting,
-      - (re)subscribing,
-      - forwarding incoming messages to provided callbacks.
+    def __init__(self, token: str,
+                 origin: str = "https://one.brager.pl",
+                 referer: str = "https://one.brager.pl/"):
+        """Init  .
+    
+        Args:
+        token: TODO.
+        origin: TODO.
+        referer: TODO.
 
-    Gateway handles REST 'modules.connect' and business logic.
-    """
+        Returns:
+        TODO.
+        """
+        self._token = token
+        self._origin = origin
+        self._referer = referer
+        self._sio = socketio.AsyncClient(
+            reconnection=True,
+            reconnection_attempts=0,
+            reconnection_delay=1.0,
+            reconnection_delay_max=10.0,
+        )
+        self._connected = asyncio.Event()
+        self._on_event: EventHandler | None = None
+        self._modules: list[str] = []
+        self._group_id: int | None = None
 
-    def __init__(self, token_getter: Callable[[], str | None], logger=None):
-        self._get_token: str = token_getter
-        self.log: Logger = logger
-        self.sio: AsyncClient | None = None
-        self._on_change: Callable[[dict], None] | None = None
-        self._on_event: Callable[[str, Any], None] | None = None
+        @self._sio.event(namespace=WS_NAMESPACE)
+        async def connect():
+            """Connect.
+    
+            Returns:
+            TODO.
+            """
+            ns_sid = self.sid()
+            eng_sid = self.engine_sid()
+            LOG.info("WS connected, SID=%s", eng_sid)
+            LOG.info("WS connected, namespace_sid=%s, engine_sid=%s, namespaces=%s",
+                     ns_sid, eng_sid, list(self._sio.namespaces))
+            self._connected.set()
 
-    # ---- public API ----
+        @self._sio.event(namespace=WS_NAMESPACE)
+        async def disconnect():
+            """Disconnect.
+    
+            Returns:
+            TODO.
+            """
+            LOG.info("WS disconnected")
+            self._connected.clear()
 
-    def set_change_handler(self, cb: Callable[[dict], None]) -> None:
-        """Called with payloads of parameters changes."""
-        self._on_change = cb
+        @self._sio.event
+        async def connect_error(data=None):
+            """Connect error.
+    
+            Args:
+            data: TODO.
 
-    def set_event_handler(self, cb: Callable[[str, Any], None]) -> None:
-        """Called for generic events (debug/log use)."""
-        self._on_event = cb
+            Returns:
+            TODO.
+            """
+            LOG.warning("WS connect_error: %s", data)
 
-    async def connect(self) -> str:
-        """Open WS to /ws namespace with Bearer token."""
-        if self.sio is None:
-            self.sio = AsyncClient(reconnection=True)
-            self._wire()
+        @self._sio.on("error", namespace=WS_NAMESPACE)
+        async def on_error(data):
+            """On error.
+    
+            Args:
+            data: TODO.
 
-        token = self._get_token() or ""
+            Returns:
+            TODO.
+            """
+            LOG.error("WS ERROR: %s", data)
+
+        @self._sio.on("message", namespace=WS_NAMESPACE)
+        async def on_message(data):
+            """On message.
+    
+            Args:
+            data: TODO.
+
+            Returns:
+            TODO.
+            """
+            LOG.debug("WS message → %s", data)
+
+        # --- KLUCZOWE HANDLERY, jak w Twojej wersji ---
+        @self._sio.on("snapshot", namespace=WS_NAMESPACE)
+        async def on_snapshot(payload):
+            """On snapshot.
+    
+            Args:
+            payload: TODO.
+
+            Returns:
+            TODO.
+            """
+            LOG.debug("WS EVENT snapshot → %s", payload)
+            self._dispatch("snapshot", payload)
+
+        @self._sio.on("app:modules:parameters:change", namespace=WS_NAMESPACE)
+        async def on_params_change(payload):
+            """On params change.
+    
+            Args:
+            payload: TODO.
+
+            Returns:
+            TODO.
+            """
+            LOG.debug("WS EVENT app:modules:parameters:change → %s", payload)
+            self._dispatch("app:modules:parameters:change", payload)
+
+        @self._sio.on("modules:parameters:change", namespace=WS_NAMESPACE)
+        async def on_params_change2(payload):
+            """On params change2.
+    
+            Args:
+            payload: TODO.
+
+            Returns:
+            TODO.
+            """
+            LOG.debug("WS EVENT modules:parameters:change → %s", payload)
+            self._dispatch("modules:parameters:change", payload)
+
+        @self._sio.on("parameters:change", namespace=WS_NAMESPACE)
+        async def on_params_change3(payload):
+            """On params change3.
+    
+            Args:
+            payload: TODO.
+
+            Returns:
+            TODO.
+            """
+            LOG.debug("WS EVENT parameters:change → %s", payload)
+            self._dispatch("parameters:change", payload)
+
+        # opcjonalnie taski — bywa, że lecą numerami
+        @self._sio.on("app:module:task:created", namespace=WS_NAMESPACE)
+        async def on_task_created(p):
+            """On task created.
+    
+            Args:
+            p: TODO.
+
+            Returns:
+            TODO.
+            """
+            LOG.debug("WS EVENT app:module:task:created → %s", p)
+            self._dispatch("app:module:task:created", p)
+
+        @self._sio.on("app:module:task:status:changed", namespace=WS_NAMESPACE)
+        async def on_task_status(p):
+            """On task status.
+    
+            Args:
+            p: TODO.
+
+            Returns:
+            TODO.
+            """
+            LOG.debug("WS EVENT app:module:task:status:changed → %s", p)
+            self._dispatch("app:module:task:status:changed", p)
+
+        @self._sio.on("app:module:task:completed", namespace=WS_NAMESPACE)
+        async def on_task_done(p):
+            """On task done.
+    
+            Args:
+            p: TODO.
+
+            Returns:
+            TODO.
+            """
+            LOG.debug("WS EVENT app:module:task:completed → %s", p)
+            self._dispatch("app:module:task:completed", p)
+
+        @self._sio.on("60", namespace=WS_NAMESPACE)
+        async def _ev60(p):
+            """ev60.
+    
+            Args:
+            p: TODO.
+
+            Returns:
+            TODO.
+            """
+            LOG.debug("WS EVENT 60 → %s", p)
+            self._dispatch("app:module:task:status:changed", p)
+
+        @self._sio.on("61", namespace=WS_NAMESPACE)
+        async def _ev61(p):
+            """ev61.
+    
+            Args:
+            p: TODO.
+
+            Returns:
+            TODO.
+            """
+            LOG.debug("WS EVENT 61 → %s", p)
+            self._dispatch("app:module:task:created", p)
+
+        @self._sio.on("63", namespace=WS_NAMESPACE)
+        async def _ev63(p):
+            """ev63.
+    
+            Args:
+            p: TODO.
+
+            Returns:
+            TODO.
+            """
+            LOG.debug("WS EVENT 63 → %s", p)
+            self._dispatch("app:module:task:completed", p)
+
+    def _dispatch(self, name: str, payload: Any):
+        """Dispatch.
+    
+        Args:
+        name: TODO.
+        payload: TODO.
+
+        Returns:
+        TODO.
+        """
+        if self._on_event:
+            try:
+                self._on_event(name, payload)
+            except Exception:
+                LOG.exception("Błąd w callbacku _on_event(%s)", name)
+
+    async def connect(self):
+        """Connect.
+    
+        Returns:
+        TODO.
+        """
         headers = {
-            "Authorization": f"Bearer {token}",
-            "Origin": ONE_BASE,
-            "Referer": f"{ONE_BASE}/",
+            "Authorization": f"Bearer {self._token}",
+            "Origin": self._origin,
+            "Referer": self._referer,
+            "Accept-Language": "pl-PL,pl;q=0.9",
+            "x-appversion": "1.1.78",
         }
-
-        # Connect to base host; python-socketio handles upgrade internally.
-        await self.sio.connect(
-            IO_BASE,  # keep https; engine does WS upgrade itself
+        await self._sio.connect(
+            IO_BASE,
             headers=headers,
             transports=["websocket"],
-            socketio_path="/socket.io",
-            namespaces=[NS],
+            socketio_path=SOCK_PATH,
+            namespaces=[WS_NAMESPACE],
         )
-
-        sid = self.sid()
-        if self.log:
-            self.log.info("WS connected %s", NS)
-        return sid or ""
-
-    async def subscribe(self, devs: list[str]) -> None:
-        """Subscribe to parameter & activity streams."""
-        if not self.sio:
-            return
-        await self.sio.emit("app:modules:parameters:listen", {"modules": devs}, namespace=NS)
-        if self.log:
-            self.log.debug("[emit] app:modules:parameters:listen %s ns=%s", {"modules": devs}, NS)
-
-        await self.sio.emit("app:modules:activity:quantity:listen", {"modules": devs}, namespace=NS)
-        if self.log:
-            self.log.debug(
-                "[emit] app:modules:activity:quantity:listen %s ns=%s", {"modules": devs}, NS
-            )
-
-    async def close(self) -> None:
-        """Gracefully close the socket (idempotent)."""
-        try:
-            if self.sio:
-                await self.sio.disconnect()
-                if self.log:
-                    self.log.info("WS disconnected %s", NS)
-        finally:
-            self.sio = None
+        # krótki lag zanim namespace w pełni "siądzie"
+        await self._connected.wait()
+        await asyncio.sleep(0.1)
 
     def sid(self) -> str | None:
-        """Return namespace SID if available, fallback to engine SID."""
-        if not self.sio:
-            return None
+        """Sid.
+    
+        Returns:
+        TODO.
+        """
         try:
-            ns_sid = self.sio.get_sid(NS)
+            return self._sio.get_sid(WS_NAMESPACE)  # SID namespace'u /ws
         except Exception:
-            ns_sid = None
-        return ns_sid or getattr(self.sio, "sid", None)
+            return None
 
-    # ---- internals ----
+    def engine_sid(self) -> str | None:
+        """Engine sid.
+    
+        Returns:
+        TODO.
+        """
+        return getattr(self._sio, "sid", None)  # engine.io sid
 
-    def _fire_event(self, name: str, data: Any) -> None:
-        if self._on_event:
-            with contextlib.suppress(Exception):
-                self._on_event(name, data)
+    async def disconnect(self):
+        """Disconnect.
+    
+        Returns:
+        TODO.
+        """
+        if self._sio.connected:
+            await self._sio.disconnect()
 
-    def _fire_change(self, payload: dict) -> None:
-        if self._on_change:
-            with contextlib.suppress(Exception):
-                self._on_change(payload)
+    def on_event(self, handler: EventHandler):
+        """On event.
+    
+        Args:
+        handler: TODO.
 
-    def _wire(self) -> None:
-        sio = self.sio
-        assert sio is not None
+        Returns:
+        TODO.
+        """
+        self._on_event = handler
 
-        @sio.on("connect", namespace=NS)
-        async def _on_connect() -> None:
-            if self.log:
-                self.log.debug("[ws] connected")
-            self._fire_event("socket.connect", {"ns": NS})
+    def set_group(self, group_id: int | None):
+        """Set group.
+    
+        Args:
+        group_id: TODO.
 
-        @sio.on("disconnect", namespace=NS)
-        async def _on_disconnect() -> None:
-            if self.log:
-                self.log.debug("[ws] disconnected")
-            self._fire_event("socket.disconnect", {"ns": NS})
+        Returns:
+        TODO.
+        """
+        self._group_id = group_id
 
-        @sio.event
-        async def connect_error(data) -> None:
-            # Engine-level connect error has no namespace
-            if self.log:
-                self.log.warning("WS connect_error: %s", data)
-            self._fire_event("socket.connect_error", data)
+    async def subscribe(self, modules: list[str]):
+        """Subscribe.
+    
+        Args:
+        modules: TODO.
 
-        # Parameter changes (multiple aliases seen in the wild)
-        @sio.on("app:modules:parameters:change", namespace=NS)
-        async def _change1(payload) -> None:
-            self._fire_change(payload)
+        Returns:
+        TODO.
+        """
+        self._modules = sorted(set(modules))
+        if not self._modules:
+            return
+        payloads = []
+        base = {"modules": self._modules}
+        base_alt = {"devids": self._modules}       # fallback — spotykany wariant
+        if self._group_id is not None:
+            base = {**base, "group_id": self._group_id}
+            base_alt = {**base_alt, "group_id": self._group_id}
 
-        @sio.on("modules:parameters:change", namespace=NS)
-        async def _change2(payload) -> None:
-            self._fire_change(payload)
+        payloads.append(("app:modules:parameters:listen", base))
+        payloads.append(("app:modules:parameters:listen", base_alt))
+        payloads.append(("app:modules:activity:quantity:listen", base))
+        payloads.append(("app:modules:activity:quantity:listen", base_alt))
 
-        @sio.on("parameters:change", namespace=NS)
-        async def _change3(payload) -> None:
-            self._fire_change(payload)
-
-        # Optional snapshot push
-        @sio.on("snapshot", namespace=NS)
-        async def _snapshot(payload) -> None:
+        for ev, pl in payloads:
+            LOG.debug("EMIT %s %s", ev, pl)
             try:
-                txt = json.dumps(payload, ensure_ascii=False)
+                await self._sio.emit(ev, pl, namespace=WS_NAMESPACE)
             except Exception:
-                txt = repr(payload)
-            self._fire_event("snapshot", txt)
+                LOG.exception("Emit failed for %s", ev)
 
-        # Catch-all for debugging (namespaced)
-        @sio.on("*", namespace=NS)
-        async def _any(event, data=None) -> None:
-            self._fire_event(event, data)
-
-        # --- module task lifecycle (optional pretty logs) ---
-        @sio.on("app:module:task:created", namespace=NS)
-        async def _task_created(payload) -> None:
-            self._fire_event("app:module:task:created", payload)
-
-        @sio.on("app:module:task:status:changed", namespace=NS)
-        async def _task_status(payload) -> None:
-            self._fire_event("app:module:task:status:changed", payload)
-
-        @sio.on("app:module:task:completed", namespace=NS)
-        async def _task_done(payload) -> None:
-            self._fire_event("app:module:task:completed", payload)
-
-        # (spotykane czasem numeryczne aliasy)
-        @sio.on("60", namespace=NS)
-        async def _ev60(payload) -> None:
-            self._fire_event("app:module:task:status:changed", payload)
-
-        @sio.on("61", namespace=NS)
-        async def _ev61(payload) -> None:
-            self._fire_event("app:module:task:created", payload)
-
-        @sio.on("63", namespace=NS)
-        async def _ev63(payload) -> None:
-            self._fire_event("app:module:task:completed", payload)
+    async def resubscribe(self):
+        """Resubscribe.
+    
+        Returns:
+        TODO.
+        """
+        if self._modules:
+            await self.subscribe(self._modules)
