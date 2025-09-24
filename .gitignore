@@ -62,6 +62,9 @@ dmypy.json
 .pyre/
 .pytype/
 
+# Ruff / linter
+.ruff_cache/
+
 # Cython debug symbols
 cython_debug/
 
@@ -79,9 +82,9 @@ venv.bak/
 Thumbs.db
 
 # local
-labels_debug.log
 .assets/
 *.save
 py-bragerone.*
-src/bragerone/
+/src/bragerone/
 /docs/[a-z]*.md
+/examples/

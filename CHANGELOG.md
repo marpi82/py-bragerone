@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/) where app
 ## [Unreleased]
 
 ### Added
+
 - Initial project setup with Poetry
 - CI/CD workflows (CI, Release, Docs)
 - Dynamic versioning (CalVer + pre-release + dev builds)
@@ -19,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/) where app
 ## [2025.9.1] - 2025-09-16
 
 ### Added
+
 - First stable release
 - Core Home Assistant integration support
 - Documentation build and deployment
