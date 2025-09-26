@@ -13,7 +13,7 @@ dynamic = [ # version is managed by poetry-dynamic-versioning
 ]
 license = "MIT"
 license-files = ["LICENSE"] # PEP 621 way to declare license file
-requires-python = ">=3.13.2,<4"
+requires-python = ">=3.13.0,<4"
 keywords = [
   "home",
   "automation",
@@ -42,12 +42,12 @@ Changelog = "https://github.com/marpi82/py-bragerone/blob/master/CHANGELOG.md"
 [project.scripts]
 pybragerone = "pybragerone.__main__:main"
 pybragerone-cli = "pybragerone.cli:main"
-pybragerone-parsers = "pybragerone.cli-extras.parsers:main"
-pybragerone-ha-blueprint = "pybragerone.cli-extras.ha_blueprint:main"
+pybragerone-parsers = "pybragerone.cli_extras.parsers:main"
+pybragerone-ha-blueprint = "pybragerone.cli_extras.ha_blueprint:main"
 
 [project.optional-dependencies]
 cli = ["typer>=0.12", "rich>=13.7", "aiofiles>=24.1"]
-ha = ["homeassistant>=2025.1.1"]
+ha = ["homeassistant>=2025.2.0"]
 
 [tool.poetry]
 requires-poetry = ">=2.0.0"

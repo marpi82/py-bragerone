@@ -8,7 +8,7 @@ from typing import Any
 
 from aiohttp import ClientSession
 
-from ..parsers.catalog import LiveAssetCatalog
+from ..models.catalog import LiveAssetCatalog
 
 
 async def dump_i18n(

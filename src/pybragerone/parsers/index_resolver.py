@@ -1,21 +1,23 @@
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass
-from typing import Dict, Optional
+
 from aiohttp import ClientSession
+
 
 @dataclass(slots=True)
 class IndexMap:
-    i18n: Dict[str, str]
-    parameters: Dict[str, str]
-    module_menu: Optional[str] = None
+    i18n: dict[str, str]
+    parameters: dict[str, str]
+    module_menu: str | None = None
 
 class IndexResolver:
     """Resolve asset URLs by scanning index*.js for dynamic import maps."""
     def __init__(self, base_url: str, session: ClientSession) -> None:
         self.base_url = base_url.rstrip("/")
         self.session = session
-        self._cached: Optional[IndexMap] = None
+        self._cached: IndexMap | None = None
 
     async def _fetch_index_text(self) -> str:
         # Try a few common entry points

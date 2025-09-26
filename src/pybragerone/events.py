@@ -1,4 +1,5 @@
-"""Module src/pybragerone/events.py."""
+"""Event bus and event classes for pybragerone."""
+
 from __future__ import annotations
 
 import asyncio
@@ -15,6 +16,7 @@ class ParamUpdate:
     Attributes:
     TODO.
     """
+
     devid: str
     pool: str
     chan: str
@@ -24,13 +26,15 @@ class ParamUpdate:
     ts: float = field(default_factory=time.time)
     seq: int = 0
 
+
 class EventBus:
     """Multicast: każda subskrypcja ma własną kolejkę.
     publish() wrzuca ten sam event do wszystkich kolejek.
     """
+
     def __init__(self) -> None:
         """Init  .
-    
+
         Returns:
         TODO.
         """
@@ -40,7 +44,7 @@ class EventBus:
 
     def last_seq(self) -> int:
         """Last seq.
-    
+
         Returns:
         TODO.
         """
@@ -48,7 +52,7 @@ class EventBus:
 
     async def publish(self, upd: ParamUpdate) -> None:
         """Publish.
-    
+
         Args:
         upd: TODO.
 
@@ -66,7 +70,7 @@ class EventBus:
 
     async def subscribe(self) -> AsyncIterator[ParamUpdate]:
         """Subscribe.
-    
+
         Returns:
         TODO.
         """

@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import json
 import re
 from typing import Any
+
 
 def _strip_trailing_commas(s: str) -> str:
     # remove trailing commas before } or ]

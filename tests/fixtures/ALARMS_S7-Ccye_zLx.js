@@ -1,1 +1,0 @@
-import{aq as e,I as a}from"./index-CJ9nfHq5.js";const r={id:202303171324,icon:a.BOLT,name:"parameters.ALARMS_S7",value:[{group:"P31",number:7,use:"s"}],componentType:e.TEXT_FIELD};export{r as default};

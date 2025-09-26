@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from typing import Any, Optional, Iterable, Dict, Set
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
+from ..events import EventBus
 from ..api import BragerOneApiClient
 from .catalog import LiveAssetCatalog, TranslationConfig
 
 
 class ParamFamilyModel(BaseModel):
     """One parameter 'family' (e.g., P4 index 1) collecting channels: v/s/u/n/x..."""
+
     pool: str
     idx: int
     channels: dict[str, Any] = Field(default_factory=dict)
@@ -48,21 +50,27 @@ class ParamStore(BaseModel):
     families: dict[str, ParamFamilyModel] = Field(default_factory=dict)
 
     # Live assets and caches
-    _assets: Optional[LiveAssetCatalog] = None
-    _lang: Optional[str] = None
-    _lang_cfg: Optional[TranslationConfig] = None
-    _cache_i18n: dict[tuple[str, str], dict[str, Any]] = Field(default_factory=dict)
-    _cache_mapping: dict[str, dict[str, Any]] = Field(default_factory=dict)
-    _cache_menu: Optional[dict[str, Any]] = None
+    _assets = PrivateAttr(default=None)  # type: LiveAssetCatalog | None
+    _lang = PrivateAttr(default=None)  # type: str | None
+    _lang_cfg = PrivateAttr(default=None)  # type: TranslationConfig | None
+    _cache_i18n = PrivateAttr(
+        default_factory=dict
+    )  # type: dict[tuple[str, str], dict[str, Any]]
+    _cache_mapping = PrivateAttr(
+        default_factory=dict
+    )  # type: dict[str, dict[str, Any]]
+    _cache_menu = PrivateAttr(default=None)  # type: dict[str, Any] | None
 
     model_config = ConfigDict(frozen=False, validate_assignment=True)
 
-    def init_with_api(self, api: BragerOneApiClient, *, lang: str | None = None) -> None:
+    def init_with_api(
+        self, api: BragerOneApiClient, *, lang: str | None = None
+    ) -> None:
         """Preferowany sposób: spina ParamStore z ApiClient i LiveAssetCatalog."""
         self._assets = LiveAssetCatalog(api)
         self._lang = lang
 
-    async def run_with_bus(self, bus) -> None:
+    async def run_with_bus(self, bus: EventBus) -> None:
         """Consume ParamUpdate events from EventBus and upsert into ParamStore (lekki adapter)."""
         async for upd in bus.subscribe():
             # pomijamy eventy bez wartości (np. czyste meta)
@@ -90,11 +98,15 @@ class ParamStore(BaseModel):
         fam.set(chan, value)
         return fam
 
-    def get_family(self, pool: str, idx: int) -> Optional[ParamFamilyModel]:
+    def get_family(self, pool: str, idx: int) -> ParamFamilyModel | None:
         return self.families.get(self._fid(pool, idx))
 
     def flatten(self) -> dict[str, Any]:
-        return {f"{fam.pool}.{ch}{fam.idx}": val for fam in self.families.values() for ch, val in fam.channels.items()}
+        return {
+            f"{fam.pool}.{ch}{fam.idx}": val
+            for fam in self.families.values()
+            for ch, val in fam.channels.items()
+        }
 
     # ---------- assets lifecycle ----------
 
@@ -108,12 +120,14 @@ class ParamStore(BaseModel):
         if not self._assets:
             return "en"
         self._lang_cfg = await self._assets.list_language_config()
-        self._lang = (self._lang_cfg.default_translation if self._lang_cfg else "en")
+        self._lang = self._lang_cfg.default_translation if self._lang_cfg else "en"
         return self._lang
 
     # ---------- raw getters ----------
 
-    async def get_i18n(self, namespace: str, *, lang: str | None = None) -> dict[str, Any]:
+    async def get_i18n(
+        self, namespace: str, *, lang: str | None = None
+    ) -> dict[str, Any]:
         if not self._assets:
             return {}
         lang_eff = lang or await self._ensure_lang()
@@ -144,12 +158,12 @@ class ParamStore(BaseModel):
 
     # ---------- i18n helpers ----------
 
-    async def resolve_label(self, symbol: str) -> Optional[str]:
+    async def resolve_label(self, symbol: str) -> str | None:
         params = await self.get_i18n_parameters()
         val = params.get(symbol)
         return val if isinstance(val, str) else None
 
-    async def resolve_unit(self, unit_code: Any) -> Optional[str]:
+    async def resolve_unit(self, unit_code: Any) -> str | None:
         if unit_code is None:
             return None
         units = await self.get_i18n_units()
@@ -166,7 +180,9 @@ class ParamStore(BaseModel):
     # ---------- mapping helpers ----------
 
     @staticmethod
-    def _mapping_primary_address(mapping: dict[str, Any]) -> Optional[tuple[str, str, int]]:
+    def _mapping_primary_address(
+        mapping: dict[str, Any],
+    ) -> tuple[str, str, int] | None:
         """Best-effort extraction of (pool, chan, idx) from a mapping object.
 
         Prefers 'value' entry, then falls back to status/unit/min/max/command.
@@ -180,13 +196,19 @@ class ParamStore(BaseModel):
                 pool = ent.get("group")
                 use = ent.get("use")
                 num = ent.get("number")
-                if isinstance(pool, str) and isinstance(use, str) and isinstance(num, int):
+                if (
+                    isinstance(pool, str)
+                    and isinstance(use, str)
+                    and isinstance(num, int)
+                ):
                     return pool, use, num
         return None
 
     # ---------- describe ----------
 
-    async def describe(self, pool: str, idx: int, *, param_symbol: str | None = None) -> tuple[Optional[str], Optional[str], Any]:
+    async def describe(
+        self, pool: str, idx: int, *, param_symbol: str | None = None
+    ) -> tuple[str | None, str | None, Any]:
         fam = self.get_family(pool, idx)
         if fam is None:
             return None, None, None
@@ -218,7 +240,9 @@ class ParamStore(BaseModel):
 
     # ---------- merge assets with permissions ----------
 
-    async def merge_assets_with_permissions(self, permissions: list[str]) -> dict[str, dict[str, Any]]:
+    async def merge_assets_with_permissions(
+        self, permissions: list[str]
+    ) -> dict[str, dict[str, Any]]:
         """Scal i18n + selective mappings + menu + bieżące wartości, filtrowane po perms."""
         if not self._assets:
             return {}
@@ -227,11 +251,17 @@ class ParamStore(BaseModel):
         for sym in sorted(symbols):
             out[sym] = await self.describe_symbol(sym)
         return out
-    
+
     # ---------- debug / dump ----------
 
     def debug_dump(self) -> None:
-        import logging, json
+        import json
+        import logging
+
         LOG = logging.getLogger("pybragerone.paramstore")
         flat = self.flatten()
-        LOG.debug("ParamStore dump (%d keys): %s", len(flat), json.dumps(flat, ensure_ascii=False)[:1000])
+        LOG.debug(
+            "ParamStore dump (%d keys): %s",
+            len(flat),
+            json.dumps(flat, ensure_ascii=False)[:1000],
+        )

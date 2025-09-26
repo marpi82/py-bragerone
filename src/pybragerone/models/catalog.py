@@ -1,16 +1,18 @@
 from __future__ import annotations
+
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Optional, Iterable, Set
-from aiohttp import ClientSession
+from typing import Any
 
 from ..api import BragerOneApiClient
 from ..parsers.index_resolver import IndexResolver
 from ..parsers.js_extract import extract_embedded_json
 
+
 def _collect_symbols_from_menu(menu: dict[str, Any] | list[Any],
-                               permissions: Iterable[str]) -> Set[str]:
+                               permissions: Iterable[str]) -> set[str]:
     perms = set(permissions or [])
     out: set[str] = set()
 
@@ -80,7 +82,7 @@ class LiveAssetCatalog:
             raise TypeError("module.menu did not decode to a dict.")
         return data
 
-    async def list_language_config(self) -> Optional[TranslationConfig]:
+    async def list_language_config(self) -> TranslationConfig | None:
         txt = await self.resolver._fetch_index_text()
         m = re.search(r"var\s+YL\s*=\s*(\{.*?\})\s*;", txt, re.DOTALL)
         if not m:

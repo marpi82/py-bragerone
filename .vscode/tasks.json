@@ -1,7 +1,8 @@
 {
   "version": "2.0.0",
   "options": {
-    "cwd": "${workspaceFolder}"
+    "cwd": "${workspaceFolder}",
+    "envFile": "${workspaceFolder}/.env"
   },
   "tasks": [
     {
