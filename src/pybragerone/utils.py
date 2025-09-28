@@ -53,7 +53,7 @@ def log_json_payload(logger: Logger, tag: str, payload: Any, *, maxlen: int = 20
 
 
 def save_json_payload(payload: Any, path: str | Path) -> Path:
-    """Zapisz JSON do pliku (UTF-8), zwróć ścieżkę."""
+    """Save JSON to file (UTF-8), return path."""
     p = Path(path)
     p.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
