@@ -47,7 +47,7 @@ def json_preview(obj: Any, *, maxlen: int = 2000) -> str:
 
 
 def log_json_payload(logger: Logger, tag: str, payload: Any, *, maxlen: int = 2000) -> None:
-    """LOG.debug jednowierszowego podglądu payloadu JSON."""
+    """Log a single-line preview of JSON payload."""
     with suppress(Exception):
         logger.debug("%s → %s", tag, json_preview(payload, maxlen=maxlen))
 
