@@ -1,0 +1,44 @@
+name: Dependabot automation (labels, reviewer, auto-merge)
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled]
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write
+  contents: write
+
+concurrency:
+  group: dependabot-auto-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  label-and-assign:
+    name: Label & assign reviewer (Dependabot only)
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure base labels
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          labels: |
+            deps
+      - name: Assign reviewer (marpi82)
+        uses: peter-evans/assign-reviewers@v2
+        with:
+          reviewers: marpi82
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  enable-auto-merge:
+    name: Enable auto-merge (Dependabot only)
+    needs: label-and-assign
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge (squash)
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          merge-method: squash

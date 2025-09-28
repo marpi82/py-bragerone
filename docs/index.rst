@@ -1,24 +1,29 @@
-Welcome to pybragerone's documentation!
-=======================================
-
-.. include:: ../README.md
-   :parser: myst_parser.sphinx_
-
-Contents
---------
+Welcome to py-bragerone's documentation!
+========================================
 
 .. toctree::
    :maxdepth: 2
-   :caption: Project Info
+   :caption: Guides
 
-   ../CHANGELOG.md
-   ../WORKFLOWS.md
+   README
+   pybragerone_integration_cheatsheet
+   pybragerone_integration_notes
+   typing.md
+   tests_guidelines.md
+   WORKFLOWS
+   workflow_pr_vscode
 
 .. toctree::
    :maxdepth: 2
-   :caption: API Reference
+   :caption: API
 
    api
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Project
+
+   changelog
 
 Indices and tables
 ==================

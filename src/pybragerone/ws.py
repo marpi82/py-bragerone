@@ -1,189 +1,344 @@
+"""WebSocket (Socket.IO) client for Brager One realtime events."""
+
 from __future__ import annotations
 
-import contextlib
-import json
-from collections.abc import Callable
-from logging import Logger
-from typing import Any
+import asyncio
+import logging
+from collections.abc import Awaitable, Callable
+from typing import (
+    Any,
+    Protocol,
+    TypedDict,
+    runtime_checkable,
+)
 
-from socketio import AsyncClient
+import socketio  # type: ignore[import-untyped]
 
-from .const import IO_BASE, ONE_BASE
-from .const import WS_NAMESPACE as NS
+from .consts import IO_BASE, ONE_BASE, SOCK_PATH, WS_NAMESPACE
+from .utils import spawn
+
+log = logging.getLogger(__name__)
+sio_log = logging.getLogger(__name__ + ".sio")
+eio_log = logging.getLogger(__name__ + ".eio")
 
 
-class WsClient:
+# Signature for a generic event handler used by the gateway.
+EventHandler = Callable[[str, Any], None]
+# Signature for a callback invoked on connection establishment.
+ConnectedCb = Callable[[], None | Awaitable[None]]
+
+
+@runtime_checkable
+class EventDispatcher(Protocol):
+    """Protocol for an event dispatcher used by the realtime manager."""
+
+    def __call__(self, event_name: str, payload: Any) -> None | Awaitable[None]:
+        """Handle an event with the given name and payload.
+
+        Args:
+            event_name: The event name.
+            payload: The event payload (varies by event).
+        """
+        ...
+
+
+class _SubPayload(TypedDict, total=False):
+    """Payload for subscription events."""
+
+    modules: list[str]
+    devids: list[str]
+    group_id: int
+
+
+class RealtimeManager:
+    """Thin Socket.IO wrapper for Brager One realtime channel.
+
+    The manager keeps a single AsyncClient connection, exposes the Engine.IO
+    SID and the namespace SID, and forwards selected events to a user-provided
+    callback (``EventHandler``). It does **not** interpret payloads; that is the
+    gateway's responsibility.
+
+    Notes:
+        - Authentication is provided **only** via HTTP headers (Bearer token).
+        - We always connect to the ``/ws`` namespace.
+        - We listen to: ``snapshot`` and the various ``*:parameters:change`` events.
+        - Subscriptions are emitted in a few payload variants (``modules`` /
+          ``devids``) and optionally include ``group_id``.
     """
-    Thin Socket.IO wrapper responsible only for:
-      - connecting/disconnecting,
-      - (re)subscribing,
-      - forwarding incoming messages to provided callbacks.
 
-    Gateway handles REST 'modules.connect' and business logic.
-    """
+    def __init__(
+        self,
+        token: str,
+        *,
+        origin: str = ONE_BASE,
+        referer: str = f"{ONE_BASE}/",
+        io_base: str = IO_BASE,
+        socket_path: str = SOCK_PATH,
+        namespace: str = WS_NAMESPACE,
+    ) -> None:
+        """Initialize the realtime manager.
 
-    def __init__(self, token_getter: Callable[[], str | None], logger=None):
-        self._get_token: str = token_getter
-        self.log: Logger = logger
-        self.sio: AsyncClient | None = None
-        self._on_change: Callable[[dict], None] | None = None
-        self._on_event: Callable[[str, Any], None] | None = None
+        Args:
+            token: Bearer token used for the initial Socket.IO HTTP upgrade.
+            origin: HTTP ``Origin`` header value.
+            referer: HTTP ``Referer`` header value.
+            io_base: Base URL of the Engine.IO/Socket.IO server.
+            socket_path: Socket.IO path on the server (default ``/socket.io``).
+            namespace: The namespace to join (default ``/ws``).
+        """
+        self._token = token
+        self._origin = origin
+        self._referer = referer
+        self._io_base = io_base.rstrip("/")
+        self._socket_path = socket_path
+        self._namespace = namespace
 
-    # ---- public API ----
+        self._connected = asyncio.Event()
+        self._on_connected: list[ConnectedCb] = []
+        self._on_event: EventDispatcher | None = None
+        self._modules: list[str] = []
+        self._group_id: int | None = None
 
-    def set_change_handler(self, cb: Callable[[dict], None]) -> None:
-        """Called with payloads of parameters changes."""
-        self._on_change = cb
-
-    def set_event_handler(self, cb: Callable[[str, Any], None]) -> None:
-        """Called for generic events (debug/log use)."""
-        self._on_event = cb
-
-    async def connect(self) -> str:
-        """Open WS to /ws namespace with Bearer token."""
-        if self.sio is None:
-            self.sio = AsyncClient(reconnection=True)
-            self._wire()
-
-        token = self._get_token() or ""
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Origin": ONE_BASE,
-            "Referer": f"{ONE_BASE}/",
-        }
-
-        # Connect to base host; python-socketio handles upgrade internally.
-        await self.sio.connect(
-            IO_BASE,  # keep https; engine does WS upgrade itself
-            headers=headers,
-            transports=["websocket"],
-            socketio_path="/socket.io",
-            namespaces=[NS],
+        # Configure AsyncClient with reconnection enabled.
+        self._sio: socketio.AsyncClient = socketio.AsyncClient(
+            reconnection=True,
+            reconnection_attempts=0,  # infinite
+            reconnection_delay=1,
+            reconnection_delay_max=10,
+            logger=sio_log,  # pyright: ignore[reportArgumentType] # route socket.io logs to a sub-logger
+            engineio_logger=eio_log,  # route engine.io logs to a sub-logger
         )
 
-        sid = self.sid()
-        if self.log:
-            self.log.info("WS connected %s", NS)
-        return sid or ""
+        ns = self._namespace
+        # Register built-in event handlers.
+        self._sio.on("connect", self._on_connect, namespace=ns)
+        self._sio.on("disconnect", self._on_disconnect, namespace=ns)
+        self._sio.on("connect_error", self._on_connect_error, namespace=ns)
+        self._sio.on("reconnect", self._on_reconnect, namespace=ns)
+        self._sio.on("reconnect_attempt", self._on_reconnect_attempt, namespace=ns)
+        self._sio.on("reconnect_error", self._on_reconnect_error, namespace=ns)
+        self._sio.on("error", self._on_error, namespace=ns)
+        self._sio.on("message", self._on_message, namespace=ns)
+        # Register key domain event handlers.
+        self._sio.on("snapshot", self._on_snapshot, namespace=ns)
+        self._sio.on(
+            "app:modules:parameters:change",
+            self._on_app_modules_parameters_change,
+            namespace=ns,
+        )
+        self._sio.on(
+            "modules:parameters:change",  # fallback alt name
+            self._on_modules_parameters_change,
+            namespace=ns,
+        )
+        self._sio.on(
+            "parameters:change",
+            self._on_parameters_change,
+            namespace=ns,
+        )
+        self._sio.on(
+            "app:module:task:created",
+            self._on_app_modules_task_created,
+            namespace=ns,
+        )
+        self._sio.on(
+            "app:module:task:status:changed",
+            self._on_app_modules_task_status_changed,
+            namespace=ns,
+        )
+        self._sio.on(
+            "app:module:task:completed",
+            self._on_app_modules_task_completed,
+            namespace=ns,
+        )
+        # Numeric fallbacks observed in some builds
+        self._sio.on("60", self._on_ev60, namespace=ns)
+        self._sio.on("61", self._on_ev61, namespace=ns)
+        self._sio.on("63", self._on_ev63, namespace=ns)
 
-    async def subscribe(self, devs: list[str]) -> None:
-        """Subscribe to parameter & activity streams."""
-        if not self.sio:
-            return
-        await self.sio.emit("app:modules:parameters:listen", {"modules": devs}, namespace=NS)
-        if self.log:
-            self.log.debug("[emit] app:modules:parameters:listen %s ns=%s", {"modules": devs}, NS)
+    # ---- Built-in handlers ----
+    async def _on_connect(self) -> None:
+        ns_sid = self.sid()
+        eng_sid = self.engine_sid()
+        log.info("WS connected, SID=%s", eng_sid)
+        log.info(
+            "WS connected, namespace_sid=%s, engine_sid=%s, namespaces=%s",
+            ns_sid,
+            eng_sid,
+            list(self._sio.namespaces),
+        )
+        for cb in list(self._on_connected):
+            try:
+                res = cb()
+                if asyncio.iscoroutine(res):
+                    spawn(res, "on_connected_cb", log)
+            except Exception:
+                log.exception("Error in on_connected callback")
 
-        await self.sio.emit("app:modules:activity:quantity:listen", {"modules": devs}, namespace=NS)
-        if self.log:
-            self.log.debug(
-                "[emit] app:modules:activity:quantity:listen %s ns=%s", {"modules": devs}, NS
-            )
+        self._connected.set()
 
-    async def close(self) -> None:
-        """Gracefully close the socket (idempotent)."""
-        try:
-            if self.sio:
-                await self.sio.disconnect()
-                if self.log:
-                    self.log.info("WS disconnected %s", NS)
-        finally:
-            self.sio = None
+    async def _on_disconnect(self) -> None:
+        log.info("WS disconnected")
+        self._connected.clear()
+
+    async def _on_connect_error(self, data: Any | None = None) -> None:
+        log.warning("WS connect_error: %s", data)
+
+    async def _on_reconnect(self) -> None:
+        log.info("WS reconnect OK")
+
+    async def _on_reconnect_attempt(self, number: int) -> None:
+        log.info("WS reconnect attempt #%s", number)
+
+    async def _on_reconnect_error(self, data: Any | None = None) -> None:
+        log.warning("WS reconnect_error: %s", data)
+
+    async def _on_error(self, data: Any) -> None:
+        log.error("WS ERROR: %s", data)
+
+    async def _on_message(self, data: Any) -> None:
+        log.debug("WS message → %s", data)
+
+    # --- Key domain events ---
+    async def _on_snapshot(self, payload: Any) -> None:
+        log.debug("WS EVENT snapshot → %s", payload)
+        self._dispatch("snapshot", payload)
+
+    async def _on_app_modules_parameters_change(self, payload: Any) -> None:
+        log.debug("WS EVENT app:modules:parameters:change → %s", payload)
+        self._dispatch("app:modules:parameters:change", payload)
+
+    # Fallback alt names occasionally seen in traces
+    async def _on_modules_parameters_change(self, payload: Any) -> None:
+        log.debug("WS EVENT modules:parameters:change → %s", payload)
+        self._dispatch("modules:parameters:change", payload)
+
+    async def _on_parameters_change(self, payload: Any) -> None:
+        log.debug("WS EVENT parameters:change → %s", payload)
+        self._dispatch("parameters:change", payload)
+
+    # Optional task-related events; kept for completeness/diagnostics.
+    async def _on_app_modules_task_created(self, p: Any) -> None:
+        log.debug("WS EVENT app:module:task:created → %s", p)
+        self._dispatch("app:module:task:created", p)
+
+    async def _on_app_modules_task_status_changed(self, p: Any) -> None:
+        log.debug("WS EVENT app:module:task:status:changed → %s", p)
+        self._dispatch("app:module:task:status:changed", p)
+
+    async def _on_app_modules_task_completed(self, p: Any) -> None:
+        log.debug("WS EVENT app:module:task:completed → %s", p)
+        self._dispatch("app:module:task:completed", p)
+
+    # Numeric fallbacks observed in some builds
+    async def _on_ev60(self, p: Any) -> None:
+        log.debug("WS EVENT 60 → %s", p)
+        self._dispatch("app:module:task:status:changed", p)
+
+    async def _on_ev61(self, p: Any) -> None:
+        log.debug("WS EVENT 61 → %s", p)
+        self._dispatch("app:module:task:created", p)
+
+    async def _on_ev63(self, p: Any) -> None:
+        log.debug("WS EVENT 63 → %s", p)
+        self._dispatch("app:module:task:completed", p)
+
+    # ---------------- Public API ----------------
+
+    async def connect(self) -> None:
+        """Open a Socket.IO connection with appropriate headers and wait for join."""
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Origin": self._origin,
+            "Referer": self._referer,
+            "Accept-Language": "pl-PL,pl;q=0.9",
+            "x-appversion": "1.1.78",
+        }
+        await self._sio.connect(
+            self._io_base,
+            headers=headers,
+            transports=["pooling", "websocket"],
+            socketio_path=self._socket_path,
+            namespaces=[self._namespace],
+        )
+        # Short grace period to ensure the namespace is fully established
+        await self._connected.wait()
+        await asyncio.sleep(0.1)
 
     def sid(self) -> str | None:
-        """Return namespace SID if available, fallback to engine SID."""
-        if not self.sio:
-            return None
+        """Return the namespace SID (``/ws``), if available."""
         try:
-            ns_sid = self.sio.get_sid(NS)
+            return str(self._sio.get_sid(self._namespace))
         except Exception:
-            ns_sid = None
-        return ns_sid or getattr(self.sio, "sid", None)
+            return None
 
-    # ---- internals ----
+    def engine_sid(self) -> str | None:
+        """Return the underlying Engine.IO SID (transport-level)."""
+        return getattr(self._sio, "sid", None)
 
-    def _fire_event(self, name: str, data: Any) -> None:
-        if self._on_event:
-            with contextlib.suppress(Exception):
-                self._on_event(name, data)
+    async def disconnect(self) -> None:
+        """Close the Socket.IO connection if open."""
+        if self._sio.connected:
+            await self._sio.disconnect()
 
-    def _fire_change(self, payload: dict) -> None:
-        if self._on_change:
-            with contextlib.suppress(Exception):
-                self._on_change(payload)
+    def on_event(self, handler: EventDispatcher) -> None:
+        """Register a single event dispatcher (gateway attaches here)."""
+        self._on_event = handler
 
-    def _wire(self) -> None:
-        sio = self.sio
-        assert sio is not None
+    def add_on_connected(self, cb: ConnectedCb) -> None:
+        """Register a callback to be called when the connection is established."""
+        self._on_connected.append(cb)
 
-        @sio.on("connect", namespace=NS)
-        async def _on_connect() -> None:
-            if self.log:
-                self.log.debug("[ws] connected")
-            self._fire_event("socket.connect", {"ns": NS})
+    @property
+    def group_id(self) -> int | None:
+        """Return the optional ``group_id`` included in subscription payloads."""
+        return self._group_id
 
-        @sio.on("disconnect", namespace=NS)
-        async def _on_disconnect() -> None:
-            if self.log:
-                self.log.debug("[ws] disconnected")
-            self._fire_event("socket.disconnect", {"ns": NS})
+    @group_id.setter
+    def group_id(self, group_id: int | None) -> None:
+        """Set an optional ``group_id`` to be included in subscription payloads."""
+        self._group_id = group_id
 
-        @sio.event
-        async def connect_error(data) -> None:
-            # Engine-level connect error has no namespace
-            if self.log:
-                self.log.warning("WS connect_error: %s", data)
-            self._fire_event("socket.connect_error", data)
+    async def subscribe(self, modules: list[str]) -> None:
+        """Emit listen events for the provided devices (devids/modules)."""
+        self._modules = sorted(set(modules))
+        if not self._modules:
+            return
 
-        # Parameter changes (multiple aliases seen in the wild)
-        @sio.on("app:modules:parameters:change", namespace=NS)
-        async def _change1(payload) -> None:
-            self._fire_change(payload)
+        # Base variants: "modules" and alt. "devids"
+        base: _SubPayload = {"modules": self._modules}
+        base_alt: _SubPayload = {"devids": self._modules}
 
-        @sio.on("modules:parameters:change", namespace=NS)
-        async def _change2(payload) -> None:
-            self._fire_change(payload)
+        # Optionally include "group_id"
+        if self.group_id is not None:
+            base["group_id"] = self.group_id
+            base_alt["group_id"] = self.group_id
 
-        @sio.on("parameters:change", namespace=NS)
-        async def _change3(payload) -> None:
-            self._fire_change(payload)
+        payloads: list[tuple[str, _SubPayload]] = [
+            ("app:modules:parameters:listen", base),
+            ("app:modules:parameters:listen", base_alt),
+            ("app:modules:activity:quantity:listen", base),
+            ("app:modules:activity:quantity:listen", base_alt),
+        ]
 
-        # Optional snapshot push
-        @sio.on("snapshot", namespace=NS)
-        async def _snapshot(payload) -> None:
+        for ev, pl in payloads:
+            log.debug("EMIT %s %s", ev, pl)
             try:
-                txt = json.dumps(payload, ensure_ascii=False)
+                await self._sio.emit(ev, pl, namespace=self._namespace)
             except Exception:
-                txt = repr(payload)
-            self._fire_event("snapshot", txt)
+                log.exception("Emit failed for %s", ev)
 
-        # Catch-all for debugging (namespaced)
-        @sio.on("*", namespace=NS)
-        async def _any(event, data=None) -> None:
-            self._fire_event(event, data)
+    async def resubscribe(self) -> None:
+        """Re-emit subscription events after a reconnect."""
+        if self._modules:
+            await self.subscribe(self._modules)
 
-        # --- module task lifecycle (optional pretty logs) ---
-        @sio.on("app:module:task:created", namespace=NS)
-        async def _task_created(payload) -> None:
-            self._fire_event("app:module:task:created", payload)
+    # ---------------- Internal ----------------
 
-        @sio.on("app:module:task:status:changed", namespace=NS)
-        async def _task_status(payload) -> None:
-            self._fire_event("app:module:task:status:changed", payload)
-
-        @sio.on("app:module:task:completed", namespace=NS)
-        async def _task_done(payload) -> None:
-            self._fire_event("app:module:task:completed", payload)
-
-        # (spotykane czasem numeryczne aliasy)
-        @sio.on("60", namespace=NS)
-        async def _ev60(payload) -> None:
-            self._fire_event("app:module:task:status:changed", payload)
-
-        @sio.on("61", namespace=NS)
-        async def _ev61(payload) -> None:
-            self._fire_event("app:module:task:created", payload)
-
-        @sio.on("63", namespace=NS)
-        async def _ev63(payload) -> None:
-            self._fire_event("app:module:task:completed", payload)
+    def _dispatch(self, name: str, payload: Any) -> None:
+        """Forward an event to the registered dispatcher (if any)."""
+        if self._on_event:
+            try:
+                self._on_event(name, payload)
+            except Exception:
+                log.exception("Error in on_event(%s) callback", name)

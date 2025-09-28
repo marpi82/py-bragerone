@@ -9,10 +9,12 @@
 //    "bierner.markdown-mermaid",             // Mermaid diagrams w Markdown
     "github.vscode-pull-request-github",     // PR/Issues GitHub
     "github.vscode-github-actions",          // Podgląd Actions
-    "eamodio.gitlens",                       // GitLens (historia, blame, diff)
+//    "eamodio.gitlens",                       // GitLens (historia, blame, diff)
     "samuelcolvin.jinjahtml",                // Jinja2 w HTML
     "zeshuaro.vscode-python-poetry",         // Poetry (dependency management)
-    "redhat.vscode-yaml"                     // YAML (GitHub Actions)
+    "redhat.vscode-yaml",                     // YAML (GitHub Actions)
+    "tamasfe.even-better-toml",               // TOML (pyproject.toml)
+    "LittleFoxTeam.vscode-python-test-adapter" // Test Explorer (Run tests from VSCode)
   ],
   "unwantedRecommendations": [
     "ms-python.autopep8",                   // żeby nie nadpisywało Ruff

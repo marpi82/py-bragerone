@@ -1,1 +1,0 @@
-zip -r ~/v0.2.5_migrated_3_working_project.zip . -x "*/__pycache__/*" "/dist/*" "/.assets/*" "/.venv/*" "/.git/*" "/.vscode/*" "/.pytest_cache/*" ".env" "~/*"

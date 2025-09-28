@@ -1,46 +1,81 @@
 [build-system]
-requires = ["poetry-core>=1.9.0"]
+requires = ["poetry-core>=2.0.0", "poetry-dynamic-versioning>=1.4.0"]
 build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "py-bragerone"
-dynamic = ["version"]
-description = "Brager One client: REST + WebSocket + label resolver for Home Assistant & tools"
-readme = "README.md"
-license = { text = "MIT" }
-authors = [{ name = "MarPi82", email = "marpi82@users.noreply.github.com" }]
-keywords = ["home", "automation", "bragerone", "pybragerone"]
+description = "Async client for Brager One: REST + Socket.IO, EventBus, ParamStore/StateStore, HA-ready"
+authors = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
+maintainers = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
+dynamic = [ # version is managed by poetry-dynamic-versioning
+  "version",
+  "readme",
+]
+license = "MIT"
+license-files = ["LICENSE"] # PEP 621 way to declare license file
+requires-python = ">=3.13.0,<4"
+keywords = [
+  "home",
+  "automation",
+  "brager",
+  "bragerone",
+  "socket.io",
+  "websocket",
+  "aiohttp",
+  "pydantic",
+  "home-assistant",
+]
+dependencies = [
+  "aiohttp>=3.11.11,<4.0.0",
+  "python-socketio[asyncio_client]>=5.11.4,<6.0.0",
+  "pydantic>=2.10.6,<3.0.0",
+  "typing-extensions>=4.12.2,<5.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/marpi82/py-bragerone"
+Documentation = "https://marpi82.github.io/py-bragerone/latest/"
+Repository = "https://github.com/marpi82/py-bragerone"
+Issues = "https://github.com/marpi82/py-bragerone/issues"
+Changelog = "https://github.com/marpi82/py-bragerone/blob/master/CHANGELOG.md"
+
+[project.scripts]
+pybragerone = "pybragerone.__main__:main"
+pybragerone-cli = "pybragerone.cli:main"
+pybragerone-parsers = "pybragerone.cli_extras.parsers:main"
+
+[project.optional-dependencies]
+cli = ["typer>=0.12.5", "rich>=13.9", "aiofiles>=24.1"]
+ha = ["homeassistant>=2025.2.0"]
+all = [
+  "typer>=0.12.5",
+  "rich>=13.9",
+  "aiofiles>=24.1",
+  "homeassistant>=2025.2.0",
+]
+
+[tool.poetry]
+requires-poetry = ">=2.0.0"
+readme = ["README.rst", "docs/README.rst"]
+packages = [{ include = "pybragerone", from = "src" }]
+include = ["src/pybragerone/py.typed"]
 classifiers = [
+  "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3.13",
   "Operating System :: OS Independent",
   "Topic :: Home Automation",
 ]
-requires-python = ">=3.13.2"
-dependencies = [
-  "aiohttp>=3.12.0,<4.0.0",
-  "python-socketio[asyncio_client]>=5.11.0,<6.0.0",
-]
 
-[project.urls]
-Homepage = "https://github.com/marpi82/py-bragerone"
-Repository = "https://github.com/marpi82/py-bragerone"
-Documentation = "https://marpi82.github.io/py-bragerone/latest/"
-
-[project.scripts]
-pybragerone-cli = "pybragerone.__main__:main"
-
-[tool.poetry]
-packages = [{ include = "pybragerone", from = "src" }]
-version = "0.0.0"   # placeholder needed by Poetry
+# -------- Developer groups (local only, not published to PyPI) --------
+version = "0.0.0" # placeholder needed by Poetry
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.37.0"
 ruff = "^0.13.0"
-black = "^25.1.0"
-isort = "^6.0.1"
-mypy = {extras = ["dmypy"], version = "^1.18.1"}
+mypy = { extras = ["dmypy"], version = "^1.18.1" }
 pre-commit = "^4.3.0"
+python-dotenv = "^1.1.1"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.3"
@@ -49,10 +84,12 @@ pytest-cov = "^5.0.0"
 aioresponses = "^0.7.6"
 
 [tool.poetry.group.docs.dependencies]
-sphinx = "^8.0.2"
+sphinx = ">=8.0.2,<9.0"
 furo = "^2024.8.6"
 myst-parser = "^4.0.0"
-sphinx-autodoc-typehints = "^2.4.4"
+sphinx-autodoc-typehints = "^3.2.0"
+sphinx-copybutton = "^0.5.2"
+sphinxcontrib-mermaid = "^0.9.2"
 mike = "^2.1.3"
 
 [tool.poetry-dynamic-versioning]
@@ -60,85 +97,84 @@ enable = true
 vcs = "git"
 style = "pep440"
 strict = true
-pattern = '^(?P<base>\d{4}(?:\.\d{1,2}(?:\.\d{1,2})?)?)(?:(?P<stage>a|b|rc)(?P<revision>\d+))?$'
+pattern = '^(?P<base>\d{4}(?:.\d{1,2}(?:.\d{1,2})?)?)(?:(?P<stage>a|b|rc)(?P<revision>\d+))?$'
 format-jinja = "{% if distance == 0 %}{{ serialize_pep440(base, stage, revision) }}{% else %}{{ serialize_pep440(base, stage, revision, dev=distance) }}{% endif %}"
 
-[tool.poe.tasks]
-bootstrap = { cmd = "poetry install --with dev,test,docs" }
-
-# Lint / format
-lint = { cmd = "ruff check ." }
-fmt = { shell = "black . && ruff format . && isort ." }
-fix = { shell = "ruff check . --fix && ruff format . && black . && isort ." }
-
-# Types
-typecheck = { cmd = "mypy" }
-
-# Tests
-test = { cmd = "pytest -q" }
-cov = { cmd = "pytest -q --cov=pybragerone --cov-report=term-missing" }
-
-# Build
-build = { cmd = "poetry build" }
-
-# Docs
-docs-build = { cmd = "sphinx-build -b html docs docs/_build/html" }
-docs-serve = { shell = "python -m http.server --directory docs/_build/html 8000" }
-
-# Publication (local; CI have its own secrets)
-publish-pypi = { shell = "poetry publish --build --no-interaction" }
-publish-testpypi = { shell = "poetry publish --build --repository testpypi --no-interaction" }
-
-[[tool.poetry.include]]
-path = "src/pybragerone/py.typed"
-
-[tool.pytest.ini_options]
-minversion = "8.0"
-#addopts = "-q --cov=pybragerone --cov-report=term-missing"
-testpaths = ["tests"]
-pythonpath = ["src"]
-asyncio_mode = "auto"
-
-[tool.coverage.run]
-branch = true
-source = ["src/pybragerone"]
-
-[tool.black]
-line-length = 100
-target-version = ["py313"]
-
-[tool.isort]
-profile = "black"
-src_paths = ["src", "tests"]
-py_version = 313
-
+# ---------------- Ruff (formatter + linter) ----------------
 [tool.ruff]
-line-length = 100
 target-version = "py313"
-src = ["src", "tests"]
-extend-exclude = ["docs/_build"]
+line-length = 130
+indent-width = 4
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
-#select = ["E", "F"]
-ignore = ["E501"]
+select = ["E", "F", "W", "I", "D", "UP", "RUF", "SIM", "B"] #, "ANN",]
+#ignore = [
+#  "D100", # Missing docstring in public module
+#  "D104", # Missing docstring in public package
+#  "D107", # Missing docstring in __init__
+#]
+fixable = ["ALL"]
+unfixable = []
 
-[tool.ruff.lint.isort]
-known-first-party = ["pybragerone"]
+[tool.ruff.lint.per-file-ignores]
+#"__init__.py" = ["E402"]
+"**/{tests,docs,tools}/*" = ["ALL"]
 
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# ---------------- mypy (strict) ----------------
 [tool.mypy]
 python_version = "3.13"
-files = ["src/pybragerone", "tests"]
-#strict = true
-#warn_unused_ignores = true
-#disallow_untyped_defs = true
-#no_implicit_optional = true
-#strict_optional = true
+files = ["src/pybragerone"]
 strict = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
 no_implicit_optional = true
 strict_optional = true
+plugins = ["pydantic.mypy"]
 
-#ignore_missing_imports = true
-#disable_error_code = ["attr-defined", "call-arg", "arg-type", "operator", "assignment", "empty-body", "return-value"]
+# ---------------- pytest ----------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-q"
+# or with coverage:
+# addopts = "-q --cov=pybragerone --cov-report=term-missing"
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+markers = [
+  "slow: potentially slower tests (network)",
+  "needs_internet: tests that require internet access",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src/pybragerone"]
+
+
+# ---------------- POE tasks ----------------
+# (optional) Poe tasks, if you use 'poe' locally
+[tool.poe.tasks]
+bootstrap = { cmd = "poetry install --with dev,test,docs" }
+# format/lint/typecheck
+fmt = "ruff format"
+lint = "ruff check . --fix"
+typecheck = "mypy . --strict"
+all = ["fmt", "lint", "typecheck"]
+# Tests
+test = { cmd = "pytest -q" }
+cov = { cmd = "pytest -q --cov=pybragerone --cov-report=term-missing" }
+# Build
+build = { cmd = "poetry build" }
+# Docs
+docs-build = { cmd = "sphinx-build -b html docs docs/_build/html" }
+docs-serve = { shell = "python -m http.server --directory docs/_build/html 8000" }
+# Publication (local; CI have its own secrets)
+publish-pypi = { shell = "poetry publish --build --no-interaction" }
+publish-testpypi = { shell = "poetry publish --build --repository testpypi --no-interaction" }

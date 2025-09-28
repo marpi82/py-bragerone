@@ -1,11 +1,13 @@
-# src/bragerone/__init__.py
-from importlib.metadata import PackageNotFoundError, version
+"""BragerOne API client library."""
 
-try:
-    __version__ = version("py-bragerone")
-except PackageNotFoundError:
-    __version__ = "0.0.0"
+import logging
 
-from .gateway import Gateway
+from .api import BragerOneApiClient
+from .consts import API_BASE, IO_BASE, ONE_BASE
+from .gateway import BragerOneGateway
 
-__all__ = ["Gateway", "__version__"]
+# main library logger
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
+
+__all__ = ["API_BASE", "IO_BASE", "ONE_BASE", "BragerOneApiClient", "BragerOneGateway"]

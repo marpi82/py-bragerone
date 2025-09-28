@@ -1,23 +1,47 @@
+minimum_pre_commit_version: "4.3.0"
+
+exclude: |
+  (?x)^(
+    src/docs/_build/|
+    dist/|
+    build/|
+    .*/migrations/|
+    .*/node_modules/
+  )
+
 repos:
+  # Ruff → linter + formatter
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.13.0
     hooks:
       - id: ruff
-        args: ["--fix"]
-      - id: ruff-format
+        args: ["--fix"]     # lint + autofix (bez I jeśli nie chcesz sortować importów ruffem)
+      - id: ruff-format     # formatter (zastępuje Black)
 
-  - repo: https://github.com/psf/black
-    rev: 25.1.0
-    hooks:
-      - id: black
-
-  - repo: https://github.com/pycqa/isort
-    rev: 6.0.1
-    hooks:
-      - id: isort
-
+  # Mypy → type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.18.1
     hooks:
       - id: mypy
-        args: ["--ignore-missing-imports"]
+        args: ["--ignore-missing-imports", "--show-column-numbers"]
+
+  # Secrets scanning with Gitleaks
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.2
+    hooks:
+      - id: gitleaks
+        name: gitleaks (protect staged)
+        entry: gitleaks protect --staged --redact
+        language: golang
+        pass_filenames: false
+
+  # Useful generic checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
