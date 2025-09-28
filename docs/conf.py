@@ -15,16 +15,16 @@ copyright = f"{datetime.now():%Y}, {author}"
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
-    "sphinx.ext.napoleon",           # Google/NumPy docstrings
-    "sphinx_autodoc_typehints",      # ładne typy w opisach
-    "sphinx.ext.todo",               # .. todo:: w dokumentacji
-    "sphinx.ext.viewcode",           # linki do źródeł
-    "sphinx.ext.intersphinx",        # linki do zewnętrznych docs (opcjonalnie)
-    "myst_parser",                   # Markdown + mdinclude (CHANGELOG.md),
+    "sphinx.ext.napoleon",  # Google/NumPy docstrings
+    "sphinx_autodoc_typehints",  # ładne typy w opisach
+    "sphinx.ext.todo",  # .. todo:: w dokumentacji
+    "sphinx.ext.viewcode",  # linki do źródeł
+    "sphinx.ext.intersphinx",  # linki do zewnętrznych docs (opcjonalnie)
+    "myst_parser",  # Markdown + mdinclude (CHANGELOG.md),
     "sphinx.ext.graphviz",
     "sphinx.ext.mathjax",
     "sphinx_copybutton",
-    "sphinxcontrib-mermaid"
+    "sphinxcontrib-mermaid",
 ]
 
 # --- Sources ---
@@ -69,11 +69,12 @@ intersphinx_mapping = {
 todo_include_todos = True
 
 # --- HTML theme ---
-html_theme = "furo" # or alabaster
+html_theme = "furo"  # or alabaster
 
 # --- Version resolution ---
 try:
     from importlib.metadata import version as _pkg_version
+
     release = _pkg_version("pybragerone")
 except Exception:
     ver_file = os.path.join(os.path.dirname(__file__), "../src/pybragerone/_version.py")

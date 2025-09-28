@@ -11,6 +11,7 @@ def _strip_trailing_commas(s: str) -> str:
     """Remove trailing commas from JSON-like string."""
     return re.sub(r",\s*(?=[}\]])", "", s)
 
+
 def extract_embedded_json(js_text: str) -> Any:
     """Extract JSON object embedded in a compiled JS module.
 

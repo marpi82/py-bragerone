@@ -20,9 +20,7 @@ from .ws import RealtimeManager
 LOG = logging.getLogger(__name__)
 
 # Callback signatures
-ParametersCb = Callable[
-    [str, dict[str, Any]], Awaitable[None] | None
-]  # (event_name, payload)
+ParametersCb = Callable[[str, dict[str, Any]], Awaitable[None] | None]  # (event_name, payload)
 SnapshotCb = Callable[[dict[str, Any]], Awaitable[None] | None]
 GenericCb = Callable[[str, Any], Awaitable[None] | None]
 
@@ -92,9 +90,7 @@ class BragerOneGateway:
         # 1) HTTP API + login (token automatically refreshed by the client)
         self.api = BragerOneApiClient()
         await self.api.ensure_auth(self.email, self.password)
-        token = (
-            self.api._token.access_token if self.api and self.api._token else ""
-        )  # pragmatic access
+        token = self.api._token.access_token if self.api and self.api._token else ""  # pragmatic access
 
         # 2) WS connect
         self.ws = RealtimeManager(token=token or "")
@@ -108,12 +104,8 @@ class BragerOneGateway:
         if not sid_ns:
             raise RuntimeError("No namespace SID after connecting to WS (Socket.IO).")
 
-        ok = await self._api_modules_connect(
-            sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine
-        )
-        LOG.info(
-            "modules.connect: %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine
-        )
+        ok = await self._api_modules_connect(sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine)
+        LOG.info("modules.connect: %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
 
         # 4) WS subscribe + PRIME via REST (in parallel)
         self.ws.group_id = self.object_id
@@ -163,9 +155,7 @@ class BragerOneGateway:
         sid_engine = self.ws.engine_sid()
         if not sid_ns:
             return
-        ok = await self._api_modules_connect(
-            sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine
-        )
+        ok = await self._api_modules_connect(sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine)
         LOG.info("modules.connect (resub): %s", ok)
         await self.ws.subscribe(self.modules)
         okp, oka = await self._prime_with_retry()
@@ -186,9 +176,7 @@ class BragerOneGateway:
                 name="gateway.api.modules_parameters_prime",
             )
             t_act = tg.create_task(
-                self._api_modules_activity_quantity_prime(
-                    self.modules, return_data=True
-                ),
+                self._api_modules_activity_quantity_prime(self.modules, return_data=True),
                 name="gateway.api.modules_activity_quantity_prime",
             )
 
@@ -199,9 +187,7 @@ class BragerOneGateway:
 
         st2, data2 = t_act.result()
         if st2 in (200, 204):
-            await self.ingest_activity_quantity(
-                data2 if isinstance(data2, dict) else None
-            )
+            await self.ingest_activity_quantity(data2 if isinstance(data2, dict) else None)
             ok_act = True
 
         self._prime_seq = self.bus.last_seq()
@@ -236,9 +222,7 @@ class BragerOneGateway:
 
     # ------------------------- WS dispatch -------------------------
 
-    async def _invoke_list(
-        self, cbs: list[Callable[..., Any]], *args: Any, **kwargs: Any
-    ) -> None:
+    async def _invoke_list(self, cbs: list[Callable[..., Any]], *args: Any, **kwargs: Any) -> None:
         for cb in list(cbs):
             try:
                 res = cb(*args, **kwargs)
@@ -327,9 +311,7 @@ class BragerOneGateway:
                     )
         return out
 
-    def _spawn(
-        self, coro: Coroutine[Any, Any, Any], *, name: str | None = None
-    ) -> Task[Any]:
+    def _spawn(self, coro: Coroutine[Any, Any, Any], *, name: str | None = None) -> Task[Any]:
         """Start a background task, keep reference, and log exceptions."""
         t = create_task(coro, name=name)
         self._tasks.add(t)
@@ -340,9 +322,7 @@ class BragerOneGateway:
             except CancelledError:
                 pass
             except Exception:
-                LOG.exception(
-                    "Background task failed: %s", task.get_name() or "<unnamed>"
-                )
+                LOG.exception("Background task failed: %s", task.get_name() or "<unnamed>")
             finally:
                 self._tasks.discard(task)
 
@@ -374,15 +354,11 @@ class BragerOneGateway:
             {"sid": wsid, "modules": list(modules)},
         ]
         if group_id is not None:
-            payloads.append(
-                {"wsid": wsid, "group_id": int(group_id), "modules": list(modules)}
-            )
+            payloads.append({"wsid": wsid, "group_id": int(group_id), "modules": list(modules)})
 
         for pl in payloads:
             try:
-                st, data, _ = await self.api._req(
-                    "POST", f"{API_BASE}/modules/connect", json=pl
-                )
+                st, data, _ = await self.api._req("POST", f"{API_BASE}/modules/connect", json=pl)
                 LOG.debug("modules.connect try %s → %s %s", pl, st, data)
                 if st == 200:
                     return True
@@ -390,9 +366,7 @@ class BragerOneGateway:
                 continue
         return False
 
-    async def _api_modules_parameters_prime(
-        self, modules: Iterable[str], *, return_data: bool = True
-    ) -> tuple[int, Any | None]:
+    async def _api_modules_parameters_prime(self, modules: Iterable[str], *, return_data: bool = True) -> tuple[int, Any | None]:
         assert self.api is not None
         pl = {"modules": list(modules)}
         st, data, _ = await self.api._req("POST", f"{API_BASE}/modules/parameters", json=pl)
@@ -403,7 +377,5 @@ class BragerOneGateway:
     ) -> tuple[int, Any | None]:
         assert self.api is not None
         pl = {"modules": list(modules)}
-        st, data, _ = await self.api._req(
-            "POST", f"{API_BASE}/modules/activity/quantity", json=pl
-        )
+        st, data, _ = await self.api._req("POST", f"{API_BASE}/modules/activity/quantity", json=pl)
         return st, (data if return_data else None)

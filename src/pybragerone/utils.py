@@ -13,6 +13,7 @@ from typing import Any
 # EventBus consumer (ParamStore)
 bg_tasks: set[asyncio.Task[Any]] = set()
 
+
 def spawn(coro: Coroutine[Any, Any, Any], name: str, log: Logger) -> None:
     """Spawn a background task and track it in bg_tasks set."""
     t = asyncio.create_task(coro, name=name)
@@ -30,6 +31,7 @@ def spawn(coro: Coroutine[Any, Any, Any], name: str, log: Logger) -> None:
 
     t.add_done_callback(_done)
 
+
 def json_preview(obj: Any, *, maxlen: int = 2000) -> str:
     """Jednolinijkowy podgląd JSON (ucięty do maxlen, bez wcięć).
 
@@ -44,9 +46,7 @@ def json_preview(obj: Any, *, maxlen: int = 2000) -> str:
     return s
 
 
-def log_json_payload(
-    logger: Logger, tag: str, payload: Any, *, maxlen: int = 2000
-) -> None:
+def log_json_payload(logger: Logger, tag: str, payload: Any, *, maxlen: int = 2000) -> None:
     """LOG.debug jednowierszowego podglądu payloadu JSON."""
     with suppress(Exception):
         logger.debug("%s → %s", tag, json_preview(payload, maxlen=maxlen))

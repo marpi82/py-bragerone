@@ -112,9 +112,7 @@ class CLITokenStore:
         """Return a cached Token or None if not present."""
         # 1) keyring
         if _HAS_KEYRING:
-            raw = keyring.get_password(
-                self.service, self.email
-            )  # -type: ignore[attr-defined]
+            raw = keyring.get_password(self.service, self.email)  # -type: ignore[attr-defined]
             if raw:
                 with contextlib.suppress(Exception):
                     data = json.loads(raw)

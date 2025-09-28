@@ -13,9 +13,7 @@ from ..parsers.index_resolver import IndexResolver
 from ..parsers.js_extract import extract_embedded_json
 
 
-def _collect_symbols_from_menu(
-    menu: dict[str, Any] | list[Any], permissions: Iterable[str]
-) -> set[str]:
+def _collect_symbols_from_menu(menu: dict[str, Any] | list[Any], permissions: Iterable[str]) -> set[str]:
     """Return a set of symbols (PARAM_* and others) that are visible for the given permissions."""
     perms = set(permissions or [])
     out: set[str] = set()
@@ -46,6 +44,7 @@ def _collect_symbols_from_menu(
 @dataclass
 class TranslationConfig:
     """Configuration of available translations."""
+
     translations: list[dict[str, Any]]
     default_translation: str
 
@@ -105,9 +104,7 @@ class LiveAssetCatalog:
         default = obj.get("defaultTranslation") or "en"
         return TranslationConfig(translations=translations, default_translation=default)
 
-    async def list_symbols_for_permissions(
-        self, permissions: Iterable[str]
-    ) -> set[str]:
+    async def list_symbols_for_permissions(self, permissions: Iterable[str]) -> set[str]:
         """Zwróć zbiór symboli (PARAM_* oraz inne), które są widoczne dla podanych uprawnień."""
         menu = await self.get_module_menu()
         return _collect_symbols_from_menu(menu, permissions)

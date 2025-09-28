@@ -7,6 +7,7 @@ Public entrypoints:
 - dump_param_mappings(session, filenames, out_dir)
 - dump_module_menu(session, out_path)
 """
+
 from __future__ import annotations
 
 from .parsers import dump_i18n, dump_module_menu, dump_param_mappings

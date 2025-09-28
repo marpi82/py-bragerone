@@ -17,6 +17,7 @@ class IndexMap:
     parameters: dict[str, str]
     module_menu: str | None = None
 
+
 class IndexResolver:
     """Resolve asset URLs by scanning index*.js for dynamic import maps."""
 

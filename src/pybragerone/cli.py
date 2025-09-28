@@ -23,18 +23,14 @@ CHAN_RE = re.compile(r"^([a-z])(\d+)$")
 def _setup_logging(debug: bool, quiet: bool) -> None:
     """Setup logging based on debug/quiet flags."""
     level = logging.DEBUG if debug else (logging.WARNING if quiet else logging.INFO)
-    logging.basicConfig(
-        level=level, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 async def _prompt_select_object(api: BragerOneApiClient) -> int | None:
     """Prompt user to select an object from the list of available ones."""
     items = await api.objects_list()
     if not items:
-        log.warning(
-            "Nie udało się pobrać listy obiektów (/v1/objects). Podaj --object-id."
-        )
+        log.warning("Nie udało się pobrać listy obiektów (/v1/objects). Podaj --object-id.")
         return None
 
     print("\nWybierz obiekt (instalację):")
@@ -133,14 +129,7 @@ async def run(args: argparse.Namespace) -> int:
     # ParamStore (heavy) + connection to the gateway's EventBus
     param_store = ParamStore()
 
-    gw = BragerOneGateway(
-        email=args.email,
-        password=args.password,
-        object_id=object_id,
-        modules=modules
-    )
-
-
+    gw = BragerOneGateway(email=args.email, password=args.password, object_id=object_id, modules=modules)
 
     spawn(param_store.run_with_bus(gw.bus), "ParamStore.run_with_bus", log)
 
@@ -185,9 +174,7 @@ async def run(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build argument parser."""
-    p = argparse.ArgumentParser(
-        prog="pybragerone", description="Brager One — diagnostyczny CLI (REST + WS)."
-    )
+    p = argparse.ArgumentParser(prog="pybragerone", description="Brager One — diagnostyczny CLI (REST + WS).")
     # env-first: jeśli brak w CLI, weź z otoczenia (łatwo debugować w VSCode)
     p.add_argument(
         "--email",
@@ -217,15 +204,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Drukuj zdarzenia jako JSON (jedna linia na update)",
     )
-    p.add_argument(
-        "--raw-ws", action="store_true", help="Wypisuj surowe eventy WS (debug)"
-    )
-    p.add_argument(
-        "--raw-http", action="store_true", help="Trace HTTP (uwaga na logi z danymi)"
-    )
-    p.add_argument(
-        "--no-diff", action="store_true", help="Nie drukuj zmian (strzałek) na STDOUT"
-    )
+    p.add_argument("--raw-ws", action="store_true", help="Wypisuj surowe eventy WS (debug)")
+    p.add_argument("--raw-http", action="store_true", help="Trace HTTP (uwaga na logi z danymi)")
+    p.add_argument("--no-diff", action="store_true", help="Nie drukuj zmian (strzałek) na STDOUT")
     p.add_argument("--debug", action="store_true", help="Więcej logów")
     p.add_argument("--quiet", action="store_true", help="Mniej logów")
     return p
@@ -241,9 +222,7 @@ def main() -> None:
         args.modules = [m for m in args.modules.split(",") if m]
 
     if not args.email or not args.password:
-        raise SystemExit(
-            "Brak poświadczeń: ustaw PYBO_EMAIL/PYBO_PASSWORD lub przekaż --email/--password."
-        )
+        raise SystemExit("Brak poświadczeń: ustaw PYBO_EMAIL/PYBO_PASSWORD lub przekaż --email/--password.")
 
     try:
         code = asyncio.run(run(args))

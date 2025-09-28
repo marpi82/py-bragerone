@@ -13,6 +13,7 @@ from ..models.catalog import LiveAssetCatalog
 if TYPE_CHECKING:
     from ..models.catalog import TranslationConfig  # noqa: F401
 
+
 class ParamFamilyModel(BaseModel):
     """One parameter 'family' (e.g., P4 index 1) collecting channels: v/s/u/n/x..."""
 
@@ -63,19 +64,13 @@ class ParamStore(BaseModel):
     _assets = PrivateAttr(default=None)  # type: LiveAssetCatalog | None
     _lang = PrivateAttr(default=None)  # type: str | None
     _lang_cfg = PrivateAttr(default=None)  # type: TranslationConfig | None
-    _cache_i18n = PrivateAttr(
-        default_factory=dict
-    )  # type: dict[tuple[str, str], dict[str, Any]]
-    _cache_mapping = PrivateAttr(
-        default_factory=dict
-    )  # type: dict[str, dict[str, Any]]
+    _cache_i18n = PrivateAttr(default_factory=dict)  # type: dict[tuple[str, str], dict[str, Any]]
+    _cache_mapping = PrivateAttr(default_factory=dict)  # type: dict[str, dict[str, Any]]
     _cache_menu = PrivateAttr(default=None)  # type: dict[str, Any] | None
 
     model_config = ConfigDict(frozen=False, validate_assignment=True)
 
-    def init_with_api(
-        self, api: BragerOneApiClient, *, lang: str | None = None
-    ) -> None:
+    def init_with_api(self, api: BragerOneApiClient, *, lang: str | None = None) -> None:
         """Preferowany sposób: spina ParamStore z ApiClient i LiveAssetCatalog."""
         self._assets = LiveAssetCatalog(api)
         self._lang = lang
@@ -116,11 +111,7 @@ class ParamStore(BaseModel):
 
     def flatten(self) -> dict[str, Any]:
         """Flattened view of all parameters as { 'P4.v1': value, ... }."""
-        return {
-            f"{fam.pool}.{ch}{fam.idx}": val
-            for fam in self.families.values()
-            for ch, val in fam.channels.items()
-        }
+        return {f"{fam.pool}.{ch}{fam.idx}": val for fam in self.families.values() for ch, val in fam.channels.items()}
 
     # ---------- assets lifecycle ----------
 
@@ -141,9 +132,7 @@ class ParamStore(BaseModel):
 
     # ---------- raw getters ----------
 
-    async def get_i18n(
-        self, namespace: str, *, lang: str | None = None
-    ) -> dict[str, Any]:
+    async def get_i18n(self, namespace: str, *, lang: str | None = None) -> dict[str, Any]:
         """Get i18n mapping for a given namespace (cached)."""
         if not self._assets:
             return {}
@@ -219,19 +208,13 @@ class ParamStore(BaseModel):
                 pool = ent.get("group")
                 use = ent.get("use")
                 num = ent.get("number")
-                if (
-                    isinstance(pool, str)
-                    and isinstance(use, str)
-                    and isinstance(num, int)
-                ):
+                if isinstance(pool, str) and isinstance(use, str) and isinstance(num, int):
                     return pool, use, num
         return None
 
     # ---------- describe ----------
 
-    async def describe(
-        self, pool: str, idx: int, *, param_symbol: str | None = None
-    ) -> tuple[str | None, str | None, Any]:
+    async def describe(self, pool: str, idx: int, *, param_symbol: str | None = None) -> tuple[str | None, str | None, Any]:
         """Describe a parameter by its (pool, idx) address, optionally with known symbol."""
         fam = self.get_family(pool, idx)
         if fam is None:
@@ -265,9 +248,7 @@ class ParamStore(BaseModel):
 
     # ---------- merge assets with permissions ----------
 
-    async def merge_assets_with_permissions(
-        self, permissions: list[str]
-    ) -> dict[str, dict[str, Any]]:
+    async def merge_assets_with_permissions(self, permissions: list[str]) -> dict[str, dict[str, Any]]:
         """Scal i18n + selective mappings + menu + bieżące wartości, filtrowane po perms."""
         if not self._assets:
             return {}

@@ -155,8 +155,8 @@ source = ["src/pybragerone"]
 bootstrap = { cmd = "poetry install --with dev,test,docs" }
 # format/lint/typecheck
 fmt = "ruff format"
-lint = "ruff check src/pybragerone --fix"
-typecheck = "mypy src/pybragerone --strict"
+lint = "ruff check . --fix"
+typecheck = "mypy . --strict"
 all = ["fmt", "lint", "typecheck"]
 # Tests
 test = { cmd = "pytest -q" }

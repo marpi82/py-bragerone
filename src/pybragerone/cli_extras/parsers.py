@@ -1,4 +1,5 @@
 """Module src/pybragerone/cli/parsers.py."""
+
 from __future__ import annotations
 
 import argparse
@@ -12,11 +13,9 @@ from ..models.catalog import LiveAssetCatalog
 
 default_path = Path("./dump")
 
+
 async def dump_i18n(
-    api: BragerOneApiClient,
-    lang: str,
-    out_dir: Path = default_path,
-    namespaces: list[str] | None = None
+    api: BragerOneApiClient, lang: str, out_dir: Path = default_path, namespaces: list[str] | None = None
 ) -> None:
     """Fetch and dump i18n JSON assets using the unified LiveAssetCatalog."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -74,14 +73,14 @@ async def main_parsers_cli(
         tasks.append(dump_module_menu(api, out_menu))
     await asyncio.gather(*tasks)
 
+
 def main() -> int:
     """Main.
 
     Returns:
     TODO.
     """
-    ap = argparse.ArgumentParser(prog="pybragerconnect-parsers",
-        description="Debug CLI for pybragerconnect parsers")
+    ap = argparse.ArgumentParser(prog="pybragerconnect-parsers", description="Debug CLI for pybragerconnect parsers")
     ap.add_argument("--i18n", help="path to i18n *.js (generic)")
     ap.add_argument("--i18n-parameters", help="path to parameters i18n *.js")
     ap.add_argument("--i18n-units", help="path to units i18n *.js")
@@ -108,6 +107,7 @@ def main() -> int:
         with open(args.out, "w", encoding="utf-8") as f:
             f.write(data)
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

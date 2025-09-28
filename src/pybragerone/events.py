@@ -21,9 +21,11 @@ class FeatureChanged:
         feature: Name of the feature that changed.
         value: New boolean value of the feature.
     """
+
     devid: str
     feature: str
     value: bool
+
 
 @dataclass(frozen=True)
 class ParamUpdate:

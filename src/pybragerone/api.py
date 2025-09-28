@@ -102,7 +102,6 @@ class BragerOneApiClient:
         self._auth_lock = asyncio.Lock()
         self._connect_variant: dict[str, Any] | None = None
 
-
     # ----------------- session helpers -----------------
 
     def set_token_store(self, store: TokenStore | None) -> None:
@@ -152,9 +151,7 @@ class BragerOneApiClient:
                 safe_headers = dict(params.headers or {})
                 if self._redact_secrets and "Authorization" in safe_headers:
                     safe_headers["Authorization"] = "<redacted>"
-                LOG_HTTP.debug(
-                    "→ %s %s headers=%s", params.method, params.url, safe_headers
-                )
+                LOG_HTTP.debug("→ %s %s headers=%s", params.method, params.url, safe_headers)
 
             @trace.on_request_end.append
             async def _on_end(
@@ -233,15 +230,11 @@ class BragerOneApiClient:
                 raise ApiError(401, {"message": "No token"}, {})
             hdrs["Authorization"] = f"Bearer {self._token.access_token}"
 
-        async with sess.request(
-            method, path, json=json, data=data, headers=hdrs
-        ) as resp:
+        async with sess.request(method, path, json=json, data=data, headers=hdrs) as resp:
             status = resp.status
             ctype = resp.headers.get("Content-Type", "")
             try:
-                body = await (
-                    resp.json(content_type=None) if "application/json" in ctype else resp.text()
-                )
+                body = await (resp.json(content_type=None) if "application/json" in ctype else resp.text())
             except Exception:
                 body = None
 
@@ -270,9 +263,7 @@ class BragerOneApiClient:
 
     # ----------------- auth -----------------
 
-    async def ensure_auth(
-        self, email: str | None = None, password: str | None = None
-    ) -> Token:
+    async def ensure_auth(self, email: str | None = None, password: str | None = None) -> Token:
         """Ensure valid token: use cache + validation, and if missing/expired — login.
 
         Args:
@@ -318,9 +309,7 @@ class BragerOneApiClient:
             # 4) classic login
             return await self._post_login(em, pw)
 
-    async def _do_login_request(
-        self, email: str, password: str
-    ) -> tuple[int, dict[str, Any] | None, dict[str, Any]]:
+    async def _do_login_request(self, email: str, password: str) -> tuple[int, dict[str, Any] | None, dict[str, Any]]:
         """Execute login request to the authentication endpoint.
 
         Args:
@@ -359,11 +348,7 @@ class BragerOneApiClient:
                 _, data, _ = await self._do_login_request(email, password)
             except ApiError as e:
                 # only retry 500/duplicate errors
-                if (
-                    e.status == 500
-                    and self._is_duplicate_token_error(e.data)
-                    and d is not None
-                ):
+                if e.status == 500 and self._is_duplicate_token_error(e.data) and d is not None:
                     jitter = random.uniform(0.0, 0.15)
                     await asyncio.sleep(d + jitter)
                     continue
@@ -395,9 +380,7 @@ class BragerOneApiClient:
         if not self._token:
             raise ApiError(401, {"message": "No token"}, {})
         try:
-            status, _data, _hdrs = await self._req(
-                "GET", f"{API_BASE}/user", auth=True, _retry=False
-            )
+            status, _data, _hdrs = await self._req("GET", f"{API_BASE}/user", auth=True, _retry=False)
             if status == 200:
                 self._validated = True
                 return
@@ -427,7 +410,11 @@ class BragerOneApiClient:
     # ----------------- API endpoints -----------------
 
     async def revoke(self) -> None:
-        """Server-side logout + lokalny cleanup tokenu i persistence."""
+        """Server-side logout + local cleanup of token and persistence.
+
+        Attempts to revoke the token on the server and cleans up local state
+        regardless of server response.
+        """
         try:
             await self._req("POST", f"{API_BASE}/auth/revoke", auth=True)
         except ApiError as e:
@@ -598,7 +585,7 @@ class BragerOneApiClient:
             """Generate candidate request bodies for module connection."""
             arr = [
                 {"wsid": pref_sid, "modules": modules},
-                {"sid":  pref_sid, "modules": modules},
+                {"sid": pref_sid, "modules": modules},
             ]
             if group_id is not None:
                 arr.append({"wsid": pref_sid, "group_id": str(group_id), "modules": modules})
@@ -649,7 +636,6 @@ class BragerOneApiClient:
         status, data, _ = await self._req("POST", f"{API_BASE}/modules/parameters", json=payload)
         # log_json_payload(LOG, "prime.modules.parameters", summarize_top_level(data))
         return (status, data) if return_data else (status in (200, 204))
-
 
     async def modules_activity_quantity_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
         """Prime modules activity quantity.
