@@ -19,7 +19,7 @@ def test_gateway_is_exposed_on_top_level() -> None:
     import pybragerone
 
     assert hasattr(pybragerone, "BragerOneGateway"), "BragerOneGateway is not exported in __all__"
-    # optionally: verify that it's a class
+    # Optionally: verify that it's a class
     assert isinstance(BragerOneGateway, type)
 
 
