@@ -12,46 +12,36 @@ from typing import Any
 
 @dataclass(frozen=True)
 class FeatureChanged:
-    """Feature changed event.
-
-    Represents a change in a device feature state.
-
-    Attributes:
-        devid: Device identifier.
-        feature: Name of the feature that changed.
-        value: New boolean value of the feature.
-    """
+    """Feature changed event representing a change in device feature state."""
 
     devid: str
+    #: Device identifier.
     feature: str
+    #: Name of the feature that changed.
     value: bool
+    #: New boolean value of the feature.
 
 
 @dataclass(frozen=True)
 class ParamUpdate:
-    """Parameter update event.
-
-    Represents an update to a device parameter value.
-
-    Attributes:
-        devid: Device identifier.
-        pool: Parameter pool name.
-        chan: Channel identifier.
-        idx: Parameter index.
-        value: New parameter value, can be None.
-        meta: Additional metadata dictionary.
-        ts: Timestamp when the update occurred.
-        seq: Sequence number for ordering events.
-    """
+    """Parameter update event carrying value and metadata updates."""
 
     devid: str
+    #: Device identifier.
     pool: str
+    #: Parameter pool name.
     chan: str
+    #: Channel identifier (``v``, ``s``, ``u`` ...).
     idx: int
+    #: Parameter index.
     value: Any | None
-    meta: dict[str, Any] = field(default_factory=dict)  # NEW
+    #: New parameter value, can be ``None`` for meta-only updates.
+    meta: dict[str, Any] = field(default_factory=dict)
+    #: Additional metadata dictionary.
     ts: float = field(default_factory=time.time)
+    #: Timestamp when the update occurred.
     seq: int = 0
+    #: Sequence number assigned by :class:`EventBus`.
 
 
 class EventBus:

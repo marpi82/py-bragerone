@@ -16,14 +16,13 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",  # Google/NumPy docstrings
-    # "sphinx_autodoc_typehints",  # nice types in descriptions - temporarily disabled due to compatibility issue
+    "sphinx_autodoc_typehints",  # nice types in descriptions
     "sphinx.ext.todo",  # .. todo:: in documentation
     "sphinx.ext.viewcode",  # links to sources
     "sphinx.ext.intersphinx",  # links to external docs (optional)
     "myst_parser",  # Markdown + mdinclude (CHANGELOG.md),
-    "sphinx.ext.graphviz",
     "sphinx.ext.mathjax",
-    "sphinx_copybutton", 
+    "sphinx_copybutton",
     "sphinxcontrib.mermaid",  # mermaid diagrams
 ]
 
@@ -46,10 +45,17 @@ myst_enable_extensions = [
 # Automatic anchors for Markdown headings (easier references)
 myst_heading_anchors = 3
 
+# --- Source discovery ---
+exclude_patterns = [
+    "tests_guidelines.rst",
+    "typing.rst",
+]
+
 # --- Autodoc / typing ---
 autosummary_generate = True
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
+napoleon_use_ivar = True
 autodoc_typehints = "description"  # show types next to parameters in description
 autodoc_default_options = {
     "members": True,
@@ -59,6 +65,9 @@ autodoc_default_options = {
 # sphinx_autodoc_typehints additional (depending on extension version)
 typehints_use_rtype = False
 typehints_use_signature = True
+autodoc_type_aliases = {
+    "BragerOneApiClient": "pybragerone.api.BragerOneApiClient",
+}
 
 # --- Intersphinx (optional, useful for linking to Python docs) ---
 intersphinx_mapping = {

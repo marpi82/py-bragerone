@@ -1,7 +1,5 @@
-
-==============================
 pybragerone – Integration Notes
-==============================
+===============================
 
 **Date:** 2025-09-20  
 **Scope:** Library architecture (REST/WS, EventBus, stores), Home Assistant integration flow, debugging & ops.  
@@ -343,9 +341,8 @@ HA Entity Descriptor (example)
 .. note::
    Updated on 2025-09-21 21:44 UTC
 
-=============================
 Parsers & Glue: Integration
-=============================
+===========================
 
 This update documents the **parsers package**, the **glue layer** (menu+mappings+i18n),
 and the **Home Assistant blueprint generator**.

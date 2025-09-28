@@ -53,7 +53,7 @@ class LiveAssetCatalog:
     """Unified live access to i18n, parameter-mapping assets and module.menu."""
 
     def __init__(self, api: BragerOneApiClient) -> None:
-        """Initialize with a BragerOneApiClient instance."""
+        """Initialize with a :class:`~pybragerone.api.BragerOneApiClient` instance."""
         self._api = api
         self.resolver = IndexResolver(self._api)
 

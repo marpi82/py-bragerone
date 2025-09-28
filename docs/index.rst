@@ -3,15 +3,27 @@ Welcome to py-bragerone's documentation!
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Guides
 
-   typing
-   tests_guidelines
+   README
+   pybragerone_integration_cheatsheet
+   pybragerone_integration_notes
+   typing.md
+   tests_guidelines.md
+   WORKFLOWS
+   workflow_pr_vscode
 
-Changelog
-=========
+.. toctree::
+   :maxdepth: 2
+   :caption: API
 
-.. mdinclude:: ../CHANGELOG.md
+   api
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Project
+
+   changelog
 
 Indices and tables
 ==================

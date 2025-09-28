@@ -31,33 +31,27 @@ Highlights
 Architecture
 ------------
 
-.. graphviz::
+.. mermaid::
 
-   digraph G {
-     rankdir=LR;
-     node [shape=box, style=rounded];
-     subgraph cluster_client {
-       label="pybragerone package";
-       color=lightgrey;
-       API [label="BragerApiClient (REST)"];
-       WS  [label="RealtimeManager (Socket.IO)"];
-       GW  [label="BragerGateway"];
-       BUS [label="EventBus"];
-       PS  [label="ParamStore (light)"];
-       SS  [label="StateStore (heavy)"];
-       API -> GW [label="login, lists, prime"];
-       WS  -> GW [label="connect, subscribe"];
-       GW  -> BUS [label="ParamUpdate events"];
-       BUS -> PS;
-       BUS -> SS;
-     }
-     CLOUD [label="Brager One Cloud", shape=oval];
-     CLOUD -> API [label="/v1/*"];
-     CLOUD -> WS  [label="/socket.io (/ws)"];
-     PS -> HA [label="runtime"];
-     SS -> HA [label="config flow"];
-     HA [label="Home Assistant integration", shape=box, style="rounded,dashed"];
-   }
+   flowchart LR
+     subgraph Client["pybragerone package"]
+       API["BragerApiClient (REST)"]
+       WS["RealtimeManager (Socket.IO)"]
+       GW["BragerGateway"]
+       BUS["EventBus"]
+       PS["ParamStore (light)"]
+       SS["StateStore (heavy)"]
+       API -- "login, lists, prime" --> GW
+       WS -- "connect, subscribe" --> GW
+       GW -- "ParamUpdate events" --> BUS
+       BUS --> PS
+       BUS --> SS
+     end
+     CLOUD["Brager One Cloud"]
+     CLOUD -- "/v1/*" --> API
+     CLOUD -- "/socket.io (/ws)" --> WS
+     PS -- "runtime" --> HA["Home Assistant integration"]
+     SS -- "config flow" --> HA
 
 Version & Python
 ----------------

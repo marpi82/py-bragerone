@@ -65,20 +65,18 @@ def save_json_payload(payload: Any, path: str | Path) -> Path:
 def summarize_top_level(obj: Any) -> dict[str, Any]:
     """Return a quick summary of a top-level JSON-like object.
 
-    This function inspects the provided object and produces a simple
-    overview:
-      - For dictionaries: lists the top-level keys and counts elements.
-      - For lists: reports the number of elements.
-      - For scalar values: returns them unchanged.
+        This function inspects the provided object and produces a simple overview.
+
+        - For dictionaries: lists the first ten top-level keys and counts elements.
+        - For lists: reports the number of elements and the type of the first item.
+        - For scalar values: records the concrete type name.
 
     Args:
         obj: The JSON-like object to summarize. Typically a dict, list,
             or scalar (str, int, float, bool).
 
     Returns:
-        A dictionary with:
-          - Keys representing top-level fields or type names.
-          - Values representing counts or original scalars.
+                A dictionary describing the top-level structure.
     """
     if isinstance(obj, dict):
         return {

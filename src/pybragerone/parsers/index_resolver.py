@@ -22,7 +22,7 @@ class IndexResolver:
     """Resolve asset URLs by scanning index*.js for dynamic import maps."""
 
     def __init__(self, api: BragerOneApiClient) -> None:
-        """Initialize with a BragerOneApiClient instance."""
+        """Initialize with a :class:`~pybragerone.api.BragerOneApiClient` instance."""
         self._api = api
         self._cached: IndexMap | None = None
 

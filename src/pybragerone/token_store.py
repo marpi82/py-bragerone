@@ -168,7 +168,8 @@ class CLITokenStore:
 class HATokenStore(TokenStore):
     """Minimal example adapter for Home Assistant storage.
 
-    Expects an object with async load/save/clear; wraps sync API expected by BragerOneApiClient.
+    Expects an object with async load/save/clear; wraps sync API expected by
+    :class:`~pybragerone.api.BragerOneApiClient`.
     Replace with your concrete implementation in the HA integration.
     """
 
