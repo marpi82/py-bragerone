@@ -20,7 +20,7 @@ jobs:
           python-version: "3.13.2"
       - name: Install Poetry
         run: |
-          pipx install poetry
+          pipx install "poetry>=2.0.0"
           poetry config virtualenvs.in-project true
       - name: Enable dynamic versioning (poetry plugin)
         run: |
