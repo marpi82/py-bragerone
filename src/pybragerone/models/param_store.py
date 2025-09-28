@@ -71,7 +71,7 @@ class ParamStore(BaseModel):
     model_config = ConfigDict(frozen=False, validate_assignment=True)
 
     def init_with_api(self, api: BragerOneApiClient, *, lang: str | None = None) -> None:
-        """Preferowany sposób: spina ParamStore z ApiClient i LiveAssetCatalog."""
+        """Preferred way: connects ParamStore with ApiClient and LiveAssetCatalog."""
         self._assets = LiveAssetCatalog(api)
         self._lang = lang
 
