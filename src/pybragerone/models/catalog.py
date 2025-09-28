@@ -105,6 +105,6 @@ class LiveAssetCatalog:
         return TranslationConfig(translations=translations, default_translation=default)
 
     async def list_symbols_for_permissions(self, permissions: Iterable[str]) -> set[str]:
-        """Zwróć zbiór symboli (PARAM_* oraz inne), które są widoczne dla podanych uprawnień."""
+        """Return a set of symbols (PARAM_* and others) that are visible for the given permissions."""
         menu = await self.get_module_menu()
         return _collect_symbols_from_menu(menu, permissions)
