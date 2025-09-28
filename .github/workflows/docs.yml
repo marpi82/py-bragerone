@@ -18,10 +18,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13.2"
-      - name: Install Poetry
-        run: |
-          pipx install "poetry>=2.0.0"
-          poetry config virtualenvs.in-project true
+      - uses: snok/install-poetry@v1
+        with:
+          version: "2.2.1"
+          virtualenvs-in-project: true
       - name: Enable dynamic versioning (poetry plugin)
         run: |
           poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
