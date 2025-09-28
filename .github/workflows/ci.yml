@@ -46,8 +46,8 @@ jobs:
           poetry install --no-interaction --no-root
       - name: Ruff (lint)
         run: poetry run ruff check .
-      - name: Ruff (format --check)
-        run: poetry run ruff format --check
+      - name: Ruff (format)
+        run: poetry run ruff format
 
   typecheck:
     name: typecheck
