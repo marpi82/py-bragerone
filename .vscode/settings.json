@@ -62,4 +62,11 @@
     "tests"
   ],
   "python-envs.defaultEnvManager": "ms-python.python:poetry",
+  "python-envs.pythonProjects": [
+    {
+      "path": "",
+      "envManager": "ms-python.python:poetry",
+      "packageManager": "ms-python.python:poetry"
+    }
+  ],
 }
