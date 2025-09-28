@@ -18,15 +18,24 @@
 
   // Use Mypy daemon for faster incremental checks (requires mypy[dmypy] in venv)
   "mypy.dmypyEnabled": true,
+  "mypy.dmypyExecutable": "${workspaceFolder}/.venv/bin/dmypy",
   "mypy.runUsingActiveInterpreter": true,
 
   // ─────────────────────────────────────────────────────────────
   // Formatting & quick fixes
   // ─────────────────────────────────────────────────────────────
   // Format on save and apply "fix all" (Ruff will hook into this)
-  "editor.formatOnSave": true,
-  "editor.codeActionsOnSave": {
-    "source.fixAll": "always"
+  //"editor.formatOnSave": true,
+  //"editor.codeActionsOnSave": {
+  //  "source.fixAll": "always"
+  //},
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    },
+    "editor.defaultFormatter": "charliermarsh.ruff"
   },
 
   // ─────────────────────────────────────────────────────────────

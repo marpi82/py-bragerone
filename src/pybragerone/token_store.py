@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
+import json
+import logging
 import os
 import stat
-import json
-import contextlib
-import logging
-from pathlib import Path
-from dataclasses import dataclass
-from typing import Optional, Protocol, Any, runtime_checkable
 from collections.abc import Callable
-from pydantic import BaseModel, ConfigDict, Field
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
+
+from pydantic import BaseModel, ConfigDict, Field
 
 try:
     import keyring  # type: ignore
@@ -38,6 +39,7 @@ class Token(BaseModel):
 
     @classmethod
     def from_login_payload(cls, data: dict[str, Any]) -> Token:
+        """Create a Token instance from a login response payload."""
         exp_raw = data.get("expiresAt")
         exp_dt: datetime | None = None
         if exp_raw:
@@ -53,6 +55,7 @@ class Token(BaseModel):
         )
 
     def is_expired(self, *, leeway: int = 60) -> bool:
+        """Return True if the token is expired or will expire within `leeway` seconds."""
         if not self.expires_at:
             return False
         now = datetime.now(UTC)
@@ -63,7 +66,7 @@ class Token(BaseModel):
 class TokenStore(Protocol):
     """Abstract persistence for auth tokens."""
 
-    def load(self) -> Optional[Token]:
+    def load(self) -> Token | None:
         """Return a cached Token or None if not present."""
         ...
 
@@ -92,6 +95,7 @@ class CLITokenStore:
     service: str = "pybragerone"
 
     def _file_path(self) -> Path:
+        """Return the path to the fallback token file."""
         base = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config"))
         d = base / "pybragerone"
         d.mkdir(parents=True, exist_ok=True)
@@ -99,11 +103,13 @@ class CLITokenStore:
 
     @staticmethod
     def _write_file_secure(p: Path, content: str) -> None:
+        """Write a file with 0600 permissions, ignoring errors."""
         p.write_text(content, encoding="utf-8")
         with contextlib.suppress(Exception):
             os.chmod(p, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
 
-    def load(self) -> Optional[Token]:
+    def load(self) -> Token | None:
+        """Return a cached Token or None if not present."""
         # 1) keyring
         if _HAS_KEYRING:
             raw = keyring.get_password(
@@ -122,6 +128,7 @@ class CLITokenStore:
         return None
 
     def save(self, token: Token) -> None:
+        """Persist the Token atomically."""
         payload = json.dumps(
             {
                 "access_token": getattr(token, "access_token", None),
@@ -138,6 +145,7 @@ class CLITokenStore:
         self._write_file_secure(self._file_path(), payload)
 
     def clear(self) -> None:
+        """Remove any persisted token."""
         if _HAS_KEYRING:
             with contextlib.suppress(Exception):
                 keyring.delete_password(self.service, self.email)
@@ -146,6 +154,7 @@ class CLITokenStore:
 
     @staticmethod
     def _to_token(data: dict[str, Any]) -> Token:
+        """Convert a dict to a Token instance, ignoring errors."""
         return Token(
             access_token=data.get("access_token"),
             token_type=data.get("token_type", "bearer"),
@@ -161,16 +170,25 @@ class CLITokenStore:
 class HATokenStore(TokenStore):
     """Minimal example adapter for Home Assistant storage.
 
-    Expects an object with async load/save/clear; wraps sync API expected by ApiClient.
+    Expects an object with async load/save/clear; wraps sync API expected by BragerOneApiClient.
     Replace with your concrete implementation in the HA integration.
     """
 
     def __init__(
         self,
-        loader: Callable[[], Optional[Token]],
+        loader: Callable[[], Token | None],
         saver: Callable[[Token], None],
         clearer: Callable[[], None],
     ) -> None:
+        """Initialize with callables to load/save/clear the token.
+
+        Args:
+            loader: Callable that returns a Token or None.
+            saver: Callable that takes a Token and persists it.
+            clearer: Callable that removes any persisted token.
+
+        Returns: None
+        """
         # Callables supplied by HA layer:
         #   loader: () -> Optional[dict]
         #   saver: (dict) -> None
@@ -179,7 +197,8 @@ class HATokenStore(TokenStore):
         self._saver = saver
         self._clearer = clearer
 
-    def load(self) -> Optional[Token]:
+    def load(self) -> Token | None:
+        """Return a cached Token or None if not present."""
         data = None
         with contextlib.suppress(Exception):
             data = self._loader()
@@ -195,6 +214,7 @@ class HATokenStore(TokenStore):
         )
 
     def save(self, token: Token) -> None:
+        """Persist the Token atomically."""
         payload = {
             "access_token": getattr(token, "access_token", None),
             "token_type": getattr(token, "token_type", "bearer"),
@@ -206,5 +226,6 @@ class HATokenStore(TokenStore):
             self._saver(Token.from_login_payload(payload))
 
     def clear(self) -> None:
+        """Remove any persisted token."""
         with contextlib.suppress(Exception):
             self._clearer()

@@ -2,7 +2,6 @@
 import aiohttp
 import pytest
 from aioresponses import aioresponses
-
 from pybragerone.assets_client import AssetClient
 
 

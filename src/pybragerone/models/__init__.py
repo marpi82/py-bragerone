@@ -1,4 +1,5 @@
-# src/pybragerone/models/__init__.py
+"""Init file for models."""
+
 from .catalog import LiveAssetCatalog, TranslationConfig
 from .param_store import ParamFamilyModel, ParamStore
 

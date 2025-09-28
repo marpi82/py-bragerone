@@ -27,7 +27,7 @@ repos:
 
   # Secrets scanning with Gitleaks
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.4
+    rev: v8.24.2
     hooks:
       - id: gitleaks
         name: gitleaks (protect staged)

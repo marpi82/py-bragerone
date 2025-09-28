@@ -4,23 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import (
     Any,
-    Optional,
     Protocol,
-    Awaitable,
-    Callable,
     TypedDict,
     runtime_checkable,
 )
 
-# import socketio  # type: ignore[import-not-found]
-from socketio import AsyncClient  # type: ignore[import-not-found]
+import socketio  # type: ignore[import-untyped]
 
-# Default endpoints used by the Brager One backend.
-IO_BASE = "https://io.brager.pl"
-SOCK_PATH = "/socket.io"
-WS_NAMESPACE = "/ws"
+from .consts import IO_BASE, ONE_BASE, SOCK_PATH, WS_NAMESPACE
+from .utils import spawn
 
 log = logging.getLogger(__name__)
 sio_log = logging.getLogger(__name__ + ".sio")
@@ -75,8 +70,8 @@ class RealtimeManager:
         self,
         token: str,
         *,
-        origin: str = "https://one.brager.pl",
-        referer: str = "https://one.brager.pl/",
+        origin: str = ONE_BASE,
+        referer: str = f"{ONE_BASE}/",
         io_base: str = IO_BASE,
         socket_path: str = SOCK_PATH,
         namespace: str = WS_NAMESPACE,
@@ -105,12 +100,12 @@ class RealtimeManager:
         self._group_id: int | None = None
 
         # Configure AsyncClient with reconnection enabled.
-        self._sio: AsyncClient = AsyncClient(
+        self._sio: socketio.AsyncClient = socketio.AsyncClient(
             reconnection=True,
             reconnection_attempts=0,  # infinite
             reconnection_delay=1,
             reconnection_delay_max=10,
-            logger=sio_log,  # route socket.io logs to a sub-logger
+            logger=sio_log,  # pyright: ignore[reportArgumentType] # route socket.io logs to a sub-logger
             engineio_logger=eio_log,  # route engine.io logs to a sub-logger
         )
 
@@ -176,7 +171,7 @@ class RealtimeManager:
             try:
                 res = cb()
                 if asyncio.iscoroutine(res):
-                    asyncio.create_task(res, name="on_connected_cb")
+                    spawn(res, "on_connected_cb", log)
             except Exception:
                 log.exception("Error in on_connected callback")
 

@@ -1,3 +1,5 @@
+"""Parsers for extracting embedded JSON from compiled JS modules."""
+
 from __future__ import annotations
 
 import json
@@ -6,7 +8,7 @@ from typing import Any
 
 
 def _strip_trailing_commas(s: str) -> str:
-    # remove trailing commas before } or ]
+    """Remove trailing commas from JSON-like string."""
     return re.sub(r",\s*(?=[}\]])", "", s)
 
 def extract_embedded_json(js_text: str) -> Any:

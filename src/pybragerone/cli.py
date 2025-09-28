@@ -5,27 +5,23 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
-import json
 import logging
 import os
 import re
 import signal
-from collections.abc import Coroutine
-from typing import Any
 
-from .token_store import CLITokenStore
 from .api import BragerOneApiClient
-from .gateway import BragerGateway
+from .gateway import BragerOneGateway
 from .models.param_store import ParamStore  # heavy store with EventBus consumer
+from .token_store import CLITokenStore
+from .utils import bg_tasks, spawn
 
 log = logging.getLogger(__name__)
 CHAN_RE = re.compile(r"^([a-z])(\d+)$")
 
-IO_BASE = "https://io.brager.pl"
-ONE_BASE = "https://one.brager.pl"
-
 
 def _setup_logging(debug: bool, quiet: bool) -> None:
+    """Setup logging based on debug/quiet flags."""
     level = logging.DEBUG if debug else (logging.WARNING if quiet else logging.INFO)
     logging.basicConfig(
         level=level, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -33,6 +29,7 @@ def _setup_logging(debug: bool, quiet: bool) -> None:
 
 
 async def _prompt_select_object(api: BragerOneApiClient) -> int | None:
+    """Prompt user to select an object from the list of available ones."""
     items = await api.objects_list()
     if not items:
         log.warning(
@@ -56,10 +53,7 @@ async def _prompt_select_object(api: BragerOneApiClient) -> int | None:
 
 
 async def _prompt_select_modules(api: BragerOneApiClient, object_id: int) -> list[str]:
-    """
-    Poproś użytkownika o wybór modułów (devid/code/id) z listy zwróconej przez API.
-    Zwraca posortowaną listę unikalnych stringów (np. ["FTTCTBSLCE"]).
-    """
+    """Prompt user to select modules from the list of available ones."""
     rows = await api.modules_list(object_id=object_id)
     if not rows:
         print("Brak modułów dla wskazanego obiektu.")
@@ -105,12 +99,13 @@ async def _prompt_select_modules(api: BragerOneApiClient, object_id: int) -> lis
 
 
 async def run(args: argparse.Namespace) -> int:
+    """Run the CLI with given args."""
     _setup_logging(args.debug, args.quiet)
 
     store = CLITokenStore(args.email)
 
     # Tymczasowy klient REST do wyboru obiektu/modułów
-    api = BragerOneApiClient(base_url=IO_BASE, origin=ONE_BASE, referer=f"{ONE_BASE}/")
+    api = BragerOneApiClient()
     api.set_token_store(store)
 
     await api.ensure_auth(args.email, args.password)
@@ -123,11 +118,8 @@ async def run(args: argparse.Namespace) -> int:
 
     modules: list[str]
     if args.modules:
-        # można podać: --module FOO --module BAR lub PYBO_MODULES="FOO,BAR"
-        if isinstance(args.modules, str):
-            modules = [m for m in args.modules.split(",") if m]
-        else:
-            modules = list(args.modules)
+        # you can provide: --module FOO --module BAR or PYBO_MODULES="FOO,BAR"
+        modules = [m for m in args.modules.split(",") if m] if isinstance(args.modules, str) else list(args.modules)
     else:
         modules = await _prompt_select_modules(api, object_id)
     if not modules:
@@ -135,42 +127,22 @@ async def run(args: argparse.Namespace) -> int:
         await api.close()
         return 2
 
-    # Nie trzymamy tej sesji — Gateway ma własny cykl życia
+    # We do not keep this session - Gateway has its own lifecycle
     await api.close()
 
-    # ParamStore (ciężki) + połączenie z EventBusem gateway’a
+    # ParamStore (heavy) + connection to the gateway's EventBus
     param_store = ParamStore()
 
-    gw = BragerGateway(
+    gw = BragerOneGateway(
         email=args.email,
         password=args.password,
         object_id=object_id,
-        modules=modules,
-        io_base=IO_BASE,
-        origin=ONE_BASE,
-        referer=f"{ONE_BASE}/",
+        modules=modules
     )
 
-    # Konsument EventBusa (ParamStore)
-    bg_tasks: set[asyncio.Task[Any]] = set()
 
-    def _spawn(coro: Coroutine[Any, Any, Any], name: str) -> None:
-        t = asyncio.create_task(coro, name=name)
-        bg_tasks.add(t)
 
-        def _done(task: asyncio.Task[Any]) -> None:
-            try:
-                task.result()
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                log.exception("Background task %s failed", name)
-            finally:
-                bg_tasks.discard(task)
-
-        t.add_done_callback(_done)
-
-    _spawn(param_store.run_with_bus(gw.bus), "ParamStore.run_with_bus")
+    spawn(param_store.run_with_bus(gw.bus), "ParamStore.run_with_bus", log)
 
     try:
         # Start gateway (REST prime + WS live)
@@ -183,7 +155,7 @@ async def run(args: argparse.Namespace) -> int:
                 async for upd in gw.bus.subscribe():
                     print(f"↺ {upd.pool}.{upd.chan}{upd.idx} = {upd.value}")
 
-            _spawn(_printer(), "printer")
+            spawn(_printer(), "printer", log)
 
         print("\n▶ Nasłuch uruchomiony przez Gateway. Ctrl+C aby zakończyć.\n")
         stop = asyncio.Event()
@@ -212,6 +184,7 @@ async def run(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build argument parser."""
     p = argparse.ArgumentParser(
         prog="pybragerone", description="Brager One — diagnostyczny CLI (REST + WS)."
     )
@@ -259,6 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    """Main entrypoint for CLI."""
     parser = build_parser()
     args = parser.parse_args()
 

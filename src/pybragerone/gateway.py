@@ -1,21 +1,21 @@
 """Gateway: login → WS connect → modules.connect → listen → prime.
 
-Utrzymuje łącze WS i emituje zdarzenia ParamUpdate na EventBus. Nie trzyma
-wewnątrz „ciężkiej” logiki (mapowania itp.) — to rola ParamStore/HA.
+Maintains the WS connection and emits ParamUpdate events on the EventBus.
+Does not contain heavy logic (such as mapping) internally — this is the role of ParamStore/HA.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from asyncio import CancelledError, Event, Task, TaskGroup, create_task, gather, sleep
 from collections.abc import Awaitable, Callable, Coroutine, Iterable
-from typing import Any, cast
+from typing import Any
 
 from .api import BragerOneApiClient
+from .consts import API_BASE
 from .events import EventBus, ParamUpdate
-from .ws import RealtimeManager, EventDispatcher
+from .ws import RealtimeManager
 
 LOG = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ SnapshotCb = Callable[[dict[str, Any]], Awaitable[None] | None]
 GenericCb = Callable[[str, Any], Awaitable[None] | None]
 
 
-class BragerGateway:
+class BragerOneGateway:
     """High-level orchestrator for Brager One realtime data.
 
     Flow:
@@ -45,17 +45,12 @@ class BragerGateway:
         password: str,
         object_id: int,
         modules: Iterable[str],
-        io_base: str = "https://io.brager.pl",
-        origin: str = "https://one.brager.pl",
-        referer: str = "https://one.brager.pl/",
     ):
+        """Initialize the gateway but do not start it yet."""
         self.email = email
         self.password = password
         self.object_id = int(object_id)
         self.modules = sorted(set(modules))
-        self.io_base = io_base.rstrip("/")
-        self.origin = origin
-        self.referer = referer
 
         self.api: BragerOneApiClient | None = None
         self.ws: RealtimeManager | None = None
@@ -94,21 +89,15 @@ class BragerGateway:
             return
         self._started = True
 
-        # 1) HTTP API + login (token autoodświeżany przez klienta)
-        self.api = BragerOneApiClient(
-            base_url=self.io_base,
-            origin=self.origin,
-            referer=self.referer,
-        )
+        # 1) HTTP API + login (token automatically refreshed by the client)
+        self.api = BragerOneApiClient()
         await self.api.ensure_auth(self.email, self.password)
         token = (
             self.api._token.access_token if self.api and self.api._token else ""
         )  # pragmatic access
 
         # 2) WS connect
-        self.ws = RealtimeManager(
-            token=token or "", origin=self.origin, referer=self.referer
-        )
+        self.ws = RealtimeManager(token=token or "")
         self.ws.on_event(self._ws_dispatch)
         await self.ws.connect()
         self.ws.add_on_connected(lambda: self.resubscribe())  # in case of reconnect
@@ -117,7 +106,7 @@ class BragerGateway:
         sid_ns = self.ws.sid()
         sid_engine = self.ws.engine_sid()
         if not sid_ns:
-            raise RuntimeError("Brak namespace SID po połączeniu z WS (Socket.IO).")
+            raise RuntimeError("No namespace SID after connecting to WS (Socket.IO).")
 
         ok = await self._api_modules_connect(
             sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine
@@ -140,28 +129,30 @@ class BragerGateway:
     async def stop(self) -> None:
         """Gracefully stop the gateway: drop WS and release HTTP resources."""
         self._started = False
-        # 1) odłącz WS
+        # 1) disconnect WS
         try:
             if self.ws is not None:
                 await self.ws.disconnect()
         except asyncio.CancelledError:
-            # nie propagujemy CancelledError z etapu zamykania
+            # do not propagate CancelledError during shutdown
             pass
         except Exception:
             LOG.exception("Error while disconnecting WS")
 
-        # 2) zamknij klienta HTTP (jeśli gateway nim zarządza)
+        # 2) close the HTTP client (if the gateway manages it)
         try:
             if self.api is not None:
                 await self.api.close()
         except Exception:
             LOG.exception("Error while closing ApiClient")
 
-    async def __aenter__(self) -> BragerGateway:
+    async def __aenter__(self) -> BragerOneGateway:
+        """Async context manager enter."""
         await self.start()
         return self
 
     async def __aexit__(self, *exc: Any) -> None:
+        """Async context manager exit."""
         await self.stop()
 
     async def resubscribe(self) -> None:
@@ -189,6 +180,7 @@ class BragerGateway:
         ok_act = False
 
         async with TaskGroup() as tg:
+            """Fetch parameters and activity quantities in parallel."""
             t_params = tg.create_task(
                 self._api_modules_parameters_prime(self.modules, return_data=True),
                 name="gateway.api.modules_parameters_prime",
@@ -217,6 +209,7 @@ class BragerGateway:
         return ok_params, ok_act
 
     async def _prime_with_retry(self, tries: int = 3) -> tuple[bool, bool]:
+        """Retry prime a few times with exponential backoff."""
         delay = 0.25
         for _ in range(tries):
             okp, oka = await self._prime()
@@ -237,6 +230,7 @@ class BragerGateway:
         await _pub_all()
 
     async def ingest_activity_quantity(self, data: dict[str, Any] | None) -> None:
+        """Ingest /modules/activity/quantity prime (optional)."""
         if isinstance(data, dict):
             LOG.debug("activityQuantity: %s", data.get("activityQuantity"))
 
@@ -387,7 +381,7 @@ class BragerGateway:
         for pl in payloads:
             try:
                 st, data, _ = await self.api._req(
-                    "POST", "/v1/modules/connect", json=pl
+                    "POST", f"{API_BASE}/modules/connect", json=pl
                 )
                 LOG.debug("modules.connect try %s → %s %s", pl, st, data)
                 if st == 200:
@@ -401,7 +395,7 @@ class BragerGateway:
     ) -> tuple[int, Any | None]:
         assert self.api is not None
         pl = {"modules": list(modules)}
-        st, data, _ = await self.api._req("POST", "/v1/modules/parameters", json=pl)
+        st, data, _ = await self.api._req("POST", f"{API_BASE}/modules/parameters", json=pl)
         return st, (data if return_data else None)
 
     async def _api_modules_activity_quantity_prime(
@@ -410,6 +404,6 @@ class BragerGateway:
         assert self.api is not None
         pl = {"modules": list(modules)}
         st, data, _ = await self.api._req(
-            "POST", "/v1/modules/activity/quantity", json=pl
+            "POST", f"{API_BASE}/modules/activity/quantity", json=pl
         )
         return st, (data if return_data else None)

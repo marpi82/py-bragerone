@@ -25,6 +25,7 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx_copybutton",
     "sphinxcontrib-mermaid"
+]
 
 # --- Sources ---
 # Pozwala mieszać .rst i .md. .md użyjesz do mdinclude CHANGELOG.md
@@ -68,9 +69,7 @@ intersphinx_mapping = {
 todo_include_todos = True
 
 # --- HTML theme ---
-# "alabaster" jest ok, ale rozważ "furo" (pip install furo) – bardzo czytelny
-html_theme = "alabaster"
-# html_theme = "furo"
+html_theme = "furo" # or alabaster
 
 # --- Version resolution ---
 try:

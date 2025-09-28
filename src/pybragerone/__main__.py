@@ -1,5 +1,5 @@
-"""Module src/pybragerone/__main__.py."""
-from pybragerone.cli import main
+"""Entry point for pybragerone package."""
+
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit()

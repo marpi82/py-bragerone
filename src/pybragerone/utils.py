@@ -1,15 +1,38 @@
-"""Module src/pybragerone/utils/jsonlogs.py."""
-# utils/jsonlog.py
+"""Library utilities."""
+
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import Coroutine
 from contextlib import suppress
+from logging import Logger
 from pathlib import Path
 from typing import Any
 
+# EventBus consumer (ParamStore)
+bg_tasks: set[asyncio.Task[Any]] = set()
+
+def spawn(coro: Coroutine[Any, Any, Any], name: str, log: Logger) -> None:
+    """Spawn a background task and track it in bg_tasks set."""
+    t = asyncio.create_task(coro, name=name)
+    bg_tasks.add(t)
+
+    def _done(task: asyncio.Task[Any]) -> None:
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            log.exception("Background task %s failed", name)
+        finally:
+            bg_tasks.discard(task)
+
+    t.add_done_callback(_done)
 
 def json_preview(obj: Any, *, maxlen: int = 2000) -> str:
     """Jednolinijkowy podgląd JSON (ucięty do maxlen, bez wcięć).
+
     Nie wybucha na prymitywach.
     """
     try:
@@ -20,21 +43,24 @@ def json_preview(obj: Any, *, maxlen: int = 2000) -> str:
         s = s[:maxlen] + "…"
     return s
 
-def log_json_payload(logger, tag: str, payload: Any, *, maxlen: int = 2000) -> None:
-    """LOG.debug jednowierszowego podglądu payloadu JSON.
-    """
+
+def log_json_payload(
+    logger: Logger, tag: str, payload: Any, *, maxlen: int = 2000
+) -> None:
+    """LOG.debug jednowierszowego podglądu payloadu JSON."""
     with suppress(Exception):
-      logger.debug("%s → %s", tag, json_preview(payload, maxlen=maxlen))
+        logger.debug("%s → %s", tag, json_preview(payload, maxlen=maxlen))
+
 
 def save_json_payload(payload: Any, path: str | Path) -> Path:
-    """Zapisz JSON do pliku (UTF-8), zwróć ścieżkę.
-    """
+    """Zapisz JSON do pliku (UTF-8), zwróć ścieżkę."""
     p = Path(path)
     p.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     return p
+
 
 def summarize_top_level(obj: Any) -> dict[str, Any]:
     """Return a quick summary of a top-level JSON-like object.

@@ -1,10 +1,9 @@
-import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from aioresponses import aioresponses
 
-from pybragerone.api import BragerOneApiClient, Token, ApiError
+from pybragerone.api import BragerOneApiClient, Token
 
 API = "https://io.brager.pl"
 
@@ -17,7 +16,7 @@ async def test_initial_login_and_validate():
             "accessToken": "T1",
             "refreshToken": "R1",
             "type": "bearer",
-            "expiresAt": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+            "expiresAt": (datetime.now(UTC) + timedelta(minutes=10)).isoformat(),
         })
         m.get(f"{API}/v1/user", payload={"ok": True})
 
@@ -31,7 +30,7 @@ async def test_initial_login_and_validate():
 async def test_proactive_relogin_when_expiring():
     expiring = Token(
         access_token="OLD",
-        expires_at=datetime.now(timezone.utc) + timedelta(seconds=10),
+        expires_at=datetime.now(UTC) + timedelta(seconds=10),
     )
 
     loaded = [False]
@@ -47,7 +46,7 @@ async def test_proactive_relogin_when_expiring():
         m.post(f"{API}/v1/auth/user", payload={
             "accessToken": "NEW",
             "type": "bearer",
-            "expiresAt": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+            "expiresAt": (datetime.now(UTC) + timedelta(minutes=10)).isoformat(),
         })
 
         tok = await client.ensure_auth()
@@ -64,7 +63,7 @@ async def test_reactive_refresh_on_401_retry_once():
         m.post(f"{API}/v1/auth/user", payload={
             "accessToken": "T1",
             "type": "bearer",
-            "expiresAt": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+            "expiresAt": (datetime.now(UTC) + timedelta(minutes=1)).isoformat(),
         })
         tok = await client.ensure_auth()
         assert tok.access_token == "T1"
@@ -73,7 +72,7 @@ async def test_reactive_refresh_on_401_retry_once():
         m.post(f"{API}/v1/auth/user", payload={
             "accessToken": "T2",
             "type": "bearer",
-            "expiresAt": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+            "expiresAt": (datetime.now(UTC) + timedelta(minutes=10)).isoformat(),
         })
         m.get(f"{API}/v1/user", payload={"ok": True})
 

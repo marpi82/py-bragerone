@@ -1,12 +1,17 @@
+"""Parameter store with asset-aware helpers for Brager One."""
+
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from ..events import EventBus
 from ..api import BragerOneApiClient
-from .catalog import LiveAssetCatalog, TranslationConfig
+from ..events import EventBus
+from ..models.catalog import LiveAssetCatalog
 
+if TYPE_CHECKING:
+    from ..models.catalog import TranslationConfig  # noqa: F401
 
 class ParamFamilyModel(BaseModel):
     """One parameter 'family' (e.g., P4 index 1) collecting channels: v/s/u/n/x..."""
@@ -18,21 +23,26 @@ class ParamFamilyModel(BaseModel):
     model_config = ConfigDict(frozen=False, validate_assignment=True)
 
     def set(self, chan: str, value: Any) -> None:
+        """Set raw channel value."""
         self.channels[chan] = value
 
     def get(self, chan: str, default: Any = None) -> Any:
+        """Get raw channel value, or default if not present."""
         return self.channels.get(chan, default)
 
     @property
     def value(self) -> Any:
+        """Raw value channel, if any."""
         return self.channels.get("v")
 
     @property
     def unit_code(self) -> Any:
+        """Raw unit code channel, if any."""
         return self.channels.get("u")
 
     @property
     def status_raw(self) -> Any:
+        """Raw status channel, if any."""
         return self.channels.get("s")
 
 
@@ -81,9 +91,11 @@ class ParamStore(BaseModel):
     # ---------- basic updates ----------
 
     def _fid(self, pool: str, idx: int) -> str:
+        """Unique family ID for (pool, idx), e.g. 'P4:1'."""
         return f"{pool}:{idx}"
 
     def upsert(self, key: str, value: Any) -> ParamFamilyModel | None:
+        """Upsert a single parameter value by full key, e.g. 'P4.v1'."""
         try:
             pool, rest = key.split(".", 1)
             chan = rest[0]
@@ -99,9 +111,11 @@ class ParamStore(BaseModel):
         return fam
 
     def get_family(self, pool: str, idx: int) -> ParamFamilyModel | None:
+        """Get ParamFamilyModel by (pool, idx) address, or None if not found."""
         return self.families.get(self._fid(pool, idx))
 
     def flatten(self) -> dict[str, Any]:
+        """Flattened view of all parameters as { 'P4.v1': value, ... }."""
         return {
             f"{fam.pool}.{ch}{fam.idx}": val
             for fam in self.families.values()
@@ -111,10 +125,12 @@ class ParamStore(BaseModel):
     # ---------- assets lifecycle ----------
 
     def init_assets(self, *, api: BragerOneApiClient, lang: str | None = None) -> None:
+        """Alternative way to init assets if not using init_with_api()."""
         self._assets = LiveAssetCatalog(api)
         self._lang = lang
 
     async def _ensure_lang(self) -> str:
+        """Ensure self._lang is set, loading from assets if needed."""
         if self._lang:
             return self._lang
         if not self._assets:
@@ -128,6 +144,7 @@ class ParamStore(BaseModel):
     async def get_i18n(
         self, namespace: str, *, lang: str | None = None
     ) -> dict[str, Any]:
+        """Get i18n mapping for a given namespace (cached)."""
         if not self._assets:
             return {}
         lang_eff = lang or await self._ensure_lang()
@@ -137,12 +154,15 @@ class ParamStore(BaseModel):
         return self._cache_i18n[key]
 
     async def get_i18n_parameters(self, *, lang: str | None = None) -> dict[str, Any]:
+        """Get i18n parameters mapping (cached)."""
         return await self.get_i18n("parameters", lang=lang)
 
     async def get_i18n_units(self, *, lang: str | None = None) -> dict[str, Any]:
+        """Get i18n units mapping (cached)."""
         return await self.get_i18n("units", lang=lang)
 
     async def get_param_mapping(self, symbol: str) -> dict[str, Any]:
+        """Get parameter mapping by symbolic name (cached)."""
         if not self._assets:
             return {}
         if symbol not in self._cache_mapping:
@@ -150,6 +170,7 @@ class ParamStore(BaseModel):
         return self._cache_mapping[symbol]
 
     async def get_module_menu(self) -> dict[str, Any]:
+        """Get full module menu structure (cached)."""
         if not self._assets:
             return {}
         if self._cache_menu is None:
@@ -159,11 +180,13 @@ class ParamStore(BaseModel):
     # ---------- i18n helpers ----------
 
     async def resolve_label(self, symbol: str) -> str | None:
+        """Resolve parameter symbol (e.g. 'PARAM_0') to a human-readable label."""
         params = await self.get_i18n_parameters()
         val = params.get(symbol)
         return val if isinstance(val, str) else None
 
     async def resolve_unit(self, unit_code: Any) -> str | None:
+        """Resolve unit code (int or str) to a human-readable unit string, e.g. '°C'."""
         if unit_code is None:
             return None
         units = await self.get_i18n_units()
@@ -209,6 +232,7 @@ class ParamStore(BaseModel):
     async def describe(
         self, pool: str, idx: int, *, param_symbol: str | None = None
     ) -> tuple[str | None, str | None, Any]:
+        """Describe a parameter by its (pool, idx) address, optionally with known symbol."""
         fam = self.get_family(pool, idx)
         if fam is None:
             return None, None, None
@@ -217,6 +241,7 @@ class ParamStore(BaseModel):
         return label, unit, fam.value
 
     async def describe_symbol(self, symbol: str) -> dict[str, Any]:
+        """Describe a parameter by its symbolic name (e.g. PARAM_0)."""
         mapping = await self.get_param_mapping(symbol)
         addr = self._mapping_primary_address(mapping) if mapping else None
         label = await self.resolve_label(symbol)
@@ -255,6 +280,7 @@ class ParamStore(BaseModel):
     # ---------- debug / dump ----------
 
     def debug_dump(self) -> None:
+        """Debug dump of the ParamStore state."""
         import json
         import logging
 

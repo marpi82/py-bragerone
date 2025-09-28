@@ -4,20 +4,21 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
+from collections.abc import Callable
 from types import SimpleNamespace
+from typing import Any
+
 from aiohttp import (
     ClientSession,
     TraceConfig,
-    TraceRequestStartParams,
     TraceRequestEndParams,
+    TraceRequestStartParams,
 )
 
-from collections.abc import Callable
-from typing import Any, Optional
-
+from .consts import API_BASE, ONE_BASE
 from .token_store import Token, TokenStore
-
 
 LOG = logging.getLogger("pybragerone.api")
 LOG_HTTP = logging.getLogger("pybragerone.http")
@@ -27,9 +28,22 @@ LOG_HTTP = logging.getLogger("pybragerone.http")
 
 
 class ApiError(RuntimeError):
-    """Raised for non-2xx HTTP responses."""
+    """Raised for non-2xx HTTP responses.
+
+    Attributes:
+        status: HTTP status code.
+        data: Response data.
+        headers: Response headers.
+    """
 
     def __init__(self, status: int, data: Any, headers: dict[str, str] | None = None):
+        """Initialize the API error.
+
+        Args:
+            status: HTTP status code.
+            data: Response data.
+            headers: Response headers dictionary.
+        """
         super().__init__(f"HTTP {status}: {data!r}")
         self.status = status
         self.data = data
@@ -40,11 +54,14 @@ CredProvider = Callable[[], tuple[str, str]]  # -> (email, password)
 
 
 class BragerOneApiClient:
-    """HTTP API client with idempotent login and auto-refresh."""
+    """HTTP API client with idempotent login and auto-refresh.
+
+    Provides a comprehensive HTTP client for the BragerOne API with automatic
+    token management, authentication, and retry logic.
+    """
 
     def __init__(
         self,
-        base_url: str,
         *,
         token_store: TokenStore | None = None,
         enable_http_trace: bool = False,
@@ -52,10 +69,17 @@ class BragerOneApiClient:
         creds_provider: CredProvider | None = None,
         validate_on_start: bool = True,
         refresh_leeway: int = 90,
-        origin: str = "https://one.brager.pl",
-        referer: str = "https://one.brager.pl/",
     ):
-        self._base = base_url.rstrip("/")
+        """Initialize the API client.
+
+        Args:
+            token_store: Optional token storage for persistence.
+            enable_http_trace: Whether to enable HTTP request/response tracing.
+            redact_secrets: Whether to redact sensitive information in logs.
+            creds_provider: Function that provides email/password credentials.
+            validate_on_start: Whether to validate tokens on first use.
+            refresh_leeway: Time in seconds before token expiry to refresh.
+        """
         self._session: ClientSession | None = None
 
         self._enable_http_trace = enable_http_trace
@@ -66,9 +90,9 @@ class BragerOneApiClient:
 
         self._token: Token | None = None
         self._validated: bool = False
-        self._token_loader: Optional[Callable[[], Optional[Token]]] = None
-        self._token_saver: Optional[Callable[[Token], None]] = None
-        self._token_clearer: Optional[Callable[[], None]] = None  # NEW
+        self._token_loader: Callable[[], Token | None] | None = None
+        self._token_saver: Callable[[Token], None] | None = None
+        self._token_clearer: Callable[[], None] | None = None  # NEW
         self._skip_load_once = False
 
         if token_store is not None:
@@ -76,14 +100,17 @@ class BragerOneApiClient:
 
         self._creds_provider = creds_provider
         self._auth_lock = asyncio.Lock()
+        self._connect_variant: dict[str, Any] | None = None
 
-        self._origin = origin
-        self._referer = referer
 
     # ----------------- session helpers -----------------
 
     def set_token_store(self, store: TokenStore | None) -> None:
-        """Wire token persistence to a store that exposes load/save/clear."""
+        """Wire token persistence to a store that exposes load/save/clear.
+
+        Args:
+            store: Token storage instance or None to disable persistence.
+        """
         if store is None:
             self._token_loader = None
             self._token_saver = None
@@ -94,6 +121,11 @@ class BragerOneApiClient:
         self._token_clearer = store.clear
 
     async def _ensure_session(self) -> ClientSession:
+        """Ensure we have a ClientSession (with optional HTTP tracing).
+
+        Returns:
+            An active aiohttp ClientSession with configured headers and tracing.
+        """
         if self._session and not self._session.closed:
             return self._session
 
@@ -147,15 +179,19 @@ class BragerOneApiClient:
 
         self._session = ClientSession(
             headers={
-                "Accept": "application/json",
-                "Origin": self._origin,
-                "Referer": self._referer,
+                "Origin": ONE_BASE,
+                "Referer": f"{ONE_BASE}/",
             },
             trace_configs=trace_configs,
         )
         return self._session
 
     async def close(self) -> None:
+        """Close the underlying HTTP session.
+
+        This should be called when the client is no longer needed to properly
+        release resources.
+        """
         if self._session and not self._session.closed:
             await self._session.close()
 
@@ -172,24 +208,39 @@ class BragerOneApiClient:
         auth: bool = True,
         _retry: bool = True,
     ) -> tuple[int, Any, dict[str, str]]:
+        """Perform an HTTP request with optional auth and auto-refresh on 401.
+
+        Args:
+            method: HTTP method (GET, POST, etc.).
+            path: Request path/URL.
+            json: JSON payload for the request body.
+            data: Form data for the request body.
+            headers: Additional HTTP headers.
+            auth: Whether to include authentication headers.
+            _retry: Whether to retry on authentication failure.
+
+        Returns:
+            Tuple of (status_code, response_data, response_headers).
+
+        Raises:
+            ApiError: For HTTP error responses (4xx/5xx).
+        """
         sess = await self._ensure_session()
-        url = f"{self._base}/{path.lstrip('/')}"
         hdrs = dict(headers or {})
+        hdrs["Accept"] = "application/json"
         if auth:
             if not self._token or not self._token.access_token:
                 raise ApiError(401, {"message": "No token"}, {})
             hdrs["Authorization"] = f"Bearer {self._token.access_token}"
 
         async with sess.request(
-            method, url, json=json, data=data, headers=hdrs
+            method, path, json=json, data=data, headers=hdrs
         ) as resp:
             status = resp.status
             ctype = resp.headers.get("Content-Type", "")
             try:
                 body = await (
-                    resp.json(content_type=None)
-                    if "application/json" in ctype
-                    else resp.text()
+                    resp.json(content_type=None) if "application/json" in ctype else resp.text()
                 )
             except Exception:
                 body = None
@@ -222,15 +273,26 @@ class BragerOneApiClient:
     async def ensure_auth(
         self, email: str | None = None, password: str | None = None
     ) -> Token:
-        """Zapewnij ważny token: użyj cache + walidacji, a w razie braku/wygaszenia — zaloguj."""
+        """Ensure valid token: use cache + validation, and if missing/expired — login.
+
+        Args:
+            email: User email for authentication.
+            password: User password for authentication.
+
+        Returns:
+            Valid authentication token.
+
+        Raises:
+            ApiError: If authentication fails or credentials are missing.
+        """
         async with self._auth_lock:
-            # 1) wczytaj z persistence (jeśli dostarczono loader)
+            # 1) load from persistence (if loader provided)
             if self._token is None and self._token_loader and not self._skip_load_once:
                 with contextlib.suppress(Exception):
                     self._token = self._token_loader()
             self._skip_load_once = False
 
-            # 2) jeśli mamy token i nie wygasa — miękka walidacja (opcjonalna) i koniec
+            # 2) if we have token and it's not expired — soft validation (optional) and done
             if self._token and not self._token.is_expired(leeway=self._refresh_leeway):
                 if self._validate_on_start and not self._validated:
                     try:
@@ -245,7 +307,7 @@ class BragerOneApiClient:
                 else:
                     return self._token
 
-            # 3) nie mamy tokenu → potrzebne poświadczenia
+            # 3) no token → need credentials
             em = email
             pw = password
             if (not em or not pw) and self._creds_provider:
@@ -253,30 +315,50 @@ class BragerOneApiClient:
             if not em or not pw:
                 raise ApiError(401, {"message": "No credentials for (re)login"}, {})
 
-            # 4) klasyczny login
+            # 4) classic login
             return await self._post_login(em, pw)
 
     async def _do_login_request(
         self, email: str, password: str
     ) -> tuple[int, dict[str, Any] | None, dict[str, Any]]:
+        """Execute login request to the authentication endpoint.
+
+        Args:
+            email: User email address.
+            password: User password.
+
+        Returns:
+            Tuple of (status, response_data, headers).
+        """
         return await self._req(
             "POST",
-            "/v1/auth/user",
+            f"{API_BASE}/auth/user",
             json={"email": email, "password": password},
             auth=False,
         )
 
     async def _post_login(self, email: str, password: str) -> Token:
-        """Zaloguj przez /v1/auth/user. Na 500/ER_DUP_ENTRY spróbuj krótki backoff i ponów."""
+        """Login via /v1/auth/user. On 500/ER_DUP_ENTRY try short backoff and retry.
+
+        Args:
+            email: User email address.
+            password: User password.
+
+        Returns:
+            Authentication token.
+
+        Raises:
+            ApiError: If login fails after all retries.
+        """
         import random
 
-        delays = [0.2, 0.4, 0.8]  # sekundy
+        delays = [0.2, 0.4, 0.8]  # seconds
 
-        for i, d in enumerate(delays + [None]):  # ostatnia próba bez sleepa po
+        for _, d in enumerate([*delays, None]):  # last attempt without sleep after
             try:
-                status, data, _ = await self._do_login_request(email, password)
+                _, data, _ = await self._do_login_request(email, password)
             except ApiError as e:
-                # tylko 500/duplikat próbujemy ponowić
+                # only retry 500/duplicate errors
                 if (
                     e.status == 500
                     and self._is_duplicate_token_error(e.data)
@@ -301,15 +383,20 @@ class BragerOneApiClient:
                     self._token_saver(tok)
             return tok
 
-        # tu praktycznie nie trafisz, ale dla pewności:
+        # practically won't reach here, but for safety:
         raise ApiError(500, {"message": "Login failed after retries"}, {})
 
     async def _try_validate(self) -> None:
+        """Try to validate the current token by making a test request.
+
+        Raises:
+            ApiError: If validation fails or token is invalid.
+        """
         if not self._token:
             raise ApiError(401, {"message": "No token"}, {})
         try:
             status, _data, _hdrs = await self._req(
-                "GET", "/v1/user", auth=True, _retry=False
+                "GET", f"{API_BASE}/user", auth=True, _retry=False
             )
             if status == 200:
                 self._validated = True
@@ -324,15 +411,25 @@ class BragerOneApiClient:
 
     @staticmethod
     def _is_duplicate_token_error(data: Any) -> bool:
+        """Check if error response indicates a duplicate token error.
+
+        Args:
+            data: Error response data.
+
+        Returns:
+            True if this is a duplicate token error.
+        """
         if not isinstance(data, dict):
             return False
         msg = str(data.get("message", "")).lower()
         return "duplicate entry" in msg or "er_dup_entry" in msg
 
+    # ----------------- API endpoints -----------------
+
     async def revoke(self) -> None:
         """Server-side logout + lokalny cleanup tokenu i persistence."""
         try:
-            await self._req("POST", "/v1/auth/revoke", auth=True)
+            await self._req("POST", f"{API_BASE}/auth/revoke", auth=True)
         except ApiError as e:
             if e.status not in (401, 403, 404):
                 raise
@@ -347,11 +444,47 @@ class BragerOneApiClient:
             # „nie ładuj od razu” na kolejnym ensure_auth w tym samym cyklu
             self._skip_load_once = True
 
-    # ----------------- API endpoints -----------------
+    # -------- USER --------
+
+    async def get_user(self) -> dict[str, Any]:
+        """Get current user information.
+
+        Returns:
+            User information dictionary.
+
+        Raises:
+            ApiError: If the request fails.
+        """
+        status, data, _ = await self._req("GET", f"{API_BASE}/user")
+        if status != 200:
+            raise ApiError(status, data)
+        if not isinstance(data, dict):
+            raise ApiError(500, {"message": "Unexpected user payload"}, {})
+        return data
+
+    async def get_user_permissions(self) -> list[str]:
+        """Get current user permissions.
+
+        Returns:
+            List of permission strings.
+
+        Raises:
+            ApiError: If the request fails.
+        """
+        status, data, _ = await self._req("GET", f"{API_BASE}/user/permissions")
+        if status != 200:
+            raise ApiError(status, data)
+        return data if isinstance(data, list) else []
+
+    # -------- OBJECTS --------
 
     async def objects_list(self) -> list[dict[str, Any]]:
-        """GET /v1/objects → listę obiektów (z tolerancją na różne kształty)."""
-        st, data, _ = await self._req("GET", "/v1/objects")
+        """GET /v1/objects → list of objects (with tolerance for different shapes).
+
+        Returns:
+            List of object dictionaries.
+        """
+        st, data, _ = await self._req("GET", f"{API_BASE}/objects")
         if st != 200:
             return []
         if isinstance(data, dict) and isinstance(data.get("data"), list):
@@ -362,9 +495,52 @@ class BragerOneApiClient:
             return list(data)
         return []
 
+    async def get_object(self, object_id: int) -> dict[str, Any]:
+        """Get object by ID.
+
+        Args:
+            object_id: The object identifier.
+
+        Returns:
+            Object information dictionary.
+
+        Raises:
+            ApiError: If the request fails.
+        """
+        status, data, _ = await self._req("GET", f"{API_BASE}/objects/{object_id}")
+        if status != 200:
+            raise ApiError(status, data)
+        return data if isinstance(data, dict) else {}
+
+    async def get_object_permissions(self, object_id: int) -> list[str]:
+        """Get object permissions by ID.
+
+        Args:
+            object_id: The object identifier.
+
+        Returns:
+            List of permission strings for the object.
+
+        Raises:
+            ApiError: If the request fails.
+        """
+        status, data, _ = await self._req("GET", f"{API_BASE}/objects/{object_id}/permissions")
+        if status != 200:
+            raise ApiError(status, data)
+        return data if isinstance(data, list) else []
+
+    # -------- MODULES --------
+
     async def modules_list(self, object_id: int) -> list[dict[str, Any]]:
-        """GET /v1/modules?page=1&limit=999&group_id=<object_id> → listę modułów."""
-        path = f"/v1/modules?page=1&limit=999&group_id={object_id}"
+        """GET /v1/modules?page=1&limit=999&group_id=<object_id> → list of modules.
+
+        Args:
+            object_id: The object/group identifier.
+
+        Returns:
+            List of module dictionaries.
+        """
+        path = f"{API_BASE}/modules?page=1&limit=999&group_id={object_id}"
         st, data, _ = await self._req("GET", path)
         if st != 200:
             return []
@@ -374,3 +550,153 @@ class BragerOneApiClient:
         if isinstance(data, list):
             return list(data)
         return []
+
+    async def get_module_card(self, code: str) -> dict[str, Any]:
+        """Get module card information by code.
+
+        Args:
+            code: The module code identifier.
+
+        Returns:
+            Module card information dictionary.
+
+        Raises:
+            ApiError: If the request fails.
+        """
+        status, data, _ = await self._req("GET", f"{API_BASE}/modules/{code}/card")
+        if status != 200:
+            raise ApiError(status, data)
+        return data if isinstance(data, dict) else {}
+
+    async def modules_connect(
+        self,
+        wsid_ns: str,
+        modules: list[str],
+        group_id: int | None = None,
+        engine_sid: str | None = None,
+    ) -> bool:
+        """Connect to modules via WebSocket.
+
+        Args:
+            wsid_ns: WebSocket namespace ID.
+            modules: List of module codes to connect to.
+            group_id: Optional group/object ID.
+            engine_sid: Optional engine session ID as fallback.
+
+        Returns:
+            True if connection successful, False otherwise.
+        """
+        if not modules:
+            return True
+        modules = sorted(set(modules))
+        headers = {
+            "Content-Type": "application/json;charset=UTF-8",
+            "X-Requested-With": "XMLHttpRequest",
+        }
+
+        def bodies(pref_sid: str) -> list[dict[str, Any]]:
+            """Generate candidate request bodies for module connection."""
+            arr = [
+                {"wsid": pref_sid, "modules": modules},
+                {"sid":  pref_sid, "modules": modules},
+            ]
+            if group_id is not None:
+                arr.append({"wsid": pref_sid, "group_id": str(group_id), "modules": modules})
+            return arr
+
+        candidates: list[dict[str, Any]] = []
+        if self._connect_variant:
+            candidates.append(self._connect_variant)
+
+        # 1) namespace SID
+        if wsid_ns:
+            for body in bodies(wsid_ns):
+                candidates.append(body)
+        # 2) engine SID (fallback)
+        if engine_sid:
+            for body in bodies(engine_sid):
+                candidates.append(body)
+
+        # de-dupe
+        seen: set[str] = set()
+        uniq: list[dict[str, Any]] = []
+        for c in candidates:
+            # hash payload "shape" as stable JSON
+            key = json.dumps(c, sort_keys=True, separators=(",", ":"))
+            if key not in seen:
+                seen.add(key)
+                uniq.append(c)
+
+        for body in uniq:
+            status, data, _ = await self._req("POST", "/modules/connect", json=body, headers=headers)
+            LOG.debug("modules.connect try %s → %s %s", body, status, data if isinstance(data, dict) else "")
+            if status in (200, 204):
+                self._connect_variant = body
+                return True
+        return False
+
+    async def modules_parameters_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        """Prime modules parameters.
+
+        Args:
+            modules: List of module codes.
+            return_data: Whether to return response data or just success status.
+
+        Returns:
+            Tuple of (status, data) if return_data=True, otherwise boolean success.
+        """
+        payload = {"modules": modules}
+        status, data, _ = await self._req("POST", f"{API_BASE}/modules/parameters", json=payload)
+        # log_json_payload(LOG, "prime.modules.parameters", summarize_top_level(data))
+        return (status, data) if return_data else (status in (200, 204))
+
+
+    async def modules_activity_quantity_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        """Prime modules activity quantity.
+
+        Args:
+            modules: List of module codes.
+            return_data: Whether to return response data or just success status.
+
+        Returns:
+            Tuple of (status, data) if return_data=True, otherwise boolean success.
+        """
+        payload = {"modules": modules}
+        status, data, _ = await self._req("POST", f"{API_BASE}/modules/activity/quantity", json=payload)
+        # log_json_payload(LOG, "prime.modules.activity.quantity", summarize_top_level(data))
+        return (status, data) if return_data else (status in (200, 204))
+
+    # -------- ASSETS --------
+
+    async def fetch_text_one(self, path: str) -> tuple[int, str]:
+        """Fetch text content from ONE_BASE.
+
+        Args:
+            path: The path to fetch from.
+
+        Returns:
+            Tuple of (status_code, text_content).
+        """
+        status, data, _ = await self._req("GET", f"{ONE_BASE}/{path}")
+        return (status, data) if isinstance(data, str) else (status, "")
+
+    async def fetch_json_one(self, path: str) -> tuple[int, dict[str, Any] | list[Any] | None]:
+        """Fetch JSON content from ONE_BASE.
+
+        Args:
+            path: The path to fetch from.
+
+        Returns:
+            Tuple of (status_code, json_data).
+
+        Note:
+            Assets are JS, so JSON extraction should be done *catalog-side*, not here.
+            This method is here only for symmetry; you may not use it.
+        """
+        st, txt = await self.fetch_text_one(path)
+        # NOTE: assets are JS, so JSON extraction should be *catalog-side*, not here
+        # This method is here only for symmetry; you may not use it.
+        try:
+            return st, json.loads(txt)
+        except Exception:
+            return st, None
