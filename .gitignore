@@ -88,4 +88,6 @@ pybragerone.*
 /*.log
 /src/bragerone/
 /docs/[a-z]*.md
+/docs/_build/
+/docs/generated/
 /examples/

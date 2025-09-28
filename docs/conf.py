@@ -16,7 +16,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",  # Google/NumPy docstrings
-    "sphinx_autodoc_typehints",  # nice types in descriptions
+    # "sphinx_autodoc_typehints",  # nice types in descriptions - temporarily disabled due to compatibility issue
     "sphinx.ext.todo",  # .. todo:: in documentation
     "sphinx.ext.viewcode",  # links to sources
     "sphinx.ext.intersphinx",  # links to external docs (optional)
@@ -62,7 +62,7 @@ typehints_use_signature = True
 
 # --- Intersphinx (optional, useful for linking to Python docs) ---
 intersphinx_mapping = {
-    "python": ("https://docs.python.org/3", {}),
+    "python": ("https://docs.python.org/3", None),
 }
 
 # --- TODOs ---
