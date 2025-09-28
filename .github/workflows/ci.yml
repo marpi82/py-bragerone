@@ -35,6 +35,10 @@ jobs:
           python-version: "3.13"
       - name: Install Poetry
         run: pipx install poetry
+      - name: Enable dynamic versioning plugin
+        run: |
+          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
+          poetry dynamic-versioning enable
       - name: Cache virtualenv
         uses: actions/cache@v4
         with:
@@ -61,6 +65,10 @@ jobs:
           python-version: "3.13"
       - name: Install Poetry
         run: pipx install poetry
+      - name: Enable dynamic versioning plugin
+        run: |
+          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
+          poetry dynamic-versioning enable
       - name: Cache virtualenv
         uses: actions/cache@v4
         with:
@@ -89,6 +97,10 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install Poetry
         run: pipx install poetry
+      - name: Enable dynamic versioning plugin
+        run: |
+          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
+          poetry dynamic-versioning enable
       - name: Cache virtualenv
         uses: actions/cache@v4
         with:
@@ -113,6 +125,10 @@ jobs:
           python-version: "3.13"
       - name: Install Poetry
         run: pipx install poetry
+      - name: Enable dynamic versioning plugin
+        run: |
+          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
+          poetry dynamic-versioning enable
       - name: Cache virtualenv
         uses: actions/cache@v4
         with:
@@ -145,6 +161,10 @@ jobs:
           python-version: "3.13"
       - name: Install Poetry
         run: pipx install poetry
+      - name: Enable dynamic versioning plugin
+        run: |
+          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
+          poetry dynamic-versioning enable
       - name: Cache virtualenv
         uses: actions/cache@v4
         with:
@@ -160,5 +180,5 @@ jobs:
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.python-version }}
+          name: dist-build
           path: dist/*
