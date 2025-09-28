@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 
 # --- Paths ---
-# Pozwala na autodoc z paczki w ../src/pybragerone
+# Allows autodoc from package in ../src/pybragerone
 sys.path.insert(0, os.path.abspath("../src"))
 
 # --- Project info ---
@@ -16,25 +16,25 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",  # Google/NumPy docstrings
-    "sphinx_autodoc_typehints",  # ładne typy w opisach
-    "sphinx.ext.todo",  # .. todo:: w dokumentacji
-    "sphinx.ext.viewcode",  # linki do źródeł
-    "sphinx.ext.intersphinx",  # linki do zewnętrznych docs (opcjonalnie)
+    "sphinx_autodoc_typehints",  # nice types in descriptions
+    "sphinx.ext.todo",  # .. todo:: in documentation
+    "sphinx.ext.viewcode",  # links to sources
+    "sphinx.ext.intersphinx",  # links to external docs (optional)
     "myst_parser",  # Markdown + mdinclude (CHANGELOG.md),
     "sphinx.ext.graphviz",
     "sphinx.ext.mathjax",
-    "sphinx_copybutton",
-    "sphinxcontrib-mermaid",
+    "sphinx_copybutton", 
+    "sphinxcontrib.mermaid",  # mermaid diagrams
 ]
 
 # --- Sources ---
-# Pozwala mieszać .rst i .md. .md użyjesz do mdinclude CHANGELOG.md
+# Allows mixing .rst and .md. Use .md for mdinclude CHANGELOG.md
 source_suffix = {
     ".rst": "restructuredtext",
     ".md": "markdown",
 }
 
-# Rozszerzenia MyST (jeśli kiedyś będziesz chciał użyć ::: fences itp.)
+# MyST extensions (if you want to use ::: fences etc.)
 myst_enable_extensions = [
     "colon_fence",
     "deflist",
@@ -43,24 +43,24 @@ myst_enable_extensions = [
     "substitution",
     "tasklist",
 ]
-# Automatyczne anchors dla nagłówków Markdown (łatwiejsze odsyłacze)
+# Automatic anchors for Markdown headings (easier references)
 myst_heading_anchors = 3
 
 # --- Autodoc / typing ---
 autosummary_generate = True
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
-autodoc_typehints = "description"  # pokazuj typy obok parametrów w opisie
+autodoc_typehints = "description"  # show types next to parameters in description
 autodoc_default_options = {
     "members": True,
     "undoc-members": False,
     "show-inheritance": True,
 }
-# sphinx_autodoc_typehints dodatkowe (zależnie od wersji rozszerzenia)
+# sphinx_autodoc_typehints additional (depending on extension version)
 typehints_use_rtype = False
 typehints_use_signature = True
 
-# --- Intersphinx (opcjonalnie, przydatne do linkowania do Pythona) ---
+# --- Intersphinx (optional, useful for linking to Python docs) ---
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", {}),
 }
@@ -89,8 +89,8 @@ except Exception:
 version = release
 
 # --- Misc quality knobs ---
-# Ustaw na True, jeśli chcesz, by Sphinx krzyczał na brakujące referencje (czasem zbyt surowe)
+# Set to True if you want Sphinx to complain about missing references (sometimes too strict)
 # nitpicky = True
 
-# Jeśli chcesz, aby literalinclude łapał pliki z tests/, zadbaj by ścieżki były względne
-# względem katalogu docs/ (np. ../../tests/test_live_api.py) – masz to już w plikach .rst
+# If you want literalinclude to catch files from tests/, make sure paths are relative
+# to the docs/ directory (e.g. ../../tests/test_live_api.py) – you already have this in .rst files

@@ -2612,4 +2612,4 @@ cli = ["aiofiles", "rich", "typer"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13.0,<4"
-content-hash = "20eeed4b695c670e67ead1fedc43ed9f08bbc658a46c2ae548cb87e51ed63a2c"
+content-hash = "5f7b51e2ff185b20ff51ec311ead08a61d88e412572411c779e66c50ae0fc0ba"
