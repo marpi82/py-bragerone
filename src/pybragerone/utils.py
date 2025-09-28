@@ -33,9 +33,9 @@ def spawn(coro: Coroutine[Any, Any, Any], name: str, log: Logger) -> None:
 
 
 def json_preview(obj: Any, *, maxlen: int = 2000) -> str:
-    """Jednolinijkowy podgląd JSON (ucięty do maxlen, bez wcięć).
+    """Return a single-line JSON preview trimmed to ``maxlen`` with no indent.
 
-    Nie wybucha na prymitywach.
+    Handles primitive values without raising.
     """
     try:
         s = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
@@ -47,13 +47,13 @@ def json_preview(obj: Any, *, maxlen: int = 2000) -> str:
 
 
 def log_json_payload(logger: Logger, tag: str, payload: Any, *, maxlen: int = 2000) -> None:
-    """Log a single-line preview of JSON payload."""
+    """Log a one-line JSON payload preview at the DEBUG level."""
     with suppress(Exception):
         logger.debug("%s → %s", tag, json_preview(payload, maxlen=maxlen))
 
 
 def save_json_payload(payload: Any, path: str | Path) -> Path:
-    """Save JSON to file (UTF-8), return path."""
+    """Write the JSON payload to a UTF-8 file and return the path."""
     p = Path(path)
     p.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
@@ -65,18 +65,18 @@ def save_json_payload(payload: Any, path: str | Path) -> Path:
 def summarize_top_level(obj: Any) -> dict[str, Any]:
     """Return a quick summary of a top-level JSON-like object.
 
-        This function inspects the provided object and produces a simple overview.
+    This function inspects the provided object and produces a simple overview.
 
-        - For dictionaries: lists the first ten top-level keys and counts elements.
-        - For lists: reports the number of elements and the type of the first item.
-        - For scalar values: records the concrete type name.
+    - For dictionaries: lists the first ten top-level keys and counts elements.
+    - For lists: reports the number of elements and the type of the first item.
+    - For scalar values: records the concrete type name.
 
     Args:
         obj: The JSON-like object to summarize. Typically a dict, list,
             or scalar (str, int, float, bool).
 
     Returns:
-                A dictionary describing the top-level structure.
+        A dictionary describing the top-level structure.
     """
     if isinstance(obj, dict):
         return {
