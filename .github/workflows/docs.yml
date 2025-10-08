@@ -47,14 +47,14 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.VERSION }}
         run: |
-          git fetch origin gh-pages:gh-pages || true
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          git fetch origin gh-pages || true
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             STABLE="${GITHUB_REF_NAME#v}"
             echo "Deploying stable docs: ${STABLE}"
             poetry run mike deploy --push --update-aliases "${STABLE}" latest
           else
             echo "Deploying dev docs (${VERSION})"
-            poetry run mike deploy --push --force dev
+            poetry run mike deploy --push --update-aliases "${VERSION}" dev
           fi
       - name: Set default docs version (first time only)
         if: ${{ github.ref == 'refs/heads/main' }}
