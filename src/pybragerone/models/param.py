@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from ..api import BragerOneApiClient
-from ..events import EventBus
-from ..models.catalog import LiveAssetCatalog
+from ..api.client import BragerOneApiClient
+from .catalog import LiveAssetsCatalog, MenuResult
+from .events import EventBus
 
 if TYPE_CHECKING:
-    from ..models.catalog import TranslationConfig  # noqa: F401
+    from .catalog import TranslationConfig  # noqa: F401
 
 
 class ParamFamilyModel(BaseModel):
@@ -61,7 +61,7 @@ class ParamStore(BaseModel):
     families: dict[str, ParamFamilyModel] = Field(default_factory=dict)
 
     # Live assets and caches
-    _assets = PrivateAttr(default=None)  # type: LiveAssetCatalog | None
+    _assets = PrivateAttr(default=None)  # type: LiveAssetsCatalog | None
     _lang = PrivateAttr(default=None)  # type: str | None
     _lang_cfg = PrivateAttr(default=None)  # type: TranslationConfig | None
     _cache_i18n = PrivateAttr(default_factory=dict)  # type: dict[tuple[str, str], dict[str, Any]]
@@ -72,7 +72,7 @@ class ParamStore(BaseModel):
 
     def init_with_api(self, api: BragerOneApiClient, *, lang: str | None = None) -> None:
         """Preferred way: connects ParamStore with ApiClient and LiveAssetCatalog."""
-        self._assets = LiveAssetCatalog(api)
+        self._assets = LiveAssetsCatalog(api)
         self._lang = lang
 
     async def run_with_bus(self, bus: EventBus) -> None:
@@ -117,7 +117,7 @@ class ParamStore(BaseModel):
 
     def init_assets(self, *, api: BragerOneApiClient, lang: str | None = None) -> None:
         """Alternative way to init assets if not using init_with_api()."""
-        self._assets = LiveAssetCatalog(api)
+        self._assets = LiveAssetsCatalog(api)
         self._lang = lang
 
     async def _ensure_lang(self) -> str:
@@ -158,7 +158,7 @@ class ParamStore(BaseModel):
             self._cache_mapping[symbol] = await self._assets.get_param_mapping(symbol)
         return self._cache_mapping[symbol]
 
-    async def get_module_menu(self) -> dict[str, Any]:
+    async def get_module_menu(self) -> MenuResult:
         """Get full module menu structure (cached)."""
         if not self._assets:
             return {}

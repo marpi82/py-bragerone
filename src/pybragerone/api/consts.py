@@ -1,4 +1,4 @@
-"""Constants for pybragerone."""
+"""Constants for pybragerone api."""
 
 IO_BASE = "https://io.brager.pl"
 API_VERSION = "v1"

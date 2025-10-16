@@ -12,10 +12,8 @@ from asyncio import CancelledError, Event, Task, TaskGroup, create_task, gather,
 from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from typing import Any
 
-from .api import BragerOneApiClient
-from .consts import API_BASE
-from .events import EventBus, ParamUpdate
-from .ws import RealtimeManager
+from .api import API_BASE, BragerOneApiClient, RealtimeManager
+from .models.events import EventBus, ParamUpdate
 
 LOG = logging.getLogger(__name__)
 

@@ -14,8 +14,8 @@ from typing import (
 
 import socketio  # type: ignore[import-untyped]
 
+from ..utils import spawn
 from .consts import IO_BASE, ONE_BASE, SOCK_PATH, WS_NAMESPACE
-from .utils import spawn
 
 log = logging.getLogger(__name__)
 sio_log = logging.getLogger(__name__ + ".sio")

@@ -1,0 +1,23 @@
+{
+  "name": "py-bragerone (py3.13 + poetry)",
+  "runArgs": ["--hostname", "devcontainer"],
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "..",
+    "args": {
+      "POETRY_VERSION": ">=2.0.1",
+      "PDV_VERSION": ">=1.4.0"
+    }
+  },
+  "remoteUser": "root",
+  "updateRemoteUserUID": false,
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+
+  "mounts": [
+    "type=volume,source=devc-poetry-cache,target=/root/.cache/pypoetry",
+    "type=volume,source=devc-pip-cache,target=/root/.cache/pip"
+  ],
+
+  "postCreateCommand": ".devcontainer/post-create.sh"
+}

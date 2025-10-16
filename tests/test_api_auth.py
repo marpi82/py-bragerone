@@ -6,7 +6,7 @@ import pytest
 from aioresponses import aioresponses
 
 from pybragerone.api import BragerOneApiClient
-from pybragerone.token_store import Token
+from pybragerone.models import Token
 
 API = "https://io.brager.pl"
 TEST_EMAIL = "a@b"

@@ -6,19 +6,20 @@ import asyncio
 import contextlib
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from types import SimpleNamespace
 from typing import Any
 
 from aiohttp import (
     ClientSession,
+    ClientTimeout,
     TraceConfig,
     TraceRequestEndParams,
     TraceRequestStartParams,
 )
 
+from ..models.token import Token, TokenStore
 from .consts import API_BASE, ONE_BASE
-from .token_store import Token, TokenStore
 
 LOG = logging.getLogger("pybragerone.api")
 LOG_HTTP = logging.getLogger("pybragerone.http")
@@ -50,6 +51,69 @@ class ApiError(RuntimeError):
         self.headers = headers or {}
 
 
+class HttpCache:
+    """Simple HTTP cache using ETag/Last-Modified headers with in-memory body storage.
+
+    This cache implementation stores response bodies along with their cache headers
+    to enable efficient HTTP caching with proper conditional request handling.
+    """
+
+    def __init__(self) -> None:
+        """Initialize an empty HTTP cache.
+
+        Creates an empty cache store that maps URLs to tuples containing
+        ETag, Last-Modified, and response body data.
+        """
+        self._store: dict[str, tuple[str | None, str | None, bytes]] = {}
+
+    def headers_for(self, url: str) -> dict[str, str]:
+        """Generate conditional request headers for cached URL.
+
+        Returns appropriate If-None-Match and If-Modified-Since headers
+        based on cached ETag and Last-Modified values for the given URL.
+
+        Args:
+            url: The URL to generate headers for.
+
+        Returns:
+            Dictionary of conditional headers to include in the request.
+        """
+        etag, last_mod, _ = self._store.get(url, (None, None, b""))
+        headers = {}
+        if etag:
+            headers["If-None-Match"] = etag
+        if last_mod:
+            headers["If-Modified-Since"] = last_mod
+        return headers
+
+    def update(self, url: str, headers: Mapping[str, str], body: bytes) -> None:
+        """Update cache entry with response data.
+
+        Stores the response body along with ETag and Last-Modified headers
+        for the given URL to enable future conditional requests.
+
+        Args:
+            url: The URL being cached.
+            headers: Response headers containing cache information.
+            body: The response body to cache.
+        """
+        etag = headers.get("ETag")
+        last_mod = headers.get("Last-Modified")
+        self._store[url] = (etag, last_mod, body)
+
+    def get_body(self, url: str) -> bytes | None:
+        """Retrieve cached response body for URL.
+
+        Args:
+            url: The URL to retrieve the cached body for.
+
+        Returns:
+            Cached response body as bytes, or None if not cached.
+        """
+        val = self._store.get(url)
+        return val[2] if val else None
+
+
 CredProvider = Callable[[], tuple[str, str]]  # -> (email, password)
 
 
@@ -69,6 +133,8 @@ class BragerOneApiClient:
         creds_provider: CredProvider | None = None,
         validate_on_start: bool = True,
         refresh_leeway: int = 90,
+        timeout: float = 8.0,
+        concurrency: int = 4,
     ):
         """Initialize the API client.
 
@@ -79,6 +145,8 @@ class BragerOneApiClient:
             creds_provider: Function that provides email/password credentials.
             validate_on_start: Whether to validate tokens on first use.
             refresh_leeway: Time in seconds before token expiry to refresh.
+            timeout: Request timeout in seconds.
+            concurrency: Maximum number of concurrent requests.
         """
         self._session: ClientSession | None = None
 
@@ -101,6 +169,10 @@ class BragerOneApiClient:
         self._creds_provider = creds_provider
         self._auth_lock = asyncio.Lock()
         self._connect_variant: dict[str, Any] | None = None
+
+        self._cache = HttpCache()
+        self._timeout = timeout
+        self._sem = asyncio.Semaphore(concurrency)
 
     # ----------------- session helpers -----------------
 
@@ -230,7 +302,9 @@ class BragerOneApiClient:
                 raise ApiError(401, {"message": "No token"}, {})
             hdrs["Authorization"] = f"Bearer {self._token.access_token}"
 
-        async with sess.request(method, path, json=json, data=data, headers=hdrs) as resp:
+        async with sess.request(
+            method, path, json=json, data=data, headers=hdrs, timeout=ClientTimeout(total=self._timeout)
+        ) as resp:
             status = resp.status
             ctype = resp.headers.get("Content-Type", "")
             try:
@@ -428,7 +502,7 @@ class BragerOneApiClient:
             if self._token_clearer:
                 with contextlib.suppress(Exception):
                     self._token_clearer()
-            # „nie ładuj od razu” na kolejnym ensure_auth w tym samym cyklu
+            # "don't load immediately" on the next ensure_auth in the same cycle
             self._skip_load_once = True
 
     # -------- USER --------
@@ -531,7 +605,7 @@ class BragerOneApiClient:
         st, data, _ = await self._req("GET", path)
         if st != 200:
             return []
-        # zwykle jest {data:[...]} lub po prostu lista
+        # usually it's {data:[...]} or just a list
         if isinstance(data, dict) and isinstance(data.get("data"), list):
             return list(data["data"])
         if isinstance(data, list):
@@ -686,3 +760,42 @@ class BragerOneApiClient:
             return st, json.loads(txt)
         except Exception:
             return st, None
+
+    async def get_bytes(self, url: str) -> bytes:
+        """Get raw bytes from URL with caching (ETag/Last-Modified).
+
+        Args:
+            url: The URL to fetch.
+
+        Returns:
+            The raw bytes of the response.
+
+        Raises:
+            ApiError: If the request fails.
+
+        Note:
+            This method uses an in-memory cache to store ETag and Last-Modified headers
+            to optimize subsequent requests to the same URL.
+        """
+        sess = await self._ensure_session()
+        headers = self._cache.headers_for(url)
+        async with self._sem:
+            LOG.debug("HTTP GET %s", url)
+            try:
+                async with sess.get(url, headers=headers, timeout=ClientTimeout(total=self._timeout)) as r:
+                    if r.status == 304:
+                        body = self._cache.get_body(url)
+                        if body is None:
+                            # 304 without previous body - fetch full content
+                            async with sess.get(url, timeout=ClientTimeout(total=self._timeout)) as r2:
+                                r2.raise_for_status()
+                                body = await r2.read()
+                                self._cache.update(url, r2.headers, body)
+                        return body
+                    r.raise_for_status()
+                    body = await r.read()
+                    self._cache.update(url, r.headers, body)
+                    return body
+            except Exception as e:
+                LOG.warning("HTTP error for %s: %s", url, e)
+                raise

@@ -12,8 +12,7 @@ import signal
 
 from .api import BragerOneApiClient
 from .gateway import BragerOneGateway
-from .models.param_store import ParamStore  # heavy store with EventBus consumer
-from .token_store import CLITokenStore
+from .models import CLITokenStore, ParamStore
 from .utils import bg_tasks, spawn
 
 log = logging.getLogger(__name__)
@@ -66,7 +65,7 @@ async def _prompt_select_modules(api: BragerOneApiClient, object_id: int) -> lis
     while True:
         sel = input("Wybór: ").strip()
         if sel == "*":
-            # wszystkie
+            # all
             all = {
                 str(m.get("devid") or m.get("code") or m.get("id"))
                 for m in rows
@@ -100,7 +99,7 @@ async def run(args: argparse.Namespace) -> int:
 
     store = CLITokenStore(args.email)
 
-    # Tymczasowy klient REST do wyboru obiektu/modułów
+    # Temporary REST client for object/modules selection
     api = BragerOneApiClient()
     api.set_token_store(store)
 
@@ -137,7 +136,7 @@ async def run(args: argparse.Namespace) -> int:
         # Start gateway (REST prime + WS live)
         await gw.start()
 
-        # Prosty „drukarz” zdarzeń (jeśli nie prosimy o raw-ws/no-diff)
+        # Simple event "printer" (if not requesting raw-ws/no-diff)
         if not args.raw_ws and not args.no_diff:
 
             async def _printer() -> None:
@@ -155,18 +154,18 @@ async def run(args: argparse.Namespace) -> int:
         try:
             await stop.wait()
         finally:
-            # zamknij gateway dopiero przy wyjściu
+            # close gateway only on exit
             await gw.stop()
             await api.revoke()
             log.info("Autch revoked on exit...")
-            # posprzątaj taski
+            # clean up tasks
             for t in list(bg_tasks):
                 t.cancel()
             with contextlib.suppress(Exception):
                 await asyncio.gather(*bg_tasks, return_exceptions=True)
 
     finally:
-        # a tu (zewnętrznie) zamknij klienta HTTP
+        # and here (externally) close HTTP client
         await api.close()
 
     return 0
@@ -175,7 +174,7 @@ async def run(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     """Build argument parser."""
     p = argparse.ArgumentParser(prog="pybragerone", description="Brager One — diagnostyczny CLI (REST + WS).")
-    # env-first: jeśli brak w CLI, weź z otoczenia (łatwo debugować w VSCode)
+    # env-first: if not in CLI, take from environment (easy to debug in VSCode)
     p.add_argument(
         "--email",
         default=os.environ.get("PYBO_EMAIL"),
@@ -217,12 +216,12 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    # PYBO_MODULES=FOO,BAR → skonwertuj do listy jeśli nie użyto --module
+    # PYBO_MODULES=FOO,BAR → convert to list if --module was not used
     if isinstance(args.modules, str):
         args.modules = [m for m in args.modules.split(",") if m]
 
     if not args.email or not args.password:
-        raise SystemExit("Brak poświadczeń: ustaw PYBO_EMAIL/PYBO_PASSWORD lub przekaż --email/--password.")
+        raise SystemExit("Missing credentials: set PYBO_EMAIL/PYBO_PASSWORD or pass --email/--password.")
 
     try:
         code = asyncio.run(run(args))
