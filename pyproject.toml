@@ -11,8 +11,7 @@ dynamic = [ # version is managed by poetry-dynamic-versioning
   "version",
   "readme",
 ]
-license = "MIT"
-license-files = ["LICENSE"] # PEP 621 way to declare license file
+license = { text = "MIT" }
 requires-python = ">=3.13.0,<4"
 keywords = [
   "home",
@@ -30,6 +29,8 @@ dependencies = [
   "python-socketio[asyncio_client]>=5.11.4,<6.0.0",
   "pydantic>=2.10.6,<3.0.0",
   "typing-extensions>=4.12.2,<5.0.0",
+  "tree-sitter>=0.21.3",
+  "tree-sitter-javascript>=0.21.1"
 ]
 
 [project.urls]
@@ -46,13 +47,6 @@ pybragerone-parsers = "pybragerone.cli_extras.parsers:main"
 
 [project.optional-dependencies]
 cli = ["typer>=0.12.5", "rich>=13.9", "aiofiles>=24.1"]
-ha = ["homeassistant>=2025.2.0"]
-all = [
-  "typer>=0.12.5",
-  "rich>=13.9",
-  "aiofiles>=24.1",
-  "homeassistant>=2025.2.0",
-]
 
 [tool.poetry]
 requires-poetry = ">=2.0.0"
@@ -63,12 +57,14 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3 :: Only",
   "Operating System :: OS Independent",
+  "Intended Audience :: Developers",
   "Topic :: Home Automation",
+  "Typing :: Typed"
 ]
 
 # -------- Developer groups (local only, not published to PyPI) --------
-version = "0.0.0" # placeholder needed by Poetry
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.37.0"
