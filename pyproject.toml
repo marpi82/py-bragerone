@@ -50,7 +50,6 @@ cli = ["typer>=0.12.5", "rich>=13.9", "aiofiles>=24.1"]
 
 [tool.poetry]
 requires-poetry = ">=2.0.0"
-version = "0.0.0" # placeholder needed by Poetry
 readme = ["README.rst", "docs/README.rst"]
 packages = [{ include = "pybragerone", from = "src" }]
 include = ["src/pybragerone/py.typed"]
@@ -66,6 +65,7 @@ classifiers = [
 ]
 
 # -------- Developer groups (local only, not published to PyPI) --------
+version = "0.0.0" # placeholder needed by Poetry
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.37.0"
