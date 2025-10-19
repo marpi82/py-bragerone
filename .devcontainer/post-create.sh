@@ -17,7 +17,19 @@ fi
 # (ignore errors to allow re-running the script)
 echo "⚙️ Configuring Poetry and installing dependencies..."
 poetry config virtualenvs.in-project true || true
-python -m poetry install --all-extras --with dev,test,docs -n || true
+
+# Try poetry install, if it fails with lock file error, regenerate lock and retry
+if ! poetry install --all-extras --with dev,test,docs -n 2>&1; then
+    echo "⚠️ Poetry install failed, checking if lock file needs updating..."
+    if poetry install --all-extras --with dev,test,docs -n 2>&1 | grep -q "poetry.lock was last generated"; then
+        echo "🔄 Regenerating poetry.lock file..."
+        poetry lock
+        echo "🔄 Retrying poetry install..."
+        poetry install --all-extras --with dev,test,docs -n
+    else
+        echo "❌ Poetry install failed for unknown reason, continuing anyway..."
+    fi
+fi
 
 # 🔍 Versions
 python -V
