@@ -15,7 +15,7 @@ from typing import (
 import socketio  # type: ignore[import-untyped]
 
 from ..utils import spawn
-from .consts import IO_BASE, ONE_BASE, SOCK_PATH, WS_NAMESPACE
+from .constants import IO_BASE, ONE_BASE, SOCK_PATH, WS_NAMESPACE
 
 log = logging.getLogger(__name__)
 sio_log = logging.getLogger(__name__ + ".sio")
@@ -60,7 +60,7 @@ class RealtimeManager:
 
     Notes:
         - Authentication is provided **only** via HTTP headers (Bearer token).
-        - We always connect to the ``/ws`` namespace.
+        - We always connect to the `:data:`~.constants.WS_NAMESPACE`` namespace.
         - We listen to: ``snapshot`` and the various ``*:parameters:change`` events.
         - Subscriptions are emitted in a few payload variants (``modules`` /
           ``devids``) and optionally include ``group_id``.
@@ -80,11 +80,11 @@ class RealtimeManager:
 
         Args:
             token: Bearer token used for the initial Socket.IO HTTP upgrade.
-            origin: HTTP ``Origin`` header value.
-            referer: HTTP ``Referer`` header value.
-            io_base: Base URL of the Engine.IO/Socket.IO server.
-            socket_path: Socket.IO path on the server (default ``/socket.io``).
-            namespace: The namespace to join (default ``/ws``).
+            origin: HTTP ``Origin`` header value (default: :data:`~.constants.ONE_BASE`).
+            referer: HTTP ``Referer`` header value (default: :data:`~.constants.ONE_BASE` + ``/``).
+            io_base: Base URL of the Engine.IO/Socket.IO server (default: :data:`~.constants.IO_BASE`).
+            socket_path: Socket.IO path on the server (default: :data:`~.constants.SOCK_PATH`).
+            namespace: The namespace to join (default: :data:`~.constants.WS_NAMESPACE`).
         """
         self._token = token
         self._origin = origin

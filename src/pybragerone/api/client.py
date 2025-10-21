@@ -19,7 +19,22 @@ from aiohttp import (
 )
 
 from ..models.token import Token, TokenStore
-from .consts import API_BASE, ONE_BASE
+from .constants import ONE_BASE
+from .endpoints import (
+    auth_revoke_url,
+    auth_user_url,
+    module_card_url,
+    modules_activity_quantity_url,
+    modules_connect_url,
+    modules_parameters_url,
+    modules_url,
+    object_permissions_url,
+    object_url,
+    objects_url,
+    system_version_url,
+    user_permissions_url,
+    user_url,
+)
 
 LOG = logging.getLogger("pybragerone.api")
 LOG_HTTP = logging.getLogger("pybragerone.http")
@@ -335,7 +350,23 @@ class BragerOneApiClient:
 
             return status, body, dict(resp.headers)
 
-    # ----------------- auth -----------------
+    # -------- SYSTEM --------
+
+    async def get_system_version(self) -> dict[str, Any]:
+        """Get system version information.
+
+        Returns:
+            System version information dictionary.
+
+        Raises:
+            ApiError: If the request fails.
+        """
+        status, data, _ = await self._req("GET", system_version_url(), auth=False)
+        if status != 200:
+            raise ApiError(status, data)
+        return data if isinstance(data, dict) else {}
+
+    # ----------------- AUTH -----------------
 
     async def ensure_auth(self, email: str | None = None, password: str | None = None) -> Token:
         """Ensure valid token: use cache + validation, and if missing/expired — login.
@@ -395,7 +426,7 @@ class BragerOneApiClient:
         """
         return await self._req(
             "POST",
-            f"{API_BASE}/auth/user",
+            auth_user_url(),
             json={"email": email, "password": password},
             auth=False,
         )
@@ -454,7 +485,7 @@ class BragerOneApiClient:
         if not self._token:
             raise ApiError(401, {"message": "No token"}, {})
         try:
-            status, _data, _hdrs = await self._req("GET", f"{API_BASE}/user", auth=True, _retry=False)
+            status, _data, _hdrs = await self._req("GET", user_url(), auth=True, _retry=False)
             if status == 200:
                 self._validated = True
                 return
@@ -481,8 +512,6 @@ class BragerOneApiClient:
         msg = str(data.get("message", "")).lower()
         return "duplicate entry" in msg or "er_dup_entry" in msg
 
-    # ----------------- API endpoints -----------------
-
     async def revoke(self) -> None:
         """Server-side logout + local cleanup of token and persistence.
 
@@ -490,7 +519,7 @@ class BragerOneApiClient:
         regardless of server response.
         """
         try:
-            await self._req("POST", f"{API_BASE}/auth/revoke", auth=True)
+            await self._req("POST", auth_revoke_url(), auth=True)
         except ApiError as e:
             if e.status not in (401, 403, 404):
                 raise
@@ -516,7 +545,7 @@ class BragerOneApiClient:
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", f"{API_BASE}/user")
+        status, data, _ = await self._req("GET", user_url())
         if status != 200:
             raise ApiError(status, data)
         if not isinstance(data, dict):
@@ -532,7 +561,7 @@ class BragerOneApiClient:
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", f"{API_BASE}/user/permissions")
+        status, data, _ = await self._req("GET", user_permissions_url())
         if status != 200:
             raise ApiError(status, data)
         return data if isinstance(data, list) else []
@@ -545,7 +574,7 @@ class BragerOneApiClient:
         Returns:
             List of object dictionaries.
         """
-        st, data, _ = await self._req("GET", f"{API_BASE}/objects")
+        st, data, _ = await self._req("GET", objects_url())
         if st != 200:
             return []
         if isinstance(data, dict) and isinstance(data.get("data"), list):
@@ -568,7 +597,7 @@ class BragerOneApiClient:
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", f"{API_BASE}/objects/{object_id}")
+        status, data, _ = await self._req("GET", object_url(object_id))
         if status != 200:
             raise ApiError(status, data)
         return data if isinstance(data, dict) else {}
@@ -585,7 +614,7 @@ class BragerOneApiClient:
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", f"{API_BASE}/objects/{object_id}/permissions")
+        status, data, _ = await self._req("GET", object_permissions_url(object_id))
         if status != 200:
             raise ApiError(status, data)
         return data if isinstance(data, list) else []
@@ -601,8 +630,7 @@ class BragerOneApiClient:
         Returns:
             List of module dictionaries.
         """
-        path = f"{API_BASE}/modules?page=1&limit=999&group_id={object_id}"
-        st, data, _ = await self._req("GET", path)
+        st, data, _ = await self._req("GET", modules_url(object_id))
         if st != 200:
             return []
         # usually it's {data:[...]} or just a list
@@ -624,7 +652,7 @@ class BragerOneApiClient:
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", f"{API_BASE}/modules/{code}/card")
+        status, data, _ = await self._req("GET", module_card_url(code))
         if status != 200:
             raise ApiError(status, data)
         return data if isinstance(data, dict) else {}
@@ -689,7 +717,7 @@ class BragerOneApiClient:
                 uniq.append(c)
 
         for body in uniq:
-            status, data, _ = await self._req("POST", "/modules/connect", json=body, headers=headers)
+            status, data, _ = await self._req("POST", modules_connect_url(), json=body, headers=headers)
             LOG.debug("modules.connect try %s → %s %s", body, status, data if isinstance(data, dict) else "")
             if status in (200, 204):
                 self._connect_variant = body
@@ -707,7 +735,7 @@ class BragerOneApiClient:
             Tuple of (status, data) if return_data=True, otherwise boolean success.
         """
         payload = {"modules": modules}
-        status, data, _ = await self._req("POST", f"{API_BASE}/modules/parameters", json=payload)
+        status, data, _ = await self._req("POST", modules_parameters_url(), json=payload)
         # log_json_payload(LOG, "prime.modules.parameters", summarize_top_level(data))
         return (status, data) if return_data else (status in (200, 204))
 
@@ -722,7 +750,7 @@ class BragerOneApiClient:
             Tuple of (status, data) if return_data=True, otherwise boolean success.
         """
         payload = {"modules": modules}
-        status, data, _ = await self._req("POST", f"{API_BASE}/modules/activity/quantity", json=payload)
+        status, data, _ = await self._req("POST", modules_activity_quantity_url(), json=payload)
         # log_json_payload(LOG, "prime.modules.activity.quantity", summarize_top_level(data))
         return (status, data) if return_data else (status in (200, 204))
 
