@@ -382,6 +382,7 @@ class LiveAssetsCatalog:
         self._ts = _TS()
         self._idx = AssetIndex()
         self._log = logger or logging.getLogger(__name__)
+        self._last_index_url: str | None = None
 
     # ---------- lifecycle ----------
 
@@ -403,6 +404,7 @@ class LiveAssetsCatalog:
         - inline_param_candidates: list of (start,end) large objects in index that look like param-maps
         """
         code = await self._api.get_bytes(index_url)
+        self._last_index_url = index_url  # Store for i18n URL construction
         self._idx = self._build_asset_index_from_index_js(index_url, code)
         self._log.info(
             "INDEX: assets=%d basenames=%d menus=%d inline_param_candidates=%d",
@@ -829,16 +831,123 @@ class LiveAssetsCatalog:
     async def get_i18n(self, lang: str, namespace: str) -> dict[str, Any]:
         """Get i18n mapping for a given language and namespace.
 
+        Parses the index file for dynamic language imports in the format:
+        "../../resources/languages/{lang}/{namespace}.json":()=>d(()=>import("./file-hash.js"),[]).then(e=>e.default)
+
+        Then fetches and parses the corresponding asset file.
+
         Args:
             lang: Language code (e.g., 'en', 'pl').
             namespace: Namespace (e.g., 'parameters', 'units').
 
         Returns:
-            Dictionary with translation mappings.
+            Dictionary with translation mappings, or empty dict if not found.
         """
-        # TODO: Implement actual i18n loading from assets
-        # This is a placeholder that returns empty dict
-        return {}
+        if not self._idx.index_bytes:
+            self._log.warning("No index data available for i18n lookup")
+            return {}
+
+        try:
+            # Find the asset for this specific language/namespace combination
+            asset_ref = self._find_i18n_asset(lang, namespace)
+            if not asset_ref:
+                self._log.debug("No i18n asset found for %s/%s", lang, namespace)
+                return {}
+
+            # Fetch and parse the i18n file
+            code = await self._api.get_bytes(asset_ref.url)
+            translations = self._parse_i18n_from_js(code)
+
+            self._log.debug("Loaded i18n %s/%s: %d keys", lang, namespace, len(translations))
+            return translations
+
+        except Exception as e:
+            self._log.warning("Failed to load i18n %s/%s: %s", lang, namespace, e)
+            return {}
+
+    def _find_i18n_asset(self, lang: str, namespace: str) -> AssetRef | None:
+        """Find i18n asset for given language and namespace.
+
+        Looks for patterns in index like:
+        "../../resources/languages/{lang}/{namespace}.json":()=>d(()=>import("./file-hash.js"),[])
+
+        Args:
+            lang: Language code.
+            namespace: Namespace (e.g., 'parameters', 'units').
+
+        Returns:
+            AssetRef for the i18n file or None if not found.
+        """
+        if not self._idx.index_bytes:
+            return None
+
+        index_text = self._idx.index_bytes.decode("utf-8", errors="replace")
+
+        # Pattern to match: "../../resources/languages/{lang}/{namespace}.json":()=>d(()=>import("./filename-hash.js")
+        # We need to extract the import file path and hash
+        import_pattern = re.compile(
+            rf'["\']\.\.\/\.\.\/resources\/languages\/{re.escape(lang)}\/{re.escape(namespace)}\.json["\']'
+            r':\s*\(\)\s*=>\s*\w+\s*\(\s*\(\)\s*=>\s*import\s*\(\s*["\']\.\/([^"\']+)-([A-Za-z0-9_]+)\.js["\']'
+        )
+
+        match = import_pattern.search(index_text)
+        if not match:
+            self._log.debug("No i18n asset pattern match for %s/%s. Pattern: %s", lang, namespace, import_pattern.pattern)
+            return None
+
+        file_base = match.group(1)  # e.g., "parameters"
+        file_hash = match.group(2)  # e.g., "BNvCCsxi"
+
+        # Construct the full asset filename and URL
+        asset_filename = f"{file_base}-{file_hash}.js"
+
+        # Look up the asset in our index by basename
+        # The basename should match the file_base (e.g., "parameters")
+        asset_ref = self._idx.find_asset_for_basename(file_base)
+        if asset_ref and asset_ref.hash == file_hash:
+            return asset_ref
+
+        # Fallback: construct URL based on index URL pattern
+        # This assumes the i18n files are in the same directory as the index
+        if hasattr(self, "_last_index_url") and self._last_index_url:
+            from urllib.parse import urljoin
+
+            asset_url = urljoin(self._last_index_url, asset_filename)
+            return AssetRef(url=asset_url, base=file_base, hash=file_hash)
+
+        return None
+
+    def _parse_i18n_from_js(self, code: bytes) -> dict[str, Any]:
+        """Parse i18n translations from a JavaScript module.
+
+        Expected format:
+        export default { "key1": "value1", "key2": "value2", ... }
+
+        Args:
+            code: JavaScript source code bytes.
+
+        Returns:
+            Dictionary of translations.
+        """
+        try:
+            tree = self._ts.parse(code)
+            root = _find_export_root(code, tree.root_node)
+
+            if root is None:
+                return {}
+
+            # Convert AST to Python dict
+            translations = _object_to_python(code, root)
+
+            if isinstance(translations, dict):
+                return translations
+            else:
+                self._log.warning("i18n export is not an object: %s", type(translations))
+                return {}
+
+        except Exception as e:
+            self._log.warning("Failed to parse i18n JavaScript: %s", e)
+            return {}
 
     def _parse_language_config_from_js(self, js_bytes: bytes) -> TranslationConfig | None:
         """Parse language configuration from JavaScript code using tree-sitter.
