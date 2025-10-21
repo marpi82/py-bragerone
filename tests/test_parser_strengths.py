@@ -9,9 +9,11 @@ class MockApiClient:
     """Mock API client for testing."""
 
     def __init__(self, js_content: str):
+        """Initialize mock API with given JS content."""
         self.js_content = js_content
 
     async def get_bytes(self, url: str) -> bytes:
+        """Return JS content as bytes."""
         return self.js_content.encode("utf-8")
 
 
@@ -77,7 +79,7 @@ class TestParserStrengths:
         function initializeApplication() {
             var userSettings = { theme: 'dark' };
             var serverConfig = { timeout: 5000 };
-            
+
             // Language configuration buried in the middle
             window.appLanguages = {
                 translations: [
@@ -89,11 +91,11 @@ class TestParserStrengths:
                 version: '2.0',
                 lastUpdated: new Date()
             };
-            
+
             var otherStuff = { irrelevant: true };
             return { userSettings, serverConfig };
         }
-        
+
         // More unrelated code
         var API_ENDPOINTS = {
             users: '/api/users',
@@ -149,7 +151,7 @@ class TestParserStrengths:
         js_content = """var HL = {
             translations: [
                 { id: 'pl', flag: 'pl' },           // ✅ valid
-                { id: 'en', flag: 'gb' },           // ✅ valid  
+                { id: 'en', flag: 'gb' },           // ✅ valid
                 { id: 'de', flag: 'de' },           // ✅ valid
                 { notId: 'broken', notFlag: 'x' }   // ❌ invalid but only 25%
             ],
@@ -172,10 +174,10 @@ class TestParserStrengths:
         production_like_js = """
         // Production BragerOne-style index file
         !function(e,t){"object"==typeof exports&&"undefined"!=typeof module?module.exports=t():"function"==typeof define&&define.amd?define(t):(e=e||self).MyApp=t()}(this,(function(){"use strict";
-        
+
         var otherMinifiedStuff=function(){return 42};
-        
-        // Language configuration in production style  
+
+        // Language configuration in production style
         var HL = {
             translations: [
                 { id: "PL", flag: "pl", variants: { 2: "PL_GLOBAL_5_SKIEPKO" }, countryFlag: "pl" },
@@ -191,10 +193,10 @@ class TestParserStrengths:
             supportedVariants: ["light", "dark"],
             version: "1.2.3"
         };
-        
+
         var moreProductionCode=function(x){return x*2};
         return{init:function(){console.log("App initialized")}}}));
-        """
+        """  # noqa: E501
 
         client = MockApiClient(production_like_js)
         catalog = LiveAssetsCatalog(client)  # type: ignore

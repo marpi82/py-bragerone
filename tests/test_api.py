@@ -6,8 +6,7 @@ verifying their construction, public interface, and basic functionality.
 
 import pytest
 
-from pybragerone import BragerOneApiClient
-from pybragerone import BragerOneGateway
+from pybragerone import BragerOneApiClient, BragerOneGateway
 
 
 def test_gateway_is_exposed_on_top_level() -> None:

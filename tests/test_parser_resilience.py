@@ -9,9 +9,11 @@ class MockApiClient:
     """Mock API client for testing different JS patterns."""
 
     def __init__(self, js_content: str):
+        """Initialize mock API with given JS content."""
         self.js_content = js_content
 
     async def get_bytes(self, url: str) -> bytes:
+        """Return JS content as bytes."""
         return self.js_content.encode("utf-8")
 
 
@@ -123,7 +125,7 @@ class TestParserResilience:
 
     async def test_nested_objects(self) -> None:
         """Test parser with nested object structures."""
-        js_content = """window.app = { 
+        js_content = """window.app = {
             config: {
                 translations: [
                     { id: 'pl', flag: 'pl' },
@@ -255,10 +257,10 @@ class TestParserResilience:
         # 75% of objects have id+flag (should pass 70% threshold)
         js_content = """var HL = {
             translations: [
-                { id: 'pl', flag: 'pl' },           
-                { id: 'en', flag: 'gb' },           
-                { id: 'de', flag: 'de' },           
-                { notId: 'invalid', notFlag: 'x' }   
+                { id: 'pl', flag: 'pl' },
+                { id: 'en', flag: 'gb' },
+                { id: 'de', flag: 'de' },
+                { notId: 'invalid', notFlag: 'x' }
             ],
             defaultTranslation: 'pl'
         };"""
@@ -278,7 +280,7 @@ class TestParserResilience:
         js_content = """
         // Some other code
         var otherVar = 42;
-        
+
         var HL = {
             translations: [
                 { id: "PL", flag: "pl", variants: { 2: "PL_GLOBAL_5_SKIEPKO" } },
@@ -291,7 +293,7 @@ class TestParserResilience:
             ],
             defaultTranslation: "pl"
         };
-        
+
         // More code
         function doSomething() {
             return HL.defaultTranslation;

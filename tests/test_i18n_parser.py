@@ -9,10 +9,12 @@ class MockApiClient:
     """Mock API client for testing i18n functionality."""
 
     def __init__(self, index_content: str, i18n_files: dict[str, str] | None = None):
+        """Initialize mock API client with index content and i18n files."""
         self.index_content = index_content
         self.i18n_files = i18n_files or {}
 
     async def get_bytes(self, url: str) -> bytes:
+        """Fetch content for the given URL."""
         if "index-" in url:
             return self.index_content.encode("utf-8")
 
@@ -38,11 +40,11 @@ class TestI18nParser:
             "../../resources/languages/pl/parameters.json": () => d(() => import("./parameters-ABC123.js"), []).then(e => e.default),
             "../../resources/languages/en/parameters.json": () => d(() => import("./parameters-XYZ789.js"), []).then(e => e.default)
         };
-        """
+        """  # noqa: E501
 
         # Mock i18n file content
         i18n_files = {
-            "parameters-ABC123.js": 'export default { "TEMP_SENSOR": "Czujnik temperatury", "PRESSURE_VALVE": "Zawór ciśnieniowy" };',
+            "parameters-ABC123.js": 'export default { "TEMP_SENSOR": "Czujnik temperatury", "PRESSURE_VALVE": "Zawór ciśnieniowy" };',  # noqa: E501
             "parameters-XYZ789.js": 'export default { "TEMP_SENSOR": "Temperature sensor", "PRESSURE_VALVE": "Pressure valve" };',
         }
 
@@ -154,10 +156,10 @@ class TestI18nParser:
             // Different quote styles
             "../../resources/languages/pl/app.json": () => d(() => import('./app-HASH1.js'), []).then(e => e.default),
             '../../resources/languages/en/app.json': () => d(() => import("./app-HASH2.js"), []).then(e => e.default),
-            
+
             // Different spacing
             "../../resources/languages/cz/units.json":()=>d(()=>import("./units-HASH3.js"),[]).then(e=>e.default),
-            
+
             // With extra parameters
             "../../resources/languages/de/params.json": () => d(() => import("./params-HASH4.js"), ["dep"]).then(e => e.default)
         };

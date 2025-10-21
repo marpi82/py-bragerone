@@ -24,8 +24,10 @@ from ..models.api import (
     Module,
     ModuleCard,
     ObjectDetailsResponse,
+    ObjectPermissionsResponse,
     SystemVersion,
     UserInfoResponse,
+    UserPermissionsResponse,
 )
 from ..models.token import Token, TokenStore
 from .constants import ONE_BASE
@@ -563,11 +565,11 @@ class BragerOneApiClient:
             raise ApiError(500, {"message": "Unexpected user payload"}, {})
         return UserInfoResponse.model_validate(data)
 
-    async def get_user_permissions(self) -> list[str]:
+    async def get_user_permissions(self) -> UserPermissionsResponse:
         """Get current user permissions.
 
         Returns:
-            List of permission strings.
+            User permissions response model.
 
         Raises:
             ApiError: If the request fails.
@@ -575,7 +577,11 @@ class BragerOneApiClient:
         status, data, _ = await self._req("GET", user_permissions_url())
         if status != 200:
             raise ApiError(status, data)
-        return data if isinstance(data, list) else []
+        # API returns {"permissions": [...]} format
+        if isinstance(data, dict):
+            return UserPermissionsResponse.model_validate(data)
+        # Fallback for direct list format
+        return UserPermissionsResponse(permissions=data if isinstance(data, list) else [])
 
     # -------- OBJECTS --------
 
@@ -620,14 +626,14 @@ class BragerOneApiClient:
             raise ApiError(500, {"message": "Unexpected object payload"}, {})
         return ObjectDetailsResponse.model_validate(data)
 
-    async def get_object_permissions(self, object_id: int) -> list[str]:
-        """Get object permissions by ID.
+    async def get_object_permissions(self, object_id: int) -> ObjectPermissionsResponse:
+        """Get object-specific permissions for the current user.
 
         Args:
-            object_id: The object identifier.
+            object_id: The ID of the object to get permissions for.
 
         Returns:
-            List of permission strings for the object.
+            Object permissions response model.
 
         Raises:
             ApiError: If the request fails.
@@ -635,7 +641,11 @@ class BragerOneApiClient:
         status, data, _ = await self._req("GET", object_permissions_url(object_id))
         if status != 200:
             raise ApiError(status, data)
-        return data if isinstance(data, list) else []
+        # API returns {"permissions": [...]} format
+        if isinstance(data, dict):
+            return ObjectPermissionsResponse.model_validate(data)
+        # Fallback for direct list format
+        return ObjectPermissionsResponse(permissions=data if isinstance(data, list) else [])
 
     # -------- MODULES --------
 

@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel
 
+from .common import Permission
+
 
 class BragerObject(BaseModel):
     """Brager object (building/house) model."""
@@ -22,5 +24,11 @@ class ObjectDetailsResponse(BaseModel):
     status: str
 
 
-# Type alias for object permissions (list of permission strings)
-ObjectPermissions = list[str]
+class ObjectPermissionsResponse(BaseModel):
+    """Response model for object permissions endpoint."""
+
+    permissions: list[str]
+
+    def get_permissions(self) -> list[Permission]:
+        """Get permissions as Permission models."""
+        return [Permission(name=perm) for perm in self.permissions]

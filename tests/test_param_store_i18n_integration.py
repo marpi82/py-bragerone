@@ -1,8 +1,8 @@
 """Integration test for ParamStore with i18n functionality."""
 
-import pytest
-
 from typing import TYPE_CHECKING
+
+import pytest
 
 from pybragerone.models.catalog import LiveAssetsCatalog
 from pybragerone.models.param import ParamStore
@@ -15,6 +15,8 @@ class MockApiClient:
     """Mock API client for integration testing."""
 
     def __init__(self) -> None:
+        """Initialize the mock API client with test data."""
+        """Initialize mock API client with test data."""
         # Index with language config and i18n assets
         self.index_content = """
         var HL = {
@@ -24,14 +26,14 @@ class MockApiClient:
             ],
             defaultTranslation: 'pl'
         };
-        
+
         var assets = {
-            "../../resources/languages/pl/parameters.json": () => d(() => import("./parameters-PL123.js"), []).then(e => e.default),
-            "../../resources/languages/en/parameters.json": () => d(() => import("./parameters-EN456.js"), []).then(e => e.default),
+            "../../resources/languages/pl/parameters.json": () => d(() => import("./parameters-PL123.js"), []).then(e => e.default),  // noqa: E501
+            "../../resources/languages/en/parameters.json": () => d(() => import("./parameters-EN456.js"), []).then(e => e.default),  // noqa: E501
             "../../resources/languages/pl/units.json": () => d(() => import("./units-PL789.js"), []).then(e => e.default),
             "../../resources/languages/en/units.json": () => d(() => import("./units-EN101.js"), []).then(e => e.default)
         };
-        """
+        """  # noqa: E501
 
         # I18n translation files
         self.i18n_files = {
@@ -48,18 +50,19 @@ class MockApiClient:
             };""",
             # English translations
             "parameters-EN456.js": """export default {
-                "TEMP_SENSOR_1": "Temperature sensor 1", 
+                "TEMP_SENSOR_1": "Temperature sensor 1",
                 "PRESSURE_VALVE": "Pressure valve",
                 "PUMP_STATUS": "Pump status"
             };""",
             "units-EN101.js": """export default {
                 "1": "°C",
-                "2": "bar", 
+                "2": "bar",
                 "3": "l/min"
             };""",
         }
 
     async def get_bytes(self, url: str) -> bytes:
+        """Return bytes for the requested URL."""
         if "index-" in url:
             return self.index_content.encode("utf-8")
 

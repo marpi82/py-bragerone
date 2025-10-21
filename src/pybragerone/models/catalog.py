@@ -16,7 +16,6 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urljoin
 
 import tree_sitter_javascript
 from tree_sitter import Language, Node, Parser, Tree
@@ -384,6 +383,26 @@ class LiveAssetsCatalog:
         self._log = logger or logging.getLogger(__name__)
         self._last_index_url: str | None = None
 
+    def _smart_urljoin(self, base_url: str, relative_url: str) -> str:
+        """Smart urljoin that handles assets prefix correctly to avoid double /assets/ paths.
+
+        Args:
+            base_url: Base URL (usually an index file like /assets/index-hash.js)
+            relative_url: Relative URL, may start with assets/
+
+        Returns:
+            Properly joined URL without duplicate /assets/ segments
+        """
+        from urllib.parse import urljoin
+
+        # If relative_url starts with assets/ and base_url contains /assets/,
+        # remove the assets/ prefix from relative_url to avoid duplication
+        if relative_url.startswith("assets/") and "/assets/" in base_url:
+            # Remove assets/ prefix
+            relative_url = relative_url[7:]  # len('assets/') = 7
+
+        return urljoin(base_url, relative_url)
+
     # ---------- lifecycle ----------
 
     async def __aenter__(self) -> LiveAssetsCatalog:
@@ -421,67 +440,120 @@ class LiveAssetsCatalog:
         # Most index files have assets declared early, but we keep a fallback for full file
         search_text = text[:50000] if len(text) > 50000 else text
 
-        # 1) Collect all '*-<hash>.js' paths from literals (zero assumptions about directory)
-        #    BASENAME = everything up to the last '-' before .js extension
-        path_re = re.compile(
-            r'(?P<url>(?P<prefix>/[^"\'`\s]+/)?(?P<base>[^"\'`\s-]+(?:\.[^"\'`\s-]+)*)-(?P<hash>[A-Za-z0-9_]+)\.js)'
-        )
+        # 1) Collect all '*-<hash>.js' paths from literals - SIMPLIFIED FOR PERFORMANCE
+        # Much simpler regex that should be faster
         assets_by_basename: dict[str, list[AssetRef]] = {}
 
         # First pass: search in limited text for performance
-        for m in path_re.finditer(search_text):
-            url_rel = m.group("url")
-            base = m.group("base")
-            h = m.group("hash")
-            full_url = urljoin(index_url, url_rel)
+        # Simple pattern: find any filename-hash.js pattern
+        simple_pattern = re.compile(r"([a-zA-Z._-]+)-([A-Za-z0-9_]+)\.js")
+        matches = list(simple_pattern.finditer(search_text))
+
+        for m in matches:
+            base = m.group(1)  # basename
+            h = m.group(2)  # hash
+            # Construct URL - assume it's in assets/ directory
+            full_url = self._smart_urljoin(index_url, f"{base}-{h}.js")
             assets_by_basename.setdefault(base, []).append(AssetRef(url=full_url, base=base, hash=h))
 
         # If we got very few matches and the file is large, do a full search
         # This handles cases where assets are declared later in the file
         if len(assets_by_basename) < 5 and len(text) > len(search_text):
             self._log.debug("Few assets found in limited search, scanning full file...")
-            for m in path_re.finditer(text[len(search_text) :]):
-                url_rel = m.group("url")
-                base = m.group("base")
-                h = m.group("hash")
-                full_url = urljoin(index_url, url_rel)
+            full_matches = list(simple_pattern.finditer(text[len(search_text) :]))
+
+            for m in full_matches:
+                base = m.group(1)  # basename
+                h = m.group(2)  # hash
+                full_url = self._smart_urljoin(index_url, f"{base}-{h}.js")
                 assets_by_basename.setdefault(base, []).append(AssetRef(url=full_url, base=base, hash=h))
 
-        # 2) Try to find mapping from deviceMenu:int -> 'module.menu-<hash>.js' in index (AST)
-        tree = self._ts.parse(code)
+        # 2) Try to find mapping from deviceMenu:int -> 'module.menu-<hash>.js' in index (AST - optimized)
+        # Performance: Use AST on limited portion only
         menu_map: dict[int, str] = {}
-        for n in _walk(tree.root_node):
-            if n.type == "object":
-                for pair in n.named_children:
-                    if pair.type != "pair":
-                        continue
-                    k = pair.child_by_field_name("key")
-                    v = pair.child_by_field_name("value")
-                    if not (k and v):
-                        continue
-                    # numeric key?
-                    key_txt = _node_text(code, k)
-                    try:
-                        key_int = int(_string_value(key_txt))
-                    except Exception:
-                        continue
-                    # value: string containing 'module.menu-...js'
-                    val_txt = _node_text(code, v)
-                    if "module.menu-" in val_txt and ".js" in val_txt:
-                        # try to extract BASENAME (without -hash.js)
-                        mm = re.search(r"(module\.menu)-[A-Za-z0-9_]+\.js", val_txt)
-                        if mm:
-                            menu_map[key_int] = mm.group(1)  # 'module.menu'
-        # 3) Inline param-map candidates (large object literals)
+
+        # Limit AST parsing to reasonable size (100KB should be enough for most mappings)
+        ast_limit = min(100000, len(code))
+        limited_code = code[:ast_limit]
+
+        if len(limited_code) > 0:
+            try:
+                tree = self._ts.parse(limited_code)
+
+                # Early exit optimization: only check first few objects
+                objects_checked = 0
+                max_objects = 5  # Limit to prevent excessive traversal
+
+                for n in _walk(tree.root_node):
+                    if n.type == "object" and objects_checked < max_objects:
+                        objects_checked += 1
+
+                        # Quick check if this object might contain menu mappings
+                        obj_start = n.start_byte
+                        obj_end = min(n.end_byte, len(limited_code))
+                        obj_text = limited_code[obj_start:obj_end]
+
+                        if b"module.menu-" not in obj_text:
+                            continue
+
+                        for pair in n.named_children:
+                            if pair.type != "pair":
+                                continue
+                            k = pair.child_by_field_name("key")
+                            v = pair.child_by_field_name("value")
+                            if not (k and v):
+                                continue
+                            # numeric key?
+                            key_txt = _node_text(limited_code, k)
+                            try:
+                                key_int = int(_string_value(key_txt))
+                            except Exception:
+                                continue
+                            # value: string containing 'module.menu-...js'
+                            val_txt = _node_text(limited_code, v)
+                            if "module.menu-" in val_txt and ".js" in val_txt:
+                                # try to extract BASENAME (without -hash.js)
+                                mm = re.search(r"(module\.menu)-[A-Za-z0-9_]+\.js", val_txt)
+                                if mm:
+                                    menu_map[key_int] = mm.group(1)  # 'module.menu'
+
+                        # If we found mappings, we can exit early
+                        if menu_map and objects_checked >= 3:
+                            break
+
+            except Exception as ast_e:
+                self._log.debug("AST parsing failed, continuing: %s", ast_e)
+
+        # 3) Inline param-map candidates (AST on limited data)
         inline_candidates: list[tuple[int, int]] = []
-        for n in _walk(tree.root_node):
-            if n.type == "object":
-                approx_len = n.end_byte - n.start_byte
-                if approx_len > 200:  # heuristic: larger objects are more likely to be maps
-                    # quick "shape" of param-map: look for keywords inside
-                    snippet = code[n.start_byte : n.end_byte]
-                    if any(key in snippet for key in (b"group", b"pool", b"use", b"value", b"unit", b"status", b"componentType")):
-                        inline_candidates.append((n.start_byte, n.end_byte))
+
+        if len(limited_code) > 0:
+            try:
+                # Reuse tree if available, or parse again for param candidates
+                if "tree" not in locals():
+                    tree = self._ts.parse(limited_code)
+
+                objects_checked = 0
+                max_param_objects = 10  # More objects for param search
+
+                for n in _walk(tree.root_node):
+                    if n.type == "object" and objects_checked < max_param_objects:
+                        objects_checked += 1
+
+                        approx_len = n.end_byte - n.start_byte
+                        if approx_len > 200:  # heuristic: larger objects are more likely to be maps
+                            # quick "shape" of param-map: look for keywords inside
+                            obj_start = n.start_byte
+                            obj_end = min(n.end_byte, len(limited_code))
+                            snippet = limited_code[obj_start:obj_end]
+                            if any(
+                                key in snippet
+                                for key in (b"group", b"pool", b"use", b"value", b"unit", b"status", b"componentType")
+                            ):
+                                inline_candidates.append((obj_start, obj_end))
+
+            except Exception as param_e:
+                self._log.debug("Param candidates AST parsing failed: %s", param_e)
 
         return AssetIndex(
             assets_by_basename=assets_by_basename,
@@ -506,10 +578,17 @@ class LiveAssetsCatalog:
         basename = self._idx.menu_map.get(device_menu, "module.menu")
         asset = self._idx.find_asset_for_basename(basename)
         if not asset:
-            # fallback: try anything starting with 'module.menu' (preserving "Alpha accuracy")
+            # fallback: try exact 'module.menu' basename
             asset = self._idx.find_asset_for_basename("module.menu")
         if not asset:
-            raise RuntimeError(f"Brak assetu menu dla device_menu={device_menu}")
+            # fallback: try any basename that contains 'module.menu' (handles hashed names)
+            for key, lst in self._idx.assets_by_basename.items():
+                if "module.menu" in key:
+                    # take the last asset for that basename (heuristic)
+                    asset = lst[-1]
+                    break
+        if not asset:
+            raise RuntimeError(f"No menu asset found for device_menu={device_menu}")
 
         code = await self._api.get_bytes(asset.url)
         routes = self._parse_menu_routes(code)
@@ -604,16 +683,50 @@ class LiveAssetsCatalog:
         def gate(node: dict[str, Any]) -> dict[str, Any]:
             meta = node.get("meta") or {}
             perm = meta.get("permissionModule")
-            visible = (perm in permissions) if (permissions and perm) else True
-            # filter elements parameters.* by their own perms (if we ever start extracting them),
-            # in Alpha we keep tokens without perm-per-item
+
+            # Check permission - handle A. prefix
+            if perm:
+                # Route requires permission - check if user has it
+                # Remove A. prefix if present for comparison
+                perm_check = perm.replace("A.", "") if perm.startswith("A.") else perm
+                visible = perm_check in permissions
+            else:
+                # No permission required - route is public
+                visible = True
+
+            # Filter parameters by their own permissions (both root and meta)
+            def filter_parameters(params_dict: dict[str, Any]) -> None:
+                if isinstance(params_dict, dict):
+                    for sec in ("read", "write", "status", "special"):
+                        lst = params_dict.get(sec) or []
+                        # Filter each parameter by its permissionModule
+                        filtered_params = []
+                        for param in lst:
+                            if isinstance(param, dict):
+                                param_perm = param.get("permissionModule")
+                                if permissions and param_perm:
+                                    # Remove A. prefix if present for comparison
+                                    param_perm_check = param_perm.replace("A.", "") if param_perm.startswith("A.") else param_perm
+                                    if param_perm_check in permissions:
+                                        filtered_params.append(param)
+                                else:
+                                    # If no permission required, include by default
+                                    filtered_params.append(param)
+                            else:
+                                # Non-dict parameters pass through
+                                filtered_params.append(param)
+                        params_dict[sec] = filtered_params
+
+            # Filter root parameters
             params = node.get("parameters") or {}
-            if isinstance(params, dict):
-                for sec in ("read", "write", "status", "special"):
-                    lst = params.get(sec) or []
-                    # on Alpha: no per-item filtering (perm), only node-level
-                    params[sec] = lst
-                node["parameters"] = params
+            filter_parameters(params)
+            node["parameters"] = params
+
+            # Filter meta parameters too
+            meta_params = meta.get("parameters")
+            if meta_params:
+                filter_parameters(meta_params)
+                meta["parameters"] = meta_params
             node["_visible"] = bool(visible)
             # children: we don't inherit visibility (strategy 'independent')
             children = node.get("children") or []
@@ -910,9 +1023,7 @@ class LiveAssetsCatalog:
         # Fallback: construct URL based on index URL pattern
         # This assumes the i18n files are in the same directory as the index
         if hasattr(self, "_last_index_url") and self._last_index_url:
-            from urllib.parse import urljoin
-
-            asset_url = urljoin(self._last_index_url, asset_filename)
+            asset_url = self._smart_urljoin(self._last_index_url, asset_filename)
             return AssetRef(url=asset_url, base=file_base, hash=file_hash)
 
         return None

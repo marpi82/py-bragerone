@@ -1,0 +1,5237 @@
+{
+  "test_info": {
+    "timestamp": 643719.439624057,
+    "user_email": "marpi82@gmail.com",
+    "log_level": "DEBUG"
+  },
+  "module_info": {
+    "name": "HT  DasPell GL 37kW",
+    "device_menu": 0,
+    "permissions_count": 20
+  },
+  "object_info": {
+    "id": 439,
+    "name": "Dom"
+  },
+  "permissions": {
+    "module_permissions": [
+      "COMPANY_REGISTER",
+      "DISPLAY_MENU_OBJECTS",
+      "DISPLAY_MENU_MODULES",
+      "DISPLAY_MENU_ALERTS",
+      "DISPLAY_MENU_ACTIVITY",
+      "SUBMISSION_CATEGORY_VIEW_ALL",
+      "SUBMISSION_CREATE",
+      "SUBMISSION_VIEW_ALL",
+      "SUBMISSION_READ",
+      "SUBMISSION_SEND_MESSAGE",
+      "DISPLAY_MENU_DHW",
+      "DISPLAY_MENU_CIRCUITS",
+      "DISPLAY_MENU_CIRCUIT_CH0",
+      "DISPLAY_MENU_CIRCUIT_CH1",
+      "DISPLAY_MENU_PUMPS",
+      "DISPLAY_MENU_PUMP_CIRCULATION_SCHEDULE",
+      "DISPLAY_MENU_SCHEDULES",
+      "DISPLAY_MENU_PHOTOVOLTAICS",
+      "DISPLAY_PARAMETER_LEVEL_1",
+      "DISPLAY_MENU_OPERATING_MODE"
+    ]
+  },
+  "menu_filtered": {
+    "routes_count": 35,
+    "tokens": [],
+    "sample_route": {
+      "path": "dhw",
+      "name": "modules.menu.dhw",
+      "meta": {
+        "displayName": "routes.modules.menu.dhw",
+        "icon": "a.FAUCET",
+        "permissionModule": "A.DISPLAY_MENU_DHW",
+        "parameters": {
+          "read": [
+            {
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameter": "e(E.READ,\"AKTUALNA_TEMP_CWU_READ\")"
+            }
+          ],
+          "write": [
+            {
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameter": "e(E.WRITE,\"NASTAWA_W_TRYBIE_KOMFORTU_WRITE\")"
+            },
+            {
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameter": "e(E.WRITE,\"NASTAWA_W_TRYBIE_EKONOMICZNYM_WRITE\")"
+            },
+            {
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameter": "e(E.WRITE,\"NASTAWA_W_TRYBIE_OCHRONY_WRITE\")"
+            },
+            {
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameter": "e(E.WRITE,\"TRYB_IMPREZA_WRITE\")"
+            },
+            {
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameter": "e(E.WRITE,\"CZAS_TRWANIA_TRYBU_IMPREZA_WRITE\")"
+            },
+            {
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameter": "e(E.WRITE,\"NASTAWA_W_TRYBIE_IMPREZA_WRITE\")"
+            },
+            {
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameter": "e(E.WRITE,\"PODGRZEWANIE_CWU_PRZED_KONCEM_TARYFY\")"
+            }
+          ],
+          "status": [
+            {
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameter": "e(E.STATUS,\"STATUS_POMPY_CIEPLA_STATUS\")"
+            },
+            {
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameter": "e(E.STATUS,\"PRZYGOTOWANIE_CWU_STATUS\")"
+            }
+          ],
+          "special": []
+        }
+      },
+      "component": "M.ParametersView",
+      "parameters": {
+        "read": [],
+        "write": [],
+        "status": [],
+        "special": []
+      },
+      "_visible": true,
+      "children": []
+    },
+    "all_routes": [
+      {
+        "path": "dhw",
+        "name": "modules.menu.dhw",
+        "meta": {
+          "displayName": "routes.modules.menu.dhw",
+          "icon": "a.FAUCET",
+          "permissionModule": "A.DISPLAY_MENU_DHW",
+          "parameters": {
+            "read": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"AKTUALNA_TEMP_CWU_READ\")"
+              }
+            ],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"NASTAWA_W_TRYBIE_KOMFORTU_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"NASTAWA_W_TRYBIE_EKONOMICZNYM_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"NASTAWA_W_TRYBIE_OCHRONY_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"TRYB_IMPREZA_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"CZAS_TRWANIA_TRYBU_IMPREZA_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"NASTAWA_W_TRYBIE_IMPREZA_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PODGRZEWANIE_CWU_PRZED_KONCEM_TARYFY\")"
+              }
+            ],
+            "status": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"STATUS_POMPY_CIEPLA_STATUS\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"PRZYGOTOWANIE_CWU_STATUS\")"
+              }
+            ],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "circuits",
+        "name": "modules.menu.circuits",
+        "meta": {
+          "displayDropdown": "!0",
+          "displayName": "routes.modules.menu.circuits",
+          "icon": "a.CIRCUIT",
+          "permissionModule": "A.DISPLAY_MENU_CIRCUITS"
+        },
+        "children": [
+          {
+            "path": "ch0",
+            "name": "modules.menu.circuit.ch0",
+            "meta": {
+              "displayName": "routes.modules.menu.circuit.ch0",
+              "icon": "a.CIRCUIT",
+              "permissionModule": "A.DISPLAY_MENU_CIRCUIT_CH0",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"TEMP_OBIEGU_CO0_READ\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"TEMP_POWROTU_CO0_READ\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"T_ZEWNETRZNA_READ\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"OBNIZENIE_NASTAWY_CO0_W_TRYBIE_URLOP_WRITE\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"ZADANA_TEMP_CO0_WRITE\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_POMPY_CIEPLA_STATUS\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"PRACA_POMPY_P0_STATUS\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PRZEPLYW_OBIEGU_CO0_READ\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "ch1",
+            "name": "modules.menu.circuit.ch1",
+            "meta": {
+              "displayName": "routes.modules.menu.circuit.ch1",
+              "icon": "a.CIRCUIT",
+              "permissionModule": "A.DISPLAY_MENU_CIRCUIT_CH1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"TEMP_OBIEGU_CO1_READ\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"T_ZEWNETRZNA_READ\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"OBNIZENIE_NASTAWY_CO1_W_TRYBIE_URLOP_WRITE\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"ZADANA_TEMP_CO1_WRITE\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_POMPY_CIEPLA_STATUS\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"PRACA_POMPY_P1_STATUS\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PRZEPLYW_OBIEGU_CO1_READ\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "ch2",
+            "name": "modules.menu.circuit.ch2",
+            "meta": {
+              "displayName": "routes.modules.menu.circuit.ch2",
+              "icon": "a.CIRCUIT",
+              "permissionModule": "A.DISPLAY_MENU_CIRCUIT_CH2",
+              "parameters": {
+                "read": [],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"OBNIZENIE_NASTAWY_CO2_W_TRYBIE_URLOP_WRITE\")"
+                  }
+                ],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "ct",
+            "name": "modules.menu.circuit.ct",
+            "meta": {
+              "displayName": "routes.modules.menu.circuit.ct",
+              "icon": "a.CIRCUIT",
+              "permissionModule": "A.DISPLAY_MENU_CIRCUIT_CT",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          }
+        ],
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true
+      },
+      {
+        "path": "heaters",
+        "name": "modules.menu.heaters",
+        "meta": {
+          "displayName": "routes.modules.menu.heaters",
+          "icon": "a.HEATERS",
+          "permissionModule": "A.DISPLAY_MENU_HEATERS",
+          "parameters": {
+            "read": [],
+            "write": [],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false,
+        "children": []
+      },
+      {
+        "path": "cooling",
+        "name": "modules.menu.cooling",
+        "meta": {
+          "displayDropdown": "!0",
+          "displayName": "routes.modules.menu.cooling",
+          "icon": "a.COOLING",
+          "permissionModule": "A.DISPLAY_MENU_COOLING"
+        },
+        "children": [
+          {
+            "path": "setup",
+            "name": "modules.menu.cooling_setup",
+            "meta": {
+              "displayName": "routes.modules.menu.cooling_setup",
+              "icon": "a.COOLING",
+              "permissionModule": "A.DISPLAY_MENU_COOLING_SETUP",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "curve",
+            "name": "modules.menu.cooling_curve",
+            "meta": {
+              "displayName": "routes.modules.menu.cooling_curve",
+              "icon": "a.CURVE",
+              "permissionModule": "A.DISPLAY_MENU_COOLING_CURVE",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.GeneratorCurveView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          }
+        ],
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false
+      },
+      {
+        "path": "defrost",
+        "name": "modules.menu.defrost",
+        "meta": {
+          "displayName": "routes.modules.menu.defrost",
+          "icon": "a.DEFROST",
+          "permissionModule": "A.DISPLAY_MENU_DEFROST",
+          "parameters": {
+            "read": [],
+            "write": [],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false,
+        "children": []
+      },
+      {
+        "path": "pumps",
+        "name": "modules.menu.pumps",
+        "meta": {
+          "displayDropdown": "!0",
+          "displayName": "routes.modules.menu.pumps",
+          "icon": "a.PUMP",
+          "permissionModule": "A.DISPLAY_MENU_PUMPS"
+        },
+        "children": [
+          {
+            "path": "p0",
+            "name": "modules.menu.pump.p0",
+            "meta": {
+              "displayName": "routes.modules.menu.pump.p0",
+              "icon": "a.PUMP",
+              "permissionModule": "A.DISPLAY_MENU_PUMP_P0",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "p1",
+            "name": "modules.menu.pump.p1",
+            "meta": {
+              "displayName": "routes.modules.menu.pump.p1",
+              "icon": "a.PUMP",
+              "permissionModule": "A.DISPLAY_MENU_PUMP_P1",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "circulation",
+            "name": "modules.menu.pump.circulation",
+            "meta": {
+              "displayName": "routes.modules.menu.pump.circulation",
+              "icon": "a.PUMP",
+              "permissionModule": "A.DISPLAY_MENU_PUMP_CIRCULATION",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "circulation/schedule",
+            "name": "modules.menu.pump.circulationSchedule",
+            "meta": {
+              "displayName": "routes.modules.menu.pump.circulationSchedule",
+              "icon": "a.SCHEDULES",
+              "permissionModule": "A.DISPLAY_MENU_PUMP_CIRCULATION_SCHEDULE",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.SPECIAL,\"HARMONOGRAM_PRACY_POMPY_CYRKULACYJNEJ\")"
+                  }
+                ]
+              }
+            },
+            "component": "M.PumpCirculationSchedule",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          }
+        ],
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true
+      },
+      {
+        "path": "flows",
+        "name": "modules.menu.flows",
+        "meta": {
+          "displayName": "routes.modules.menu.flows",
+          "icon": "a.FLOWS",
+          "permissionModule": "A.DISPLAY_MENU_FLOWS",
+          "parameters": {
+            "read": [],
+            "write": [],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false,
+        "children": []
+      },
+      {
+        "path": "compressor",
+        "name": "modules.menu.compressor",
+        "meta": {
+          "displayName": "routes.modules.menu.compressor",
+          "icon": "a.COMPRESSOR",
+          "permissionModule": "A.DISPLAY_MENU_COMPRESSOR",
+          "parameters": {
+            "read": [],
+            "write": [],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false,
+        "children": []
+      },
+      {
+        "path": "schedules",
+        "name": "modules.menu.schedules",
+        "meta": {
+          "displayName": "routes.modules.menu.schedules",
+          "icon": "a.SCHEDULES",
+          "permissionModule": "A.DISPLAY_MENU_SCHEDULES",
+          "parameters": {
+            "read": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"AKTUALNA_TARYFA_READ\")"
+              }
+            ],
+            "write": [],
+            "status": [],
+            "special": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.SPECIAL,\"TARYFY\")"
+              }
+            ]
+          }
+        },
+        "component": "M.TariffsView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "fan",
+        "name": "modules.menu.fan",
+        "meta": {
+          "displayName": "routes.modules.menu.fan",
+          "icon": "a.FAN",
+          "permissionModule": "A.DISPLAY_MENU_FAN",
+          "parameters": {
+            "read": [],
+            "write": [],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.FanViewerView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false,
+        "children": []
+      },
+      {
+        "path": "test-and-calibration",
+        "name": "modules.menu.tests_and_calibration",
+        "meta": {
+          "displayDropdown": "!0",
+          "displayName": "routes.modules.menu.tests_and_calibration",
+          "icon": "a.PLUS_MINUS",
+          "permissionModule": "A.DISPLAY_MENU_TESTS_AND_CALIBRATION"
+        },
+        "children": [
+          {
+            "path": "calibration",
+            "name": "modules.menu.calibration",
+            "meta": {
+              "displayName": "routes.modules.menu.calibration",
+              "icon": "a.PLUS_MINUS",
+              "permissionModule": "A.DISPLAY_MENU_CALIBRATION",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "test-output-input",
+            "name": "modules.menu.tests_output_input",
+            "meta": {
+              "displayName": "routes.modules.menu.tests_output_input",
+              "icon": "a.DIP_SWITCH",
+              "permissionModule": "A.DISPLAY_MENU_TESTS_OUTPUT_INPUT",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          }
+        ],
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false
+      },
+      {
+        "path": "photovoltaics",
+        "name": "modules.menu.photovoltaics",
+        "meta": {
+          "displayName": "routes.modules.menu.photovoltaics",
+          "icon": "a.PHOTOVOLTAICS",
+          "permissionModule": "A.DISPLAY_MENU_PHOTOVOLTAICS",
+          "parameters": {
+            "read": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PRZEWYZSZENIE_CWU_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PRZEWYZSZENIE_CO0_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PRZEWYZSZENIE_CO1_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PRZEWYZSZENIE_CO2_WRITE\")"
+              }
+            ],
+            "write": [],
+            "status": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"STATUS_POMPY_CIEPLA_STATUS\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"PRACA_PV_STATUS\")"
+              }
+            ],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "sg-ready",
+        "name": "modules.menu.sg_ready",
+        "meta": {
+          "displayName": "routes.modules.menu.sg_ready",
+          "icon": "a.SG_READY",
+          "permissionModule": "A.DISPLAY_MENU_SG_READY",
+          "parameters": {
+            "read": [],
+            "write": [],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false,
+        "children": []
+      },
+      {
+        "path": "operating-mode",
+        "name": "modules.menu.operating_mode",
+        "meta": {
+          "displayName": "routes.modules.menu.operating_mode",
+          "icon": "a.CONFIGURATION",
+          "permissionModule": "A.DISPLAY_MENU_OPERATING_MODE",
+          "parameters": {
+            "read": [],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"TRYB_PRACY_ZIMA_LATO_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"TRYB_URLOP_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"CZAS_ZAKONCZENIA_TRYBU_URLOP_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"OBNIZENIE_NASTAWY_CO0_W_TRYBIE_URLOP_WRITE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"OBNIZENIE_NASTAWY_CO1_W_TRYBIE_URLOP_WRITE\")"
+              }
+            ],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "configuration",
+        "name": "modules.menu.configuration",
+        "meta": {
+          "displayName": "routes.modules.menu.configuration",
+          "icon": "a.CONFIGURATION",
+          "permissionModule": "A.DISPLAY_MENU_CONFIGURATION",
+          "parameters": {
+            "read": [],
+            "write": [],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false,
+        "children": []
+      },
+      {
+        "path": "producer",
+        "name": "modules.menu.producer",
+        "meta": {
+          "displayName": "routes.modules.menu.producer",
+          "icon": "a.CONFIGURATION",
+          "permissionModule": "A.DISPLAY_MENU_PRODUCER",
+          "parameters": {
+            "read": [],
+            "write": [],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false,
+        "children": []
+      },
+      {
+        "path": "work-parameters",
+        "name": "modules.menu.work_parameters",
+        "meta": {
+          "displayDropdown": "!0",
+          "displayName": "routes.modules.menu.work_parameters",
+          "icon": "a.CONFIGURATION",
+          "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS"
+        },
+        "children": [
+          {
+            "path": "pa-1",
+            "name": "modules.menu.pa_1",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_1",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_1",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-2",
+            "name": "modules.menu.pa_2",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_2",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_2",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-3",
+            "name": "modules.menu.pa_3",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_3",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_3",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-4",
+            "name": "modules.menu.pa_4",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_4",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_4",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-5",
+            "name": "modules.menu.pa_5",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_5",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_5",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-6",
+            "name": "modules.menu.pa_6",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_6",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_6",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-7",
+            "name": "modules.menu.pa_7",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_7",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_7",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-8",
+            "name": "modules.menu.pa_8",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_8",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_8",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-9",
+            "name": "modules.menu.pa_9",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_9",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_9",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-10",
+            "name": "modules.menu.pa_10",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_10",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_10",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-11",
+            "name": "modules.menu.pa_11",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_11",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_11",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-12",
+            "name": "modules.menu.pa_12",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_12",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_12",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-13",
+            "name": "modules.menu.pa_13",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_13",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_13",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-14",
+            "name": "modules.menu.pa_14",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_14",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_14",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-15",
+            "name": "modules.menu.pa_15",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_15",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_15",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          },
+          {
+            "path": "pa-16",
+            "name": "modules.menu.pa_16",
+            "meta": {
+              "displayName": "routes.modules.menu.pa_16",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_MENU_WORK_PARAMETERS_PA_16",
+              "parameters": {
+                "read": [],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": false,
+            "children": []
+          }
+        ],
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false
+      },
+      {
+        "path": "lock-board",
+        "name": "modules.menu.lock_board",
+        "meta": {
+          "displayName": "routes.modules.menu.lock_board",
+          "icon": "a.CHECKLIST",
+          "permissionModule": "A.DISPLAY_MENU_LOCK_BOARD",
+          "parameters": {
+            "read": [],
+            "write": [],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false,
+        "children": []
+      },
+      {
+        "path": "schema",
+        "name": "modules.menu.schema",
+        "meta": {
+          "displayName": "routes.modules.menu.schema",
+          "icon": "a.SITEMAP",
+          "permissionModule": "A.DISPLAY_MENU_SCHEMA",
+          "parameters": {
+            "read": [],
+            "write": [],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.SchemaView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false,
+        "children": []
+      },
+      {
+        "path": "boiler",
+        "name": "modules.menu.boiler",
+        "meta": {
+          "displayName": "routes.modules.menu.boiler",
+          "icon": "a.BOILER",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+          "parameters": {
+            "read": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_0\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_4\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_8\")"
+              }
+            ],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"URUCHOMIENIE_KOTLA\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_66\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_0\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_13\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_7\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_9\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_12\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_8\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_176\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_10\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_407\")"
+              }
+            ],
+            "status": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"STATUS_P5_0\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"STATUS_P5_11\")"
+              }
+            ],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "boiler/reserve",
+        "name": "modules.menu.boilerReserve",
+        "meta": {
+          "displayName": "routes.modules.menu.boilerReserve",
+          "icon": "a.BOILER",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+          "parameters": {
+            "read": [],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_363\")"
+              }
+            ],
+            "status": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"STATUS_P5_81\")"
+              }
+            ],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "boiler/blower",
+        "name": "modules.menu.blower",
+        "meta": {
+          "displayName": "routes.modules.menu.blower",
+          "icon": "a.FAN",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+          "parameters": {
+            "read": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_49\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_15\")"
+              }
+            ],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_6\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_5\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_3\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_4\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_360\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_26\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_365\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_366\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_22\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_23\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_24\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_25\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_10\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_18\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_27\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_76\")"
+              }
+            ],
+            "status": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"STATUS_P5_10\")"
+              }
+            ],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "boiler/blower/2",
+        "name": "modules.menu.blower2",
+        "meta": {
+          "displayName": "routes.modules.menu.blower2",
+          "icon": "a.FAN2",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+          "parameters": {
+            "read": [],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_214\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_213\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_372\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_215\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_208\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_294\")"
+              }
+            ],
+            "status": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_293\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"STATUS_P5_41\")"
+              }
+            ],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "boiler/burner",
+        "name": "modules.menu.burner",
+        "meta": {
+          "displayDropdown": "!0",
+          "displayName": "routes.modules.menu.burner",
+          "icon": "a.BURNER",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1"
+        },
+        "children": [
+          {
+            "path": "status",
+            "name": "modules.menu.burnerPreview",
+            "meta": {
+              "displayName": "routes.modules.menu.burnerPreview",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P4_13\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P4_43\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P4_14\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P4_56\")"
+                  }
+                ],
+                "write": [],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "",
+            "name": "modules.menu.burnerSettings",
+            "meta": {
+              "displayName": "routes.modules.menu.burnerSettings",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_9\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_36\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_171\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_6\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_73\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_23\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_24\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_25\")"
+                  }
+                ],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "ignition",
+            "name": "modules.menu.burnerIgnition",
+            "meta": {
+              "displayName": "routes.modules.menu.burnerIgnition",
+              "icon": "a.FIRE",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_136\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_138\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_139\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_140\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_141\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_142\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_143\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_137\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_135\")"
+                  }
+                ],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "work",
+            "name": "modules.menu.burnerWork",
+            "meta": {
+              "displayName": "routes.modules.menu.burnerWork",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_149\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_148\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_156\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_167\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_168\")"
+                  }
+                ],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "sustain",
+            "name": "modules.menu.burnerSustain",
+            "meta": {
+              "displayName": "routes.modules.menu.burnerSustain",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_158\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_169\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_159\")"
+                  }
+                ],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "cleaning",
+            "name": "modules.menu.burnerCleaning",
+            "meta": {
+              "displayName": "routes.modules.menu.burnerCleaning",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_155\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_166\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_144\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_145\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_146\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_147\")"
+                  }
+                ],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "damping",
+            "name": "modules.menu.burnerDamping",
+            "meta": {
+              "displayName": "routes.modules.menu.burnerDamping",
+              "icon": "a.CONFIGURATION",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_160\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_161\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_163\")"
+                  }
+                ],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          }
+        ],
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true
+      },
+      {
+        "path": "boiler/feeder",
+        "name": "modules.menu.feeder",
+        "meta": {
+          "displayName": "routes.modules.menu.feeder",
+          "icon": "a.FEEDER",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+          "parameters": {
+            "read": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_59\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_3\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_61\")"
+              }
+            ],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_0\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_1\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_2\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_3\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_4\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_5\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_11\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_12\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_13\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_14\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_21\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_19\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_15\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_16\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_65\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_17\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_35\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_181\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_20\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_183\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_180\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_64\")"
+              }
+            ],
+            "status": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_29\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"STATUS_P5_13\")"
+              }
+            ],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "boiler/return",
+        "name": "modules.menu.return",
+        "meta": {
+          "displayName": "routes.modules.menu.return",
+          "icon": "a.RETURN",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+          "parameters": {
+            "read": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_1\")"
+              }
+            ],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_1\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_398\")"
+              }
+            ],
+            "status": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"STATUS_P5_12\")"
+              }
+            ],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "buffer",
+        "name": "modules.menu.buffer",
+        "meta": {
+          "displayName": "routes.modules.menu.buffer",
+          "icon": "a.BUFFER",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+          "parameters": {
+            "read": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_6\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_30\")"
+              }
+            ],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_303\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_240\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_392\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_69\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_68\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_304\")"
+              }
+            ],
+            "status": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_67\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_239\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"STATUS_P5_23\")"
+              }
+            ],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "boiler/dhw",
+        "name": "modules.menu.boilerDHW",
+        "meta": {
+          "displayName": "routes.modules.menu.boilerDHW",
+          "icon": "a.FAUCET",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+          "parameters": {
+            "read": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_2\")"
+              }
+            ],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_51\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_50\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_277\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_48\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_49\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_190\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_173\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_174\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_394\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_46\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_47\")"
+              }
+            ],
+            "status": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"STATUS_P5_19\")"
+              }
+            ],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "circulation",
+        "name": "modules.menu.circulation",
+        "meta": {
+          "displayName": "routes.modules.menu.circulation",
+          "icon": "a.CIRCULATION",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+          "parameters": {
+            "read": [],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_217\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_218\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_273\")"
+              }
+            ],
+            "status": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.STATUS,\"STATUS_P5_49\")"
+              }
+            ],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "boiler/exhaust-gas",
+        "name": "modules.menu.exhaustGas",
+        "meta": {
+          "displayName": "routes.modules.menu.exhaustGas",
+          "icon": "a.EXHAUST_GAS",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+          "parameters": {
+            "read": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_7\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_16\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_51\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_52\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_53\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_54\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_55\")"
+              }
+            ],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_20\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_350\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_347\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_348\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_349\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_384\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_19\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_26\")"
+              }
+            ],
+            "status": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_269\")"
+              }
+            ],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "timezones",
+        "name": "modules.menu.timeZones.settings",
+        "meta": {
+          "displayDropdown": "!0",
+          "displayName": "routes.modules.menu.timeZones.settings",
+          "icon": "a.SCHEDULES",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+          "parameters": {
+            "read": [],
+            "write": [],
+            "status": [],
+            "special": []
+          }
+        },
+        "children": "wA",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true
+      },
+      {
+        "path": "thermostats",
+        "name": "modules.menu.thermostats",
+        "meta": {
+          "displayDropdown": "!0",
+          "displayName": "routes.modules.menu.thermostats",
+          "icon": "a.THERMOSTAT",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1"
+        },
+        "children": [
+          {
+            "path": "pump",
+            "name": "modules.menu.thermostat.pump",
+            "meta": {
+              "displayName": "routes.modules.menu.thermostat.pump",
+              "icon": "a.THERMOSTAT",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P17_0\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_31\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_30\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_391\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_0\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_1\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_2\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_3\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_4\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_5\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_6\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_7\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_8\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_9\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_12\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_13\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_32\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_14\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "pump/additional",
+            "name": "modules.menu.thermostat.pumpAdditional",
+            "meta": {
+              "displayName": "routes.modules.menu.thermostat.pumpAdditional",
+              "icon": "a.THERMOSTAT",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P17_12\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_84\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_85\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_86\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_87\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_88\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_89\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_90\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_91\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_92\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_93\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_96\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_97\")"
+                  }
+                ],
+                "status": [],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "valve/1",
+            "name": "modules.menu.thermostat.valve1",
+            "meta": {
+              "displayName": "routes.modules.menu.thermostat.valve1",
+              "icon": "a.THERMOSTAT",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P17_2\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_62\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_63\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_14\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_15\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_16\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_17\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_18\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_19\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_20\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_21\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_22\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_23\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_26\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_27\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_61\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_22\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "valve/1_2",
+            "name": "modules.menu.thermostat.valve1_2",
+            "meta": {
+              "displayName": "routes.modules.menu.thermostat.valve1_2",
+              "icon": "a.THERMOSTAT",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P17_35\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_315\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_316\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_98\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_99\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_100\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_101\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_102\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_103\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_104\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_105\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_106\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_107\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_110\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_111\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_314\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_53\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "valve/2",
+            "name": "modules.menu.thermostat.valve2",
+            "meta": {
+              "displayName": "routes.modules.menu.thermostat.valve2",
+              "icon": "a.THERMOSTAT",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P17_4\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_89\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_90\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_28\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_29\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_30\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_31\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_32\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_33\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_34\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_35\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_36\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_37\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_40\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_41\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_88\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_27\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "valve/3",
+            "name": "modules.menu.thermostat.valve3",
+            "meta": {
+              "displayName": "routes.modules.menu.thermostat.valve3",
+              "icon": "a.THERMOSTAT",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P17_6\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_101\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_102\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_42\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_43\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_44\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_45\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_46\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_47\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_48\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_49\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_50\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_51\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_54\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_55\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_100\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_30\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "valve/4",
+            "name": "modules.menu.thermostat.valve4",
+            "meta": {
+              "displayName": "routes.modules.menu.thermostat.valve4",
+              "icon": "a.THERMOSTAT",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P17_8\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_113\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_114\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_56\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_57\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_58\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_59\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_60\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_61\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_62\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_63\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_64\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_65\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_68\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_69\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_112\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_33\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "valve/5",
+            "name": "modules.menu.thermostat.valve5",
+            "meta": {
+              "displayName": "routes.modules.menu.thermostat.valve5",
+              "icon": "a.THERMOSTAT",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P17_10\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_125\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_126\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_70\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_71\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_72\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_73\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_74\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_75\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_76\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_77\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_78\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_79\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_82\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_P16_83\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_124\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_36\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          }
+        ],
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true
+      },
+      {
+        "path": "valves",
+        "name": "modules.menu.valves",
+        "meta": {
+          "displayDropdown": "!0",
+          "displayName": "routes.modules.menu.valves",
+          "icon": "a.VALVE",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1"
+        },
+        "children": [
+          {
+            "path": "valve/1",
+            "name": "modules.menu.valve1",
+            "meta": {
+              "displayName": "routes.modules.menu.valve1",
+              "icon": "a.VALVE",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P4_5\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_52\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_54_55_56\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_54\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_55\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_56\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_53\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_59\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_60\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_58\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_57\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_408\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_21\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_20\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "valve/1_2",
+            "name": "modules.menu.valve1_2",
+            "meta": {
+              "displayName": "routes.modules.menu.valve1_2",
+              "icon": "a.VALVE",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P4_46\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_305\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_307_308_309\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_307\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_308\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_309\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_306\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_312\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_313\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_311\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_310\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_440\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_52\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_51\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "valve/2",
+            "name": "modules.menu.valve2",
+            "meta": {
+              "displayName": "routes.modules.menu.valve2",
+              "icon": "a.VALVE",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P4_9\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_79\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_81_82_83\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_81\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_82\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_83\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_80\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_86\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_87\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_85\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_84\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_26\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_25\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "valve/3",
+            "name": "modules.menu.valve3",
+            "meta": {
+              "displayName": "routes.modules.menu.valve3",
+              "icon": "a.VALVE",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P4_10\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_91\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_93_94_95\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_93\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_94\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_95\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_92\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_98\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_99\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_97\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_96\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_29\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_28\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "valve/4",
+            "name": "modules.menu.valve4",
+            "meta": {
+              "displayName": "routes.modules.menu.valve4",
+              "icon": "a.VALVE",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P4_11\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_103\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_105_106_107\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_105\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_106\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_107\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_104\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_110\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_111\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_109\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_108\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_32\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_31\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          },
+          {
+            "path": "valve/5",
+            "name": "modules.menu.valve5",
+            "meta": {
+              "displayName": "routes.modules.menu.valve5",
+              "icon": "a.VALVE",
+              "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+              "parameters": {
+                "read": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.READ,\"PARAM_P4_12\")"
+                  }
+                ],
+                "write": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_115\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_117_118_119\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_117\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_118\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_119\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_116\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_122\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_123\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_121\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.WRITE,\"PARAM_120\")"
+                  }
+                ],
+                "status": [
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_35\")"
+                  },
+                  {
+                    "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    "parameter": "e(E.STATUS,\"STATUS_P5_34\")"
+                  }
+                ],
+                "special": []
+              }
+            },
+            "component": "M.ParametersView",
+            "parameters": {
+              "read": [],
+              "write": [],
+              "status": [],
+              "special": []
+            },
+            "_visible": true,
+            "children": []
+          }
+        ],
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true
+      },
+      {
+        "path": "about",
+        "name": "modules.menu.about",
+        "meta": {
+          "displayName": "routes.modules.menu.about",
+          "icon": "a.INFO",
+          "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+          "parameters": {
+            "read": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_0\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_1\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_2\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_3\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_4\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_5\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_6\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_7\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_8\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_9\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_10\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_11\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_12\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_13\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_14\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_15\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_16\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_17\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_18\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_19\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_20\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_21\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P11_22\")"
+              }
+            ],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"COMMAND_MODULE_RESTART\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_186\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_P8_0\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_P8_1\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_P8_2\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_P8_3\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_P8_4\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_P8_5\")"
+              }
+            ],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": true,
+        "children": []
+      },
+      {
+        "path": "dev",
+        "name": "modules.menu.dev",
+        "meta": {
+          "displayName": "routes.modules.menu.dev",
+          "icon": "a.DEV_TO",
+          "permissionModule": "A.DISPLAY_MENU_DEV",
+          "parameters": {
+            "read": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_DISPLAY_SERVICER_CODE\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_17\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_18\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_19\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_20\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_21\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_22\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_23\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_24\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_25\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_26\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_27\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_28\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_29\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_31\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_32\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_33\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_34\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_35\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_36\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_37\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_38\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_39\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_40\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_41\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_42\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_45\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_47\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_48\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_50\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_57\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_58\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_63\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_P4_64\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.READ,\"PARAM_71\")"
+              }
+            ],
+            "write": [
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_P8_0_DEV\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_443\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_449\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_450\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_452\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_453\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_2\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_11\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_14\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_28\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_33\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_34\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_37\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_38\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_39\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_40\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_41\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_42\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_43\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_44\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_45\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_70\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_71\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_72\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_74\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_75\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_77\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_78\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_127\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_128\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_129\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_130\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_131\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_132\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_133\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_134\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_150\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_151\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_152\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_153\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_154\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_157\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_162\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_164\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_165\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_170\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_172\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_175\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_182\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_184\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_185\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_187\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_188\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_189\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_191\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_192\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_193\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_194\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_195\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_196\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_197\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_198\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_203\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_204\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_205\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_206\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_207\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_209\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_210\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_211\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_212\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_216\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_220\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_221\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_222\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_223\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_224\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_225\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_226\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_227\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_228\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_229\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_230\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_231\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_232\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_233\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_234\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_235\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_236\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_237\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_238\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_241\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_242\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_243\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_244\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_245\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_246\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_247\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_248\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_249\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_250\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_251\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_252\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_253\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_254\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_255\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_256\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_257\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_258\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_259\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_260\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_261\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_262\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_263\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_264\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_265\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_266\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_267\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_268\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_270\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_271\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_272\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_274\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_275\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_276\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_278\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_279\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_280\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_281\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_282\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_283\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_284\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_285\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_286\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_287\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_288\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_289\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_290\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_291\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_292\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_295\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_296\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_297\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_298\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_299\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_300\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_301\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_302\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_317\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_318\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_319\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_320\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_321\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_322\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_323\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_324\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_325\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_326\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_327\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_328\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_329\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_330\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_331\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_332\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_333\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_334\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_335\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_336\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_337\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_338\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_339\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_340\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_341\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_342\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_343\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_344\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_345\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_346\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_351\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_352\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_353\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_354\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_355\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_356\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_357\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_358\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_359\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_361\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_362\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_364\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_367\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_368\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_369\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_370\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_371\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_373\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_374\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_375\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_376\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_377\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_378\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_379\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_380\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_381\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_382\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_383\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_385\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_386\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_387\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_388\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_389\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_393\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_395\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_396\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_397\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_399\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_400\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_401\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_402\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_403\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_404\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_405\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_406\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_409\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_410\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_411\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_412\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_413\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_414\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_415\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_416\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_417\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_418\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_419\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_420\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_421\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_422\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_423\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_424\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_425\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_426\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_427\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_428\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_429\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_430\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_431\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_432\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_433\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_434\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_435\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_437\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_438\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM_439\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_6\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_7\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_8\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_9\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_10\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_15\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_16\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_17\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_18\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_21\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_22\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_23\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_24\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_30\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_25\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_27\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_28\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_29\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_31\")"
+              },
+              {
+                "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                "parameter": "e(E.WRITE,\"PARAM16_32\")"
+              }
+            ],
+            "status": [],
+            "special": []
+          }
+        },
+        "component": "M.ParametersView",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "_visible": false,
+        "children": []
+      }
+    ],
+    "routes_by_section": {
+      "dhw": [
+        "dhw"
+      ],
+      "circuits": [
+        "circuits"
+      ],
+      "pumps": [
+        "pumps"
+      ],
+      "schedules": [
+        "schedules"
+      ],
+      "photovoltaics": [
+        "photovoltaics"
+      ],
+      "operating-mode": [
+        "operating-mode"
+      ],
+      "boiler": [
+        "boiler",
+        "boiler/reserve",
+        "boiler/blower",
+        "boiler/blower/2",
+        "boiler/burner",
+        "boiler/feeder",
+        "boiler/return",
+        "boiler/dhw",
+        "boiler/exhaust-gas"
+      ],
+      "buffer": [
+        "buffer"
+      ],
+      "circulation": [
+        "circulation"
+      ],
+      "timezones": [
+        "timezones"
+      ],
+      "thermostats": [
+        "thermostats"
+      ],
+      "valves": [
+        "valves"
+      ],
+      "about": [
+        "about"
+      ]
+    }
+  },
+  "analysis": {
+    "visible_tokens": 0,
+    "visible_token_list": []
+  }
+}

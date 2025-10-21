@@ -6,6 +6,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from .common import Permission
+
 
 class User(BaseModel):
     """User information model."""
@@ -28,5 +30,11 @@ class UserInfoResponse(BaseModel):
     user: User
 
 
-# Type alias for user permissions (list of permission strings)
-UserPermissions = list[str]
+class UserPermissionsResponse(BaseModel):
+    """Response model for user permissions endpoint."""
+
+    permissions: list[str]
+
+    def get_permissions(self) -> list[Permission]:
+        """Get permissions as Permission models."""
+        return [Permission(name=perm) for perm in self.permissions]
