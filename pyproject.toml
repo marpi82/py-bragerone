@@ -128,7 +128,7 @@ line-ending = "lf"
 # ---------------- mypy (strict) ----------------
 [tool.mypy]
 python_version = "3.13"
-files = ["src/pybragerone"]
+files = ["src/pybragerone", "tests"]
 strict = true
 warn_unused_ignores = true
 disallow_untyped_defs = true

@@ -2,14 +2,19 @@
 
 import pytest
 
+from typing import TYPE_CHECKING
+
 from pybragerone.models.catalog import LiveAssetsCatalog
 from pybragerone.models.param import ParamStore
+
+if TYPE_CHECKING:
+    from pybragerone.api import BragerOneApiClient
 
 
 class MockApiClient:
     """Mock API client for integration testing."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Index with language config and i18n assets
         self.index_content = """
         var HL = {
@@ -71,11 +76,11 @@ class TestParamStoreI18nIntegration:
 
     async def test_param_store_with_i18n(self) -> None:
         """Test ParamStore using i18n translations."""
-        client = MockApiClient()
+        client: BragerOneApiClient = MockApiClient()  # type: ignore
 
         # Create ParamStore with i18n support
         param_store = ParamStore()
-        param_store.init_with_api(client)  # type: ignore
+        param_store.init_with_api(client)
 
         # Initialize assets (normally done by refresh_index)
         if param_store._assets:
@@ -108,10 +113,10 @@ class TestParamStoreI18nIntegration:
 
     async def test_param_store_resolve_labels_and_units(self) -> None:
         """Test resolving parameter labels and units through i18n."""
-        client = MockApiClient()
+        client: BragerOneApiClient = MockApiClient()  # type: ignore
 
         param_store = ParamStore()
-        param_store.init_with_api(client)  # type: ignore
+        param_store.init_with_api(client)
 
         # Initialize assets
         if param_store._assets:
@@ -138,10 +143,10 @@ class TestParamStoreI18nIntegration:
 
     async def test_language_config_integration(self) -> None:
         """Test that ParamStore correctly detects available languages."""
-        client = MockApiClient()
+        client: BragerOneApiClient = MockApiClient()  # type: ignore
 
         # Test through LiveAssetsCatalog directly
-        catalog = LiveAssetsCatalog(client)  # type: ignore
+        catalog = LiveAssetsCatalog(client)
         await catalog.refresh_index("http://example.com/index-main.js")
 
         # Get available language configuration
@@ -157,10 +162,10 @@ class TestParamStoreI18nIntegration:
 
     async def test_param_store_language_fallback(self) -> None:
         """Test ParamStore language detection and fallback."""
-        client = MockApiClient()
+        client: BragerOneApiClient = MockApiClient()  # type: ignore
 
         param_store = ParamStore()
-        param_store.init_with_api(client)  # type: ignore
+        param_store.init_with_api(client)
 
         # Initialize assets
         if param_store._assets:
