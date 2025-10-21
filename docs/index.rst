@@ -8,16 +8,15 @@ Welcome to py-bragerone's documentation!
    README
    pybragerone_integration_cheatsheet
    pybragerone_integration_notes
-   typing.md
-   tests_guidelines.md
-   WORKFLOWS
-   workflow_pr_vscode
+   typing
+   tests_guidelines
 
 .. toctree::
    :maxdepth: 2
    :caption: API
 
    api
+   new_models
 
 .. toctree::
    :maxdepth: 1

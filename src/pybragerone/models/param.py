@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from ..api.client import BragerOneApiClient
 from .catalog import LiveAssetsCatalog, MenuResult
 from .events import EventBus
 
 if TYPE_CHECKING:
+    from ..api.client import BragerOneApiClient
     from .catalog import TranslationConfig  # noqa: F401
 
 

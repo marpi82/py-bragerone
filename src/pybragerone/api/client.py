@@ -18,6 +18,14 @@ from aiohttp import (
     TraceRequestStartParams,
 )
 
+from ..models.api import (
+    BragerObject,
+    Module,
+    ModuleCard,
+    ObjectDetailsResponse,
+    SystemVersion,
+    UserInfoResponse,
+)
 from ..models.token import Token, TokenStore
 from .constants import ONE_BASE
 from .endpoints import (
@@ -38,9 +46,6 @@ from .endpoints import (
 
 LOG = logging.getLogger("pybragerone.api")
 LOG_HTTP = logging.getLogger("pybragerone.http")
-
-# TODO: add this endpoint?
-# GET /v1/system/version?container=BragerOne&platform=0 → 200
 
 
 class ApiError(RuntimeError):
@@ -352,11 +357,11 @@ class BragerOneApiClient:
 
     # -------- SYSTEM --------
 
-    async def get_system_version(self) -> dict[str, Any]:
+    async def get_system_version(self) -> SystemVersion:
         """Get system version information.
 
         Returns:
-            System version information dictionary.
+            System version information as a Pydantic model.
 
         Raises:
             ApiError: If the request fails.
@@ -364,7 +369,9 @@ class BragerOneApiClient:
         status, data, _ = await self._req("GET", system_version_url(), auth=False)
         if status != 200:
             raise ApiError(status, data)
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            raise ApiError(500, {"message": "Unexpected version payload"}, {})
+        return SystemVersion.model_validate(data)
 
     # ----------------- AUTH -----------------
 
@@ -536,11 +543,11 @@ class BragerOneApiClient:
 
     # -------- USER --------
 
-    async def get_user(self) -> dict[str, Any]:
+    async def get_user(self) -> UserInfoResponse:
         """Get current user information.
 
         Returns:
-            User information dictionary.
+            User information as a Pydantic model.
 
         Raises:
             ApiError: If the request fails.
@@ -550,7 +557,7 @@ class BragerOneApiClient:
             raise ApiError(status, data)
         if not isinstance(data, dict):
             raise ApiError(500, {"message": "Unexpected user payload"}, {})
-        return data
+        return UserInfoResponse.model_validate(data)
 
     async def get_user_permissions(self) -> list[str]:
         """Get current user permissions.
@@ -568,31 +575,36 @@ class BragerOneApiClient:
 
     # -------- OBJECTS --------
 
-    async def objects_list(self) -> list[dict[str, Any]]:
+    async def get_objects(self) -> list[BragerObject]:
         """GET /v1/objects → list of objects (with tolerance for different shapes).
 
         Returns:
-            List of object dictionaries.
+            List of BragerObject models.
         """
         st, data, _ = await self._req("GET", objects_url())
         if st != 200:
             return []
-        if isinstance(data, dict) and isinstance(data.get("data"), list):
-            return list(data["data"])
-        if isinstance(data, dict) and isinstance(data.get("objects"), list):
-            return list(data["objects"])
-        if isinstance(data, list):
-            return list(data)
-        return []
 
-    async def get_object(self, object_id: int) -> dict[str, Any]:
+        # Extract objects array from different response formats
+        objects_data = []
+        if isinstance(data, dict) and isinstance(data.get("data"), list):
+            objects_data = data["data"]
+        elif isinstance(data, dict) and isinstance(data.get("objects"), list):
+            objects_data = data["objects"]
+        elif isinstance(data, list):
+            objects_data = data
+
+        # Convert to Pydantic models
+        return [BragerObject.model_validate(obj) for obj in objects_data]
+
+    async def get_object(self, object_id: int) -> ObjectDetailsResponse:
         """Get object by ID.
 
         Args:
             object_id: The object identifier.
 
         Returns:
-            Object information dictionary.
+            Object details as a Pydantic model.
 
         Raises:
             ApiError: If the request fails.
@@ -600,7 +612,9 @@ class BragerOneApiClient:
         status, data, _ = await self._req("GET", object_url(object_id))
         if status != 200:
             raise ApiError(status, data)
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            raise ApiError(500, {"message": "Unexpected object payload"}, {})
+        return ObjectDetailsResponse.model_validate(data)
 
     async def get_object_permissions(self, object_id: int) -> list[str]:
         """Get object permissions by ID.
@@ -621,33 +635,37 @@ class BragerOneApiClient:
 
     # -------- MODULES --------
 
-    async def modules_list(self, object_id: int) -> list[dict[str, Any]]:
+    async def get_modules(self, object_id: int) -> list[Module]:
         """GET /v1/modules?page=1&limit=999&group_id=<object_id> → list of modules.
 
         Args:
             object_id: The object/group identifier.
 
         Returns:
-            List of module dictionaries.
+            List of Module models.
         """
         st, data, _ = await self._req("GET", modules_url(object_id))
         if st != 200:
             return []
-        # usually it's {data:[...]} or just a list
-        if isinstance(data, dict) and isinstance(data.get("data"), list):
-            return list(data["data"])
-        if isinstance(data, list):
-            return list(data)
-        return []
 
-    async def get_module_card(self, code: str) -> dict[str, Any]:
+        # Extract modules array from different response formats
+        modules_data = []
+        if isinstance(data, dict) and isinstance(data.get("data"), list):
+            modules_data = data["data"]
+        elif isinstance(data, list):
+            modules_data = data
+
+        # Convert to Pydantic models
+        return [Module.model_validate(mod) for mod in modules_data]
+
+    async def get_module_card(self, code: str) -> ModuleCard:
         """Get module card information by code.
 
         Args:
             code: The module code identifier.
 
         Returns:
-            Module card information dictionary.
+            Module card information as a Pydantic model.
 
         Raises:
             ApiError: If the request fails.
@@ -655,7 +673,9 @@ class BragerOneApiClient:
         status, data, _ = await self._req("GET", module_card_url(code))
         if status != 200:
             raise ApiError(status, data)
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            raise ApiError(500, {"message": "Unexpected module card payload"}, {})
+        return ModuleCard.model_validate(data)
 
     async def modules_connect(
         self,

@@ -27,15 +27,15 @@ def _setup_logging(debug: bool, quiet: bool) -> None:
 
 async def _prompt_select_object(api: BragerOneApiClient) -> int | None:
     """Prompt user to select an object from the list of available ones."""
-    items = await api.objects_list()
+    items = await api.get_objects()
     if not items:
         log.warning("Nie udało się pobrać listy obiektów (/v1/objects). Podaj --object-id.")
         return None
 
     print("\nWybierz obiekt (instalację):")
     for i, o in enumerate(items, 1):
-        name = o.get("name") or f"object-{o.get('id')}"
-        print(f"[{i}] {name}  (id={o.get('id')})")
+        name = o.name or f"object-{o.id}"
+        print(f"[{i}] {name}  (id={o.id})")
     while True:
         sel = input("Nr pozycji: ").strip()
         if not sel.isdigit():
@@ -43,22 +43,22 @@ async def _prompt_select_object(api: BragerOneApiClient) -> int | None:
             continue
         idx = int(sel)
         if 1 <= idx <= len(items):
-            return int(items[idx - 1]["id"])
+            return items[idx - 1].id
         print("Poza zakresem, spróbuj ponownie.")
 
 
 async def _prompt_select_modules(api: BragerOneApiClient, object_id: int) -> list[str]:
     """Prompt user to select modules from the list of available ones."""
-    rows = await api.modules_list(object_id=object_id)
+    rows = await api.get_modules(object_id=object_id)
     if not rows:
         print("Brak modułów dla wskazanego obiektu.")
         return []
 
     print("Dostępne moduły:")
     for i, m in enumerate(rows, start=1):
-        name = str(m.get("name") or "-")
-        code = m.get("devid") or m.get("code") or m.get("id")
-        ver = m.get("moduleVersion") or m.get("gateway", {}).get("version") or "-"
+        name = str(m.name or "-")
+        code = m.devid or str(m.id)
+        ver = m.moduleVersion or m.gateway.version or "-"
         print(f"[{i}] {name:24} code={code}  ver={ver}")
 
     print("Wpisz numery rozdzielone przecinkami (np. 1,3) albo * dla wszystkich.")
@@ -66,11 +66,7 @@ async def _prompt_select_modules(api: BragerOneApiClient, object_id: int) -> lis
         sel = input("Wybór: ").strip()
         if sel == "*":
             # all
-            all = {
-                str(m.get("devid") or m.get("code") or m.get("id"))
-                for m in rows
-                if (m.get("devid") or m.get("code") or m.get("id")) is not None
-            }
+            all = {str(m.devid or m.id) for m in rows if (m.devid or m.id) is not None}
             return sorted(all)
 
         try:
@@ -83,7 +79,7 @@ async def _prompt_select_modules(api: BragerOneApiClient, object_id: int) -> lis
         for idx in idxs:
             if 1 <= idx <= len(rows):
                 m = rows[idx - 1]
-                code_obj = m.get("devid") or m.get("code") or m.get("id")
+                code_obj = m.devid or str(m.id)
                 if code_obj is not None:
                     choices.add(str(code_obj))
 

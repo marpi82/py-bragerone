@@ -15,13 +15,14 @@ import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urljoin
 
 from tree_sitter import Node, Parser, Tree
 from tree_sitter_javascript import language as TS_JS_LANGUAGE
 
-from ..api import BragerOneApiClient
+if TYPE_CHECKING:
+    from ..api import BragerOneApiClient
 
 JS_LANGUAGE = TS_JS_LANGUAGE()
 
