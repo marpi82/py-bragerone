@@ -146,7 +146,10 @@ jobs:
       #          echo "--- tree src/docs"; ls -la src/docs || true
       #          echo "--- git tracked under src/docs"; git ls-files | grep -E '^src/docs/' || true
       - name: Build Sphinx docs
-        run: poetry run sphinx-build -b html docs docs/_build/html
+        run: |
+          export LC_ALL=C.UTF-8
+          export LANG=C.UTF-8
+          poetry run sphinx-build -b html docs docs/_build/html
 
   build:
     name: build

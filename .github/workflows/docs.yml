@@ -46,6 +46,8 @@ jobs:
       - name: Build & deploy docs (mike)
         env:
           VERSION: ${{ steps.ver.outputs.VERSION }}
+          LC_ALL: C.UTF-8
+          LANG: C.UTF-8
         run: |
           git fetch origin gh-pages || true
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
@@ -58,4 +60,7 @@ jobs:
           fi
       - name: Set default docs version (first time only)
         if: ${{ github.ref == 'refs/heads/main' }}
+        env:
+          LC_ALL: C.UTF-8
+          LANG: C.UTF-8
         run: poetry run mike set-default --push latest

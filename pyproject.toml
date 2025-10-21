@@ -170,7 +170,7 @@ cov = { cmd = "pytest -q --cov=pybragerone --cov-report=term-missing" }
 # Build
 build = { cmd = "poetry build" }
 # Docs
-docs-build = { cmd = "sphinx-build -b html docs docs/_build/html" }
+docs-build = { shell = "export LC_ALL=C.utf8 2>/dev/null || export LC_ALL=C.UTF-8 2>/dev/null || true && poetry run sphinx-build -b html docs docs/_build/html" }
 docs-serve = { shell = "python -m http.server --directory docs/_build/html 8000" }
 # Publication (local; CI have its own secrets)
 publish-pypi = { shell = "poetry publish --build --no-interaction" }

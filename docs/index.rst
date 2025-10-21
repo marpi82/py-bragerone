@@ -8,8 +8,6 @@ Welcome to py-bragerone's documentation!
    README
    pybragerone_integration_cheatsheet
    pybragerone_integration_notes
-   typing
-   tests_guidelines
 
 .. toctree::
    :maxdepth: 2

@@ -32,32 +32,54 @@ Core Principles
 Architecture (High-Level)
 =========================
 
-.. code-block:: text
+.. mermaid::
 
-   +-------------------+        REST        +-------------------------+
-   |   Brager API      |<------------------>|  Brager One backend     |
-   |  (aiohttp)        |  prime parameters  |  (io.brager.pl)         |
-   +-------------------+        +           +-------------------------+
-           |                                ^
-           | WS (socket.io) subscribe       | WS change events
-           v                                |
-   +-------------------+    publish()    +-------------------+
-   |   Gateway         | --------------> |    EventBus       |  (multicast; per-subscriber queues)
-   +-------------------+                 +-------------------+
-           |                                      | \
-           |                                      |  \    (debug/CLI)
-           |                                      |   \--------------+
-           |                                      v                  v
-   +-------------------+                 +-------------------+  +-------------------+
-   |   ParamStore      |  (runtime)      |    StateStore     |  |    Printer        |
-   |   key->value      |                 |  rich model/meta  |  |  (optional)       |
-   +-------------------+                 +-------------------+  +-------------------+
-           |                                     ^
-           v                                     |
-   +-------------------------------+             |
-   | Home Assistant Entities       |-------------+  (only during config/reconfigure)
-   | (binary_sensor, number, ...)  |   descriptors built from StateStore
-   +-------------------------------+
+   graph TB
+       subgraph "External Services"
+           Backend["🌐 Brager One backend<br/>(io.brager.pl)"]
+       end
+       
+       subgraph "pybragerone Core"
+           API["📡 Brager API<br/>(aiohttp)"]
+           Gateway["🚪 Gateway"]
+           Bus["📢 EventBus<br/>(multicast; per-subscriber queues)"]
+       end
+       
+       subgraph "Data Stores"
+           ParamStore["💾 ParamStore<br/>(runtime)<br/>key→value"]
+           StateStore["🏗️ StateStore<br/>(rich model/meta)"]
+       end
+       
+       subgraph "Consumers"
+           HA["🏠 Home Assistant Entities<br/>(binary_sensor, number, ...)"]
+           Printer["🖨️ Printer<br/>(optional debug/CLI)"]
+       end
+       
+       %% Main data flow
+       API <-->|"REST<br/>prime parameters"| Backend
+       API -->|"WS (socket.io)<br/>subscribe"| Gateway
+       Backend -->|"WS change events"| Gateway
+       Gateway -->|"publish()"| Bus
+       
+       %% Store connections  
+       Bus --> ParamStore
+       Bus --> StateStore
+       Bus --> Printer
+       
+       %% HA integration
+       ParamStore --> HA
+       StateStore -.->|"descriptors built<br/>(config/reconfigure only)"| HA
+       
+       %% Styling
+       classDef external fill:#e1f5fe
+       classDef core fill:#f3e5f5  
+       classDef store fill:#e8f5e8
+       classDef consumer fill:#fff3e0
+       
+       class Backend external
+       class API,Gateway,Bus core
+       class ParamStore,StateStore store
+       class HA,Printer consumer
 
 Data Model & Semantics
 ======================
