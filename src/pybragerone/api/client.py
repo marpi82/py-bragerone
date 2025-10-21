@@ -19,6 +19,7 @@ from aiohttp import (
 )
 
 from ..models.api import (
+    AuthResponse,
     BragerObject,
     Module,
     ModuleCard,
@@ -267,10 +268,7 @@ class BragerOneApiClient:
             trace_configs.append(trace)
 
         self._session = ClientSession(
-            headers={
-                "Origin": ONE_BASE,
-                "Referer": f"{ONE_BASE}/",
-            },
+            headers={"Origin": ONE_BASE, "Referer": f"{ONE_BASE}/"},
             trace_configs=trace_configs,
         )
         return self._session
@@ -421,7 +419,7 @@ class BragerOneApiClient:
             # 4) classic login
             return await self._post_login(em, pw)
 
-    async def _do_login_request(self, email: str, password: str) -> tuple[int, dict[str, Any] | None, dict[str, Any]]:
+    async def _do_login_request(self, email: str, password: str) -> AuthResponse:
         """Execute login request to the authentication endpoint.
 
         Args:
@@ -429,14 +427,22 @@ class BragerOneApiClient:
             password: User password.
 
         Returns:
-            Tuple of (status, response_data, headers).
+            Authentication response as a Pydantic model.
+
+        Raises:
+            ApiError: If the request fails.
         """
-        return await self._req(
+        status, data, _ = await self._req(
             "POST",
             auth_user_url(),
             json={"email": email, "password": password},
             auth=False,
         )
+        if status != 200:
+            raise ApiError(status, data)
+        if not isinstance(data, dict):
+            raise ApiError(500, {"message": "Unexpected login payload"}, {})
+        return AuthResponse.model_validate(data)
 
     async def _post_login(self, email: str, password: str) -> Token:
         """Login via /v1/auth/user. On 500/ER_DUP_ENTRY try short backoff and retry.
@@ -457,7 +463,7 @@ class BragerOneApiClient:
 
         for _, d in enumerate([*delays, None]):  # last attempt without sleep after
             try:
-                _, data, _ = await self._do_login_request(email, password)
+                auth_response = await self._do_login_request(email, password)
             except ApiError as e:
                 # only retry 500/duplicate errors
                 if e.status == 500 and self._is_duplicate_token_error(e.data) and d is not None:
@@ -466,10 +472,8 @@ class BragerOneApiClient:
                     continue
                 raise
 
-            if not isinstance(data, dict):
-                raise ApiError(500, {"message": "Unexpected login payload"}, {})
-
-            tok = Token.from_login_payload(data)
+            # Convert AuthResponse to Token using existing method
+            tok = Token.from_login_payload(auth_response.model_dump())
             if not tok.access_token:
                 raise ApiError(500, {"message": "No accessToken in login payload"}, {})
 

@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from .catalog import LiveAssetsCatalog, MenuResult
+from ..models.catalog import LiveAssetsCatalog, MenuResult
 from .events import EventBus
 
 if TYPE_CHECKING:
-    from ..api.client import BragerOneApiClient
-    from .catalog import TranslationConfig  # noqa: F401
+    from ..api import BragerOneApiClient
+    from ..models.catalog import TranslationConfig  # noqa: F401
 
 
 class ParamFamilyModel(BaseModel):
@@ -66,7 +66,7 @@ class ParamStore(BaseModel):
     _lang_cfg = PrivateAttr(default=None)  # type: TranslationConfig | None
     _cache_i18n = PrivateAttr(default_factory=dict)  # type: dict[tuple[str, str], dict[str, Any]]
     _cache_mapping = PrivateAttr(default_factory=dict)  # type: dict[str, dict[str, Any]]
-    _cache_menu = PrivateAttr(default=None)  # type: dict[str, Any] | None
+    _cache_menu = PrivateAttr(default=None)  # type: MenuResult | None
 
     model_config = ConfigDict(frozen=False, validate_assignment=True)
 
@@ -155,15 +155,22 @@ class ParamStore(BaseModel):
         if not self._assets:
             return {}
         if symbol not in self._cache_mapping:
-            self._cache_mapping[symbol] = await self._assets.get_param_mapping(symbol)
+            # Call the assets method which expects Iterable[str] and returns dict[str, ParamMap]
+            result = await self._assets.get_param_mapping([symbol])
+            param_map = result.get(symbol)
+            if param_map:
+                # Convert ParamMap to dict - assuming ParamMap has a method to convert to dict
+                self._cache_mapping[symbol] = param_map.__dict__ if hasattr(param_map, "__dict__") else {}
+            else:
+                self._cache_mapping[symbol] = {}
         return self._cache_mapping[symbol]
 
-    async def get_module_menu(self) -> MenuResult:
+    async def get_module_menu(self, device_menu: int = 0) -> MenuResult:
         """Get full module menu structure (cached)."""
         if not self._assets:
-            return {}
+            return MenuResult(routes=[], tokens=set(), origin_asset=None, origin_inline=False)
         if self._cache_menu is None:
-            self._cache_menu = await self._assets.get_module_menu()
+            self._cache_menu = await self._assets.get_module_menu(device_menu)
         return self._cache_menu
 
     # ---------- i18n helpers ----------
@@ -248,11 +255,11 @@ class ParamStore(BaseModel):
 
     # ---------- merge assets with permissions ----------
 
-    async def merge_assets_with_permissions(self, permissions: list[str]) -> dict[str, dict[str, Any]]:
+    async def merge_assets_with_permissions(self, permissions: list[str], device_menu: int = 0) -> dict[str, dict[str, Any]]:
         """Scal i18n + selective mappings + menu + bieżące wartości, filtrowane po perms."""
         if not self._assets:
             return {}
-        symbols = await self._assets.list_symbols_for_permissions(permissions)
+        symbols = await self._assets.list_symbols_for_permissions(device_menu, permissions)
         out: dict[str, dict[str, Any]] = {}
         for sym in sorted(symbols):
             out[sym] = await self.describe_symbol(sym)

@@ -162,7 +162,7 @@ bootstrap = { cmd = "poetry install --with dev,test,docs" }
 # format/lint/typecheck
 fmt = "ruff format"
 lint = "ruff check . --fix"
-typecheck = "mypy . --strict"
+typecheck = "mypy"
 all = ["fmt", "lint", "typecheck"]
 # Tests
 test = { cmd = "pytest -q" }

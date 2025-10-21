@@ -15,16 +15,16 @@ import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin
 
-from tree_sitter import Node, Parser, Tree
-from tree_sitter_javascript import language as TS_JS_LANGUAGE
+import tree_sitter_javascript
+from tree_sitter import Language, Node, Parser, Tree
 
 if TYPE_CHECKING:
     from ..api import BragerOneApiClient
 
-JS_LANGUAGE = TS_JS_LANGUAGE()
+JS_LANGUAGE = Language(tree_sitter_javascript.language())
 
 
 # ----------------------------- Data types -----------------------------
@@ -188,7 +188,7 @@ class _TS:
         and TypeScript code using the tree-sitter-javascript grammar.
         """
         self.parser = Parser()
-        cast(Any, self.parser).set_language(JS_LANGUAGE)
+        self.parser.language = JS_LANGUAGE
 
     def parse(self, code: bytes) -> Tree:
         """Parse JavaScript code into an Abstract Syntax Tree (AST).
@@ -396,7 +396,7 @@ class LiveAssetsCatalog:
     # ---------- INDEX ----------
 
     async def refresh_index(self, index_url: str) -> None:
-        """Fetches index-<hash>.js and builds.
+        """Fetches index-<hash>.js and builds full asset index.
 
         - assets_by_basename (exact BASENAME → [AssetRef])
         - menu_map: int -> BASENAME(module.menu-<hash>.js), if present in index
@@ -415,18 +415,35 @@ class LiveAssetsCatalog:
     def _build_asset_index_from_index_js(self, index_url: str, code: bytes) -> AssetIndex:
         text = code.decode("utf-8", errors="replace")
 
+        # Performance optimization: limit regex search to first part of file for most assets
+        # Most index files have assets declared early, but we keep a fallback for full file
+        search_text = text[:50000] if len(text) > 50000 else text
+
         # 1) Collect all '*-<hash>.js' paths from literals (zero assumptions about directory)
         #    BASENAME = everything up to the last '-' before .js extension
         path_re = re.compile(
             r'(?P<url>(?P<prefix>/[^"\'`\s]+/)?(?P<base>[^"\'`\s-]+(?:\.[^"\'`\s-]+)*)-(?P<hash>[A-Za-z0-9_]+)\.js)'
         )
         assets_by_basename: dict[str, list[AssetRef]] = {}
-        for m in path_re.finditer(text):
+
+        # First pass: search in limited text for performance
+        for m in path_re.finditer(search_text):
             url_rel = m.group("url")
             base = m.group("base")
             h = m.group("hash")
             full_url = urljoin(index_url, url_rel)
             assets_by_basename.setdefault(base, []).append(AssetRef(url=full_url, base=base, hash=h))
+
+        # If we got very few matches and the file is large, do a full search
+        # This handles cases where assets are declared later in the file
+        if len(assets_by_basename) < 5 and len(text) > len(search_text):
+            self._log.debug("Few assets found in limited search, scanning full file...")
+            for m in path_re.finditer(text[len(search_text) :]):
+                url_rel = m.group("url")
+                base = m.group("base")
+                h = m.group("hash")
+                full_url = urljoin(index_url, url_rel)
+                assets_by_basename.setdefault(base, []).append(AssetRef(url=full_url, base=base, hash=h))
 
         # 2) Try to find mapping from deviceMenu:int -> 'module.menu-<hash>.js' in index (AST)
         tree = self._ts.parse(code)
@@ -790,3 +807,527 @@ class LiveAssetsCatalog:
         """
         m = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
         return m.tokens
+
+    # ---------- i18n support ----------
+
+    async def list_language_config(self) -> TranslationConfig | None:
+        """Get translation configuration from assets.
+
+        Parses the index-*.js file to extract language configuration by structural patterns.
+        The configuration object contains translations array and defaultTranslation field.
+        """
+        if not self._idx.index_bytes:
+            self._log.warning("No index data available. Call refresh_index() or refresh_index_minimal() first.")
+            return None
+
+        try:
+            return self._parse_language_config_from_js(self._idx.index_bytes)
+        except Exception as e:
+            self._log.warning("Failed to parse language config from index: %s", e)
+            return None
+
+    async def get_i18n(self, lang: str, namespace: str) -> dict[str, Any]:
+        """Get i18n mapping for a given language and namespace.
+
+        Args:
+            lang: Language code (e.g., 'en', 'pl').
+            namespace: Namespace (e.g., 'parameters', 'units').
+
+        Returns:
+            Dictionary with translation mappings.
+        """
+        # TODO: Implement actual i18n loading from assets
+        # This is a placeholder that returns empty dict
+        return {}
+
+    def _parse_language_config_from_js(self, js_bytes: bytes) -> TranslationConfig | None:
+        """Parse language configuration from JavaScript code using tree-sitter.
+
+        Looks for language configuration objects with translations array and defaultTranslation.
+
+        Args:
+            js_bytes: Raw JavaScript code as bytes.
+
+        Returns:
+            TranslationConfig object or None if parsing fails.
+        """
+        try:
+            tree = self._ts.parse(js_bytes)
+
+            # Look for language configuration object by structure pattern
+            lang_config_object = self._find_language_config_object_bytes(tree, js_bytes)
+            if not lang_config_object:
+                return None
+
+            # Extract translations array and defaultTranslation
+            translations = self._extract_translations_array_bytes(lang_config_object, js_bytes)
+            default_translation = self._extract_default_translation_bytes(lang_config_object, js_bytes)
+
+            if not translations or not default_translation:
+                return None
+
+            return TranslationConfig(translations=translations, default_translation=default_translation)
+
+        except Exception as e:
+            self._log.warning("Failed to parse JS language config: %s", e)
+            return None
+
+    def _find_language_config_object_bytes(self, tree: Tree, js_bytes: bytes) -> Node | None:
+        """Find language configuration object by structure pattern (bytes version).
+
+        Searches for objects containing:
+        - 'translations' array with objects having 'id' and 'flag' properties
+        - 'defaultTranslation' string property
+
+        This method is resilient to variable name changes during minification and
+        works with any variable assignment (var/const/let) or object property.
+        """
+
+        def get_node_text_local(node: Node) -> str:
+            """Local helper to extract node text from bytes."""
+            node_bytes = js_bytes[node.start_byte : node.end_byte]
+            node_text = node_bytes.decode("utf-8", errors="replace")
+            # Remove quotes from string literals
+            if (
+                node.type in ("string", "property_identifier")
+                and len(node_text) >= 2
+                and (
+                    (node_text.startswith('"') and node_text.endswith('"'))
+                    or (node_text.startswith("'") and node_text.endswith("'"))
+                )
+            ):
+                return node_text[1:-1]
+            return node_text
+
+        def is_language_config_object(obj_node: Node) -> bool:
+            """Check if this object looks like a language configuration."""
+            if obj_node.type != "object":
+                return False
+
+            has_translations = False
+            has_default_translation = False
+
+            for pair in obj_node.children:
+                if pair.type != "pair":
+                    continue
+
+                key_node = pair.child_by_field_name("key")
+                value_node = pair.child_by_field_name("value")
+
+                if not (key_node and value_node):
+                    continue
+
+                key_text = get_node_text_local(key_node)
+
+                # Look for translations array
+                if key_text == "translations" and value_node.type == "array":
+                    # Check if array contains objects with language-like structure
+                    if is_translations_array_local(value_node):
+                        has_translations = True
+
+                # Look for defaultTranslation string
+                elif key_text == "defaultTranslation" and value_node.type == "string":
+                    has_default_translation = True
+
+            result = has_translations and has_default_translation
+            return result
+
+        def is_translations_array_local(array_node: Node) -> bool:
+            """Local helper to check if array looks like translations array."""
+            valid_entries = 0
+            total_objects = 0
+
+            for child in array_node.children:
+                if child.type == "object":
+                    total_objects += 1
+                    has_id = False
+                    has_flag = False
+
+                    for pair in child.children:
+                        if pair.type != "pair":
+                            continue
+
+                        key_node = pair.child_by_field_name("key")
+                        if not key_node:
+                            continue
+
+                        key_text = get_node_text_local(key_node)
+                        if key_text == "id":
+                            has_id = True
+                        elif key_text == "flag":
+                            has_flag = True
+
+                    if has_id and has_flag:
+                        valid_entries += 1
+
+            # Consider it a translations array if most objects have the expected structure
+            threshold = total_objects * 0.7
+            return total_objects > 0 and valid_entries >= threshold
+
+        def visit_node(node: Node) -> Node | None:
+            # Check all object literals for language config pattern
+            if node.type == "object" and is_language_config_object(node):
+                return node
+
+            # Also check variable assignments and property values
+            if node.type == "variable_declarator":
+                value_node = node.child_by_field_name("value")
+                if value_node and value_node.type == "object" and is_language_config_object(value_node):
+                    return value_node
+
+            elif node.type == "assignment_expression":
+                right = node.child_by_field_name("right")
+                if right and right.type == "object" and is_language_config_object(right):
+                    return right
+
+            # Recursively search children
+            for child in node.children:
+                result = visit_node(child)
+                if result:
+                    return result
+            return None
+
+        return visit_node(tree.root_node)
+
+    def _find_language_config_object(self, tree: Tree, text: str) -> Node | None:
+        """Find language configuration object by structure pattern (string version).
+
+        Searches for objects containing:
+        - 'translations' array with objects having 'id' and 'flag' properties
+        - 'defaultTranslation' string property
+
+        This method is resilient to variable name changes during minification and
+        works with any variable assignment (var/const/let) or object property.
+
+        Note: This is the legacy string-based version. Use _find_language_config_object_bytes
+        for better Unicode support.
+        """
+
+        def get_node_text_local(node: Node) -> str:
+            """Local helper to extract node text."""
+            node_text = text[node.start_byte : node.end_byte]
+            # Remove quotes from string literals
+            if (
+                node.type in ("string", "property_identifier")
+                and len(node_text) >= 2
+                and (
+                    (node_text.startswith('"') and node_text.endswith('"'))
+                    or (node_text.startswith("'") and node_text.endswith("'"))
+                )
+            ):
+                return node_text[1:-1]
+            return node_text
+
+        def is_language_config_object(obj_node: Node) -> bool:
+            """Check if this object looks like a language configuration."""
+            if obj_node.type != "object":
+                return False
+
+            has_translations = False
+            has_default_translation = False
+
+            for pair in obj_node.children:
+                if pair.type != "pair":
+                    continue
+
+                key_node = pair.child_by_field_name("key")
+                value_node = pair.child_by_field_name("value")
+
+                if not (key_node and value_node):
+                    continue
+
+                key_text = get_node_text_local(key_node)
+
+                # Look for translations array
+                if key_text == "translations" and value_node.type == "array":
+                    # Check if array contains objects with language-like structure
+                    if is_translations_array_local(value_node):
+                        has_translations = True
+
+                # Look for defaultTranslation string
+                elif key_text == "defaultTranslation" and value_node.type == "string":
+                    has_default_translation = True
+
+            result = has_translations and has_default_translation
+            return result
+
+        def is_translations_array_local(array_node: Node) -> bool:
+            """Local helper to check if array looks like translations array."""
+            valid_entries = 0
+            total_objects = 0
+
+            for child in array_node.children:
+                if child.type == "object":
+                    total_objects += 1
+                    has_id = False
+                    has_flag = False
+
+                    for pair in child.children:
+                        if pair.type != "pair":
+                            continue
+
+                        key_node = pair.child_by_field_name("key")
+                        if not key_node:
+                            continue
+
+                        key_text = get_node_text_local(key_node)
+                        if key_text == "id":
+                            has_id = True
+                        elif key_text == "flag":
+                            has_flag = True
+
+                    if has_id and has_flag:
+                        valid_entries += 1
+
+            # Consider it a translations array if most objects have the expected structure
+            threshold = total_objects * 0.7
+            return total_objects > 0 and valid_entries >= threshold
+
+        def visit_node(node: Node) -> Node | None:
+            # Check all object literals for language config pattern
+            if node.type == "object" and is_language_config_object(node):
+                return node
+
+            # Also check variable assignments and property values
+            if node.type == "variable_declarator":
+                value_node = node.child_by_field_name("value")
+                if value_node and value_node.type == "object" and is_language_config_object(value_node):
+                    return value_node
+
+            elif node.type == "assignment_expression":
+                right = node.child_by_field_name("right")
+                if right and right.type == "object" and is_language_config_object(right):
+                    return right
+
+            # Recursively search children
+            for child in node.children:
+                result = visit_node(child)
+                if result:
+                    return result
+            return None
+
+        return visit_node(tree.root_node)
+
+    def _is_translations_array(self, array_node: Node, text: str) -> bool:
+        """Check if an array looks like a translations array.
+
+        Looks for array elements that are objects with 'id' and 'flag' properties,
+        which is the signature of language configuration entries.
+        """
+        valid_entries = 0
+        total_objects = 0
+
+        for child in array_node.children:
+            if child.type == "object":
+                total_objects += 1
+                has_id = False
+                has_flag = False
+
+                for pair in child.children:
+                    if pair.type != "pair":
+                        continue
+
+                    key_node = pair.child_by_field_name("key")
+                    if not key_node:
+                        continue
+
+                    key_text = self._get_node_text(key_node, text)
+                    if key_text == "id":
+                        has_id = True
+                    elif key_text == "flag":
+                        has_flag = True
+
+                if has_id and has_flag:
+                    valid_entries += 1
+
+        # Consider it a translations array if most objects have the expected structure
+        threshold = total_objects * 0.7
+        return total_objects > 0 and valid_entries >= threshold
+
+    def _extract_translations_array_bytes(self, obj_node: Node, js_bytes: bytes) -> list[dict[str, Any]] | None:
+        """Extract translations array from language configuration object (bytes version)."""
+        for pair in obj_node.children:
+            if pair.type == "pair":
+                key_node = pair.child_by_field_name("key")
+                if key_node:
+                    key_bytes = js_bytes[key_node.start_byte : key_node.end_byte]
+                    key_text = key_bytes.decode("utf-8", errors="replace")
+                    if key_text == "translations":
+                        value_node = pair.child_by_field_name("value")
+                        if value_node and value_node.type == "array":
+                            return self._parse_translations_array_bytes(value_node, js_bytes)
+        return None
+
+    def _extract_default_translation_bytes(self, obj_node: Node, js_bytes: bytes) -> str | None:
+        """Extract defaultTranslation from language configuration object (bytes version)."""
+        for pair in obj_node.children:
+            if pair.type == "pair":
+                key_node = pair.child_by_field_name("key")
+                if key_node:
+                    key_bytes = js_bytes[key_node.start_byte : key_node.end_byte]
+                    key_text = key_bytes.decode("utf-8", errors="replace")
+                    if key_text == "defaultTranslation":
+                        value_node = pair.child_by_field_name("value")
+                        if value_node and value_node.type == "string":
+                            # Remove quotes from string literal
+                            value_bytes = js_bytes[value_node.start_byte : value_node.end_byte]
+                            value_text = value_bytes.decode("utf-8", errors="replace")
+                            return value_text.strip("\"'")
+        return None
+
+    def _parse_translations_array_bytes(self, array_node: Node, js_bytes: bytes) -> list[dict[str, Any]]:
+        """Parse the translations array into Python list of dicts (bytes version)."""
+        translations = []
+        for child in array_node.children:
+            if child.type == "object":
+                translation = self._parse_translation_object_bytes(child, js_bytes)
+                if translation:
+                    translations.append(translation)
+        return translations
+
+    def _parse_translation_object_bytes(self, obj_node: Node, js_bytes: bytes) -> dict[str, Any] | None:
+        """Parse a single translation object (bytes version)."""
+        translation = {}
+        for pair in obj_node.children:
+            if pair.type == "pair":
+                key_node = pair.child_by_field_name("key")
+                value_node = pair.child_by_field_name("value")
+                if key_node and value_node:
+                    key_bytes = js_bytes[key_node.start_byte : key_node.end_byte]
+                    key = key_bytes.decode("utf-8", errors="replace")
+                    value = self._parse_js_value_bytes(value_node, js_bytes)
+                    translation[key] = value
+        return translation if translation else None
+
+    def _parse_js_value_bytes(self, node: Node, js_bytes: bytes) -> Any:
+        """Parse a JavaScript value node into Python equivalent (bytes version)."""
+        if node.type == "string":
+            val_bytes = js_bytes[node.start_byte : node.end_byte]
+            val_text = val_bytes.decode("utf-8", errors="replace")
+            return val_text.strip("\"'")
+        elif node.type == "number":
+            val_bytes = js_bytes[node.start_byte : node.end_byte]
+            val_text = val_bytes.decode("utf-8", errors="replace")
+            return int(val_text) if "." not in val_text else float(val_text)
+        elif node.type == "true":
+            return True
+        elif node.type == "false":
+            return False
+        elif node.type == "null":
+            return None
+        elif node.type == "object":
+            obj = {}
+            for pair in node.children:
+                if pair.type == "pair":
+                    key_node = pair.child_by_field_name("key")
+                    value_node = pair.child_by_field_name("value")
+                    if key_node and value_node:
+                        key_bytes = js_bytes[key_node.start_byte : key_node.end_byte]
+                        key = key_bytes.decode("utf-8", errors="replace")
+                        value = self._parse_js_value_bytes(value_node, js_bytes)
+                        obj[key] = value
+            return obj
+        elif node.type == "array":
+            arr = []
+            for child in node.children:
+                if child.type not in (",", "[", "]"):
+                    arr.append(self._parse_js_value_bytes(child, js_bytes))
+            return arr
+        else:
+            # Fallback to raw text
+            val_bytes = js_bytes[node.start_byte : node.end_byte]
+            return val_bytes.decode("utf-8", errors="replace")
+
+    def _extract_translations_array(self, obj_node: Node, text: str) -> list[dict[str, Any]] | None:
+        """Extract translations array from language configuration object."""
+        for pair in obj_node.children:
+            if pair.type == "pair":
+                key_node = pair.child_by_field_name("key")
+                if key_node and self._get_node_text(key_node, text) == "translations":
+                    value_node = pair.child_by_field_name("value")
+                    if value_node and value_node.type == "array":
+                        return self._parse_translations_array(value_node, text)
+        return None
+
+    def _extract_default_translation(self, obj_node: Node, text: str) -> str | None:
+        """Extract defaultTranslation from language configuration object."""
+        for pair in obj_node.children:
+            if pair.type == "pair":
+                key_node = pair.child_by_field_name("key")
+                if key_node and self._get_node_text(key_node, text) == "defaultTranslation":
+                    value_node = pair.child_by_field_name("value")
+                    if value_node and value_node.type == "string":
+                        # Remove quotes from string literal
+                        return self._get_node_text(value_node, text).strip("\"'")
+        return None
+
+    def _parse_translations_array(self, array_node: Node, text: str) -> list[dict[str, Any]]:
+        """Parse the translations array into Python list of dicts."""
+        translations = []
+        for child in array_node.children:
+            if child.type == "object":
+                translation = self._parse_translation_object(child, text)
+                if translation:
+                    translations.append(translation)
+        return translations
+
+    def _parse_translation_object(self, obj_node: Node, text: str) -> dict[str, Any] | None:
+        """Parse a single translation object."""
+        translation = {}
+        for pair in obj_node.children:
+            if pair.type == "pair":
+                key_node = pair.child_by_field_name("key")
+                value_node = pair.child_by_field_name("value")
+                if key_node and value_node:
+                    key = self._get_node_text(key_node, text)
+                    value = self._parse_js_value(value_node, text)
+                    translation[key] = value
+        return translation if translation else None
+
+    def _parse_js_value(self, node: Node, text: str) -> Any:
+        """Parse a JavaScript value node into Python equivalent."""
+        if node.type == "string":
+            return self._get_node_text(node, text).strip("\"'")
+        elif node.type == "number":
+            val_text = self._get_node_text(node, text)
+            return int(val_text) if "." not in val_text else float(val_text)
+        elif node.type == "true":
+            return True
+        elif node.type == "false":
+            return False
+        elif node.type == "null":
+            return None
+        elif node.type == "object":
+            obj = {}
+            for pair in node.children:
+                if pair.type == "pair":
+                    key_node = pair.child_by_field_name("key")
+                    value_node = pair.child_by_field_name("value")
+                    if key_node and value_node:
+                        key = self._get_node_text(key_node, text)
+                        value = self._parse_js_value(value_node, text)
+                        obj[key] = value
+            return obj
+        elif node.type == "array":
+            arr = []
+            for child in node.children:
+                if child.type != "," and child.type != "[" and child.type != "]":
+                    arr.append(self._parse_js_value(child, text))
+            return arr
+        else:
+            # Fallback to raw text
+            return self._get_node_text(node, text)
+
+    def _get_node_text(self, node: Node, text: str) -> str:
+        """Extract text content of a node, handling quoted strings."""
+        node_text = text[node.start_byte : node.end_byte]
+        # Remove quotes from string literals
+        if (
+            node.type == "string"
+            and len(node_text) >= 2
+            and (
+                (node_text.startswith('"') and node_text.endswith('"')) or (node_text.startswith("'") and node_text.endswith("'"))
+            )
+        ):
+            return node_text[1:-1]
+        return node_text

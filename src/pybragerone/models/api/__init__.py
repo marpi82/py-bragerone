@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .auth import AuthResponse, LoginRequest
 from .modules import (
     Module,
     ModuleActivityResponse,
@@ -16,7 +17,9 @@ from .system import SystemVersion, VersionInfo
 from .user import User, UserInfoResponse, UserPermissions
 
 __all__ = [
+    "AuthResponse",
     "BragerObject",
+    "LoginRequest",
     "Module",
     "ModuleActivityResponse",
     "ModuleCard",
