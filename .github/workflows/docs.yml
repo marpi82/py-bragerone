@@ -54,7 +54,7 @@ jobs:
             poetry run mike deploy --push --update-aliases "${STABLE}" latest
           else
             echo "Deploying dev docs (${VERSION})"
-            poetry run mike deploy --push --force dev
+            poetry run mike deploy --push dev
           fi
       - name: Set default docs version (first time only)
         if: ${{ github.ref == 'refs/heads/main' }}
