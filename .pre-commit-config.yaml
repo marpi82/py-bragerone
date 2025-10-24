@@ -73,15 +73,25 @@ repos:
         args: ["--config", "p/ci", "--error"]
         pass_filenames: true
 
-  # --- SECURITY: dependencies (SCA) via Poetry export → pip-audit ---
-  - repo: local
+  # --- SECURITY: dependencies (SCA) with poetry export + pip-audit ---
+  # Strategy: Generate requirements.txt on-the-fly during pre-commit, then audit it
+  - repo: https://github.com/python-poetry/poetry-plugin-export
+    rev: 1.8.0
     hooks:
-      - id: pip-audit-poetry
-        name: pip-audit (Poetry export)
-        language: system
-        entry: bash -c 'poetry export --without-hashes --format requirements.txt -o /tmp/pre-commit-reqs.txt && poetry run pip-audit -r /tmp/pre-commit-reqs.txt --progress-spinner off --strict'
-        pass_filenames: false
+      - id: poetry-export
+        name: poetry export requirements.txt
+        args: ["--without-hashes", "--format", "requirements.txt", "-o", "requirements.txt"]
         stages: [pre-commit]
+        always_run: true  # Run even if poetry.lock unchanged
+
+  - repo: https://github.com/pypa/pip-audit
+    rev: v2.9.0
+    hooks:
+      - id: pip-audit
+        name: pip-audit (scan requirements.txt)
+        args: ["--requirement", "requirements.txt", "--progress-spinner", "off", "--strict"]
+        stages: [pre-commit]
+        always_run: true  # Run even if requirements.txt not staged
 
   # --- TESTY na pre-push z progiem coverage ---
   - repo: local
