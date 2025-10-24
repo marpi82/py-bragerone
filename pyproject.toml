@@ -10,8 +10,9 @@ maintainers = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
 dynamic = [ # version is managed by poetry-dynamic-versioning
   "version",
   "readme",
+  "classifiers",  # Let Poetry auto-enrich classifiers
 ]
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.13.2,<4"
 keywords = [
   "home",
@@ -56,7 +57,6 @@ packages = [{ include = "pybragerone", from = "src" }]
 include = ["src/pybragerone/py.typed"]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3 :: Only",
   "Operating System :: OS Independent",
