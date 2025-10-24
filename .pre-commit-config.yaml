@@ -74,16 +74,14 @@ repos:
         pass_filenames: true
 
   # --- SECURITY: dependencies (SCA) via Poetry export → pip-audit ---
-  # DISABLED: Poetry 2.2.1 export command requires plugin configuration
-  # TODO: Re-enable once poetry export is properly configured
-  # - repo: local
-  #   hooks:
-  #     - id: pip-audit-poetry
-  #       name: pip-audit (Poetry export)
-  #       language: system
-  #       entry: bash -c 'poetry export --without-hashes --format requirements.txt | poetry run pip-audit -r - --progress-spinner off --strict'
-  #       pass_filenames: false
-  #       stages: [pre-commit]
+  - repo: local
+    hooks:
+      - id: pip-audit-poetry
+        name: pip-audit (Poetry export)
+        language: system
+        entry: bash -c 'poetry export --without-hashes --format requirements.txt -o /tmp/pre-commit-reqs.txt && poetry run pip-audit -r /tmp/pre-commit-reqs.txt --progress-spinner off --strict'
+        pass_filenames: false
+        stages: [pre-commit]
 
   # --- TESTY na pre-push z progiem coverage ---
   - repo: local
