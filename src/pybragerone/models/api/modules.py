@@ -61,21 +61,3 @@ class ModuleCard(BaseModel):
     clientAddressCity: str
     createdAt: datetime
     updatedAt: datetime
-
-
-class ModuleParametersResponse(BaseModel):
-    """Response model for module parameters."""
-
-    status: int
-    data: dict[str, Any]
-
-
-class ModuleActivityResponse(BaseModel):
-    """Response model for module activity."""
-
-    status: int
-    data: dict[str, Any]
-
-
-# Type alias for modules list response
-ModulesListResponse = list[Module]

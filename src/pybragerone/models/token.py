@@ -63,10 +63,10 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 try:
-    import keyring  # type: ignore
+    import keyring
 
     _HAS_KEYRING = True
-except Exception:
+except ImportError:
     _HAS_KEYRING = False
 
 log = logging.getLogger(__name__)

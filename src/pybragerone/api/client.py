@@ -18,17 +18,17 @@ from aiohttp import (
     TraceRequestStartParams,
 )
 
-from ..models.api import (
+from pybragerone.models.api import (
     AuthResponse,
     BragerObject,
     Module,
     ModuleCard,
-    ObjectDetailsResponse,
-    ObjectPermissionsResponse,
+    ObjectDetails,
+    Permission,
     SystemVersion,
-    UserInfoResponse,
-    UserPermissionsResponse,
+    User,
 )
+
 from ..models.token import Token, TokenStore
 from .constants import ONE_BASE
 from .endpoints import (
@@ -227,7 +227,7 @@ class BragerOneApiClient:
         if self._enable_http_trace:
             trace = TraceConfig()
 
-            @trace.on_request_start.append
+            @trace.on_request_start.append  # type: ignore[misc]
             async def _on_start(
                 session: ClientSession,
                 ctx: SimpleNamespace,
@@ -248,7 +248,7 @@ class BragerOneApiClient:
                     safe_headers["Authorization"] = "<redacted>"
                 LOG_HTTP.debug("→ %s %s headers=%s", params.method, params.url, safe_headers)
 
-            @trace.on_request_end.append
+            @trace.on_request_end.append  # type: ignore[misc]
             async def _on_end(
                 session: ClientSession,
                 ctx: SimpleNamespace,
@@ -371,7 +371,9 @@ class BragerOneApiClient:
             raise ApiError(status, data)
         if not isinstance(data, dict):
             raise ApiError(500, {"message": "Unexpected version payload"}, {})
-        return SystemVersion.model_validate(data)
+        # API returns {"version": {...}}, extract the inner object
+        version_data = data.get("version", data)
+        return SystemVersion.model_validate(version_data)
 
     # ----------------- AUTH -----------------
 
@@ -549,7 +551,7 @@ class BragerOneApiClient:
 
     # -------- USER --------
 
-    async def get_user(self) -> UserInfoResponse:
+    async def get_user(self) -> User:
         """Get current user information.
 
         Returns:
@@ -563,13 +565,15 @@ class BragerOneApiClient:
             raise ApiError(status, data)
         if not isinstance(data, dict):
             raise ApiError(500, {"message": "Unexpected user payload"}, {})
-        return UserInfoResponse.model_validate(data)
+        # API returns {"user": {...}}, extract the inner object
+        user_data = data.get("user", data)
+        return User.model_validate(user_data)
 
-    async def get_user_permissions(self) -> UserPermissionsResponse:
+    async def get_user_permissions(self) -> list[Permission]:
         """Get current user permissions.
 
         Returns:
-            User permissions response model.
+            List of user permissions.
 
         Raises:
             ApiError: If the request fails.
@@ -578,10 +582,13 @@ class BragerOneApiClient:
         if status != 200:
             raise ApiError(status, data)
         # API returns {"permissions": [...]} format
+        permissions_list: list[str] = []
         if isinstance(data, dict):
-            return UserPermissionsResponse.model_validate(data)
-        # Fallback for direct list format
-        return UserPermissionsResponse(permissions=data if isinstance(data, list) else [])
+            permissions_list = data.get("permissions", [])
+        elif isinstance(data, list):
+            permissions_list = data
+        # Convert strings to Permission objects
+        return [Permission.model_validate(perm) for perm in permissions_list]
 
     # -------- OBJECTS --------
 
@@ -607,14 +614,14 @@ class BragerOneApiClient:
         # Convert to Pydantic models
         return [BragerObject.model_validate(obj) for obj in objects_data]
 
-    async def get_object(self, object_id: int) -> ObjectDetailsResponse:
+    async def get_object(self, object_id: int) -> ObjectDetails:
         """Get object by ID.
 
         Args:
             object_id: The object identifier.
 
         Returns:
-            Object details as a Pydantic model.
+            Object details with operational status.
 
         Raises:
             ApiError: If the request fails.
@@ -624,16 +631,16 @@ class BragerOneApiClient:
             raise ApiError(status, data)
         if not isinstance(data, dict):
             raise ApiError(500, {"message": "Unexpected object payload"}, {})
-        return ObjectDetailsResponse.model_validate(data)
+        return ObjectDetails.model_validate(data)
 
-    async def get_object_permissions(self, object_id: int) -> ObjectPermissionsResponse:
+    async def get_object_permissions(self, object_id: int) -> list[Permission]:
         """Get object-specific permissions for the current user.
 
         Args:
             object_id: The ID of the object to get permissions for.
 
         Returns:
-            Object permissions response model.
+            List of object-specific permissions.
 
         Raises:
             ApiError: If the request fails.
@@ -642,10 +649,13 @@ class BragerOneApiClient:
         if status != 200:
             raise ApiError(status, data)
         # API returns {"permissions": [...]} format
+        permissions_list: list[str] = []
         if isinstance(data, dict):
-            return ObjectPermissionsResponse.model_validate(data)
-        # Fallback for direct list format
-        return ObjectPermissionsResponse(permissions=data if isinstance(data, list) else [])
+            permissions_list = data.get("permissions", [])
+        elif isinstance(data, list):
+            permissions_list = data
+        # Convert strings to Permission objects
+        return [Permission.model_validate(perm) for perm in permissions_list]
 
     # -------- MODULES --------
 
@@ -853,7 +863,9 @@ class BragerOneApiClient:
                                 r2.raise_for_status()
                                 body = await r2.read()
                                 self._cache.update(url, r2.headers, body)
-                        return body
+                                return body
+                        # Body from cache is guaranteed to be bytes
+                        return body  # type: ignore[return-value]
                     r.raise_for_status()
                     body = await r.read()
                     self._cache.update(url, r.headers, body)

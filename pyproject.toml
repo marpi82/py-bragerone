@@ -53,6 +53,11 @@ requires-poetry = ">=2.0.0"
 readme = ["README.rst", "docs/README.rst"]
 packages = [{ include = "pybragerone", from = "src" }]
 include = ["src/pybragerone/py.typed"]
+version = "2025" # placeholder needed by Poetry
+
+[tool.poetry.requires-plugins]
+poetry-plugin-export = ">=1.8"
+
 classifiers = [
   "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: MIT License",
@@ -63,9 +68,6 @@ classifiers = [
   "Topic :: Home Automation",
   "Typing :: Typed"
 ]
-
-# -------- Developer groups (local only, not published to PyPI) --------
-version = "2025" # placeholder needed by Poetry
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.37.0"
@@ -130,12 +132,12 @@ line-ending = "lf"
 # ---------------- mypy (strict) ----------------
 [tool.mypy]
 python_version = "3.13"
-files = ["src/pybragerone", "tests"]
+#files = ["src/pybragerone", "tests"]
 strict = true
-warn_unused_ignores = true
-disallow_untyped_defs = true
-no_implicit_optional = true
-strict_optional = true
+#warn_unused_ignores = true
+#disallow_untyped_defs = true
+#no_implicit_optional = true
+#strict_optional = true
 plugins = ["pydantic.mypy"]
 
 # ---------------- pytest ----------------

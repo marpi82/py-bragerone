@@ -3,43 +3,31 @@
 from __future__ import annotations
 
 from .auth import AuthResponse, LoginRequest
-from .common import Permission
+from .common import ApiResponse, Permission
 from .modules import (
     Module,
-    ModuleActivityResponse,
     ModuleCard,
     ModuleGateway,
     ModuleParameterSchema,
-    ModuleParametersResponse,
-    ModulesListResponse,
 )
 from .objects import (
     BragerObject,
-    ObjectDetailsResponse,
-    ObjectPermissionsResponse,
+    ObjectDetails,
 )
-from .system import SystemVersion, VersionInfo
-from .user import User, UserInfoResponse, UserPermissionsResponse
+from .system import SystemVersion
+from .user import User
 
 __all__ = [
+    "ApiResponse",
     "AuthResponse",
     "BragerObject",
     "LoginRequest",
     "Module",
-    "ModuleActivityResponse",
     "ModuleCard",
     "ModuleGateway",
     "ModuleParameterSchema",
-    "ModuleParametersResponse",
-    "ModulesListResponse",
-    "ObjectDetailsResponse",
-    "ObjectPermissions",
-    "ObjectPermissionsResponse",
+    "ObjectDetails",
     "Permission",
     "SystemVersion",
     "User",
-    "UserInfoResponse",
-    "UserPermissions",
-    "UserPermissionsResponse",
-    "VersionInfo",
 ]

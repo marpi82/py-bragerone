@@ -24,6 +24,7 @@ repos:
     hooks:
       - id: mypy
         args: ["--ignore-missing-imports", "--show-column-numbers"]
+        additional_dependencies: ["pydantic>=2.0"]
 
   # Secrets scanning with Gitleaks
   - repo: https://github.com/gitleaks/gitleaks
@@ -74,11 +75,9 @@ repos:
       - id: pip-audit-poetry
         name: pip-audit (Poetry export)
         language: system
-        entry: bash -c 'poetry export -f requirements.txt --without-hashes | poetry run pip-audit -r - --progress-spinner off --strict'
+        entry: bash -c 'poetry export --without-hashes --format requirements.txt | poetry run pip-audit -r - --progress-spinner off --strict'
         pass_filenames: false
-        stages: [pre-commit]
-
-      # --- TESTY na pre-push z progiem coverage ---
+        stages: [pre-commit]      # --- TESTY na pre-push z progiem coverage ---
       - id: pytest-pre-push
         name: pytest (coverage gate on push)
         language: system
