@@ -101,25 +101,14 @@ else
 fi
 
 # ============================================================================
-# 8. Install poetry-plugin-export
-# ============================================================================
-echo -e "${BLUE}📦 Installing poetry-plugin-export...${NC}"
-if ! poetry self show plugins | grep -q "poetry-plugin-export"; then
-    poetry self add poetry-plugin-export
-    echo "  ✅ poetry-plugin-export installed"
-else
-    echo "  ✅ poetry-plugin-export already installed"
-fi
-
-# ============================================================================
-# 9. Configure Poetry to use in-project virtualenvs
+# 8. Configure Poetry to use in-project virtualenvs
 # ============================================================================
 echo -e "${BLUE}🔧 Configuring Poetry...${NC}"
 poetry config virtualenvs.in-project true
 echo "  ✅ Configured: virtualenvs.in-project = true"
 
 # ============================================================================
-# 10. Remove old virtualenv if it exists outside the project
+# 9. Remove old virtualenv if it exists outside the project
 # ============================================================================
 echo -e "${BLUE}🧹 Cleaning up old virtualenvs...${NC}"
 if [ -d "$HOME/.cache/pypoetry/virtualenvs" ]; then
@@ -138,7 +127,7 @@ else
 fi
 
 # ============================================================================
-# 11. Install project dependencies
+# 10. Install project dependencies
 # ============================================================================
 echo -e "${BLUE}📦 Installing project dependencies...${NC}"
 echo "  This may take a few minutes..."
@@ -146,14 +135,14 @@ poetry install --all-extras --with dev,test,docs
 echo "  ✅ All dependencies installed in .venv/"
 
 # ============================================================================
-# 12. Install pre-commit hooks
+# 11. Install pre-commit hooks
 # ============================================================================
 echo -e "${BLUE}🪝 Installing pre-commit hooks...${NC}"
 poetry run pre-commit install
 echo "  ✅ Pre-commit hooks installed"
 
 # ============================================================================
-# 13. Verify installation
+# 12. Verify installation
 # ============================================================================
 echo ""
 echo -e "${GREEN}✅ Setup complete!${NC}"

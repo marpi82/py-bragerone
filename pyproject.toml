@@ -66,9 +66,6 @@ classifiers = [
 ]
 version = "2025" # placeholder needed by Poetry
 
-[tool.poetry.requires-plugins]
-poetry-plugin-export = ">=1.8"
-
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.37.0"
 ruff = "^0.13.0"
