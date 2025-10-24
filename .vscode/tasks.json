@@ -34,6 +34,32 @@
       "group": "build"
     },
     {
+      "label": "All quality checks (fmt + lint + typecheck)",
+      "type": "shell",
+      "command": "poetry run poe all",
+      "group": "build"
+    },
+    {
+      "label": "Security: Bandit (security linting)",
+      "type": "shell",
+      "command": "poetry run poe bandit"
+    },
+    {
+      "label": "Security: Semgrep (security checks)",
+      "type": "shell",
+      "command": "poetry run poe semgrep"
+    },
+    {
+      "label": "Security: pip-audit (dependency audit)",
+      "type": "shell",
+      "command": "poetry run poe pip-audit"
+    },
+    {
+      "label": "Security: All security checks",
+      "type": "shell",
+      "command": "poetry run poe security"
+    },
+    {
       "label": "Tests (pytest via poe)",
       "type": "shell",
       "command": "poetry run poe test",
@@ -75,9 +101,9 @@
       "command": "poetry run poe publish-pypi"
     },
     {
-      "label": "All: lint + type + tests",
+      "label": "Validate: Full validation (quality + security + tests)",
       "type": "shell",
-      "command": "poetry run poe lint && poetry run poe typecheck && poetry run poe test",
+      "command": "poetry run poe validate",
       "group": {
         "kind": "build",
         "isDefault": true

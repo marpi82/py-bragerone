@@ -508,7 +508,7 @@ class LiveAssetsCatalog:
                             try:
                                 key_int = int(_string_value(key_txt))
                             except Exception:
-                                continue
+                                continue  # nosec B112 - skip non-numeric keys, parse best effort
                             # value: string containing 'module.menu-...js'
                             val_txt = _node_text(limited_code, v)
                             if "module.menu-" in val_txt and ".js" in val_txt:
