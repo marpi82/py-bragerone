@@ -12,7 +12,7 @@ from typing import (
     runtime_checkable,
 )
 
-import socketio
+import socketio  # type: ignore[import-untyped]
 
 from ..utils import spawn
 from .constants import IO_BASE, ONE_BASE, SOCK_PATH, WS_NAMESPACE

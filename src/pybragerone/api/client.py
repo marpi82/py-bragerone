@@ -227,7 +227,7 @@ class BragerOneApiClient:
         if self._enable_http_trace:
             trace = TraceConfig()
 
-            @trace.on_request_start.append  # type: ignore[misc]
+            @trace.on_request_start.append
             async def _on_start(
                 session: ClientSession,
                 ctx: SimpleNamespace,
@@ -248,7 +248,7 @@ class BragerOneApiClient:
                     safe_headers["Authorization"] = "<redacted>"
                 LOG_HTTP.debug("→ %s %s headers=%s", params.method, params.url, safe_headers)
 
-            @trace.on_request_end.append  # type: ignore[misc]
+            @trace.on_request_end.append
             async def _on_end(
                 session: ClientSession,
                 ctx: SimpleNamespace,
@@ -865,7 +865,7 @@ class BragerOneApiClient:
                                 self._cache.update(url, r2.headers, body)
                                 return body
                         # Body from cache is guaranteed to be bytes
-                        return body  # type: ignore[return-value]
+                        return body
                     r.raise_for_status()
                     body = await r.read()
                     self._cache.update(url, r.headers, body)
