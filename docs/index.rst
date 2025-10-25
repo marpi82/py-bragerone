@@ -8,6 +8,7 @@ Welcome to py-bragerone's documentation!
    README
    pybragerone_integration_cheatsheet
    pybragerone_integration_notes
+   param_store_metadata
 
 .. toctree::
    :maxdepth: 2

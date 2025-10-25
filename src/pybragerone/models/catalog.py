@@ -4,7 +4,7 @@ This module provides classes and utilities for parsing and managing live assets
 from the BragerOne web application, including:
 - LiveAssetsCatalog: Main entry point for fetching and parsing assets
 - AssetRef, AssetIndex: Data structures for tracking asset references
-- MenuResult, ParamMap: Data structures for menu routes and parameter mappings
+ - ParamMap: Data structures for menu routes and parameter mappings
 - TranslationConfig: Configuration for available translations
 """
 
@@ -13,17 +13,21 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import tree_sitter_javascript
 from tree_sitter import Language, Node, Parser, Tree
 
+from .menu import MenuResult
+from .menu_manager import MenuManager, RawMenuData
+
 if TYPE_CHECKING:
     from ..api import BragerOneApiClient
 
 JS_LANGUAGE = Language(tree_sitter_javascript.language())
+LOG = logging.getLogger(__name__)
 
 
 # ----------------------------- Data types -----------------------------
@@ -91,6 +95,22 @@ class AssetIndex:
         # Alpha heuristic: take the last found (usually the newest hash)
         return lst[-1]
 
+    def find_asset_for_full_name(self, full_name: str) -> AssetRef | None:
+        """Find an asset reference by its full name with hash (e.g., 'module.menu-Dbo_n32n').
+
+        Args:
+            full_name: The full name of the asset with hash to search for.
+
+        Returns:
+            The asset reference if found, or None if not found.
+        """
+        # Search through all assets by basename to find the one with matching full name
+        for basename_assets in self.assets_by_basename.values():
+            for asset in basename_assets:
+                if f"{asset.base}-{asset.hash}" == full_name:
+                    return asset
+        return None
+
 
 @dataclass(slots=True)
 class ParamMap:
@@ -105,9 +125,12 @@ class ParamMap:
             Examples: "URUCHOMIENIE_KOTLA", "PARAM_66".
         group: Optional parameter group identifier. Example: "P6".
         paths: Dictionary mapping path types to their respective path lists.
-            Keys include "v" (value), "u" (unit), "s" (status), "x", and "n" (name).
+            Entries are normalized lists of dictionaries describing pool/index/use
+            metadata for value/unit/status/command/min/max channels.
         component_type: Optional type of the UI component associated with this parameter.
-        units: Optional string representing the measurement units for this parameter.
+        units: Optional measurement unit identifier. May be a localized string, numeric
+            code, or mapping used for enumerations; resolution happens via the units
+            i18n catalog where possible.
         limits: Optional dictionary containing parameter limit definitions and constraints.
         status_flags: List of dictionaries defining various status flags and their meanings.
         origin: Source of the parameter map definition.
@@ -124,45 +147,15 @@ class ParamMap:
 
     key: str  # token from router: np. "URUCHOMIENIE_KOTLA" lub "PARAM_66"
     group: str | None  # np. "P6"
-    paths: dict[str, list[str]]  # {"v": [...], "u": [...], "s":[...], "x":[...], "n":[...]}
+    paths: dict[str, list[dict[str, Any]]]  # value/unit/status/command/min/max channel descriptors
     component_type: str | None
-    units: str | None
+    units: str | int | float | dict[str, Any] | list[Any] | None
     limits: dict[str, Any] | None
     status_flags: list[dict[str, Any]]
+    status_conditions: dict[str, list[dict[str, Any]]] | None
+    command_rules: list[dict[str, Any]]
     origin: str  # "asset:<url>" or "inline:index"
     raw: dict[str, Any]  # raw map (will be useful later for i18n/logging)
-
-
-@dataclass(slots=True)
-class MenuResult:
-    """Result container for menu processing operations.
-
-    This class encapsulates the results of menu processing, including the router
-    tree structure, extracted tokens, and origin information.
-
-    Attributes:
-        routes: A list of dictionaries representing the router tree structure in a
-            1:1 mapping. Each dictionary contains route configuration details.
-        tokens: A set of unique token strings extracted from parameters after
-            gating logic has been applied.
-        origin_asset: Reference to the source asset from which the menu was derived,
-            or None if no asset reference exists.
-        origin_inline: Boolean flag indicating whether the menu was processed inline.
-            This is typically False but kept for completeness.
-
-    Example:
-        >>> result = MenuResult(
-        ...     routes=[{"path": "/home", "component": "Home"}],
-        ...     tokens={"PARAM_1", "PARAM_2"},
-        ...     origin_asset=AssetRef("http://example.com/menu.js", "menu", "abc123"),
-        ...     origin_inline=False
-        ... )
-    """
-
-    routes: list[dict[str, Any]]  # router tree 1:1
-    tokens: set[str]  # all tokens from parameters.* (after gating)
-    origin_asset: AssetRef | None
-    origin_inline: bool  # True if menu was inline (unlikely, but kept)
 
 
 # ----------------------------- Parser helpers -----------------------------
@@ -297,44 +290,97 @@ def _find_export_root(code: bytes, root: Node) -> Node | None:
     return best
 
 
-def _object_to_python(code: bytes, node: Node) -> Any:
-    """Minimal AST → Python converter.
+def _node_to_python(code: bytes, node: Node, bindings: dict[str, Any] | None = None) -> Any:
+    """Convert an arbitrary AST node to a Python object.
 
-    - object → dict (recursively)
-    - array  → list (recursively)
-    - string/template → str (with quotes stripped)
-    - number/bool/null → primitives
-    - rest (e.g. call_expression) → raw text (_node_text)
+    When *bindings* is provided, identifier nodes are resolved using the
+    already-converted values stored in the mapping. This allows handling of the
+    common pattern where large dictionaries reuse previously declared constants
+    (e.g. i18n bundles exporting `const foo = "label"; const map = {key: foo};`).
     """
     t = node.type
+
     if t == "object":
-        out: dict[str, Any] = {}
+        obj: dict[str, Any] = {}
         for prop in node.named_children:
             if prop.type != "pair":
                 continue
-            k = prop.child_by_field_name("key")
-            v = prop.child_by_field_name("value")
-            if not (k and v):
+            key_node = prop.child_by_field_name("key")
+            value_node = prop.child_by_field_name("value")
+            if key_node is None or value_node is None:
                 continue
-            key_txt = _node_text(code, k)
-            key = _string_value(key_txt) if _is_string(k) else key_txt
-            out[key] = _object_to_python(code, v)
-        return out
+
+            key = _string_value(_node_text(code, key_node)) if _is_string(key_node) else _node_text(code, key_node)
+            obj[key] = _node_to_python(code, value_node, bindings)
+        return obj
+
     if t == "array":
-        return [_object_to_python(code, ch) for ch in node.named_children]
+        return [_node_to_python(code, child, bindings) for child in node.named_children]
+
     if _is_string(node):
         return _string_value(_node_text(code, node))
+
     if t == "number":
-        s = _node_text(code, node)
+        text = _node_text(code, node)
         try:
-            return float(s) if any(c in s for c in ".eE") else int(s)
+            return float(text) if any(c in text for c in ".eE") else int(text)
         except Exception:
-            return s
+            return text
+
     if t in {"true", "false"}:
         return t == "true"
+
     if t == "null":
         return None
+
+    if t in {"identifier", "property_identifier"}:
+        name = _node_text(code, node)
+        if bindings and name in bindings:
+            return bindings[name]
+        return name
+
     return _node_text(code, node)
+
+
+def _object_to_python(code: bytes, node: Node, *, bindings: dict[str, Any] | None = None) -> Any:
+    """Backward-compatible wrapper around :func:`_node_to_python` for objects."""
+    result = _node_to_python(code, node, bindings)
+    return result if isinstance(result, dict) else {}
+
+
+def _collect_bindings(code: bytes, root: Node) -> dict[str, Any]:
+    """Collect simple top-level bindings to resolve identifiers during conversion."""
+    bindings: dict[str, Any] = {}
+
+    for statement in root.named_children:
+        if statement.type not in {"lexical_declaration", "variable_declaration"}:
+            continue
+
+        for declarator in statement.named_children:
+            if declarator.type != "variable_declarator":
+                continue
+
+            name_node = declarator.child_by_field_name("name")
+            value_node = declarator.child_by_field_name("value")
+
+            if name_node is None or value_node is None:
+                continue
+
+            if name_node.type not in {"identifier", "property_identifier"}:
+                continue
+
+            name = _node_text(code, name_node)
+            if not name:
+                continue
+
+            try:
+                value = _node_to_python(code, value_node, bindings)
+            except Exception as exc:  # pragma: no cover - defensive parsing fallback
+                LOG.debug("Failed to resolve binding '%s': %s", name, exc)
+            else:
+                bindings[name] = value
+
+    return bindings
 
 
 # ----------------------------- TranslationConfig -----------------------------
@@ -382,6 +428,12 @@ class LiveAssetsCatalog:
         self._idx = AssetIndex()
         self._log = logger or logging.getLogger(__name__)
         self._last_index_url: str | None = None
+
+        # New menu management system
+        self._menu_manager = MenuManager(self._log)
+
+        # Track auto-discovery attempts to help guard repeated network fetches
+        self._index_autoload_attempts = 0
 
     def _smart_urljoin(self, base_url: str, relative_url: str) -> str:
         """Smart urljoin that handles assets prefix correctly to avoid double /assets/ paths.
@@ -433,6 +485,63 @@ class LiveAssetsCatalog:
             len(self._idx.inline_param_candidates),
         )
 
+    async def _auto_discover_and_load_index(self) -> None:
+        """Auto-discover and load the index file."""
+        import re
+
+        import httpx
+
+        self._log.info("Auto-discovering index file...")
+
+        try:
+            # Try to discover index URL from assets page
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get("https://one.brager.pl/assets/")
+                resp.raise_for_status()
+                assets_html = resp.text
+
+            # Look for patterns like /assets/index-XXXXXXXX.js
+            m = re.search(r"/assets/(index-[A-Za-z0-9_-]+\.js)", assets_html)
+
+            if m:
+                index_filename = m.group(1)
+                discovered_url = f"https://one.brager.pl/assets/{index_filename}"
+                self._log.info("Discovered index: %s", discovered_url)
+                await self.refresh_index(discovered_url)
+                return
+
+            # Try alternative URLs if discovery failed
+            alt_urls = ["https://one.brager.pl/assets/index-main.js", "https://one.brager.pl/assets/index.js"]
+
+            for alt_url in alt_urls:
+                try:
+                    self._log.debug("Trying alternative: %s", alt_url)
+                    await self.refresh_index(alt_url)
+                    self._log.info("Success with alternative: %s", alt_url)
+                    return
+                except Exception as e:
+                    self._log.debug("Alternative failed: %s - %s", alt_url, e)
+
+            # If all fails, log warning
+            self._log.warning("Failed to auto-discover index file")
+
+        except Exception as e:
+            self._log.warning("Error auto-discovering index: %s", e)
+
+    async def _ensure_index_loaded(self) -> None:
+        """Best-effort ensure that the asset index is available."""
+        if self._idx.index_bytes or self._idx.assets_by_basename:
+            return
+
+        attempt = self._index_autoload_attempts + 1
+        self._index_autoload_attempts = attempt
+        self._log.debug("Index not loaded yet. Auto-discovery attempt %d", attempt)
+
+        try:
+            await self._auto_discover_and_load_index()
+        except Exception as e:  # pragma: no cover - should not happen but guard just in case
+            self._log.warning("Auto-discovery attempt %d failed: %s", attempt, e)
+
     def _build_asset_index_from_index_js(self, index_url: str, code: bytes) -> AssetIndex:
         text = code.decode("utf-8", errors="replace")
 
@@ -444,85 +553,59 @@ class LiveAssetsCatalog:
         # Much simpler regex that should be faster
         assets_by_basename: dict[str, list[AssetRef]] = {}
 
-        # First pass: search in limited text for performance
-        # Simple pattern: find any filename-hash.js pattern
-        simple_pattern = re.compile(r"([a-zA-Z._-]+)-([A-Za-z0-9_]+)\.js")
-        matches = list(simple_pattern.finditer(search_text))
+        # Parameters and i18n assets frequently live deeper in the bundle, so we scan both the
+        # leading slice and the remaining part. We also normalise basenames to strip path prefixes.
+        simple_pattern = re.compile(r"([A-Za-z0-9._/-]+?)-([A-Za-z0-9_-]+)\.js")
 
-        for m in matches:
-            base = m.group(1)  # basename
-            h = m.group(2)  # hash
-            # Construct URL - assume it's in assets/ directory
-            full_url = self._smart_urljoin(index_url, f"{base}-{h}.js")
-            assets_by_basename.setdefault(base, []).append(AssetRef(url=full_url, base=base, hash=h))
+        def _register(matches: Iterable[re.Match[str]]) -> None:
+            for m in matches:
+                raw_base = m.group(1)
+                h = m.group(2)
+                # Normalise '../parameters/write/FOO' → 'FOO'
+                norm_base = raw_base.rsplit("/", 1)[-1]
+                full_url = self._smart_urljoin(index_url, f"{raw_base}-{h}.js")
+                bucket = assets_by_basename.setdefault(norm_base, [])
+                if all(existing.hash != h or existing.url != full_url for existing in bucket):
+                    bucket.append(AssetRef(url=full_url, base=norm_base, hash=h))
 
-        # If we got very few matches and the file is large, do a full search
-        # This handles cases where assets are declared later in the file
-        if len(assets_by_basename) < 5 and len(text) > len(search_text):
-            self._log.debug("Few assets found in limited search, scanning full file...")
-            full_matches = list(simple_pattern.finditer(text[len(search_text) :]))
+        _register(simple_pattern.finditer(search_text))
 
-            for m in full_matches:
-                base = m.group(1)  # basename
-                h = m.group(2)  # hash
-                full_url = self._smart_urljoin(index_url, f"{base}-{h}.js")
-                assets_by_basename.setdefault(base, []).append(AssetRef(url=full_url, base=base, hash=h))
+        if len(text) > len(search_text):
+            self._log.debug("Scanning remaining index fragment for additional assets...")
+            _register(simple_pattern.finditer(text[len(search_text) :]))
 
-        # 2) Try to find mapping from deviceMenu:int -> 'module.menu-<hash>.js' in index (AST - optimized)
-        # Performance: Use AST on limited portion only
+        # 2) Try to find mapping from deviceMenu:int -> 'module.menu-<hash>.js' in index (Regex fallback)
+        # Use regex pattern matching since AST parsing fails on complex minified code in Object.assign
         menu_map: dict[int, str] = {}
 
-        # Limit AST parsing to reasonable size (100KB should be enough for most mappings)
-        ast_limit = min(100000, len(code))
+        try:
+            # Look for deviceMenu patterns in Object.assign calls
+            # Pattern: "../../config/router/deviceMenu/N/module.menu.ts":()=>d(()=>import("./module.menu-HASH.js")
+            device_menu_pattern = (
+                r'"\.\.\/\.\.\/config\/router\/deviceMenu\/(\d+)\/module\.menu\.ts":\(\)\=\>d'
+                r'\(\(\)\=\>import\("\./(module\.menu-[A-Za-z0-9_]+)\.js"\)'
+            )
+
+            # Ensure code is a string for regex
+            if isinstance(code, bytes):
+                code_str = code.decode("utf-8")
+            elif isinstance(code, (bytearray, memoryview)):
+                code_str = bytes(code).decode("utf-8")
+            else:
+                code_str = str(code)
+
+            for match in re.finditer(device_menu_pattern, code_str):
+                device_menu_num = int(match.group(1))
+                menu_file_name = match.group(2)
+                menu_map[device_menu_num] = menu_file_name
+                self._log.debug("Found deviceMenu mapping: %d -> %s", device_menu_num, menu_file_name)
+
+        except Exception as regex_e:
+            self._log.debug("Regex deviceMenu parsing failed: %s", regex_e)
+
+        # Prepare limited code for AST parsing (needed for inline param candidates)
+        ast_limit = min(1000000, len(code))
         limited_code = code[:ast_limit]
-
-        if len(limited_code) > 0:
-            try:
-                tree = self._ts.parse(limited_code)
-
-                # Early exit optimization: only check first few objects
-                objects_checked = 0
-                max_objects = 5  # Limit to prevent excessive traversal
-
-                for n in _walk(tree.root_node):
-                    if n.type == "object" and objects_checked < max_objects:
-                        objects_checked += 1
-
-                        # Quick check if this object might contain menu mappings
-                        obj_start = n.start_byte
-                        obj_end = min(n.end_byte, len(limited_code))
-                        obj_text = limited_code[obj_start:obj_end]
-
-                        if b"module.menu-" not in obj_text:
-                            continue
-
-                        for pair in n.named_children:
-                            if pair.type != "pair":
-                                continue
-                            k = pair.child_by_field_name("key")
-                            v = pair.child_by_field_name("value")
-                            if not (k and v):
-                                continue
-                            # numeric key?
-                            key_txt = _node_text(limited_code, k)
-                            try:
-                                key_int = int(_string_value(key_txt))
-                            except Exception:
-                                continue  # nosec B112 - skip non-numeric keys, parse best effort
-                            # value: string containing 'module.menu-...js'
-                            val_txt = _node_text(limited_code, v)
-                            if "module.menu-" in val_txt and ".js" in val_txt:
-                                # try to extract BASENAME (without -hash.js)
-                                mm = re.search(r"(module\.menu)-[A-Za-z0-9_]+\.js", val_txt)
-                                if mm:
-                                    menu_map[key_int] = mm.group(1)  # 'module.menu'
-
-                        # If we found mappings, we can exit early
-                        if menu_map and objects_checked >= 3:
-                            break
-
-            except Exception as ast_e:
-                self._log.debug("AST parsing failed, continuing: %s", ast_e)
 
         # 3) Inline param-map candidates (AST on limited data)
         inline_candidates: list[tuple[int, int]] = []
@@ -568,62 +651,94 @@ class LiveAssetsCatalog:
         self,
         device_menu: int,
         permissions: Iterable[str] | None = None,
+        *,
+        debug_mode: bool = False,
     ) -> MenuResult:
-        """Matches 'module.menu-<hash>.js' based on map from index-*.js and device_menu (REST).
+        """Get processed menu using the unified MenuManager pipeline."""
+        if device_menu not in self._menu_manager.list_cached_menus():
+            await self._load_and_cache_menu(device_menu)
 
-        Parses menu to tree, does permissions-gating (strategy 'independent'),
-        collects unique tokens from parameters.* and returns result.
-        """
-        # 1) find BASENAME for device_menu (if present in index), otherwise fallback to 'module.menu'
-        basename = self._idx.menu_map.get(device_menu, "module.menu")
-        asset = self._idx.find_asset_for_basename(basename)
+        perm_set = None if permissions is None else set(permissions)
+        return self._menu_manager.get_menu(device_menu=device_menu, permissions=perm_set, debug_mode=debug_mode)
+
+    async def _load_and_cache_menu(self, device_menu: int) -> None:
+        """Load raw menu data and cache it in MenuManager."""
+        # Auto-load index if not loaded yet
+        if not self._idx.menu_map and not self._idx.assets_by_basename:
+            await self._auto_discover_and_load_index()
+
+        # Find asset for device_menu
+        menu_name = self._idx.menu_map.get(device_menu)
+        if not menu_name:
+            self._log.warning("No menu mapping found for device_menu=%d", device_menu)
+            # Cache empty menu
+            self._menu_manager.store_raw_menu(device_menu, [], None)
+            return
+
+        # Get asset reference
+        asset = self._idx.find_asset_for_full_name(menu_name)
         if not asset:
-            # fallback: try exact 'module.menu' basename
             asset = self._idx.find_asset_for_basename("module.menu")
-        if not asset:
-            # fallback: try any basename that contains 'module.menu' (handles hashed names)
-            for key, lst in self._idx.assets_by_basename.items():
-                if "module.menu" in key:
-                    # take the last asset for that basename (heuristic)
-                    asset = lst[-1]
-                    break
-        if not asset:
-            raise RuntimeError(f"No menu asset found for device_menu={device_menu}")
 
+        if not asset:
+            self._log.warning("No menu asset found for device_menu=%d", device_menu)
+            self._menu_manager.store_raw_menu(device_menu, [], None)
+            return
+
+        # Fetch and parse menu
+        self._log.info("Loading menu asset: %s", asset.url)
         code = await self._api.get_bytes(asset.url)
-        routes = self._parse_menu_routes(code)
-        # permissions gating (independent)
-        perms = set(permissions or [])
-        routes_gated = self._gate_routes_independent(routes, perms)
-        tokens = self._collect_tokens_from_routes(routes_gated)
 
-        self._log.info(
-            "MENU: nodes=%d tokens=%d (device_menu=%s, asset=%s)",
-            self._count_nodes(routes_gated),
-            len(tokens),
-            device_menu,
-            asset.url,
-        )
+        # Parse raw routes (no filtering, no processing)
+        raw_routes = self._parse_menu_routes(code)
 
-        return MenuResult(routes=routes_gated, tokens=tokens, origin_asset=asset, origin_inline=False)
+        # Store in cache
+        self._menu_manager.store_raw_menu(device_menu=device_menu, routes=raw_routes, asset_url=asset.url)
+
+        self._log.info("Cached raw menu for device_menu=%d: %d routes", device_menu, len(raw_routes))
+
+    def get_raw_menu(self, device_menu: int) -> RawMenuData:
+        """Get raw unprocessed menu data for debugging."""
+        return self._menu_manager.get_raw_menu(device_menu)
+
+    def get_menu_debug_info(self, device_menu: int) -> dict[str, Any]:
+        """Get debug information about cached menu."""
+        return self._menu_manager.get_debug_info(device_menu)
 
     def _parse_menu_routes(self, code: bytes) -> list[dict[str, Any]]:
         """Returning list of root-routes (1:1 with export in module.menu-*.js)."""
         tree = self._ts.parse(code)
+        bindings = _collect_bindings(code, tree.root_node)
         root = _find_export_root(code, tree.root_node)
         if root is None:
             return []
-        obj = _object_to_python(code, root)
-        # menu can be an array or a dict with key 'routes'
-        if isinstance(obj, list):
-            return [self._attach_parameters_tokens(e) for e in obj if isinstance(e, dict)]
-        if isinstance(obj, dict):
-            if isinstance(obj.get("routes"), list):
-                return [self._attach_parameters_tokens(e) for e in obj["routes"] if isinstance(e, dict)]
-            return [self._attach_parameters_tokens(obj)]
-        return []
+        export_obj = _node_to_python(code, root, bindings)
 
-    PARAM_CALL_RE = re.compile(r"""[A-Z]\([^,]*?,\s*(['"])(?P<tok>[^'"]+)\1\)""")
+        def extract_routes(value: Any, depth: int = 0) -> list[dict[str, Any]]:
+            if depth > 5:
+                return []
+
+            if isinstance(value, list):
+                candidates = [item for item in value if isinstance(item, dict)]
+                meaningful = [item for item in candidates if any(key in item for key in ("path", "name", "children", "meta"))]
+                return meaningful or []
+
+            if isinstance(value, dict):
+                for key in ("routes", "deviceMenu", "menu", "items"):
+                    if key in value:
+                        extracted = extract_routes(value[key], depth + 1)
+                        if extracted:
+                            return extracted
+                for nested in value.values():
+                    extracted = extract_routes(nested, depth + 1)
+                    if extracted:
+                        return extracted
+            return []
+
+        raw_routes = extract_routes(export_obj)
+        return [self._attach_parameters_tokens(route) for route in raw_routes]
+
+    PARAM_CALL_RE = re.compile(r"""[A-Za-z]\([^,]*?,\s*(['"])(?P<tok>[^'"]+)\1\)""")
 
     def _attach_parameters_tokens(self, node: dict[str, Any]) -> dict[str, Any]:
         """Attach parameter tokens to a node by processing its parameters section.
@@ -656,119 +771,52 @@ class LiveAssetsCatalog:
                 norm: list[dict[str, Any]] = []
                 for it in items:
                     if isinstance(it, str):
-                        m = self.PARAM_CALL_RE.search(it)
+                        original = it.strip()
+                        m = self.PARAM_CALL_RE.search(original)
                         if m:
                             tok = m.group("tok")
-                            norm.append({"token": tok})
+                            norm.append({"token": tok, "parameter": original})
                         else:
-                            # if it was already a literal, treat as token
-                            norm.append({"token": it.strip()})
-                    elif isinstance(it, dict) and "token" in it:
-                        norm.append({"token": str(it["token"])})
+                            norm.append({"token": original, "parameter": original})
+                    elif isinstance(it, dict):
+                        entry = dict(it)
+                        param_value = entry.get("parameter")
+                        if isinstance(param_value, str):
+                            match = self.PARAM_CALL_RE.search(param_value)
+                            if match and "token" not in entry:
+                                entry["token"] = match.group("tok")
+                        elif "token" in entry:
+                            token_val = str(entry["token"])
+                            entry.setdefault("parameter", token_val)
+                        else:
+                            fallback_text = str(it)
+                            match = self.PARAM_CALL_RE.search(fallback_text)
+                            if match:
+                                entry["token"] = match.group("tok")
+                                entry.setdefault("parameter", fallback_text)
+                        if "parameter" not in entry and "token" in entry:
+                            entry["parameter"] = str(entry["token"]) or ""
+                        norm.append(entry)
                     else:
-                        # fallback: try str(it)
                         s = str(it)
                         m = self.PARAM_CALL_RE.search(s)
                         if m:
-                            norm.append({"token": m.group("tok")})
+                            tok = m.group("tok")
+                            norm.append({"token": tok, "parameter": s})
+                        elif s:
+                            norm.append({"token": s, "parameter": s})
                 newp[sec] = norm
             out["parameters"] = newp
         # recursion for children
         ch = out.get("children")
         if isinstance(ch, list):
             out["children"] = [self._attach_parameters_tokens(c) if isinstance(c, dict) else c for c in ch]
+        elif ch is not None:
+            # Fix: If children exists but is not a list (e.g., string reference like 'wA'),
+            # convert to empty list to prevent MenuManager errors
+            self._log.debug(f"Converting non-list children to empty list: {type(ch)} {ch}")
+            out["children"] = []
         return out
-
-    def _gate_routes_independent(self, routes: list[dict[str, Any]], permissions: set[str]) -> list[dict[str, Any]]:
-        def gate(node: dict[str, Any]) -> dict[str, Any]:
-            meta = node.get("meta") or {}
-            perm = meta.get("permissionModule")
-
-            # Check permission - handle A. prefix
-            if perm:
-                # Route requires permission - check if user has it
-                # Remove A. prefix if present for comparison
-                perm_check = perm.replace("A.", "") if perm.startswith("A.") else perm
-                visible = perm_check in permissions
-            else:
-                # No permission required - route is public
-                visible = True
-
-            # Filter parameters by their own permissions (both root and meta)
-            def filter_parameters(params_dict: dict[str, Any]) -> None:
-                if isinstance(params_dict, dict):
-                    for sec in ("read", "write", "status", "special"):
-                        lst = params_dict.get(sec) or []
-                        # Filter each parameter by its permissionModule
-                        filtered_params = []
-                        for param in lst:
-                            if isinstance(param, dict):
-                                param_perm = param.get("permissionModule")
-                                if permissions and param_perm:
-                                    # Remove A. prefix if present for comparison
-                                    param_perm_check = param_perm.replace("A.", "") if param_perm.startswith("A.") else param_perm
-                                    if param_perm_check in permissions:
-                                        filtered_params.append(param)
-                                else:
-                                    # If no permission required, include by default
-                                    filtered_params.append(param)
-                            else:
-                                # Non-dict parameters pass through
-                                filtered_params.append(param)
-                        params_dict[sec] = filtered_params
-
-            # Filter root parameters
-            params = node.get("parameters") or {}
-            filter_parameters(params)
-            node["parameters"] = params
-
-            # Filter meta parameters too
-            meta_params = meta.get("parameters")
-            if meta_params:
-                filter_parameters(meta_params)
-                meta["parameters"] = meta_params
-            node["_visible"] = bool(visible)
-            # children: we don't inherit visibility (strategy 'independent')
-            children = node.get("children") or []
-            if isinstance(children, list):
-                node["children"] = [gate(c) for c in children if isinstance(c, dict)]
-            return node
-
-        return [gate(r) for r in routes]
-
-    def _collect_tokens_from_routes(self, routes: list[dict[str, Any]]) -> set[str]:
-        out: set[str] = set()
-
-        def walk(n: dict[str, Any]) -> None:
-            params = n.get("parameters") or {}
-            if isinstance(params, dict):
-                for sec in ("read", "write", "status", "special"):
-                    for el in params.get(sec, []) or []:
-                        tok = el.get("token")
-                        if tok:
-                            out.add(str(tok))
-            for c in n.get("children") or []:
-                if isinstance(c, dict):
-                    walk(c)
-
-        for r in routes:
-            walk(r)
-        return out
-
-    @staticmethod
-    def _count_nodes(routes: list[dict[str, Any]]) -> int:
-        cnt = 0
-
-        def walk(n: dict[str, Any]) -> None:
-            nonlocal cnt
-            cnt += 1
-            for c in n.get("children") or []:
-                if isinstance(c, dict):
-                    walk(c)
-
-        for r in routes:
-            walk(r)
-        return cnt
 
     # ---------- PARAM MAPS ----------
 
@@ -798,6 +846,10 @@ class LiveAssetsCatalog:
              improved performance. Failed fetches are logged but do not raise exceptions.
         """
         uniq_tokens = list(dict.fromkeys(str(t) for t in tokens if t))
+
+        if not self._idx.assets_by_basename:
+            await self._ensure_index_loaded()
+
         # 1) file assets
         file_jobs: list[tuple[str, AssetRef]] = []
         unresolved: list[str] = []
@@ -870,18 +922,147 @@ class LiveAssetsCatalog:
         if not isinstance(obj, dict):
             return None
 
-        # Minimal normalization: group/pool + use or value/unit/status/x/n
         group = obj.get("group") or obj.get("pool")
-        use = obj.get("use") or {}
+
+        def _ensure_mapping_list(value: Any) -> list[dict[str, Any]]:
+            if isinstance(value, list):
+                return [dict(item) for item in value if isinstance(item, Mapping)]
+            if isinstance(value, Mapping):
+                return [dict(value)]
+            return []
+
+        def _normalize_status(value: Any) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
+            conditions: dict[str, list[dict[str, Any]]] = {}
+            flat: list[dict[str, Any]] = []
+            if isinstance(value, Mapping):
+                for raw_key, entries in value.items():
+                    key_str = str(raw_key)
+                    normalized_entries = _ensure_mapping_list(entries)
+                    if not normalized_entries:
+                        continue
+                    conditions[key_str] = normalized_entries
+                    for entry in normalized_entries:
+                        enriched = dict(entry)
+                        enriched.setdefault("condition", key_str)
+                        flat.append(enriched)
+            elif isinstance(value, list):
+                normalized_entries = _ensure_mapping_list(value)
+                if normalized_entries:
+                    conditions["default"] = normalized_entries
+                    flat.extend(normalized_entries)
+            return conditions, flat
+
+        def _normalize_literal(value: Any) -> Any:
+            if isinstance(value, str):
+                trimmed = value.strip()
+                if trimmed == "void 0":
+                    return None
+                if trimmed == "undefined":
+                    return None
+                if trimmed == "!0":
+                    return True
+                if trimmed == "!1":
+                    return False
+            return value
+
+        def _normalize_identifier(value: Any) -> str | None:
+            if not isinstance(value, str):
+                return None
+            cleaned = value.strip()
+            if not cleaned:
+                return None
+            if cleaned.startswith("[") and cleaned.endswith("]") and len(cleaned) > 2:
+                cleaned = cleaned[1:-1]
+            parts = cleaned.split(".", 1)
+            if len(parts) == 2 and parts[0] in {"a", "e", "n", "o", "t"}:
+                cleaned = parts[1]
+            return cleaned
+
+        def _normalize_condition_entries(entries: Any) -> list[dict[str, Any]]:
+            conditions_list: list[dict[str, Any]] = []
+            if not isinstance(entries, list):
+                return conditions_list
+            for entry in entries:
+                if not isinstance(entry, Mapping):
+                    continue
+                condition = {
+                    "operation": _normalize_identifier(entry.get("operation")),
+                    "expected": _normalize_literal(entry.get("expected")),
+                    "targets": _ensure_mapping_list(entry.get("value")),
+                }
+                conditions_list.append(condition)
+            return conditions_list
+
+        def _normalize_command_action(raw_action: Any) -> dict[str, Any] | None:
+            if not isinstance(raw_action, Mapping):
+                return None
+            command = _normalize_identifier(raw_action.get("command"))
+            value = _normalize_literal(raw_action.get("value"))
+            action: dict[str, Any] = {}
+            if command:
+                action["command"] = command
+            if value is not None:
+                action["value"] = value
+            return action if action else None
+
+        def _normalize_command_branches(blocks: Any, logic_key: str) -> list[dict[str, Any]]:
+            normalized: list[dict[str, Any]] = []
+            if not isinstance(blocks, list):
+                return normalized
+            for entry in blocks:
+                if not isinstance(entry, Mapping):
+                    continue
+                branch_key = None
+                for candidate in ("if", "elseif", "else"):
+                    if candidate in entry:
+                        branch_key = candidate
+                        break
+                if branch_key is None:
+                    branch_key = "if"
+                conditions = _normalize_condition_entries(entry.get(branch_key)) if branch_key != "else" else []
+                action_source = entry.get("then") if branch_key != "else" else entry.get("else")
+                action = _normalize_command_action(action_source)
+                if action is None:
+                    continue
+                normalized_entry: dict[str, Any] = {
+                    "logic": logic_key,
+                    "kind": branch_key,
+                    "conditions": conditions,
+                }
+                normalized_entry.update(action)
+                normalized.append(normalized_entry)
+            return normalized
+
+        value_paths = _ensure_mapping_list(obj.get("value"))
+        unit_paths = _ensure_mapping_list(obj.get("unit"))
+        command_paths = _ensure_mapping_list(obj.get("command"))
+        min_paths = _ensure_mapping_list(obj.get("minValue") or obj.get("min"))
+        max_paths = _ensure_mapping_list(obj.get("maxValue") or obj.get("max"))
+        status_conditions, status_flat = _normalize_status(obj.get("status"))
+
+        command_rules: list[dict[str, Any]] = []
+        for logic_key in ("any", "all", "when"):
+            command_rules.extend(_normalize_command_branches(obj.get(logic_key), logic_key))
+
+        use = obj.get("use")
+        if isinstance(use, Mapping):
+            value_paths = value_paths or _ensure_mapping_list(use.get("v"))
+            unit_paths = unit_paths or _ensure_mapping_list(use.get("u"))
+            if not status_flat:
+                _, status_flat = _normalize_status(use.get("s"))
+            min_paths = min_paths or _ensure_mapping_list(use.get("n"))
+            max_paths = max_paths or _ensure_mapping_list(use.get("x"))
+
         paths = {
-            "v": list(use.get("v") or obj.get("value") or []),
-            "u": list(use.get("u") or obj.get("unit") or []),
-            "s": list(use.get("s") or obj.get("status") or []),
-            "x": list(use.get("x") or []),
-            "n": list(use.get("n") or []),
+            "value": value_paths,
+            "unit": unit_paths,
+            "status": status_flat,
+            "command": command_paths,
+            "min": min_paths,
+            "max": max_paths,
         }
         component = obj.get("componentType")
-        units = obj.get("units") or obj.get("unit_name") or None
+        units_raw = obj.get("units") or obj.get("unit_name") or None
         limits = None
         for cand in ("limits", "range", "minmax"):
             if cand in obj and isinstance(obj[cand], dict):
@@ -894,9 +1075,11 @@ class LiveAssetsCatalog:
             group=group if isinstance(group, str) else None,
             paths=paths,
             component_type=component if isinstance(component, str) else None,
-            units=units if isinstance(units, str) else None,
+            units=units_raw if isinstance(units_raw, (str, int, float)) else None,
             limits=limits,
             status_flags=status_flags if isinstance(status_flags, list) else [],
+            status_conditions=status_conditions or None,
+            command_rules=command_rules,
             origin=origin,
             raw=obj,
         )
@@ -920,8 +1103,8 @@ class LiveAssetsCatalog:
         Returns:
             A set of token strings that are visible for the given permissions.
         """
-        m = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
-        return m.tokens
+        menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
+        return menu.all_tokens()
 
     # ---------- i18n support ----------
 
@@ -931,6 +1114,8 @@ class LiveAssetsCatalog:
         Parses the index-*.js file to extract language configuration by structural patterns.
         The configuration object contains translations array and defaultTranslation field.
         """
+        if not self._idx.index_bytes:
+            await self._ensure_index_loaded()
         if not self._idx.index_bytes:
             self._log.warning("No index data available. Call refresh_index() or refresh_index_minimal() first.")
             return None
@@ -956,6 +1141,8 @@ class LiveAssetsCatalog:
         Returns:
             Dictionary with translation mappings, or empty dict if not found.
         """
+        if not self._idx.index_bytes:
+            await self._ensure_index_loaded()
         if not self._idx.index_bytes:
             self._log.warning("No index data available for i18n lookup")
             return {}
@@ -1042,19 +1229,60 @@ class LiveAssetsCatalog:
         """
         try:
             tree = self._ts.parse(code)
-            root = _find_export_root(code, tree.root_node)
+            root = tree.root_node
+            code_text = code.decode("utf-8", errors="replace")
 
-            if root is None:
-                return {}
+            bindings: dict[str, Any] = {}
 
-            # Convert AST to Python dict
-            translations = _object_to_python(code, root)
+            # Collect constant bindings so we can resolve identifier references
+            for child in root.named_children:
+                if child.type != "lexical_declaration":
+                    continue
+                for declarator in child.named_children:
+                    if declarator.type != "variable_declarator":
+                        continue
+                    name_node = declarator.child_by_field_name("name")
+                    value_node = declarator.child_by_field_name("value")
+                    if name_node is None or value_node is None:
+                        continue
+                    name = _node_text(code, name_node).strip()
+                    if not name:
+                        continue
+                    bindings[name] = _node_to_python(code, value_node, bindings)
+
+            translations: Any | None = None
+
+            # Prefer explicit `export default <expr>` if present.
+            for child in root.named_children:
+                if child.type != "export_statement":
+                    continue
+                value_node = child.child_by_field_name("value")
+                if value_node is not None:
+                    translations = _node_to_python(code, value_node, bindings)
+                    break
+
+            if translations is None:
+                match = re.search(
+                    r"export\s*\{[^}]*?([A-Za-z0-9_$]+)\s+as\s+default",
+                    code_text,
+                )
+                if match:
+                    default_name = match.group(1)
+                    candidate = bindings.get(default_name)
+                    if candidate is not None:
+                        translations = candidate
+
+            if translations is None:
+                export_root = _find_export_root(code, root)
+                if export_root is not None:
+                    translations = _node_to_python(code, export_root, bindings)
 
             if isinstance(translations, dict):
                 return translations
-            else:
+
+            if translations is not None:
                 self._log.warning("i18n export is not an object: %s", type(translations))
-                return {}
+            return {}
 
         except Exception as e:
             self._log.warning("Failed to parse i18n JavaScript: %s", e)
