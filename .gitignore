@@ -97,4 +97,5 @@ pybragerone.*
 /docs/generated/
 !docs/generated/
 !docs/generated/pybragerone.rst
-/examples/requirements.txt
+/examples/
+/scripts/
