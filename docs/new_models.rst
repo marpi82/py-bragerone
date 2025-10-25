@@ -30,7 +30,7 @@ The :class:`~pybragerone.models.api.modules.ModuleCard` model contains detailed 
 **Model Fields:**
 
 - ``id: int`` - Card ID
-- ``moduleId: int`` - Module ID  
+- ``moduleId: int`` - Module ID
 - ``clientFullName: str`` - Full client name
 - ``clientPhoneNumber: str`` - Phone number
 - ``clientAddressStreetAndNumber: str`` - Street and number
@@ -39,7 +39,7 @@ The :class:`~pybragerone.models.api.modules.ModuleCard` model contains detailed 
 - ``createdAt: datetime`` - Creation date (automatic parsing)
 - ``updatedAt: datetime`` - Last update date (automatic parsing)
 
-SystemVersion Model  
+SystemVersion Model
 ~~~~~~~~~~~~~~~~~~~
 
 The :class:`~pybragerone.models.api.system.SystemVersion` model contains system version information:
@@ -106,23 +106,23 @@ Complete Usage Example
     async def demo_new_models():
         def creds_provider():
             return (os.getenv("PYBO_EMAIL"), os.getenv("PYBO_PASSWORD"))
-        
+
         client = BragerOneApiClient(creds_provider=creds_provider)
-        
+
         try:
             await client.ensure_auth(os.getenv("PYBO_EMAIL"), os.getenv("PYBO_PASSWORD"))
-            
+
             # System version (available without authentication)
             version: SystemVersion = await client.get_system_version()
             print(f"🖥️  System: {version.version.version} (dev: {version.version.devMode})")
-            
+
             # Modules and their cards
             objects = await client.get_objects()
             if objects:
                 modules: list[Module] = await client.get_modules(objects[0].id)
                 for module in modules:
                     print(f"\\n📡 Module: {module.name} ({module.devid})")
-                    
+
                     try:
                         card: ModuleCard = await client.get_module_card(module.devid)
                         print(f"   👤 Client: {card.clientFullName}")
@@ -133,7 +133,7 @@ Complete Usage Example
                         print(f"   🔄 Updated: {card.updatedAt}")
                     except Exception as e:
                         print(f"   ⚠️  Card not available: {e}")
-        
+
         finally:
             await client.close()
 
@@ -144,7 +144,7 @@ Implementation Status
 ---------------------
 
 - ✅ **ModuleCard**: Complete model with automatic date parsing
-- ✅ **SystemVersion**: Complete model with nested VersionInfo structure  
+- ✅ **SystemVersion**: Complete model with nested VersionInfo structure
 - ✅ **API Client**: Methods return Pydantic models instead of dict
 - ✅ **Tests**: All models tested and working
 - ✅ **Type Safety**: Full type support in IDE and runtime

@@ -1,8 +1,8 @@
 pybragerone – Integration Notes
 ===============================
 
-**Date:** 2025-09-20  
-**Scope:** Library architecture (REST/WS, EventBus, stores), Home Assistant integration flow, debugging & ops.  
+**Date:** 2025-09-20
+**Scope:** Library architecture (REST/WS, EventBus, stores), Home Assistant integration flow, debugging & ops.
 **Audience:** Developers of :mod:`pybragerone` and HA component maintainers.
 
 .. contents:: Table of Contents
@@ -38,44 +38,44 @@ Architecture (High-Level)
        subgraph "External Services"
            Backend["🌐 Brager One backend<br/>(io.brager.pl)"]
        end
-       
+
        subgraph "pybragerone Core"
            API["📡 Brager API<br/>(aiohttp)"]
            Gateway["🚪 Gateway"]
            Bus["📢 EventBus<br/>(multicast; per-subscriber queues)"]
        end
-       
+
        subgraph "Data Stores"
            ParamStore["💾 ParamStore<br/>(runtime)<br/>key→value"]
            StateStore["🏗️ StateStore<br/>(rich model/meta)"]
        end
-       
+
        subgraph "Consumers"
            HA["🏠 Home Assistant Entities<br/>(binary_sensor, number, ...)"]
            Printer["🖨️ Printer<br/>(optional debug/CLI)"]
        end
-       
+
        %% Main data flow
        API <-->|"REST<br/>prime parameters"| Backend
        API -->|"WS (socket.io)<br/>subscribe"| Gateway
        Backend -->|"WS change events"| Gateway
        Gateway -->|"publish()"| Bus
-       
-       %% Store connections  
+
+       %% Store connections
        Bus --> ParamStore
        Bus --> StateStore
        Bus --> Printer
-       
+
        %% HA integration
        ParamStore --> HA
        StateStore -.->|"descriptors built<br/>(config/reconfigure only)"| HA
-       
+
        %% Styling
        classDef external fill:#e1f5fe
-       classDef core fill:#f3e5f5  
+       classDef core fill:#f3e5f5
        classDef store fill:#e8f5e8
        classDef consumer fill:#fff3e0
-       
+
        class Backend external
        class API,Gateway,Bus core
        class ParamStore,StateStore store

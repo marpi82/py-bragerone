@@ -79,10 +79,10 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           mkdir -p deploy_root
-          
+
           # Copy built docs to versioned directory
           cp -r docs/_build/html "deploy_root/$VERSION"
-          
+
           # If stable version, create/update 'latest' symlink
           if [[ "${{ steps.version.outputs.is_stable }}" == "true" ]]; then
             cd deploy_root
@@ -94,7 +94,7 @@ jobs:
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         if: |
-          (github.ref == 'refs/heads/main') || 
+          (github.ref == 'refs/heads/main') ||
           (startsWith(github.ref, 'refs/tags/20') && steps.version.outputs.is_stable == 'true')
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

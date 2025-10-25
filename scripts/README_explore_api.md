@@ -29,7 +29,7 @@ python scripts/explore_api_structure.py --username YOUR_USERNAME --password YOUR
 ### Opcje
 
 - `--username` - Nazwa użytkownika BragerOne (domyślnie: `BRAGERONE_USERNAME` z .env)
-- `--password` - Hasło do BragerOne (domyślnie: `BRAGERONE_PASSWORD` z .env)  
+- `--password` - Hasło do BragerOne (domyślnie: `BRAGERONE_PASSWORD` z .env)
 - `--output FILE` - Zapisz wyniki do pliku zamiast wyświetlać na stdout
 
 ## Przykłady
@@ -93,7 +93,7 @@ class AuthResponse(BaseModel):
 
 Wyniki można wykorzystać do stworzenia modeli w `src/pybragerone/models/api/`:
 - `auth.py` - AuthResponse, User
-- `user.py` - UserInfo, UserPermissions  
+- `user.py` - UserInfo, UserPermissions
 - `object.py` - ObjectInfo, ObjectPermissions
 - `module.py` - ModuleInfo, ModuleCard
 - `system.py` - SystemVersion, ModulesParameters, etc.

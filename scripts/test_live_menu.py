@@ -27,17 +27,17 @@ load_dotenv()
 
 
 async def _fetch_text(url: str) -> str:
-    """Fetch raw text from a URL using aiohttp.
+    """Fetch raw text from a URL using httpx.
 
-    We use a short-lived aiohttp session here to avoid changing the API client's
+    We use a short-lived httpx client here to avoid changing the API client's
     session management. This is only used for simple HTML discovery of assets.
     """
-    import aiohttp
+    import httpx
 
-    timeout = aiohttp.ClientTimeout(total=10)
-    async with aiohttp.ClientSession() as session, session.get(url, timeout=timeout) as resp:
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(url)
         resp.raise_for_status()
-        return await resp.text()
+        return resp.text
 
 
 def setup_logging() -> logging.Logger:

@@ -106,7 +106,7 @@ Każdy test generuje plik `live_test_results_device_{ID}.json` zawierający:
 ### Ocena bezpieczeństwa
 
 - ✅ **Dobra** (>20% tokenów ukrytych): Silne filtrowanie bezpieczeństwa
-- ⚠️ **Umiarkowana** (5-20% ukrytych): Moderate security filtering  
+- ⚠️ **Umiarkowana** (5-20% ukrytych): Moderate security filtering
 - ❌ **Wymaga uwagi** (<5% ukrytych): Słabe lub brak filtrowania
 
 ## ✅ Lista kontrolna weryfikacji

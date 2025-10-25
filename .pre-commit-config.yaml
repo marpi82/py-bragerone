@@ -15,8 +15,8 @@ repos:
     rev: v0.14.1
     hooks:
       - id: ruff
-        args: ["--fix"]     # lint + autofix (bez I jeśli nie chcesz sortować importów ruffem)
-      - id: ruff-format     # formatter (zastępuje Black)
+        args: ["--fix"] # lint + autofix (bez I jeśli nie chcesz sortować importów ruffem)
+      - id: ruff-format # formatter (zastępuje Black)
 
   # Mypy → type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
@@ -24,15 +24,19 @@ repos:
     hooks:
       - id: mypy
         args: ["--strict", "--show-column-numbers", "--show-error-codes"]
-        additional_dependencies: [
-          "pydantic>=2.0",
-          "aiohttp",
-          "types-aiofiles",
-          "python-socketio",
-          "tree-sitter",
-          "tree-sitter-javascript",
-          "keyring",
-        ]
+        files: ^(src/|tests/)
+        additional_dependencies:
+          [
+            "pydantic>=2.0",
+            "httpx",
+            "pytest-httpx",
+            "types-aiofiles",
+            "python-socketio",
+            "tree-sitter",
+            "tree-sitter-javascript",
+            "keyring",
+            "python-dotenv",
+          ]
 
   # Secrets scanning with Gitleaks
   - repo: https://github.com/gitleaks/gitleaks
@@ -80,18 +84,32 @@ repos:
     hooks:
       - id: poetry-export
         name: poetry export requirements.txt
-        args: ["--without-hashes", "--format", "requirements.txt", "-o", "requirements.txt"]
+        args:
+          [
+            "--without-hashes",
+            "--format",
+            "requirements.txt",
+            "-o",
+            "requirements.txt",
+          ]
         stages: [pre-commit]
-        always_run: true  # Run even if poetry.lock unchanged
+        always_run: true # Run even if poetry.lock unchanged
 
   - repo: https://github.com/pypa/pip-audit
     rev: v2.9.0
     hooks:
       - id: pip-audit
         name: pip-audit (scan requirements.txt)
-        args: ["--requirement", "requirements.txt", "--progress-spinner", "off", "--strict"]
+        args:
+          [
+            "--requirement",
+            "requirements.txt",
+            "--progress-spinner",
+            "off",
+            "--strict",
+          ]
         stages: [pre-commit]
-        always_run: true  # Run even if requirements.txt not staged
+        always_run: true # Run even if requirements.txt not staged
 
   # --- TESTY na pre-push z progiem coverage ---
   - repo: local

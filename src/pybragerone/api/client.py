@@ -7,16 +7,9 @@ import contextlib
 import json
 import logging
 from collections.abc import Callable, Mapping
-from types import SimpleNamespace
 from typing import Any
 
-from aiohttp import (
-    ClientSession,
-    ClientTimeout,
-    TraceConfig,
-    TraceRequestEndParams,
-    TraceRequestStartParams,
-)
+import httpx
 
 from pybragerone.models.api import (
     AuthResponse,
@@ -171,7 +164,7 @@ class BragerOneApiClient:
             timeout: Request timeout in seconds.
             concurrency: Maximum number of concurrent requests.
         """
-        self._session: ClientSession | None = None
+        self._session: httpx.AsyncClient | None = None
 
         self._enable_http_trace = enable_http_trace
         self._redact_secrets = redact_secrets
@@ -214,66 +207,55 @@ class BragerOneApiClient:
         self._token_saver = store.save
         self._token_clearer = store.clear
 
-    async def _ensure_session(self) -> ClientSession:
-        """Ensure we have a ClientSession (with optional HTTP tracing).
+    async def _ensure_session(self) -> httpx.AsyncClient:
+        """Ensure we have an AsyncClient (with optional HTTP tracing).
 
         Returns:
-            An active aiohttp ClientSession with configured headers and tracing.
+            An active httpx AsyncClient with configured headers and event hooks.
         """
-        if self._session and not self._session.closed:
+        if self._session and not self._session.is_closed:
             return self._session
 
-        trace_configs: list[TraceConfig] = []
-        if self._enable_http_trace:
-            trace = TraceConfig()
+        # Configure default headers
+        headers = {"Origin": ONE_BASE, "Referer": f"{ONE_BASE}/"}
 
-            @trace.on_request_start.append
-            async def _on_start(
-                session: ClientSession,
-                ctx: SimpleNamespace,
-                params: TraceRequestStartParams,
-            ) -> None:
-                """Log the request.
+        # Configure timeout
+        timeout = httpx.Timeout(self._timeout)
 
-                Args:
-                    session: The aiohttp ClientSession.
-                    ctx: The aiohttp TraceRequestStartParams.
-                    params: The aiohttp TraceRequestStartParams.
-
-                Returns:
-                    None
-                """
-                safe_headers = dict(params.headers or {})
-                if self._redact_secrets and "Authorization" in safe_headers:
-                    safe_headers["Authorization"] = "<redacted>"
-                LOG_HTTP.debug("→ %s %s headers=%s", params.method, params.url, safe_headers)
-
-            @trace.on_request_end.append
-            async def _on_end(
-                session: ClientSession,
-                ctx: SimpleNamespace,
-                params: TraceRequestEndParams,
-            ) -> None:
-                """Log the response.
-
-                Args:
-                    session: The aiohttp ClientSession.
-                    ctx: The aiohttp TraceRequestEndParams.
-                    params: The aiohttp TraceRequestEndParams.
-
-                Returns:
-                    None
-                """
-                resp = params.response
-                LOG_HTTP.debug("← %s %s → %s", params.method, params.url, resp.status)
-
-            trace_configs.append(trace)
-
-        self._session = ClientSession(
-            headers={"Origin": ONE_BASE, "Referer": f"{ONE_BASE}/"},
-            trace_configs=trace_configs,
+        # Create client
+        self._session = httpx.AsyncClient(
+            headers=headers,
+            timeout=timeout,
+            follow_redirects=True,
         )
+
+        # Add HTTP tracing event hooks if enabled
+        if self._enable_http_trace:
+            self._session.event_hooks = {
+                "request": [self._log_request],
+                "response": [self._log_response],
+            }
+
         return self._session
+
+    async def _log_request(self, request: httpx.Request) -> None:
+        """Log HTTP request for tracing.
+
+        Args:
+            request: The httpx Request object.
+        """
+        safe_headers = dict(request.headers)
+        if self._redact_secrets and "Authorization" in safe_headers:
+            safe_headers["Authorization"] = "<redacted>"
+        LOG_HTTP.debug("→ %s %s headers=%s", request.method, request.url, safe_headers)
+
+    async def _log_response(self, response: httpx.Response) -> None:
+        """Log HTTP response for tracing.
+
+        Args:
+            response: The httpx Response object.
+        """
+        LOG_HTTP.debug("← %s %s → %s", response.request.method, response.request.url, response.status_code)
 
     async def close(self) -> None:
         """Close the underlying HTTP session.
@@ -281,8 +263,8 @@ class BragerOneApiClient:
         This should be called when the client is no longer needed to properly
         release resources.
         """
-        if self._session and not self._session.closed:
-            await self._session.close()
+        if self._session and not self._session.is_closed:
+            await self._session.aclose()
 
     # ----------------- request -----------------
 
@@ -322,38 +304,36 @@ class BragerOneApiClient:
                 raise ApiError(401, {"message": "No token"}, {})
             hdrs["Authorization"] = f"Bearer {self._token.access_token}"
 
-        async with sess.request(
-            method, path, json=json, data=data, headers=hdrs, timeout=ClientTimeout(total=self._timeout)
-        ) as resp:
-            status = resp.status
-            ctype = resp.headers.get("Content-Type", "")
-            try:
-                body = await (resp.json(content_type=None) if "application/json" in ctype else resp.text())
-            except Exception:
-                body = None
+        resp = await sess.request(method, path, json=json, data=data, headers=hdrs)
+        status = resp.status_code
+        ctype = resp.headers.get("Content-Type", "")
+        try:
+            body = resp.json() if "application/json" in ctype else resp.text
+        except Exception:
+            body = None
 
-            if status == 401 and auth and _retry:
-                LOG.debug("401 received — attempting token refresh & single retry")
-                em, pw = (None, None)
-                if self._creds_provider:
-                    with contextlib.suppress(Exception):
-                        em, pw = self._creds_provider()
+        if status == 401 and auth and _retry:
+            LOG.debug("401 received — attempting token refresh & single retry")
+            em, pw = (None, None)
+            if self._creds_provider:
                 with contextlib.suppress(Exception):
-                    await self.ensure_auth(em, pw)
-                    return await self._req(
-                        method,
-                        path,
-                        json=json,
-                        data=data,
-                        headers=headers,
-                        auth=auth,
-                        _retry=False,
-                    )
+                    em, pw = self._creds_provider()
+            with contextlib.suppress(Exception):
+                await self.ensure_auth(em, pw)
+                return await self._req(
+                    method,
+                    path,
+                    json=json,
+                    data=data,
+                    headers=headers,
+                    auth=auth,
+                    _retry=False,
+                )
 
-            if status >= 400:
-                raise ApiError(status, body, dict(resp.headers))
+        if status >= 400:
+            raise ApiError(status, body, dict(resp.headers))
 
-            return status, body, dict(resp.headers)
+        return status, body, dict(resp.headers)
 
     # -------- SYSTEM --------
 
@@ -854,22 +834,22 @@ class BragerOneApiClient:
         async with self._sem:
             LOG.debug("HTTP GET %s", url)
             try:
-                async with sess.get(url, headers=headers, timeout=ClientTimeout(total=self._timeout)) as r:
-                    if r.status == 304:
-                        body = self._cache.get_body(url)
-                        if body is None:
-                            # 304 without previous body - fetch full content
-                            async with sess.get(url, timeout=ClientTimeout(total=self._timeout)) as r2:
-                                r2.raise_for_status()
-                                body = await r2.read()
-                                self._cache.update(url, r2.headers, body)
-                                return body
-                        # Body from cache is guaranteed to be bytes
+                r = await sess.get(url, headers=headers)
+                if r.status_code == 304:
+                    body = self._cache.get_body(url)
+                    if body is None:
+                        # 304 without previous body - fetch full content
+                        r2 = await sess.get(url)
+                        r2.raise_for_status()
+                        body = r2.content
+                        self._cache.update(url, r2.headers, body)
                         return body
-                    r.raise_for_status()
-                    body = await r.read()
-                    self._cache.update(url, r.headers, body)
+                    # Body from cache is guaranteed to be bytes
                     return body
+                r.raise_for_status()
+                body = r.content
+                self._cache.update(url, r.headers, body)
+                return body
             except Exception as e:
                 LOG.warning("HTTP error for %s: %s", url, e)
                 raise
