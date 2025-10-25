@@ -90,6 +90,8 @@ Thumbs.db
 pybragerone.*
 /*.log
 /src/bragerone/
+examples/
+scripts/
 # keep specific markdown docs tracked
 /docs/[a-z]*.md
 !docs/changelog.md
@@ -97,5 +99,3 @@ pybragerone.*
 /docs/generated/
 !docs/generated/
 !docs/generated/pybragerone.rst
-/examples/
-/scripts/
