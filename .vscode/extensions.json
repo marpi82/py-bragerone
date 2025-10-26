@@ -11,7 +11,7 @@
     "github.vscode-github-actions",          // Actions preview
     "eamodio.gitlens",                       // GitLens (history, blame, diff)
     "samuelcolvin.jinjahtml",                // Jinja2 w HTML
-    "zeshuaro.vscode-python-poetry",         // Poetry (dependency management)
+    "astral-sh.uv",                          // uv (dependency management)
     "redhat.vscode-yaml",                     // YAML (GitHub Actions)
     "tamasfe.even-better-toml",               // TOML (pyproject.toml)
     "LittleFoxTeam.vscode-python-test-adapter" // Test Explorer (Run tests from VSCode)

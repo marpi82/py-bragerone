@@ -2,20 +2,23 @@
   "version": "2.0.0",
   "options": {
     "cwd": "${workspaceFolder}",
-    "envFile": "${workspaceFolder}/.env"
+    "envFile": "${workspaceFolder}/.env",
+    "env": {
+      "UV_PROJECT_ENVIRONMENT": ".venv"
+    }
   },
   "tasks": [
     {
-      "label": "Poetry: bootstrap",
+      "label": "uv: sync dev+test+docs",
       "type": "shell",
-      "command": "poetry install --with dev,test,docs",
+      "command": "uv sync --locked --group dev --group test --group docs",
       "problemMatcher": [],
       "presentation": { "reveal": "always", "clear": true }
     },
     {
       "label": "Quality: format",
       "type": "shell",
-      "command": "poetry run ruff format",
+      "command": "uv run --group dev ruff format",
       "problemMatcher": [],
       "group": "build",
       "presentation": { "reveal": "never", "clear": true }
@@ -23,7 +26,7 @@
     {
       "label": "Quality: lint/fix",
       "type": "shell",
-      "command": "poetry run ruff check . --fix",
+      "command": "uv run --group dev ruff check . --fix",
       "problemMatcher": [
         {
           "owner": "ruff",
@@ -35,8 +38,7 @@
             "line": 2,
             "column": 3,
             "code": 4,
-            "message": 5,
-            "severity": "error"
+            "message": 5
           }
         }
       ],
@@ -46,7 +48,7 @@
     {
       "label": "Quality: typecheck",
       "type": "shell",
-      "command": "poetry run mypy --hide-error-context --show-column-numbers --no-color-output",
+      "command": "uv run --group dev mypy --hide-error-context --show-column-numbers --no-color-output",
       "problemMatcher": [
         {
           "owner": "mypy",
@@ -57,7 +59,6 @@
             "file": 1,
             "line": 2,
             "column": 3,
-            "severity": 4,
             "message": 5
           }
         }
@@ -66,7 +67,7 @@
       "presentation": { "reveal": "never", "clear": true }
     },
     {
-      "label": "Quality: All quality checks",
+      "label": "Quality: All checks",
       "dependsOrder": "sequence",
       "dependsOn": ["Quality: format", "Quality: lint/fix", "Quality: typecheck"],
       "problemMatcher": [],
@@ -76,7 +77,7 @@
       "label": "Security: Bandit (security linting)",
       "type": "shell",
       // custom template for problemMatcher: file:line:column/code/severity/message
-      "command": "poetry run bandit -r src -q -f custom --msg-template \"{path}:{line}:{col}: {test_id} {severity}: {msg}\"",
+      "command": "uv run --group dev bandit -r src -q -f custom --msg-template \"{path}:{line}:{col}: {test_id} {severity}: {msg}\"",
       "problemMatcher": [
         {
           "owner": "bandit",
@@ -99,7 +100,7 @@
       "label": "Security: Semgrep (security checks)",
       "type": "shell",
       // --error => exit!=0 when there are findings of appropriate severity
-      "command": "poetry run semgrep --config p/ci --error .",
+      "command": "uv run --group dev semgrep --config p/ci --error .",
       "problemMatcher": [
         {
           "owner": "semgrep",
@@ -121,13 +122,13 @@
     {
       "label": "Security: pip-audit (dependency audit)",
       "type": "shell",
-      "command": "poetry run pip-audit --skip-editable --progress-spinner off --ignore-vuln GHSA-4xh5-x5gv-qwph",
+      "command": "uv run --group dev pip-audit --skip-editable --progress-spinner off --ignore-vuln GHSA-4xh5-x5gv-qwph",
       // pip-audit prints a table by default; parsing 'Problems' can be unreliable → leave the exit code
       "problemMatcher": [],
       "presentation": { "reveal": "always", "clear": true }
     },
     {
-      "label": "Security: All security checks",
+      "label": "Security: All checks",
       "dependsOrder": "sequence",
       "dependsOn": ["Security: Bandit (security linting)", "Security: Semgrep (security checks)", "Security: pip-audit (dependency audit)"],
       "problemMatcher": [],
@@ -137,23 +138,21 @@
       "label": "Tests: run",
       "type": "shell",
       // JUnit → Problems via $junit; -q stays, but we add a report
-      "command": "poetry run pytest -q --junitxml=reports/junit.xml",
-      "problemMatcher": "$junit",
+      "command": "uv run --group test pytest -q --junitxml=reports/junit.xml",
       "group": { "kind": "test", "isDefault": true },
       "presentation": { "reveal": "never", "clear": true }
     },
     {
       "label": "Tests: coverage",
       "type": "shell",
-      "command": "poetry run pytest -q --cov=pybragerone --cov-report=term-missing --junitxml=reports/junit.xml",
-      "problemMatcher": "$junit",
+      "command": "uv run --group test pytest -q --cov=pybragerone --cov-report=term-missing --junitxml=reports/junit.xml",
       "group": "test",
       "presentation": { "reveal": "never", "clear": true }
     },
     {
       "label": "Validate: Full validation",
       "dependsOrder": "sequence",
-      "dependsOn": ["Quality: All quality checks", "Security: All security checks", "Tests: run"],
+      "dependsOn": ["Quality: All checks", "Security: All checks", "Tests: run"],
       "problemMatcher": [],
       "group": { "kind": "build", "isDefault": true },
       "presentation": { "reveal": "never", "clear": true }
@@ -161,7 +160,7 @@
     {
       "label": "Build dist",
       "type": "shell",
-      "command": "poetry build",
+      "command": "uv run --group dev hatch build",
       "problemMatcher": [],
       "group": "build",
       "presentation": { "reveal": "always", "clear": true }
@@ -169,7 +168,7 @@
     {
       "label": "Docs: build (Sphinx)",
       "type": "shell",
-      "command": "bash -lc 'export LC_ALL=C.utf8 2>/dev/null || export LC_ALL=C.UTF-8 2>/dev/null || true; poetry run sphinx-build -b html docs docs/_build/html'",
+      "command": "bash -lc 'export LC_ALL=C.utf8 2>/dev/null || export LC_ALL=C.UTF-8 2>/dev/null || true; uv run --group docs sphinx-build -b html docs docs/_build/html'",
       "problemMatcher": [],
       "group": "build",
       "presentation": { "reveal": "never", "clear": true }
@@ -185,14 +184,14 @@
     {
       "label": "Publish: PyPI",
       "type": "shell",
-      "command": "poetry publish --build --no-interaction",
+      "command": "uv run --group dev hatch publish",
       "problemMatcher": [],
       "presentation": { "reveal": "always", "clear": true }
     },
     {
       "label": "Publish: TestPyPI",
       "type": "shell",
-      "command": "poetry publish --build --repository testpypi --no-interaction",
+      "command": "uv run --group dev hatch publish --repo testpypi",
       "problemMatcher": [],
       "presentation": { "reveal": "always", "clear": true }
     }

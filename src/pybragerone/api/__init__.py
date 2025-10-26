@@ -1,4 +1,4 @@
-"""API layer for Brager One."""
+"""API layer for BragerOne."""
 
 from __future__ import annotations
 

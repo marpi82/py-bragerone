@@ -4,7 +4,7 @@ Param Store Metadata Reference
 This document describes the structure of the dictionary returned by
 ``ParamStore.describe_symbol()``. The same schema is used by diagnostics
 (e.g. ``scripts/tests/test_param_store_flow.py``) and by Home Assistant
-adapters when interpreting dynamic metadata from the Brager One assets.
+adapters when interpreting dynamic metadata from the BragerOne assets.
 
 The reference below follows Python typing notation and highlights how each
 field should be interpreted.

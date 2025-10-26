@@ -36,23 +36,26 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
 
-      - name: Install Poetry
-        run: pipx install poetry
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
 
-      - name: Enable dynamic versioning plugin
-        run: |
-          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
-          poetry dynamic-versioning enable
+      - name: Set up Python environment
+        run: uv python install 3.13
 
-      - name: Install project
-        run: |
-          poetry config virtualenvs.in-project true
-          poetry install --no-interaction
+      - name: Install dependencies
+        run: uv sync --locked --group dev
 
       - name: Build artifacts
-        run: poetry build
+        run: uv run hatch build
+
+      - name: Verify build artifacts
+        run: |
+          ls -lh dist/
+          uv run twine check dist/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5

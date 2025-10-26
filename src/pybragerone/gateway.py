@@ -24,7 +24,7 @@ GenericCb = Callable[[str, Any], Awaitable[None] | None]
 
 
 class BragerOneGateway:
-    """High-level orchestrator for Brager One realtime data.
+    """High-level orchestrator for BragerOne realtime data.
 
     Flow:
       1) ensure_auth (proaktywny/reaktywny refresh w kliencie HTTP)

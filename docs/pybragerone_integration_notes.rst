@@ -1,8 +1,8 @@
 pybragerone – Integration Notes
 ===============================
 
-**Date:** 2025-09-20
-**Scope:** Library architecture (REST/WS, EventBus, stores), Home Assistant integration flow, debugging & ops.
+**Last Updated:** 2025-10-26
+**Scope:** Library architecture (REST/WS, EventBus, ParamStore), Home Assistant integration flow, debugging & ops.
 **Audience:** Developers of :mod:`pybragerone` and HA component maintainers.
 
 .. contents:: Table of Contents
@@ -12,19 +12,19 @@ pybragerone – Integration Notes
 Overview
 ========
 
-``pybragerone`` integrates with the Brager One backend using a lean runtime and a heavier
-configuration-time modeling. The key idea is to **prime** the state via REST, then keep it **fresh**
-via WebSocket deltas. In HA, we run as light as possible; rich modeling is used only at setup time.
+``pybragerone`` integrates with the BragerOne backend using a lean runtime architecture.
+The key idea is to **prime** the state via REST, then keep it **fresh** via WebSocket deltas.
+In HA, we run as light as possible; rich metadata (via LiveAssetsCatalog) is used only at config time.
 
 Core Principles
 ===============
 
 - **Prime is mandatory** at startup and after reconnect. WebSocket does **not** provide a snapshot.
 - Runtime is **event-driven** with a **multicast EventBus** (per-subscriber queue, FIFO).
-- Two stores with different purposes:
+- **ParamStore** provides two usage modes:
 
-  - :class:`ParamStore` – *lightweight*, key→value, only real values (no meta). Used in HA runtime.
-  - :class:`StateStore` – *rich*, per-device/per-family models + meta. Used in config flow/reconfigure.
+  - **Lightweight mode** (runtime): Simple key→value store, minimal overhead, ignores meta-only events.
+  - **Asset-aware mode** (config): Integration with LiveAssetsCatalog for rich metadata (labels/units/enums).
 
 - Consistent, explicit parameter addressing: ``P<n>.<chan><idx>`` (e.g. ``P4.v1``).
 - Minimal coupling between WS flow and HA entities; HA entities rely on immutable references.
@@ -36,18 +36,18 @@ Architecture (High-Level)
 
    graph TB
        subgraph "External Services"
-           Backend["🌐 Brager One backend<br/>(io.brager.pl)"]
+           Backend["🌐 BragerOne backend<br/>(io.brager.pl)"]
        end
 
        subgraph "pybragerone Core"
-           API["📡 Brager API<br/>(aiohttp)"]
-           Gateway["🚪 Gateway"]
+           API["📡 BragerOneApiClient<br/>(httpx)"]
+           Gateway["🚪 BragerOneGateway"]
            Bus["📢 EventBus<br/>(multicast; per-subscriber queues)"]
        end
 
-       subgraph "Data Stores"
-           ParamStore["💾 ParamStore<br/>(runtime)<br/>key→value"]
-           StateStore["🏗️ StateStore<br/>(rich model/meta)"]
+       subgraph "Data Layer"
+           ParamStore["💾 ParamStore<br/>(runtime lightweight)<br/>OR (config asset-aware)"]
+           Catalog["�️ LiveAssetsCatalog<br/>(optional; for i18n/metadata)"]
        end
 
        subgraph "Consumers"
@@ -63,12 +63,15 @@ Architecture (High-Level)
 
        %% Store connections
        Bus --> ParamStore
-       Bus --> StateStore
        Bus --> Printer
+
+       %% Asset catalog (optional)
+       API -.-> Catalog
+       Catalog -.-> ParamStore
 
        %% HA integration
        ParamStore --> HA
-       StateStore -.->|"descriptors built<br/>(config/reconfigure only)"| HA
+       Catalog -.->|"descriptors built<br/>(config only)"| HA
 
        %% Styling
        classDef external fill:#e1f5fe
@@ -78,7 +81,7 @@ Architecture (High-Level)
 
        class Backend external
        class API,Gateway,Bus core
-       class ParamStore,StateStore store
+       class ParamStore,Catalog store
        class HA,Printer consumer
 
 Data Model & Semantics
@@ -114,36 +117,43 @@ Event Normalization
   - ``value`` – actual value or ``None`` if not present
   - ``meta`` – everything else (timestamps, ``storable``, averages, ...)
 
-- :class:`ParamStore` **ignores events with ``value is None``**.
-- :class:`StateStore` applies ``value`` to the modeled field *only if present*, and merges ``meta`` separately.
+- :class:`ParamStore` in **lightweight mode** ignores events with ``value is None``.
+- :class:`ParamStore` in **asset-aware mode** can process metadata when integrated with LiveAssetsCatalog.
 
-Stores
-======
+ParamStore
+==========
 
-ParamStore (runtime)
---------------------
+ParamStore provides two operational modes depending on your needs:
 
-- Responsibilities:
+Lightweight Mode (runtime)
+---------------------------
 
-  - Maintain a dictionary ``"P4.v1" -> 20`` (lightweight).
+- **Purpose**: Fast, minimal-overhead key→value storage for HA runtime entities.
+- **Responsibilities**:
+
+  - Maintain a dictionary ``"P4.v1" -> 20`` (simple key→value).
   - Provide :meth:`flatten()` for diagnostics / exporting.
-  - **Ignore meta-only updates**.
+  - **Ignore meta-only updates** (where ``value is None``).
 
-- Recommended usage in HA entities:
+- **Usage**: Default mode, no setup required.
+- **Recommended for HA entities**:
 
   - Numeric entity: ``native_value = param_store.get("P4.v1")``
   - Binary entity (status-bit): ``is_on = bool(param_store.get("P5.s40") & (1 << bit))``
 
-StateStore (configuration-time)
--------------------------------
+Asset-Aware Mode (configuration-time)
+--------------------------------------
 
-- Responsibilities:
+- **Purpose**: Rich metadata integration for config flows and entity setup.
+- **Activation**: Call ``param_store.init_with_api(api, lang="pl")`` to enable LiveAssetsCatalog.
+- **Responsibilities**:
 
   - Keep per-device/per-family rich models (Pydantic v2).
-  - Merge meta (min/max/unit/enums/status bits) and i18n (labels/units).
-  - Provide :meth:`flatten()` for quick human-oriented dumps (without overriding main fields with ``None``).
+  - Provide i18n labels, units, enums via asset catalog parsing.
+  - Support menu generation with permission filtering.
+  - Provide methods: ``get_menu()``, ``get_label()``, ``get_unit()``, etc.
 
-- Used in **config flow** and **reconfigure** to build **entity descriptors**:
+- **Used in config flow** and **reconfigure** to build **entity descriptors**:
 
   - ``unique_id`` (stable): ``bragerone_{devid}_{pool}_{chan}{idx}`` (``_bitN`` for bit entities).
   - ``label`` from i18n (e.g. ``parameters.PARAM_0`` → ``"Nastawa kotła"``).
@@ -165,14 +175,14 @@ Config Flow (no WS required)
 ----------------------------
 
 1. Login via REST; user selects ``object_id`` and desired modules/devices.
-2. ``prime parameters`` via REST; ingest into **StateStore** (no WS needed here).
-3. Parse ``parameterSchemas`` and i18n assets to enrich metadata.
+2. ``prime parameters`` via REST; ingest into **ParamStore** with asset-aware mode (no WS needed here).
+3. Use ParamStore methods (``get_menu()``, ``get_label()``, etc.) to enrich metadata from LiveAssetsCatalog.
 4. Build **entity descriptors** and store in ``config_entry.data`` (and/or options).
 
 Runtime
 -------
 
-1. Create Gateway + **ParamStore** (no StateStore needed at runtime).
+1. Create Gateway + **ParamStore** (lightweight mode for runtime performance).
 2. Connect WS, ``modules.connect``, subscribe (``parameters:listen``, ``activity:quantity:listen``).
 3. **Prime via REST** → ingest into EventBus → ParamStore filled immediately.
 4. WS delivers deltas; entities update on ``ParamUpdate`` (match by ref).
@@ -225,7 +235,7 @@ Error Handling & Robustness
 - Treat **401/403** as token/session problems → refresh/login and retry once.
 - For prime calls add a small retry with backoff (e.g. 200→500→800 ms).
 - WS reconnect should **always** re-run prime via REST (no WS snapshot available).
-- In EventBus consumers (:mod:`ParamStore`, :mod:`StateStore`), **never** let exceptions kill the task:
+- In EventBus consumers (e.g., :class:`ParamStore`), **never** let exceptions kill the task:
   catch and log, continue processing.
 
 Logging & Debugging
@@ -239,8 +249,7 @@ Logging & Debugging
 - Useful diagnostics:
 
   - ``param_store.flatten()`` size and sample keys.
-  - ``state_store.flatten()`` sample for a given device.
-  - Diff helper between ParamStore and StateStore values, by matching keys.
+  - Compare values between different parameter families using ParamStore keys.
 
 Security & Headers
 ==================
@@ -312,26 +321,30 @@ ParamStore
 .. code-block:: python
 
    class ParamStore:
-       async def run(self, bus: EventBus) -> None: ...
+       """Unified parameter store with two modes:
+       - Lightweight (default): Key→value for runtime
+       - Asset-aware (with init_with_api): Rich metadata access via LiveAssetsCatalog
+       """
+       # Lightweight mode (default)
+       async def run_with_bus(self, bus: EventBus) -> None: ...
        def get(self, key: str, default: Any = None) -> Any: ...
+       def upsert(self, key: str, value: Any) -> ParamFamilyModel | None: ...
        def flatten(self) -> dict[str, Any]: ...
 
-StateStore
-----------
-
-.. code-block:: python
-
-   class StateStore:
-       async def run(self, bus: EventBus) -> None: ...
-       def get_family(self, devid: str, pool: str, idx: int) -> ParamFamilyModel | None: ...
-       def flatten(self) -> dict[str, Any]: ...  # safe: does not overwrite v/u/s with None from channels
+       # Asset-aware mode methods (require init_with_api)
+       async def init_with_api(self, api_client: BragerOneApiClient) -> None: ...
+       async def get_menu(self, device_menu: str, permissions: list[str]) -> MenuResult: ...
+       async def get_label(self, device_menu: str, pool: str, idx: int, chan: str) -> str: ...
+       async def get_unit(self, device_menu: str, pool: str, idx: int) -> str: ...
+       def get_enum_options(self, key: str, lang: str = "pl") -> dict[int, str] | None: ...
+       def get_permission(self, key: str) -> int | None: ...
 
 Gateway
 -------
 
 .. code-block:: python
 
-   class BragerGateway:
+   class BragerOneGateway:
        bus: EventBus
        modules: list[str]
        object_id: int
@@ -366,23 +379,23 @@ HA Entity Descriptor (example)
 Parsers & Glue: Integration
 ===========================
 
-This update documents the **parsers package**, the **glue layer** (menu+mappings+i18n),
-and the **Home Assistant blueprint generator**.
+This section documents the **LiveAssetsCatalog** (online asset parsing),
+and the **Home Assistant integration patterns**.
 
 Contents
 --------
-- Parsers overview
-- Glue layer (build_module_model)
-- HA glue (build_ha_blueprint)
+- LiveAssetsCatalog overview
+- ParamStore integration with asset catalog
+- HA integration patterns
 - CLI usage
-- Runtime flow with ParamStore/StateStore
+- Runtime flow with ParamStore
 - Units normalization and HA attributes
 
-Parsers (``pybragerconnect.parsers``)
--------------------------------------
+LiveAssetsCatalog (``pybragerone.models.catalog``)
+--------------------------------------------------
 
-- ``i18n.py``
-  Parses any minified JS asset with ``export default {{...}}`` or ``export {{x as default}}``.
+- Fetches and parses live JavaScript assets from BragerOne web app
+- Uses tree-sitter for robust parsing of minified JS
   Returns ``dict[str, str]``. Works for *parameters*, *units*, and other i18n files.
 
 - ``mappings.py``
@@ -463,10 +476,13 @@ Examples::
 Runtime flow
 ------------
 
-- Config Flow (heavy): use ``build_module_model`` (sections + labels + units + enum) and
-  ``build_ha_blueprint`` to create entities and persist their *brager_* references.
-- Runtime (light): update states via ``ParamStore`` (key→value) and WS changes.
-  ``StateStore`` can be skipped at runtime to keep it lightweight.
+- **Config Flow**: Use ParamStore with ``init_with_api()`` to access LiveAssetsCatalog.
+  Call ``get_menu()``, ``get_label()``, ``get_unit()`` to build entity descriptors with i18n metadata.
+  Persist entity references in ``config_entry.data``.
+
+- **Runtime**: Use ParamStore in lightweight mode (no API integration needed).
+  Update states via key→value lookups and WS delta events.
+  Fast and minimal overhead for entity updates.
 
 Units normalization
 -------------------

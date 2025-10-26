@@ -30,7 +30,7 @@
 - Build on Python 3.13.2, test on latest 3.13
 - Must be compatible with `homeassistant>2025.5.0`
 - For single-file scripts, consider PEP 723 (e.g., with `uv`)
-- **Future migration**: Moving from Poetry to `uv` (plan accordingly)
+- **Tooling baseline**: uv for dependency management, Hatch/Hatchling for builds
 
 **Documentation:**
 - Sphinx-compatible API docs required
@@ -39,7 +39,7 @@
 
 ## Project Overview
 
-**py-bragerone** is an async Python library for the Brager One cloud/realtime API, primarily designed for Home Assistant integration. It combines REST (aiohttp) with WebSocket (Socket.IO) for realtime updates using an event-driven architecture.
+**py-bragerone** is an async Python library for the BragerOne cloud/realtime API, primarily designed for Home Assistant integration. It combines REST (aiohttp) with WebSocket (Socket.IO) for realtime updates using an event-driven architecture.
 
 **Key principle**: REST provides snapshots ("prime"), WebSocket provides deltas. Prime is mandatory at startup and after reconnect—WebSocket never provides initial state.
 
@@ -51,8 +51,8 @@
 BragerOneApiClient (REST) ──┐
                             ├──> BragerOneGateway ──> EventBus ──> ParamStore/StateStore
 RealtimeManager (WS) ───────┘                                  └──> HA entities/CLI
-```
-
+uv run --group docs poe docs-build   # Build to docs/_build/html
+uv run --group docs poe docs-serve   # Serve on localhost:8000
 - **BragerOneApiClient** (`src/pybragerone/api/client.py`): Async REST client with token auto-refresh, HTTP cache (ETag/Last-Modified), and Pydantic models
 - **RealtimeManager** (`src/pybragerone/api/ws.py`): Socket.IO wrapper, handles reconnect, namespace `/ws`
 - **BragerOneGateway** (`src/pybragerone/gateway.py`): Orchestrates login → WS connect → modules.connect → subscribe → prime
@@ -82,7 +82,7 @@ Example: Status bit handling reads mask from `P5.s40`, extracts single bit → b
 
 ### 4. Asset Catalog & tree-sitter
 
-`LiveAssetsCatalog` (`src/pybragerone/models/catalog.py`) parses live JavaScript assets from Brager One web app using **tree-sitter** to extract:
+`LiveAssetsCatalog` (`src/pybragerone/models/catalog.py`) parses live JavaScript assets from BragerOne web app using **tree-sitter** to extract:
 - Menu routes and parameter mappings
 - i18n translations (labels/units/enums)
 - Permission schemas
@@ -94,14 +94,14 @@ This enables dynamic entity discovery without hardcoding.
 ### Setup & Dependencies
 
 ```bash
-# Install with Poetry (use Python 3.13.2+)
-poetry install --with dev,test,docs
+# Install dependencies with uv (Python 3.13.2+)
+uv sync --group dev --group test --group docs --locked
 
-# Or via poe task
-poetry run poe bootstrap
+# Or via poe helper
+uv run --group dev poe bootstrap
 ```
 
-**Critical**: This project uses `poetry-dynamic-versioning` for CalVer versioning from git tags. Version is computed at build time, not stored in pyproject.toml.
+**Critical**: This project uses `hatch-vcs` for CalVer versioning from git tags. Version is computed at build time, not stored in pyproject.toml.
 
 ### Code Quality Tasks (via Poe)
 
@@ -109,36 +109,34 @@ All tasks run through `poethepoet` (see `[tool.poe.tasks]` in pyproject.toml):
 
 ```bash
 # Code Quality
-poetry run poe fmt          # Format with ruff
-poetry run poe lint         # Lint with ruff --fix
-poetry run poe fix          # Run lint + format together
-poetry run poe typecheck    # mypy strict mode
-poetry run poe all          # Run fmt + lint + typecheck
+uv run --group dev poe fmt       # Format with ruff
+uv run --group dev poe lint      # Lint with ruff --fix
+uv run --group dev poe fix       # Run lint + format together
+uv run --group dev poe typecheck # mypy strict mode
+uv run --group dev poe all       # Run fmt + lint + typecheck
 
 # Security
-poetry run poe bandit       # Security linting with bandit
-poetry run poe semgrep      # Semgrep security checks
-poetry run poe pip-audit    # Audit dependencies for vulnerabilities
-poetry run poe security     # Run all security checks
+uv run --group dev poe bandit    # Security linting with bandit
+uv run --group dev poe semgrep   # Semgrep security checks
+uv run --group dev poe pip-audit # Audit dependencies for vulnerabilities
+uv run --group dev poe security  # Run all security checks
 
 # Testing
-poetry run poe test         # pytest
-poetry run poe cov          # pytest with coverage
+uv run --group test poe test     # pytest
+uv run --group test poe cov      # pytest with coverage
 
 # Full Validation
-poetry run poe validate     # Run fmt + lint + typecheck + security + test
+uv run --group dev poe validate  # Run fmt + lint + typecheck + security + test
 ```
 
 Or use VS Code tasks (defined in `.vscode/tasks.json`):
-- **Bootstrap (poetry+groups)** - Initial setup
-- **Format**, **Lint**, **Quick fix** - Code formatting and linting
-- **Type-check (mypy via poe)** - Type checking
-- **All quality checks** - fmt + lint + typecheck
+- **uv: sync dev+test+docs** - Initial environment sync
+- **Quality: format / lint / typecheck** - Code quality automation
 - **Security: Bandit/Semgrep/pip-audit** - Individual security checks
 - **Security: All security checks** - Run all security tools
-- **Tests (pytest via poe)** - Run tests
-- **Coverage (pytest-cov via poe)** - Tests with coverage
+- **Tests: run / coverage** - Run pytest (with optional coverage)
 - **Validate: Full validation** ⭐ **(default build task)** - Complete validation (quality + security + tests)
+- **Build dist** - Build wheels/sdist via Hatch
 - **Docs: build/serve** - Documentation
 
 **Pre-commit hooks**: Run `pre-commit install` to enable automatic checks before commits. Config in `.pre-commit-config.yaml`.
@@ -148,7 +146,7 @@ Or use VS Code tasks (defined in `.vscode/tasks.json`):
 - **pytest-asyncio** with `asyncio_mode = "auto"` (see `pyproject.toml`)
 - Mock HTTP via `aioresponses` or monkeypatch `_fetch_text` in catalog tests
 - Live API tests marked with `@pytest.mark.needs_internet` (see `conftest.py`)
-- Coverage target: run `poetry run poe cov` for term-missing report
+- Coverage target: run `uv run --group test poe cov` for term-missing report
 
 Key test patterns:
 - `tests/test_api.py`: REST client tests (mocked)
@@ -171,8 +169,8 @@ This launches an interactive gateway session showing live parameter updates. Use
 Built with Sphinx + Furo theme:
 
 ```bash
-poetry run poe docs-build   # Build to docs/_build/html
-poetry run poe docs-serve   # Serve on localhost:8000
+uv run --group docs poe docs-build   # Build to docs/_build/html
+uv run --group docs poe docs-serve   # Serve on localhost:8000
 ```
 
 Documentation includes:
@@ -239,7 +237,7 @@ async def _ws_dispatch(self, event_name: str, payload: Any) -> None:
 
 ### External Dependencies
 
-- **Brager One API** (`io.brager.pl`): REST + Socket.IO endpoints
+- **BragerOne API** (`io.brager.pl`): REST + Socket.IO endpoints
 - **Asset catalog**: Fetched from web app at runtime for i18n/metadata
 - **tree-sitter**: Parses JavaScript assets (bundled language grammar via `tree-sitter-javascript`)
 
@@ -248,7 +246,7 @@ async def _ws_dispatch(self, event_name: str, payload: Any) -> None:
 1. **Missing prime**: Always call `api.get_parameters()` after WS subscribe—never assume initial state from WS.
 2. **Meta-only events**: EventBus publishes all, but ParamStore ignores events with `value=None`. Check this when debugging missing updates.
 3. **Token refresh**: `BragerOneApiClient` handles token refresh automatically; don't manually manage tokens unless using `CLITokenStore`.
-4. **CalVer versioning**: Don't edit version in pyproject.toml—it's managed by git tags via `poetry-dynamic-versioning`.
+4. **CalVer versioning**: Don't edit version in pyproject.toml—it's managed by git tags via `hatch-vcs`.
 5. **Parameter addressing**: Use format `P<n>.<chan><idx>` (e.g., `P4.v1`, `P5.s40`). ParamStore.upsert returns None on bad key format.
 
 ## CI/CD & GitHub Workflows
@@ -259,11 +257,7 @@ The project uses GitHub Actions for automation (`.github/workflows/`):
 - **release.yml**: Automated releases with CalVer tags, PyPI/TestPyPI publishing
 - **docs.yml**: Sphinx documentation build and deployment to GitHub Pages
 
-**Dynamic versioning**: Version comes from git tags via `poetry-dynamic-versioning`. CI enables the plugin with:
-```bash
-poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
-poetry dynamic-versioning enable
-```
+**Dynamic versioning**: Version comes from git tags via `hatch-vcs`. No extra CI setup is required beyond installing Hatch/uv.
 
 ## AI Agent Configuration Files
 
