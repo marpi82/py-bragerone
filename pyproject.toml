@@ -68,7 +68,7 @@ version = "2025" # placeholder needed by Poetry
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.37.0"
-ruff = "^0.13.0"
+ruff = "^0.14.2"
 mypy = { extras = ["dmypy"], version = "^1.18.1" }
 pre-commit = "^4.3.0"
 python-dotenv = "^1.1.1"
