@@ -16,7 +16,9 @@
   // Type checking (editor) + Mypy extension
   // ─────────────────────────────────────────────────────────────
   // Pylance in-editor type checking level (separate from Mypy)
-  "python.analysis.typeCheckingMode": "strict",
+  // Options: "off", "basic", "standard", "strict"
+  // Using "basic" - mypy strict mode in CI catches real issues
+  "python.analysis.typeCheckingMode": "basic",
   "python.analysis.autoImportCompletions": true,
   // Use Mypy daemon for faster incremental checks (requires mypy[dmypy] in venv)
   "mypy.dmypyEnabled": true,
