@@ -190,11 +190,6 @@ Example of flattening parameters (gateway helper)::
   for upd in updates:
       print(f"{upd.devid} {upd.pool}.{upd.chan}{upd.idx} = {upd.value}")
 
-Light vs Heavy Store
---------------------
-
-- **ParamStore**
-  - Tracks only the latest value per key (``"P4.v1"``)
 ParamStore Details
 ------------------
 
