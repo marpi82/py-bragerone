@@ -36,20 +36,26 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
 
-      - name: Install uv
-        run: pipx install uv
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
 
-      - name: Sync project environment
-        env:
-          UV_PROJECT_ENVIRONMENT: .venv
+      - name: Set up Python environment
+        run: uv python install 3.13
+
+      - name: Install dependencies
         run: uv sync --locked --group dev
 
       - name: Build artifacts
-        env:
-          UV_PROJECT_ENVIRONMENT: .venv
         run: uv run hatch build
+
+      - name: Verify build artifacts
+        run: |
+          ls -lh dist/
+          uv run twine check dist/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5

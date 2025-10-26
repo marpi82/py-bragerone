@@ -28,6 +28,21 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v5
 
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.13"
+
+            - uses: astral-sh/setup-uv@v5
+              with:
+                  version: "latest"
+                  enable-cache: true
+
+            - name: Install dependencies (for better analysis)
+              run: |
+                  uv python install 3.13
+                  uv sync --locked
+
             - name: Initialize CodeQL
               uses: github/codeql-action/init@v3
               with:
