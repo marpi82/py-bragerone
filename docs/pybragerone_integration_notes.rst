@@ -12,7 +12,7 @@ pybragerone – Integration Notes
 Overview
 ========
 
-``pybragerone`` integrates with the Brager One backend using a lean runtime architecture.
+``pybragerone`` integrates with the BragerOne backend using a lean runtime architecture.
 The key idea is to **prime** the state via REST, then keep it **fresh** via WebSocket deltas.
 In HA, we run as light as possible; rich metadata (via LiveAssetsCatalog) is used only at config time.
 
@@ -36,7 +36,7 @@ Architecture (High-Level)
 
    graph TB
        subgraph "External Services"
-           Backend["🌐 Brager One backend<br/>(io.brager.pl)"]
+           Backend["🌐 BragerOne backend<br/>(io.brager.pl)"]
        end
 
        subgraph "pybragerone Core"
@@ -321,39 +321,21 @@ ParamStore
 .. code-block:: python
 
    class ParamStore:
+       """Unified parameter store with two modes:
+       - Lightweight (default): Key→value for runtime
+       - Asset-aware (with init_with_api): Rich metadata access via LiveAssetsCatalog
+       """
        # Lightweight mode (default)
        async def run_with_bus(self, bus: EventBus) -> None: ...
        def get(self, key: str, default: Any = None) -> Any: ...
        def upsert(self, key: str, value: Any) -> ParamFamilyModel | None: ...
        def flatten(self) -> dict[str, Any]: ...
 
-       # Asset-aware mode (after init_with_api)
-       def init_with_api(self, api: BragerOneApiClient, *, lang: str | None = None) -> None: ...
+       # Asset-aware mode methods (require init_with_api)
+       async def init_with_api(self, api_client: BragerOneApiClient) -> None: ...
        async def get_menu(self, device_menu: str, permissions: list[str]) -> MenuResult: ...
        async def get_label(self, device_menu: str, pool: str, idx: int, chan: str) -> str: ...
        async def get_unit(self, device_menu: str, pool: str, idx: int) -> str: ...
-
-Gateway
--------
-
-ParamStore
-----------
-
-.. code-block:: python
-
-   class ParamStore:
-       """Unified parameter store with two modes:
-       - Lightweight (default): Key→value for runtime
-       - Asset-aware (with init_with_api): Rich metadata access via LiveAssetsCatalog
-       """
-       async def run(self, bus: EventBus) -> None: ...
-       def get(self, key: str, default: Any = None) -> Any: ...
-       def flatten(self) -> dict[str, Any]: ...
-
-       # Asset-aware mode methods (require init_with_api):
-       async def init_with_api(self, api_client: BragerOneApiClient) -> None: ...
-       def get_label(self, key: str, lang: str = "pl") -> str | None: ...
-       def get_unit(self, key: str, lang: str = "pl") -> str | None: ...
        def get_enum_options(self, key: str, lang: str = "pl") -> dict[int, str] | None: ...
        def get_permission(self, key: str) -> int | None: ...
 
@@ -412,7 +394,7 @@ Contents
 LiveAssetsCatalog (``pybragerone.models.catalog``)
 --------------------------------------------------
 
-- Fetches and parses live JavaScript assets from Brager One web app
+- Fetches and parses live JavaScript assets from BragerOne web app
 - Uses tree-sitter for robust parsing of minified JS
   Returns ``dict[str, str]``. Works for *parameters*, *units*, and other i18n files.
 

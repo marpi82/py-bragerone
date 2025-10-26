@@ -1,4 +1,4 @@
-"""Parameter store with asset-aware helpers for Brager One."""
+"""Parameter store with asset-aware helpers for BragerOne."""
 
 from __future__ import annotations
 

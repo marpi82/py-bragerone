@@ -114,7 +114,7 @@ class AssetIndex:
 
 @dataclass(slots=True)
 class ParamMap:
-    """Represents a parameter mapping in the Brager One system.
+    """Represents a parameter mapping in the BragerOne system.
 
     This class encapsulates the mapping between parameter identifiers and their
     metadata, including paths, units, limits, and status flags. It serves as a

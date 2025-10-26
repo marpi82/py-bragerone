@@ -9,7 +9,7 @@ pybragerone
 .. image:: https://img.shields.io/badge/license-MIT-green
    :alt: MIT License
 
-**pybragerone** is an alpha-stage Python library for integrating with **Brager One**.
+**pybragerone** is an alpha-stage Python library for integrating with **BragerOne**.
 It provides an async REST client, a Socket.IO realtime client, an internal event bus,
 and **ParamStore** (with optional rich metadata via LiveAssetsCatalog) so you can
 build efficient automations and a clean Home Assistant integration.
@@ -48,7 +48,7 @@ Architecture
        API -.-> CATALOG
        CATALOG -.-> PS
      end
-     CLOUD["Brager One Cloud"]
+     CLOUD["BragerOne Cloud"]
      CLOUD -- "/v1/*" --> API
      CLOUD -- "/socket.io (/ws)" --> WS
      PS -- "runtime + metadata" --> HA["Home Assistant integration"]

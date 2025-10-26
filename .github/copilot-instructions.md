@@ -39,7 +39,7 @@
 
 ## Project Overview
 
-**py-bragerone** is an async Python library for the Brager One cloud/realtime API, primarily designed for Home Assistant integration. It combines REST (aiohttp) with WebSocket (Socket.IO) for realtime updates using an event-driven architecture.
+**py-bragerone** is an async Python library for the BragerOne cloud/realtime API, primarily designed for Home Assistant integration. It combines REST (aiohttp) with WebSocket (Socket.IO) for realtime updates using an event-driven architecture.
 
 **Key principle**: REST provides snapshots ("prime"), WebSocket provides deltas. Prime is mandatory at startup and after reconnect—WebSocket never provides initial state.
 
@@ -82,7 +82,7 @@ Example: Status bit handling reads mask from `P5.s40`, extracts single bit → b
 
 ### 4. Asset Catalog & tree-sitter
 
-`LiveAssetsCatalog` (`src/pybragerone/models/catalog.py`) parses live JavaScript assets from Brager One web app using **tree-sitter** to extract:
+`LiveAssetsCatalog` (`src/pybragerone/models/catalog.py`) parses live JavaScript assets from BragerOne web app using **tree-sitter** to extract:
 - Menu routes and parameter mappings
 - i18n translations (labels/units/enums)
 - Permission schemas
@@ -237,7 +237,7 @@ async def _ws_dispatch(self, event_name: str, payload: Any) -> None:
 
 ### External Dependencies
 
-- **Brager One API** (`io.brager.pl`): REST + Socket.IO endpoints
+- **BragerOne API** (`io.brager.pl`): REST + Socket.IO endpoints
 - **Asset catalog**: Fetched from web app at runtime for i18n/metadata
 - **tree-sitter**: Parses JavaScript assets (bundled language grammar via `tree-sitter-javascript`)
 

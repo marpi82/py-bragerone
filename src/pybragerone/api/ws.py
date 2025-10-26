@@ -1,4 +1,4 @@
-"""WebSocket (Socket.IO) client for Brager One realtime events."""
+"""WebSocket (Socket.IO) client for BragerOne realtime events."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ class _SubPayload(TypedDict, total=False):
 
 
 class RealtimeManager:
-    """Thin Socket.IO wrapper for Brager One realtime channel.
+    """Thin Socket.IO wrapper for BragerOne realtime channel.
 
     The manager keeps a single AsyncClient connection, exposes the Engine.IO
     SID and the namespace SID, and forwards selected events to a user-provided

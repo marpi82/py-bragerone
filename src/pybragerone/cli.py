@@ -1,4 +1,4 @@
-"""Diagnostic CLI for Brager One (REST + WS)."""
+"""Diagnostic CLI for BragerOne (REST + WS)."""
 
 from __future__ import annotations
 
@@ -169,7 +169,7 @@ async def run(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build argument parser."""
-    p = argparse.ArgumentParser(prog="pybragerone", description="Brager One — diagnostyczny CLI (REST + WS).")
+    p = argparse.ArgumentParser(prog="pybragerone", description="BragerOne — diagnostyczny CLI (REST + WS).")
     # env-first: if not in CLI, take from environment (easy to debug in VSCode)
     p.add_argument(
         "--email",
@@ -208,22 +208,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    """Main entrypoint for CLI."""
-    parser = build_parser()
-    args = parser.parse_args()
-
-    # PYBO_MODULES=FOO,BAR → convert to list if --module was not used
-    if isinstance(args.modules, str):
-        args.modules = [m for m in args.modules.split(",") if m]
-
-    if not args.email or not args.password:
-        raise SystemExit("Missing credentials: set PYBO_EMAIL/PYBO_PASSWORD or pass --email/--password.")
-
-    try:
-        code = asyncio.run(run(args))
-    except KeyboardInterrupt:
-        code = 130
-    raise SystemExit(code)
+    """Entry point for pybragerone CLI."""
+    p = argparse.ArgumentParser(prog="pybragerone", description="BragerOne — diagnostyczny CLI (REST + WS).")
+    p.add_argument("--email", required=True, help="E-mail użytkownika")
 
 
 if __name__ == "__main__":

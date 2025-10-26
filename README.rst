@@ -65,7 +65,7 @@ pybragerone
 
 **Status:** Alpha | Python 3.13.2+ required
 
-Python library for integrating with **Brager One** cloud and realtime API.
+Python library for integrating with **BragerOne** cloud and realtime API.
 
 Features:
 - Async REST client (httpx, not aiohttp)
@@ -170,17 +170,7 @@ Advanced: Using ParamStore with API for rich metadata::
           await gw.stop()
           await api.close()
 
-  await asyncio.sleep(30)
-      finally:
-          await gw.stop()
-          await api.close()
-
   asyncio.run(main())
-
-Documentation
--------------
-
-Full documentation: https://marpi82.github.io/py-bragerone
 
 Documentation
 -------------
