@@ -137,10 +137,13 @@ python_version = "3.13"
 files = ["src/pybragerone", "tests"]
 strict = true
 exclude = ["scripts/"]
-#warn_unused_ignores = true
-#disallow_untyped_defs = true
-#no_implicit_optional = true
-#strict_optional = true
+
+# Additional strictness to match Pylance
+warn_return_any = true
+warn_unreachable = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
 plugins = ["pydantic.mypy"]
 
 # ---------------- pytest ----------------

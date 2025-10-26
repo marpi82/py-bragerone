@@ -19,7 +19,7 @@ _STATUS_POOL_RE = re.compile(r"^STATUS_P(?P<pool>\d+)_(?P<idx>\d+)$")
 
 if TYPE_CHECKING:
     from ..api import BragerOneApiClient
-    from ..models.catalog import TranslationConfig  # noqa: F401
+    from ..models.catalog import TranslationConfig
 
 
 class ParamFamilyModel(BaseModel):
@@ -69,10 +69,10 @@ class ParamStore(BaseModel):
     families: dict[str, ParamFamilyModel] = Field(default_factory=dict)
 
     # Live assets and caches
-    _assets = PrivateAttr(default=None)  # type: LiveAssetsCatalog | None
-    _lang = PrivateAttr(default=None)  # type: str | None
-    _lang_cfg = PrivateAttr(default=None)  # type: TranslationConfig | None
-    _cache_i18n = PrivateAttr(default_factory=dict)  # type: dict[tuple[str, str], dict[str, Any]]
+    _assets: LiveAssetsCatalog | None = PrivateAttr(default=None)
+    _lang: str | None = PrivateAttr(default=None)
+    _lang_cfg: TranslationConfig | None = PrivateAttr(default=None)
+    _cache_i18n: dict[tuple[str, str], dict[str, Any]] = PrivateAttr(default_factory=dict)
     _cache_mapping: dict[str, ParamMap | None] = PrivateAttr(default_factory=dict)
     _cache_menu: dict[MenuCacheKey, MenuResult] = PrivateAttr(default_factory=dict)
     """Menu cache keyed by (device_menu, frozenset(permissions))."""
@@ -309,8 +309,6 @@ class ParamStore(BaseModel):
         """Convert raw mapping entries into structured channel descriptors."""
         formatted: list[dict[str, Any]] = []
         for entry in entries:
-            if not isinstance(entry, Mapping):
-                continue
             group = entry.get("group") or entry.get("pool")
             use_raw = entry.get("use") or entry.get("path") or entry.get("pathType")
             number_raw = entry.get("number") or entry.get("index")
@@ -342,8 +340,6 @@ class ParamStore(BaseModel):
         """Format all channel paths into cleaned descriptor lists."""
         formatted: dict[str, list[dict[str, Any]]] = {}
         for channel_name, entries in paths.items():
-            if not isinstance(entries, list):
-                continue
             formatted_entries = cls._format_channel_entries(entries)
             if formatted_entries:
                 formatted[channel_name] = formatted_entries
@@ -392,8 +388,6 @@ class ParamStore(BaseModel):
         if not rules:
             return formatted_rules
         for rule in rules:
-            if not isinstance(rule, Mapping):
-                continue
             formatted_rule: dict[str, Any] = {}
             logic = rule.get("logic")
             if isinstance(logic, str):

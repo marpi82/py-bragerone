@@ -58,7 +58,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -92,12 +92,17 @@ class Token(BaseModel):
         if exp_raw:
             with contextlib.suppress(Exception):
                 exp_dt = datetime.fromisoformat(str(exp_raw).replace("Z", "+00:00"))
+
+        # Extract user.id with proper type narrowing
+        user_obj = data.get("user", {}) or {}
+        user_dict = cast(dict[str, Any], user_obj) if isinstance(user_obj, dict) else {}
+
         return cls(
             access_token=data.get("accessToken") or data.get("token") or "",
             refresh_token=data.get("refreshToken"),
             token_type=(data.get("type") or "bearer"),
             expires_at=exp_dt,
-            user_id=(data.get("user", {}) or {}).get("id") or None,
+            user_id=user_dict.get("id") or None,
             objects=data.get("objects") or [],
         )
 
@@ -245,23 +250,25 @@ class HATokenStore(TokenStore):
 
     def load(self) -> Token | None:
         """Return a cached Token or None if not present."""
-        data = None
+        data: Any = None
         with contextlib.suppress(Exception):
             data = self._loader()
         if not isinstance(data, dict):
             return None
 
+        # Type narrowing: after isinstance check, cast to dict[str, Any] for proper typing
+        token_data = cast(dict[str, Any], data)
         return Token(
-            access_token=data.get("access_token"),
-            token_type=data.get("token_type", "bearer"),
-            refresh_token=data.get("refresh_token"),
-            expires_at=data.get("expires_at"),
-            objects=data.get("objects") or [],
+            access_token=token_data.get("access_token"),
+            token_type=token_data.get("token_type", "bearer"),
+            refresh_token=token_data.get("refresh_token"),
+            expires_at=token_data.get("expires_at"),
+            objects=token_data.get("objects") or [],
         )
 
     def save(self, token: Token) -> None:
         """Persist the Token atomically."""
-        payload = {
+        payload: dict[str, Any] = {
             "access_token": getattr(token, "access_token", None),
             "token_type": getattr(token, "token_type", "bearer"),
             "refresh_token": getattr(token, "refresh_token", None),

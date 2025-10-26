@@ -587,13 +587,8 @@ class LiveAssetsCatalog:
                 r'\(\(\)\=\>import\("\./(module\.menu-[A-Za-z0-9_]+)\.js"\)'
             )
 
-            # Ensure code is a string for regex
-            if isinstance(code, bytes):
-                code_str = code.decode("utf-8")
-            elif isinstance(code, (bytearray, memoryview)):
-                code_str = bytes(code).decode("utf-8")
-            else:
-                code_str = str(code)
+            # Code is bytes (from function parameter), decode to string for regex
+            code_str = code.decode("utf-8")
 
             for match in re.finditer(device_menu_pattern, code_str):
                 device_menu_num = int(match.group(1))
