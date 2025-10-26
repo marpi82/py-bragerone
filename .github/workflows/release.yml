@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout target SHA
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
@@ -34,7 +34,7 @@ jobs:
           echo "Detected tag: ${TAG:-<none>}"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
 
@@ -55,7 +55,7 @@ jobs:
         run: poetry build
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: dist
           path: dist/*
