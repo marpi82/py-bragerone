@@ -23,8 +23,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Wykonuje lint + typecheck w jednym jobie (optymalizacja)
-  # Główny job - wykonuje lint + typecheck
+  # Combined lint + typecheck job (optimization)
   quality:
     name: quality (lint + typecheck)
     runs-on: ubuntu-latest
