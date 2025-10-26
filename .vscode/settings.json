@@ -8,31 +8,33 @@
     "VIRTUAL_ENV": "${workspaceFolder}/.venv",
     "PATH": "${workspaceFolder}/.venv/bin:${env:PATH}"
   },
-
   // Load environment variables from .env (used in terminal/debug)
   "python.envFile": "${workspaceFolder}/.env",
   "python.terminal.useEnvFile": true,
   "python.terminal.activateEnvironment": true,
-
   // ─────────────────────────────────────────────────────────────
   // Type checking (editor) + Mypy extension
   // ─────────────────────────────────────────────────────────────
   // Pylance in-editor type checking level (separate from Mypy)
-  "python.analysis.typeCheckingMode": "basic",
-
+  "python.analysis.typeCheckingMode": "strict",
+  "python.analysis.autoImportCompletions": true,
   // Use Mypy daemon for faster incremental checks (requires mypy[dmypy] in venv)
   "mypy.dmypyEnabled": true,
   "mypy.dmypyExecutable": "${workspaceFolder}/.venv/bin/dmypy",
   "mypy.runUsingActiveInterpreter": true,
-
+  "mypy.targets": [
+    "src/pybragerone",
+    "tests"
+  ],
   // ─────────────────────────────────────────────────────────────
   // Formatting & quick fixes
   // ─────────────────────────────────────────────────────────────
   // Format on save and apply "fix all" (Ruff will hook into this)
-  //"editor.formatOnSave": true,
-  //"editor.codeActionsOnSave": {
-  //  "source.fixAll": "always"
-  //},
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "explicit",
+    "source.fixAll": "explicit"
+  },
   "[python]": {
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
@@ -41,22 +43,20 @@
     },
     "editor.defaultFormatter": "charliermarsh.ruff"
   },
-
+  // Ruff settings
+  "ruff.nativeServer": "on",
   // ─────────────────────────────────────────────────────────────
   // Testing (pytest)
   // ─────────────────────────────────────────────────────────────
   "python.testing.pytestEnabled": true,
   "python.testing.unittestEnabled": false,
-  "python.testing.pytestArgs": ["tests"],
-
+  "python.testing.pytestArgs": [
+    "tests"
+  ],
   // ─────────────────────────────────────────────────────────────
   // YAML schemas (GitHub Actions validation)
   // ─────────────────────────────────────────────────────────────
   "yaml.schemas": {
     "https://json.schemastore.org/github-workflow.json": ".github/workflows/*.yml"
-  },
-  "mypy.targets": [
-    "src/pybragerone",
-    "tests"
-  ]
+  }
 }
