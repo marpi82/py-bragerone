@@ -34,12 +34,14 @@
   "postCreateCommand": "bash .devcontainer/setup.sh",
   "remoteEnv": {
     "UV_PROJECT_ENVIRONMENT": ".venv",
-    "UV_LINK_MODE": "copy",
+    "UV_LINK_MODE": "hardlink",
     "RUFF_NUM_THREADS": "1",
     "PATH": "${containerEnv:HOME}/.local/bin:${containerEnv:PATH}"
   },
   "mounts": [
-    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached"
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached",
+    "source=py-bragerone-venv,target=${containerWorkspaceFolder}/.venv,type=volume",
+    "source=py-bragerone-uv-cache,target=/home/vscode/.cache/uv,type=volume"
   ],
   "remoteUser": "vscode"
 }

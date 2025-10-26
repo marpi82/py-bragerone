@@ -9,6 +9,7 @@ This devcontainer provides a fully configured development environment for py-bra
 - **Build system**: Hatch with hatch-vcs (CalVer from git tags)
 - **Pre-configured tools**: Ruff, mypy, pytest, Bandit, Semgrep, pip-audit
 - **VS Code extensions**: Python, Pylance, Ruff, mypy-type-checker, GitLens, Copilot
+- **NFS-optimized**: `.venv` and uv cache stored in Docker volumes (not on NFS mount)
 
 ## Quick Start
 
@@ -91,3 +92,14 @@ If `uv` is not found after setup:
 - Reload the terminal or open a new one
 - Check PATH: `echo $PATH` (should include `~/.local/bin`)
 - Manually source: `source ~/.zshrc`
+
+### NFS-related errors (Directory not empty)
+
+If you see `failed to remove directory: Directory not empty (os error 39)`:
+- This is an NFS issue with atomic operations
+- **Solution**: `.venv` is now stored in a Docker volume (not NFS) via mounts configuration
+- If you still see this after rebuild, clean volumes:
+  ```bash
+  docker volume rm py-bragerone-venv py-bragerone-uv-cache
+  ```
+- Then rebuild container
