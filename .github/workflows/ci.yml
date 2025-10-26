@@ -24,8 +24,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Wykonuje lint + typecheck w jednym jobie (optymalizacja)
-  # Zachowuje nazwę "lint" dla branch protection compatibility
-  lint:
+  # Główny job - wykonuje lint + typecheck
+  quality:
     name: quality (lint + typecheck)
     runs-on: ubuntu-latest
     steps:
@@ -53,14 +53,23 @@ jobs:
       - name: mypy (typecheck)
         run: uv run mypy
 
-  # Alias job dla branch protection - faktyczna praca w "lint"
-  typecheck:
-    name: typecheck (→ lint)
-    needs: lint
+  # Alias job dla branch protection - faktyczna praca w "quality"
+  lint:
+    name: lint
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - name: Mark as completed
-        run: echo "✓ Typecheck wykonany w jobie 'lint'"
+        run: echo "✓ Lint wykonany w jobie 'quality'"
+
+  # Alias job dla branch protection - faktyczna praca w "quality"
+  typecheck:
+    name: typecheck
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark as completed
+        run: echo "✓ Typecheck wykonany w jobie 'quality'"
 
   tests:
     name: tests (py${{ matrix.python }})
