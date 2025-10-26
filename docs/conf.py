@@ -79,6 +79,12 @@ intersphinx_mapping = {
 # --- TODOs ---
 todo_include_todos = True
 
+# --- Warnings suppression ---
+# Suppress duplicate target warnings for re-exported classes (e.g., from __init__.py)
+suppress_warnings = [
+    "ref.python",  # Suppress "more than one target found" for cross-references
+]
+
 # --- HTML theme ---
 html_theme = "furo"  # or alabaster
 

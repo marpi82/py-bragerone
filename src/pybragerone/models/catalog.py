@@ -55,14 +55,14 @@ class AssetRef:
 
 @dataclass(slots=True)
 class AssetIndex:
-    """Index of assets parsed from index-*.js file.
+    """Index of assets parsed from ``index-*.js`` file.
 
     Attributes:
-        assets_by_basename: Full list of assets declared in index-*.js (exact basenames, no normalization).
+        assets_by_basename: Full list of assets declared in ``index-*.js`` (exact basenames, no normalization).
             Maps basename strings to lists of AssetRef objects.
-        menu_map: Mapping from deviceMenu integers to BASENAME strings (e.g., 'module.menu-<hash>.js').
+        menu_map: Mapping from deviceMenu integers to BASENAME strings (e.g., ``module.menu-<hash>.js``).
         inline_param_candidates: List of (start_byte, end_byte) tuples indicating potential
-            inline parameter maps detected within index-*.js.
+            inline parameter maps detected within ``index-*.js``.
         index_bytes: Raw bytes of the index file for potential inline parsing.
     """
 
@@ -827,11 +827,11 @@ class LiveAssetsCatalog:
         This method attempts to resolve parameter mappings for each provided token through
         a two-stage resolution process:
 
-        1. First, it searches for a dedicated asset file named 'BASENAME-<hash>.js' where
+        1. First, it searches for a dedicated asset file named ``BASENAME-<hash>.js`` where
            BASENAME exactly matches the token.
         2. If no asset is found, and there is exactly one unresolved token with exactly
            one inline parameter candidate in the index, it attempts to use the inline
-           parameter map from the index-*.js file as a fallback.
+           parameter map from the ``index-*.js`` file as a fallback.
         3. Any tokens that cannot be resolved through either method are omitted from
            the results.
 
@@ -1113,7 +1113,7 @@ class LiveAssetsCatalog:
     async def list_language_config(self) -> TranslationConfig | None:
         """Get translation configuration from assets.
 
-        Parses the index-*.js file to extract language configuration by structural patterns.
+        Parses the ``index-*.js`` file to extract language configuration by structural patterns.
         The configuration object contains translations array and defaultTranslation field.
         """
         if not self._idx.index_bytes:
