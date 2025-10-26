@@ -1,12 +1,11 @@
 {
   "name": "py-bragerone",
   "image": "python:3.13-slim-trixie",
-
   "runArgs": [
     "--pids-limit=-1",
-    "--ulimit=nofile=65536:65536"
+    "--ulimit=nofile=65536:65536",
+    "--init"
   ],
-
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/common-utils:2": {
@@ -14,10 +13,10 @@
       "configureZshAsDefaultShell": true,
       "username": "vscode",
       "userUid": "automatic",
-      "userGid": "automatic"
+      "userGid": "automatic",
+      "upgradePackages": true
     }
   },
-
   "customizations": {
     "vscode": {
       "settings": {
@@ -59,18 +58,15 @@
       ]
     }
   },
-
   "postCreateCommand": "bash .devcontainer/setup.sh",
-
   "remoteEnv": {
     "UV_PROJECT_ENVIRONMENT": ".venv",
     "UV_LINK_MODE": "copy",
-    "RUFF_NUM_THREADS": "1"
+    "RUFF_NUM_THREADS": "1",
+    "PATH": "${containerEnv:HOME}/.local/bin:${containerEnv:PATH}"
   },
-
   "mounts": [
     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached"
   ],
-
   "remoteUser": "vscode"
 }

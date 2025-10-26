@@ -4,24 +4,30 @@ set -euo pipefail
 
 echo "🚀 Setting up py-bragerone devcontainer..."
 
-# Install system dependencies
+# Install system dependencies (with sudo if running as non-root)
 echo "📦 Installing system dependencies..."
-apt-get update
-apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    git \
-    ca-certificates
+if [ "$EUID" -ne 0 ]; then
+    sudo apt-get update
+    sudo apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+        git \
+        ca-certificates
+else
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+        git \
+        ca-certificates
+fi
 
-# Install uv globally
+# Install uv for current user
 echo "📦 Installing uv..."
 curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="/root/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 
-# Make uv available system-wide
-ln -sf /root/.local/bin/uv /usr/local/bin/uv || true
-
-# Sync dependencies as root (will be accessible by vscode user)
+# Sync dependencies
 echo "📦 Syncing project dependencies..."
 uv sync --locked --group dev --group test --group docs
 
@@ -29,10 +35,11 @@ uv sync --locked --group dev --group test --group docs
 echo "🪝 Installing pre-commit hooks..."
 uv run --group dev pre-commit install
 
-# Fix ownership for vscode user
-echo "🔧 Fixing permissions for vscode user..."
-chown -R vscode:vscode .venv
-chown -R vscode:vscode .git/hooks
+# Add uv to shell profile if not already there
+echo "🔧 Configuring shell environment..."
+if ! grep -q '.local/bin' "$HOME/.zshrc" 2>/dev/null; then
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
+fi
 
 echo "✅ Devcontainer setup complete!"
 echo ""

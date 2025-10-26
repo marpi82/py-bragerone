@@ -61,8 +61,33 @@ To customize the devcontainer, edit `.devcontainer/devcontainer.json` and rebuil
 
 ## Troubleshooting
 
-**Container build fails**: Ensure Docker/Podman is running and you have internet connectivity.
+### Permission Denied Errors
 
-**Permission issues**: The container runs as user `vscode` (non-root). File ownership is automatically adjusted during setup.
+If you see `E: List directory /var/lib/apt/lists/partial is missing. - Acquire (13: Permission denied)`:
+- The setup script now uses `sudo` automatically when running as non-root user
+- Rebuild the container: `Dev Containers: Rebuild Container`
 
-**Missing extensions**: Extensions are automatically installed. If missing, reload the window or rebuild the container.
+### Remote Extension Host Crashes
+
+If you see `Remote Extension host terminated unexpectedly 3 times within the last 5 minutes`:
+- This is fixed by adding `--init` flag to `runArgs` (prevents zombie processes)
+- Rebuild the container to apply the fix
+
+### Container build fails
+
+Ensure Docker/Podman is running and you have internet connectivity.
+
+### Permission issues with files
+
+The container runs as user `vscode` (non-root). File ownership is automatically adjusted during setup.
+
+### Missing extensions
+
+Extensions are automatically installed. If missing, reload the window or rebuild the container.
+
+### uv command not found
+
+If `uv` is not found after setup:
+- Reload the terminal or open a new one
+- Check PATH: `echo $PATH` (should include `~/.local/bin`)
+- Manually source: `source ~/.zshrc`
