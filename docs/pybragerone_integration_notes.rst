@@ -1,8 +1,8 @@
 pybragerone – Integration Notes
 ===============================
 
-**Date:** 2025-09-20
-**Scope:** Library architecture (REST/WS, EventBus, stores), Home Assistant integration flow, debugging & ops.
+**Last Updated:** 2025-10-26
+**Scope:** Library architecture (REST/WS, EventBus, ParamStore), Home Assistant integration flow, debugging & ops.
 **Audience:** Developers of :mod:`pybragerone` and HA component maintainers.
 
 .. contents:: Table of Contents
@@ -12,19 +12,19 @@ pybragerone – Integration Notes
 Overview
 ========
 
-``pybragerone`` integrates with the Brager One backend using a lean runtime and a heavier
-configuration-time modeling. The key idea is to **prime** the state via REST, then keep it **fresh**
-via WebSocket deltas. In HA, we run as light as possible; rich modeling is used only at setup time.
+``pybragerone`` integrates with the Brager One backend using a lean runtime architecture.
+The key idea is to **prime** the state via REST, then keep it **fresh** via WebSocket deltas. 
+In HA, we run as light as possible; rich metadata (via LiveAssetsCatalog) is used only at config time.
 
 Core Principles
 ===============
 
 - **Prime is mandatory** at startup and after reconnect. WebSocket does **not** provide a snapshot.
 - Runtime is **event-driven** with a **multicast EventBus** (per-subscriber queue, FIFO).
-- Two stores with different purposes:
+- **ParamStore** provides two usage modes:
 
-  - :class:`ParamStore` – *lightweight*, key→value, only real values (no meta). Used in HA runtime.
-  - :class:`StateStore` – *rich*, per-device/per-family models + meta. Used in config flow/reconfigure.
+  - **Lightweight mode** (runtime): Simple key→value store, minimal overhead, ignores meta-only events.
+  - **Asset-aware mode** (config): Integration with LiveAssetsCatalog for rich metadata (labels/units/enums).
 
 - Consistent, explicit parameter addressing: ``P<n>.<chan><idx>`` (e.g. ``P4.v1``).
 - Minimal coupling between WS flow and HA entities; HA entities rely on immutable references.
@@ -40,14 +40,14 @@ Architecture (High-Level)
        end
 
        subgraph "pybragerone Core"
-           API["📡 Brager API<br/>(aiohttp)"]
-           Gateway["🚪 Gateway"]
+           API["📡 BragerOneApiClient<br/>(httpx)"]
+           Gateway["🚪 BragerOneGateway"]
            Bus["📢 EventBus<br/>(multicast; per-subscriber queues)"]
        end
 
-       subgraph "Data Stores"
-           ParamStore["💾 ParamStore<br/>(runtime)<br/>key→value"]
-           StateStore["🏗️ StateStore<br/>(rich model/meta)"]
+       subgraph "Data Layer"
+           ParamStore["💾 ParamStore<br/>(runtime lightweight)<br/>OR (config asset-aware)"]
+           Catalog["�️ LiveAssetsCatalog<br/>(optional; for i18n/metadata)"]
        end
 
        subgraph "Consumers"
@@ -63,12 +63,15 @@ Architecture (High-Level)
 
        %% Store connections
        Bus --> ParamStore
-       Bus --> StateStore
        Bus --> Printer
+
+       %% Asset catalog (optional)
+       API -.-> Catalog
+       Catalog -.-> ParamStore
 
        %% HA integration
        ParamStore --> HA
-       StateStore -.->|"descriptors built<br/>(config/reconfigure only)"| HA
+       Catalog -.->|"descriptors built<br/>(config only)"| HA
 
        %% Styling
        classDef external fill:#e1f5fe
@@ -78,7 +81,7 @@ Architecture (High-Level)
 
        class Backend external
        class API,Gateway,Bus core
-       class ParamStore,StateStore store
+       class ParamStore,Catalog store
        class HA,Printer consumer
 
 Data Model & Semantics

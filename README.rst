@@ -68,12 +68,10 @@ pybragerone
 Python library for integrating with **Brager One** cloud and realtime API.
 
 Features:
-- Async REST client (aiohttp)
+- Async REST client (httpx, not aiohttp)
 - Realtime updates (python-socketio, namespace ``/ws``)
 - Event bus for updates
-- Two stores:
-  - **ParamStore** (lightweight, key→value)
-  - **StateStore** (structured, with metadata)
+- **ParamStore** (lightweight, key→value with optional rich metadata via LiveAssetsCatalog)
 - CLI for diagnostics
 - Home Assistant ready
 
@@ -105,24 +103,23 @@ Run the CLI for guided login and WS session::
 Examples
 --------
 
-ParamStore (light) example::
+ParamStore (lightweight) example::
 
   import asyncio
-  from pybragerone.core.client import BragerApiClient
-  from pybragerone.gateway import BragerGateway
-  from pybragerone.store.param import ParamStore
+  from pybragerone import BragerOneApiClient, BragerOneGateway
+  from pybragerone.models.param import ParamStore
 
   async def main():
-      api = BragerApiClient()
-      await api.login("you@example.com", "secret")
-      user = await api.get_user()
-      object_id = user["objects"][0]["id"]
-      mods = await api.modules_list(object_id=object_id)
-      devids = [m.get("devid") or m.get("code") or str(m["id"]) for m in mods["data"]]
-
-      gw = BragerGateway(api=api, object_id=object_id, modules=devids)
+      # Gateway handles API client internally
+      gw = BragerOneGateway(
+          email="you@example.com",
+          password="secret",
+          object_id=12345,  # Your object ID
+          modules=["ABC123", "DEF456"]  # Your device IDs
+      )
+      
       pstore = ParamStore()
-      asyncio.create_task(pstore.run(gw.bus))
+      asyncio.create_task(pstore.run_with_bus(gw.bus))
 
       async def printer():
           async for upd in gw.bus.subscribe():
@@ -131,37 +128,61 @@ ParamStore (light) example::
       asyncio.create_task(printer())
 
       await gw.start()
-      await asyncio.sleep(30)
-      await gw.stop()
+      try:
+          await asyncio.sleep(30)
+      finally:
+          await gw.stop()
 
   asyncio.run(main())
 
-StateStore (heavy) example::
+Advanced: Using ParamStore with API for rich metadata::
 
   import asyncio
-  from pybragerone.core.client import BragerApiClient
-  from pybragerone.gateway import BragerGateway
-  from pybragerone.store.state import StateStore
+  from pybragerone import BragerOneApiClient, BragerOneGateway
+  from pybragerone.models.param import ParamStore
 
   async def main():
-      api = BragerApiClient()
-      await api.login("you@example.com", "secret")
+      # For config flow or when you need i18n/labels
+      api = BragerOneApiClient()
+      await api.ensure_auth("you@example.com", "secret")
+      
       user = await api.get_user()
-      object_id = user["objects"][0]["id"]
-      mods = await api.modules_list(object_id=object_id)
-      devids = [m.get("devid") or m.get("code") or str(m["id"]) for m in mods["data"]]
+      object_id = user.objects[0].id
+      modules_resp = await api.get_modules(object_id=object_id)
+      devids = [m.devid for m in modules_resp if m.devid]
 
-      gw = BragerGateway(api=api, object_id=object_id, modules=devids)
-      sstore = StateStore()
-      asyncio.create_task(sstore.run(gw.bus))
+      pstore = ParamStore()
+      pstore.init_with_api(api, lang="pl")  # Enables LiveAssetsCatalog
 
-      gw.on_snapshot(lambda *_: print("Prime snapshot ready"))
+      gw = BragerOneGateway(
+          email="you@example.com",
+          password="secret",
+          object_id=object_id,
+          modules=devids
+      )
+      asyncio.create_task(pstore.run_with_bus(gw.bus))
 
       await gw.start()
-      await asyncio.sleep(30)
-      await gw.stop()
+      try:
+          # Now you can use pstore.get_menu(), get_label(), etc.
+          menu = await pstore.get_menu("device123", ["param.edit"])
+          print(f"Available parameters: {len(menu.items)}")
+          await asyncio.sleep(30)
+      finally:
+          await gw.stop()
+          await api.close()
+
+  await asyncio.sleep(30)
+      finally:
+          await gw.stop()
+          await api.close()
 
   asyncio.run(main())
+
+Documentation
+-------------
+
+Full documentation: https://marpi82.github.io/py-bragerone
 
 Documentation
 -------------
