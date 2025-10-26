@@ -24,26 +24,19 @@ jobs:
         with:
           python-version: "3.13.2"
 
-      - uses: snok/install-poetry@v1
-        with:
-          version: "2.2.1"
-          virtualenvs-in-project: true
-
-      - name: Enable dynamic versioning (poetry plugin)
-        run: |
-          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
-          poetry dynamic-versioning enable
+      - name: Install uv
+        run: pipx install uv
 
       - name: Cache .venv
         uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-3.13.2-${{ hashFiles('poetry.lock') }}
+          key: uv-${{ runner.os }}-3.13.2-${{ hashFiles('uv.lock') }}
 
-      - name: Install docs deps
-        run: |
-          poetry env use 3.13
-          poetry install --with docs
+      - name: Sync docs deps
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv sync --locked --group docs
 
       - name: Detect version and check if stable
         id: version
@@ -71,8 +64,8 @@ jobs:
         env:
           LC_ALL: C.UTF-8
           LANG: C.UTF-8
-        run: |
-          poetry run sphinx-build -W --keep-going -b html docs docs/_build/html
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv run sphinx-build -W --keep-going -b html docs docs/_build/html
 
       - name: Prepare versioned deployment
         if: steps.version.outputs.version != ''

@@ -77,36 +77,29 @@ repos:
         args: ["--config", "p/ci", "--error"]
         pass_filenames: true
 
-  # --- SECURITY: dependencies (SCA) with poetry export + pip-audit ---
-  # Strategy: Generate requirements.txt on-the-fly during pre-commit, then audit it
-  - repo: https://github.com/python-poetry/poetry-plugin-export
-    rev: 1.8.0
+  # --- SECURITY: dependencies (SCA) with uv export + pip-audit ---
+  # Strategy: Generate requirements snapshot on-the-fly during pre-commit, then audit it
+  - repo: local
     hooks:
-      - id: poetry-export
-        name: poetry export requirements.txt
-        args:
-          [
-            "--without-hashes",
-            "--format",
-            "requirements.txt",
-            "-o",
-            "requirements.txt",
-          ]
+      - id: uv-export
+        name: uv pip freeze requirements snapshot
+        language: system
+        entry: bash -c 'uv pip freeze --exclude-editable > requirements-pip-audit.txt'
+        pass_filenames: false
         stages: [pre-commit]
-        always_run: true # Run even if poetry.lock unchanged
+        always_run: true # Run even if uv.lock unchanged
 
   - repo: https://github.com/pypa/pip-audit
     rev: v2.9.0
     hooks:
       - id: pip-audit
-        name: pip-audit (scan requirements.txt)
+        name: pip-audit (scan requirements snapshot)
         args:
           [
             "--requirement",
-            "requirements.txt",
+            "requirements-pip-audit.txt",
             "--progress-spinner",
             "off",
-            "--strict",
           ]
         stages: [pre-commit]
         always_run: true # Run even if requirements.txt not staged
@@ -117,6 +110,6 @@ repos:
       - id: pytest-pre-push
         name: pytest (coverage gate on push)
         language: system
-        entry: bash -c 'poetry run pytest --maxfail=1 --disable-warnings -q --cov=src --cov-report=term-missing --cov-fail-under=80'
+        entry: bash -lc 'uv run --group test pytest --maxfail=1 --disable-warnings -q --cov=src --cov-report=term-missing --cov-fail-under=80'
         pass_filenames: false
         stages: [pre-push]

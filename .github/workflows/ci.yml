@@ -33,25 +33,25 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - name: Install Poetry
-        run: pipx install poetry
-      - name: Enable dynamic versioning plugin
-        run: |
-          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
-          poetry dynamic-versioning enable
-      - name: Cache virtualenv
+      - name: Install uv
+        run: pipx install uv
+      - name: Cache uv environment
         uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
-      - name: Install deps
-        run: |
-          poetry config virtualenvs.in-project true
-          poetry install --no-interaction --no-root
+          key: uv-${{ runner.os }}-py313-lint-${{ hashFiles('uv.lock') }}
+      - name: Sync dependencies
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv sync --locked --group dev
       - name: Ruff (lint)
-        run: poetry run ruff check .
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv run ruff check .
       - name: Ruff (format)
-        run: poetry run ruff format
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv run ruff format --check
 
   typecheck:
     name: typecheck
@@ -63,23 +63,21 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - name: Install Poetry
-        run: pipx install poetry
-      - name: Enable dynamic versioning plugin
-        run: |
-          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
-          poetry dynamic-versioning enable
-      - name: Cache virtualenv
+      - name: Install uv
+        run: pipx install uv
+      - name: Cache uv environment
         uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
-      - name: Install deps
-        run: |
-          poetry config virtualenvs.in-project true
-          poetry install --no-interaction --no-root
+          key: uv-${{ runner.os }}-py313-typecheck-${{ hashFiles('uv.lock') }}
+      - name: Sync dependencies
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv sync --locked --group dev
       - name: mypy
-        run: poetry run mypy
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv run mypy
 
   tests:
     name: tests (${{ matrix.python }})
@@ -95,23 +93,21 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
-      - name: Install Poetry
-        run: pipx install poetry
-      - name: Enable dynamic versioning plugin
-        run: |
-          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
-          poetry dynamic-versioning enable
-      - name: Cache virtualenv
+      - name: Install uv
+        run: pipx install uv
+      - name: Cache uv environment
         uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('**/poetry.lock') }}
-      - name: Install deps
-        run: |
-          poetry config virtualenvs.in-project true
-          poetry install --no-interaction
+          key: uv-${{ runner.os }}-py${{ matrix.python }}-tests-${{ hashFiles('uv.lock') }}
+      - name: Sync dependencies
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv sync --locked --group test
       - name: pytest
-        run: poetry run pytest -q --maxfail=1 --disable-warnings
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv run pytest -q --maxfail=1 --disable-warnings
 
   docs-verify:
     name: docs-verify
@@ -123,33 +119,23 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - name: Install Poetry
-        run: pipx install poetry
-      - name: Enable dynamic versioning plugin
-        run: |
-          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
-          poetry dynamic-versioning enable
-      - name: Cache virtualenv
+      - name: Install uv
+        run: pipx install uv
+      - name: Cache uv environment
         uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
-      - name: Install deps
-        run: |
-          poetry config virtualenvs.in-project true
-          poetry install --with docs --no-interaction
-      #      - name: Debug repo layout
-      #        run: |
-      #          pwd
-      #          echo "--- tree level 1"; ls -la
-      #          echo "--- tree src"; ls -la src || true
-      #          echo "--- tree src/docs"; ls -la src/docs || true
-      #          echo "--- git tracked under src/docs"; git ls-files | grep -E '^src/docs/' || true
+          key: uv-${{ runner.os }}-py313-docs-${{ hashFiles('uv.lock') }}
+      - name: Sync dependencies
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv sync --locked --group docs
       - name: Build Sphinx docs
-        run: |
-          export LC_ALL=C.UTF-8
-          export LANG=C.UTF-8
-          poetry run sphinx-build -b html docs docs/_build/html
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+          LC_ALL: C.UTF-8
+          LANG: C.UTF-8
+        run: uv run sphinx-build -b html docs docs/_build/html
 
   build:
     name: build
@@ -162,23 +148,21 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - name: Install Poetry
-        run: pipx install poetry
-      - name: Enable dynamic versioning plugin
-        run: |
-          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
-          poetry dynamic-versioning enable
-      - name: Cache virtualenv
+      - name: Install uv
+        run: pipx install uv
+      - name: Cache uv environment
         uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
-      - name: Install deps
-        run: |
-          poetry config virtualenvs.in-project true
-          poetry install --no-interaction
+          key: uv-${{ runner.os }}-py313-build-${{ hashFiles('uv.lock') }}
+      - name: Sync dependencies
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv sync --locked --group dev
       - name: Build dist (no publish)
-        run: poetry build
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv run hatch build
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v5

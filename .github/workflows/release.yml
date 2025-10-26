@@ -38,21 +38,18 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install Poetry
-        run: pipx install poetry
+      - name: Install uv
+        run: pipx install uv
 
-      - name: Enable dynamic versioning plugin
-        run: |
-          poetry self add "poetry-dynamic-versioning[plugin]>=1.4.0"
-          poetry dynamic-versioning enable
-
-      - name: Install project
-        run: |
-          poetry config virtualenvs.in-project true
-          poetry install --no-interaction
+      - name: Sync project environment
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv sync --locked --group dev
 
       - name: Build artifacts
-        run: poetry build
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv
+        run: uv run hatch build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5

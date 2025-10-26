@@ -1,17 +1,13 @@
 [build-system]
-requires = ["poetry-core>=2.0.0", "poetry-dynamic-versioning>=1.4.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling>=1.27.0", "hatch-vcs>=0.4.0"]
+build-backend = "hatchling.build"
 
 [project]
 name = "py-bragerone"
 description = "Async client for Brager One: REST + Socket.IO, EventBus, ParamStore/StateStore, HA-ready"
+readme = "README.rst"
 authors = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
 maintainers = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
-dynamic = [ # version is managed by poetry-dynamic-versioning
-  "version",
-  "readme",
-  "classifiers", # Let Poetry auto-enrich classifiers
-]
 license = "MIT"
 requires-python = ">=3.13.2,<4"
 keywords = [
@@ -33,6 +29,16 @@ dependencies = [
   "tree-sitter>=0.21.3",
   "tree-sitter-javascript>=0.21.1",
 ]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: OS Independent",
+  "Intended Audience :: Developers",
+  "Topic :: Home Automation",
+  "Typing :: Typed",
+]
+dynamic = ["version"]
 
 [project.urls]
 Homepage = "https://github.com/marpi82/py-bragerone"
@@ -50,54 +56,52 @@ pybragerone-parsers = "pybragerone.cli_extras.parsers:main"
 cli = ["typer>=0.16.0", "rich>=12.6.0", "aiofiles>=24.1"]
 keyring = ["keyring>=25.0.0"]
 
-[tool.poetry]
-requires-poetry = ">=2.0.0"
-readme = ["README.rst", "docs/README.rst"]
-packages = [{ include = "pybragerone", from = "src" }]
+
+[tool.hatch.version]
+source = "vcs"
+tag-pattern = '^(?:v)?(?P<version>\d{4}(?:\.\d{1,2}(?:\.\d{1,2})?)?(?:(?:a|b|rc)\d+)?)$'
+tag-format = "{version}"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pybragerone"]
 include = ["src/pybragerone/py.typed"]
-classifiers = [
-  "Development Status :: 3 - Alpha",
-  "Programming Language :: Python :: 3.13",
-  "Programming Language :: Python :: 3 :: Only",
-  "Operating System :: OS Independent",
-  "Intended Audience :: Developers",
-  "Topic :: Home Automation",
-  "Typing :: Typed",
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/pybragerone",
+  "README.rst",
+  "docs/README.rst",
+  "LICENSE",
 ]
-version = "2025" # placeholder needed by Poetry
 
-[tool.poetry.group.dev.dependencies]
-poethepoet = "^0.37.0"
-ruff = "^0.14.2"
-mypy = { extras = ["dmypy"], version = "^1.18.1" }
-pre-commit = "^4.3.0"
-python-dotenv = "^1.1.1"
-pip-audit = "^2.4.0"
-bandit = "^1.8.4"
-semgrep = ">=1.89"
-keyring = "^25.0.0"
-
-[tool.poetry.group.test.dependencies]
-pytest = "^8.3.3"
-pytest-asyncio = "^1.2.0"
-pytest-cov = "^7.0.0"
-pytest-httpx = "^0.35.0"
-
-[tool.poetry.group.docs.dependencies]
-sphinx = ">=8.0.2,<9.0"
-furo = "^2025.9.25"
-myst-parser = "^4.0.0"
-sphinx-autodoc-typehints = "^3.2.0"
-sphinx-copybutton = "^0.5.2"
-sphinxcontrib-mermaid = ">=1.0.0"
-
-[tool.poetry-dynamic-versioning]
-enable = true
-vcs = "git"
-style = "pep440"
-strict = true
-pattern = '^(?P<base>\d{4}(?:.\d{1,2}(?:.\d{1,2})?)?)(?:(?P<stage>a|b|rc)(?P<revision>\d+))?$'
-format-jinja = "{% if distance == 0 %}{{ serialize_pep440(base, stage, revision) }}{% else %}{{ serialize_pep440(base, stage, revision, dev=distance) }}{% endif %}"
+[dependency-groups]
+dev = [
+  "poethepoet>=0.37.0,<0.38.0",
+  "ruff>=0.14.2,<0.15.0",
+  "mypy[dmypy]>=1.18.1,<2.0.0",
+  "pre-commit>=4.3.0,<5.0.0",
+  "python-dotenv>=1.1.1,<2.0.0",
+  "pip-audit>=2.4.0,<3.0.0",
+  "bandit>=1.8.4,<2.0.0",
+  "semgrep>=1.89",
+  "keyring>=25.0.0,<26.0.0",
+  "hatch>=1.12.0,<2.0.0",
+]
+test = [
+  "pytest>=8.3.3,<9.0.0",
+  "pytest-asyncio>=1.2.0,<2.0.0",
+  "pytest-cov>=7.0.0,<8.0.0",
+  "pytest-httpx>=0.35.0,<0.36.0",
+  "packaging>=24.1,<25.0.0",
+]
+docs = [
+  "sphinx>=8.0.2,<9.0.0",
+  "furo>=2025.9.25,<2026.0.0",
+  "myst-parser>=4.0.0,<5.0.0",
+  "sphinx-autodoc-typehints>=3.2.0,<4.0.0",
+  "sphinx-copybutton>=0.5.2,<0.6.0",
+  "sphinxcontrib-mermaid>=1.0.0,<2.0.0",
+]
 
 # ---------------- Ruff (formatter + linter) ----------------
 [tool.ruff]
@@ -161,7 +165,7 @@ source = ["src/pybragerone"]
 # ---------------- POE tasks ----------------
 # (optional) Poe tasks, if you use 'poe' locally
 [tool.poe.tasks]
-bootstrap = { cmd = "poetry install --with dev,test,docs" }
+bootstrap = { cmd = "uv sync --group dev --group test --group docs --locked" }
 # format/lint/typecheck
 fmt = "ruff format"
 lint = "ruff check . --fix"
@@ -179,10 +183,10 @@ validate = ["fmt", "lint", "typecheck", "security", "test"]
 test = { cmd = "pytest -q" }
 cov = { cmd = "pytest -q --cov=pybragerone --cov-report=term-missing" }
 # Build
-build = { cmd = "poetry build" }
+build = { cmd = "hatch build" }
 # Docs
-docs-build = { shell = "export LC_ALL=C.utf8 2>/dev/null || export LC_ALL=C.UTF-8 2>/dev/null || true && poetry run sphinx-build -b html docs docs/_build/html" }
+docs-build = { shell = "export LC_ALL=C.utf8 2>/dev/null || export LC_ALL=C.UTF-8 2>/dev/null || true && uv run --group docs sphinx-build -b html docs docs/_build/html" }
 docs-serve = { shell = "python -m http.server --directory docs/_build/html 8000" }
 # Publication (local; CI have its own secrets)
-publish-pypi = { shell = "poetry publish --build --no-interaction" }
-publish-testpypi = { shell = "poetry publish --build --repository testpypi --no-interaction" }
+publish-pypi = { cmd = "hatch publish" }
+publish-testpypi = { cmd = "hatch publish --repo testpypi" }
