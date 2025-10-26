@@ -169,48 +169,61 @@ async def run(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build argument parser."""
-    p = argparse.ArgumentParser(prog="pybragerone", description="BragerOne — diagnostyczny CLI (REST + WS).")
+    p = argparse.ArgumentParser(prog="pybragerone", description="BragerOne — diagnostic CLI (REST + WS).")
     # env-first: if not in CLI, take from environment (easy to debug in VSCode)
     p.add_argument(
         "--email",
         default=os.environ.get("PYBO_EMAIL"),
-        help="Login e-mail (ENV: PYBO_EMAIL)",
+        help="Login email (ENV: PYBO_EMAIL)",
     )
     p.add_argument(
         "--password",
         default=os.environ.get("PYBO_PASSWORD"),
-        help="Hasło (ENV: PYBO_PASSWORD)",
+        help="Password (ENV: PYBO_PASSWORD)",
     )
     p.add_argument(
         "--object-id",
         type=int,
         default=os.environ.get("PYBO_OBJECT_ID") and int(os.environ["PYBO_OBJECT_ID"]),
-        help="ID obiektu (ENV: PYBO_OBJECT_ID)",
+        help="Object ID (ENV: PYBO_OBJECT_ID)",
     )
     p.add_argument(
         "--module",
         dest="modules",
         action="append",
-        help="Kod modułu (devid/code). Można podać wielokrotnie lub w ENV PYBO_MODULES=FTTCTBSLCE,INNY",
+        help="Module code (devid/code). Can be specified multiple times or via ENV PYBO_MODULES=FTTCTBSLCE,OTHER",
         default=os.environ.get("PYBO_MODULES"),
     )
     p.add_argument(
         "--json",
         action="store_true",
-        help="Drukuj zdarzenia jako JSON (jedna linia na update)",
+        help="Print events as JSON (one line per update)",
     )
-    p.add_argument("--raw-ws", action="store_true", help="Wypisuj surowe eventy WS (debug)")
-    p.add_argument("--raw-http", action="store_true", help="Trace HTTP (uwaga na logi z danymi)")
-    p.add_argument("--no-diff", action="store_true", help="Nie drukuj zmian (strzałek) na STDOUT")
-    p.add_argument("--debug", action="store_true", help="Więcej logów")
-    p.add_argument("--quiet", action="store_true", help="Mniej logów")
+    p.add_argument("--raw-ws", action="store_true", help="Print raw WS events (debug)")
+    p.add_argument("--raw-http", action="store_true", help="Trace HTTP (warning: logs may contain data)")
+    p.add_argument("--no-diff", action="store_true", help="Don't print changes (arrows) on STDOUT")
+    p.add_argument("--debug", action="store_true", help="More logs")
+    p.add_argument("--quiet", action="store_true", help="Fewer logs")
     return p
 
 
 def main() -> None:
-    """Entry point for pybragerone CLI."""
-    p = argparse.ArgumentParser(prog="pybragerone", description="BragerOne — diagnostyczny CLI (REST + WS).")
-    p.add_argument("--email", required=True, help="E-mail użytkownika")
+    """Main entrypoint for CLI."""
+    parser = build_parser()
+    args = parser.parse_args()
+
+    # PYBO_MODULES=FOO,BAR → convert to list if --module was not used
+    if isinstance(args.modules, str):
+        args.modules = [m for m in args.modules.split(",") if m]
+
+    if not args.email or not args.password:
+        raise SystemExit("Missing credentials: set PYBO_EMAIL/PYBO_PASSWORD or pass --email/--password.")
+
+    try:
+        code = asyncio.run(run(args))
+    except KeyboardInterrupt:
+        code = 130
+    raise SystemExit(code)
 
 
 if __name__ == "__main__":

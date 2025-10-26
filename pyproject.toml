@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "py-bragerone"
-description = "Async client for BragerOne: REST + Socket.IO, EventBus, ParamStore/StateStore, HA-ready"
+description = "Async client for BragerOne: REST + Socket.IO, EventBus, ParamStore (dual-mode), HA-ready"
 readme = "README.rst"
 authors = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
 maintainers = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
