@@ -2,6 +2,11 @@
   "name": "py-bragerone",
   "image": "python:3.13-slim-trixie",
 
+  "runArgs": [
+    "--pids-limit=-1",
+    "--ulimit=nofile=65536:65536"
+  ],
+
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/common-utils:2": {
@@ -40,14 +45,14 @@
           "--strict",
           "--show-column-numbers",
           "--show-error-codes"
-        ]
+        ],
+        "mypy-type-checker.preferDaemon": false
       },
       "extensions": [
         "ms-python.python",
         "ms-python.vscode-pylance",
         "ms-python.mypy-type-checker",
         "charliermarsh.ruff",
-        "tamasfe.even-better-toml",
         "eamodio.gitlens",
         "github.copilot",
         "github.copilot-chat"
