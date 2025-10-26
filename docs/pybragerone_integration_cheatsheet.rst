@@ -9,8 +9,8 @@ TL;DR
 =====
 
 - **Prime via REST is mandatory** at startup and after WS reconnect.
-- **Runtime** uses **ParamStore** (light, key→value) + EventBus.
-- **Config/Reconfigure** uses **StateStore** (rich model + meta) to build entity descriptors.
+- **Runtime** uses **ParamStore** (lightweight mode: key→value) + EventBus.
+- **Config/Reconfigure** uses **ParamStore** (asset-aware mode with ``init_with_api()`` + LiveAssetsCatalog) to build entity descriptors.
 - WebSocket does **not** provide a snapshot; always re-prime after resubscribe.
 
 Key Objects
@@ -30,11 +30,11 @@ ParamUpdate
 - ``value`` – real value or ``None`` if missing
 - ``meta`` – dict with extra info (timestamps, ``storable``, averages, ...)
 
-Stores
-======
+ParamStore Modes
+================
 
-ParamStore (runtime)
---------------------
+Lightweight Mode (runtime)
+--------------------------
 
 - Holds only **real values** (meta-only events ignored).
 - Flatten format: ``{"P4.v1": 20, "P5.s40": 1, ...}``.
@@ -42,12 +42,13 @@ ParamStore (runtime)
   - Sensor/Number: ``param_store.get("P4.v1")``
   - Binary (bit): ``bool(param_store.get("P5.s40") & (1 << bit))``
 
-StateStore (config-time)
-------------------------
+Asset-Aware Mode (config-time)
+------------------------------
 
-- Rich Pydantic models per-devid/per-family + meta.
-- Used to build **entity descriptors** (label/unit/enum/min/max/step/bit).
-- ``flatten()`` safe – does not overwrite main fields with ``None`` from channels.
+- Initialize with ``await param_store.init_with_api(api_client)`` to enable **LiveAssetsCatalog** integration.
+- Provides rich metadata: labels, units, enums, permissions via ``param_store.get_label()``, ``get_unit()``, etc.
+- Used during **config flow** to build **entity descriptors** (label/unit/enum/min/max/step/bit).
+- Returns ``None`` for metadata queries if not initialized or parameter not found.
 
 HA Integration Flow
 ===================
@@ -56,9 +57,9 @@ Config Flow (no WS required)
 ----------------------------
 
 1. REST login; choose ``object_id`` + modules.
-2. REST **prime parameters** → ingest into **StateStore**.
-3. Parse **parameterSchemas** + i18n (labels/units/enums).
-4. Build and store **descriptors** in ``config_entry.data``.
+2. Create **ParamStore** and call ``await param_store.init_with_api(api_client)`` to enable asset-aware mode.
+3. REST **prime parameters** → ingest into **ParamStore** (now has access to LiveAssetsCatalog for metadata).
+4. Build and store **descriptors** using ParamStore metadata methods (``get_label()``, ``get_unit()``, etc.) in ``config_entry.data``.
 
 Runtime
 -------
@@ -158,6 +159,6 @@ Attributes stored in entities
 Runtime
 -------
 
-- Setup uses full metadata (sections/labels/units/enums).
-- After setup: only WS updates → ``ParamStore`` (fast path).
-- ``StateStore`` optional at runtime.
+- Setup uses full metadata from **ParamStore asset-aware mode** (sections/labels/units/enums).
+- After setup: only WS updates → **ParamStore lightweight mode** (fast path).
+- Asset-aware mode (with LiveAssetsCatalog) not needed at runtime after entity descriptors are created.

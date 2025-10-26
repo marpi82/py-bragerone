@@ -71,12 +71,10 @@ Pre-release (TestPyPI)::
 
   pip install -i https://test.pypi.org/simple/ pybragerone
 
-Optional extras (you can define them in ``pyproject.toml``)::
+Optional extras::
 
-  pip install "pybragerone[core]"
-  pip install "pybragerone[cli]"
-  pip install "pybragerone[ha]"
-  pip install "pybragerone[all]"
+  pip install "pybragerone[cli]"      # CLI with typer, rich, aiofiles
+  pip install "pybragerone[keyring]"  # Secure token storage with keyring
 
 Quick Start (CLI)
 -----------------
@@ -138,7 +136,7 @@ Advanced Example – With Rich Metadata (config flow)
        # For config flow or when you need i18n/labels/enums
        api = BragerOneApiClient()
        await api.ensure_auth("you@example.com", "secret")
-       
+
        user = await api.get_user()
        object_id = user.objects[0].id
        modules_resp = await api.get_modules(object_id=object_id)
@@ -160,11 +158,11 @@ Advanced Example – With Rich Metadata (config flow)
            # Now you can use rich metadata methods
            menu = await pstore.get_menu("device123", ["param.edit"])
            print(f"Available parameters: {len(menu.items)}")
-           
+
            # Get translated label
            label = await pstore.get_label("device123", "P4", 1, "v")
            print(f"Label for P4.v1: {label}")
-           
+
            await asyncio.sleep(60)
        finally:
            await gw.stop()
@@ -206,7 +204,7 @@ ParamStore Details
   - Simple key→value storage (e.g. ``"P4.v1" -> 20.5``)
   - Minimal memory footprint
   - Perfect for HA runtime entities & frequent updates
-  
+
 - **Asset-aware mode** (with ``init_with_api()``):
   - Connects to LiveAssetsCatalog for rich metadata
   - Provides i18n labels, units, enums, and visibility rules
@@ -230,7 +228,7 @@ Home Assistant Integration
 --------------------------
 
 - **Runtime**: subscribe to the EventBus and source states from **ParamStore** (lightweight mode).
-- **Config Flow**: enumerate entities and their metadata via **ParamStore** with ``init_with_api()`` 
+- **Config Flow**: enumerate entities and their metadata via **ParamStore** with ``init_with_api()``
   (asset-aware mode provides labels, units, enums).
 - **Units mapping**: a helper maps Brager unit codes (or i18n unit text) to HA canonical
   units (e.g. ``°C`` → ``temperature``, ``%`` → ``percentage``).

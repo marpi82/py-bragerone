@@ -88,10 +88,8 @@ Pre-release (TestPyPI)::
 
 Optional extras::
 
-  pip install "pybragerone[core]"
-  pip install "pybragerone[cli]"
-  pip install "pybragerone[ha]"
-  pip install "pybragerone[all]"
+  pip install "pybragerone[cli]"      # CLI with typer, rich, aiofiles
+  pip install "pybragerone[keyring]"  # Secure token storage with keyring
 
 CLI usage
 ---------
@@ -117,7 +115,7 @@ ParamStore (lightweight) example::
           object_id=12345,  # Your object ID
           modules=["ABC123", "DEF456"]  # Your device IDs
       )
-      
+
       pstore = ParamStore()
       asyncio.create_task(pstore.run_with_bus(gw.bus))
 
@@ -145,7 +143,7 @@ Advanced: Using ParamStore with API for rich metadata::
       # For config flow or when you need i18n/labels
       api = BragerOneApiClient()
       await api.ensure_auth("you@example.com", "secret")
-      
+
       user = await api.get_user()
       object_id = user.objects[0].id
       modules_resp = await api.get_modules(object_id=object_id)
