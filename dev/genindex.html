@@ -1,0 +1,2366 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="#"><link rel="search" title="Search" href="search.html">
+
+    <!-- Generated with Sphinx 8.2.3 and Furo 2025.09.25 --><title>Index - pybragerone 0.0.0 documentation</title>
+<link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=580074bf" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">pybragerone 0.0.0 documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+  
+  <span class="sidebar-brand-text">pybragerone 0.0.0 documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="README.html">pybragerone</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html">pybragerone – Quick Cheatsheet</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#tl-dr">TL;DR</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#key-objects">Key Objects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#paramstore-modes">ParamStore Modes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#ha-integration-flow">HA Integration Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#parameter-semantics">Parameter Semantics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#entity-guidelines">Entity Guidelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#operational-tips">Operational Tips</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#cli-hints">CLI Hints</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#parsers-ha-glue-tl-dr">Parsers + HA Glue TL;DR</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html">pybragerone – Integration Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#overview">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#core-principles">Core Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#architecture-high-level">Architecture (High-Level)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#data-model-semantics">Data Model &amp; Semantics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#paramstore">ParamStore</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#eventbus">EventBus</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#ha-integration-flow">HA Integration Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#entity-patterns-ha">Entity Patterns (HA)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#rest-endpoints-used-by-library">REST Endpoints (used by library)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#error-handling-robustness">Error Handling &amp; Robustness</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#logging-debugging">Logging &amp; Debugging</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#security-headers">Security &amp; Headers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#performance-notes">Performance Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#versioning-types">Versioning &amp; Types</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#cli-developer-utility">CLI (Developer Utility)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#future-work-todo">Future Work / TODO</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#appendix-minimal-interfaces">Appendix: Minimal Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#parsers-glue-integration">Parsers &amp; Glue: Integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="param_store_metadata.html">Param Store Metadata Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="api.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="generated/pybragerone.api.html">pybragerone.api</a><input aria-label="Toggle navigation of pybragerone.api" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.api.client.html">pybragerone.api.client</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.api.constants.html">pybragerone.api.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.api.endpoints.html">pybragerone.api.endpoints</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.api.ws.html">pybragerone.api.ws</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="generated/pybragerone.cli.html">pybragerone.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/pybragerone.gateway.html">pybragerone.gateway</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="generated/pybragerone.models.html">pybragerone.models</a><input aria-label="Toggle navigation of pybragerone.models" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="generated/pybragerone.models.api.html">pybragerone.models.api</a><input aria-label="Toggle navigation of pybragerone.models.api" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.auth.html">pybragerone.models.api.auth</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.common.html">pybragerone.models.api.common</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.modules.html">pybragerone.models.api.modules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.objects.html">pybragerone.models.api.objects</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.system.html">pybragerone.models.api.system</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.user.html">pybragerone.models.api.user</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.catalog.html">pybragerone.models.catalog</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.events.html">pybragerone.models.events</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.menu.html">pybragerone.models.menu</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.menu_manager.html">pybragerone.models.menu_manager</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.param.html">pybragerone.models.param</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.token.html">pybragerone.models.token</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="generated/pybragerone.utils.html">pybragerone.utils</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="new_models.html">New API Models Summary</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#id1">Changelog</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          
+<section class="genindex-section">
+  <h1 id="index">Index</h1>
+  <div class="genindex-jumpbox"><a href="#A"><strong>A</strong></a> | <a href="#B"><strong>B</strong></a> | <a href="#C"><strong>C</strong></a> | <a href="#D"><strong>D</strong></a> | <a href="#E"><strong>E</strong></a> | <a href="#F"><strong>F</strong></a> | <a href="#G"><strong>G</strong></a> | <a href="#H"><strong>H</strong></a> | <a href="#I"><strong>I</strong></a> | <a href="#J"><strong>J</strong></a> | <a href="#K"><strong>K</strong></a> | <a href="#L"><strong>L</strong></a> | <a href="#M"><strong>M</strong></a> | <a href="#N"><strong>N</strong></a> | <a href="#O"><strong>O</strong></a> | <a href="#P"><strong>P</strong></a> | <a href="#R"><strong>R</strong></a> | <a href="#S"><strong>S</strong></a> | <a href="#T"><strong>T</strong></a> | <a href="#U"><strong>U</strong></a> | <a href="#V"><strong>V</strong></a> | <a href="#W"><strong>W</strong></a></div>
+</section>
+<section id="A" class="genindex-section">
+  <h2>A</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.acceptedAt">acceptedAt (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.acceptedAt">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.Token.access_token">access_token (pybragerone.models.Token attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.Token.access_token">(pybragerone.models.token.Token attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.auth.html#pybragerone.models.api.auth.AuthResponse.accessToken">accessToken (pybragerone.models.api.auth.AuthResponse attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.AuthResponse.accessToken">(pybragerone.models.api.AuthResponse attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.User.activated_at">activated_at (pybragerone.models.api.User attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.user.html#pybragerone.models.api.user.User.activated_at">(pybragerone.models.api.user.User attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.RealtimeManager.add_on_connected">add_on_connected() (pybragerone.api.RealtimeManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.ws.html#pybragerone.api.ws.RealtimeManager.add_on_connected">(pybragerone.api.ws.RealtimeManager method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleGateway.address">address (pybragerone.models.api.ModuleGateway attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleGateway.address">(pybragerone.models.api.modules.ModuleGateway attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.BragerObject.addressCity">addressCity (pybragerone.models.api.BragerObject attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.BragerObject.addressCity">(pybragerone.models.api.objects.BragerObject attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.BragerObject.addressCountry">addressCountry (pybragerone.models.api.BragerObject attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.BragerObject.addressCountry">(pybragerone.models.api.objects.BragerObject attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.BragerObject.addressHouseNumber">addressHouseNumber (pybragerone.models.api.BragerObject attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.BragerObject.addressHouseNumber">(pybragerone.models.api.objects.BragerObject attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.BragerObject.addressPostCode">addressPostCode (pybragerone.models.api.BragerObject attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.BragerObject.addressPostCode">(pybragerone.models.api.objects.BragerObject attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.BragerObject.addressStreet">addressStreet (pybragerone.models.api.BragerObject attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.BragerObject.addressStreet">(pybragerone.models.api.objects.BragerObject attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameters.all_permissions">all_permissions() (pybragerone.models.menu.MenuParameters method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuResult.all_permissions">(pybragerone.models.menu.MenuResult method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuRoute.all_permissions">(pybragerone.models.menu.MenuRoute method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameters.all_permissions">(pybragerone.models.MenuParameters method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuResult.all_permissions">(pybragerone.models.MenuResult method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuRoute.all_permissions">(pybragerone.models.MenuRoute method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameters.all_tokens">all_tokens() (pybragerone.models.menu.MenuParameters method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuResult.all_tokens">(pybragerone.models.menu.MenuResult method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuRoute.all_tokens">(pybragerone.models.menu.MenuRoute method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameters.all_tokens">(pybragerone.models.MenuParameters method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuResult.all_tokens">(pybragerone.models.MenuResult method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuRoute.all_tokens">(pybragerone.models.MenuRoute method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.User.allow_email_type_alarms">allow_email_type_alarms (pybragerone.models.api.User attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.user.html#pybragerone.models.api.user.User.allow_email_type_alarms">(pybragerone.models.api.user.User attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.User.allow_email_type_informations">allow_email_type_informations (pybragerone.models.api.User attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.user.html#pybragerone.models.api.user.User.allow_email_type_informations">(pybragerone.models.api.user.User attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.User.allow_email_type_marketing">allow_email_type_marketing (pybragerone.models.api.User attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.user.html#pybragerone.models.api.user.User.allow_email_type_marketing">(pybragerone.models.api.user.User attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.User.allow_email_type_warnings">allow_email_type_warnings (pybragerone.models.api.User attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.user.html#pybragerone.models.api.user.User.allow_email_type_warnings">(pybragerone.models.api.user.User attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.ApiError">ApiError</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ApiResponse">ApiResponse (class in pybragerone.models.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.ApiResponse">(class in pybragerone.models.api.common)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuResult.asset_url">asset_url (pybragerone.models.menu.MenuResult attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.RawMenuData.asset_url">(pybragerone.models.menu_manager.RawMenuData attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuResult.asset_url">(pybragerone.models.MenuResult attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.RawMenuData.asset_url">(pybragerone.models.RawMenuData attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetIndex">AssetIndex (class in pybragerone.models.catalog)</a>
+</li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetRef">AssetRef (class in pybragerone.models.catalog)</a>
+</li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetIndex.assets_by_basename">assets_by_basename (pybragerone.models.catalog.AssetIndex attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.auth_revoke_url">auth_revoke_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.auth_user_url">auth_user_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.AuthResponse">AuthResponse (class in pybragerone.models.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.auth.html#pybragerone.models.api.auth.AuthResponse">(class in pybragerone.models.api.auth)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="B" class="genindex-section">
+  <h2>B</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetRef.base">base (pybragerone.models.catalog.AssetRef attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.BragerObject">BragerObject (class in pybragerone.models.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.BragerObject">(class in pybragerone.models.api.objects)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient">BragerOneApiClient (class in pybragerone.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient">(class in pybragerone.api.client)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.gateway.html#pybragerone.gateway.BragerOneGateway">BragerOneGateway (class in pybragerone.gateway)</a>
+</li>
+        <li><a href="generated/pybragerone.cli.html#pybragerone.cli.build_parser">build_parser() (in module pybragerone.cli)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="C" class="genindex-section">
+  <h2>C</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.ParamUpdate.chan">chan (pybragerone.models.events.ParamUpdate attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamFamilyModel.channels">channels (pybragerone.models.param.ParamFamilyModel attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamFamilyModel.channels">(pybragerone.models.ParamFamilyModel attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuRoute.children">children (pybragerone.models.menu.MenuRoute attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuRoute.children">(pybragerone.models.MenuRoute attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuMeta.clean_icon">clean_icon() (pybragerone.models.menu.MenuMeta class method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuMeta.clean_icon">(pybragerone.models.MenuMeta class method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.CLITokenStore.clear">clear() (pybragerone.models.CLITokenStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.CLITokenStore.clear">(pybragerone.models.token.CLITokenStore method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.HATokenStore.clear">(pybragerone.models.token.HATokenStore method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.TokenStore.clear">(pybragerone.models.token.TokenStore method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.TokenStore.clear">(pybragerone.models.TokenStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.MenuManager.clear_cache">clear_cache() (pybragerone.models.menu_manager.MenuManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuManager.clear_cache">(pybragerone.models.MenuManager method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleCard.clientAddressCity">clientAddressCity (pybragerone.models.api.ModuleCard attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleCard.clientAddressCity">(pybragerone.models.api.modules.ModuleCard attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleCard.clientAddressPostalCode">clientAddressPostalCode (pybragerone.models.api.ModuleCard attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleCard.clientAddressPostalCode">(pybragerone.models.api.modules.ModuleCard attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleCard.clientAddressStreetAndNumber">clientAddressStreetAndNumber (pybragerone.models.api.ModuleCard attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleCard.clientAddressStreetAndNumber">(pybragerone.models.api.modules.ModuleCard attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleCard.clientFullName">clientFullName (pybragerone.models.api.ModuleCard attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleCard.clientFullName">(pybragerone.models.api.modules.ModuleCard attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleCard.clientPhoneNumber">clientPhoneNumber (pybragerone.models.api.ModuleCard attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleCard.clientPhoneNumber">(pybragerone.models.api.modules.ModuleCard attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.CLITokenStore">CLITokenStore (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.CLITokenStore">(class in pybragerone.models.token)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.close">close() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.close">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.ParamMap.command_rules">command_rules (pybragerone.models.catalog.ParamMap attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuRoute.component">component (pybragerone.models.menu.MenuRoute attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuRoute.component">(pybragerone.models.MenuRoute attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.ParamMap.component_type">component_type (pybragerone.models.catalog.ParamMap attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.RealtimeManager.connect">connect() (pybragerone.api.RealtimeManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.ws.html#pybragerone.api.ws.RealtimeManager.connect">(pybragerone.api.ws.RealtimeManager method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.connectedAt">connectedAt (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.connectedAt">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleCard.createdAt">createdAt (pybragerone.models.api.ModuleCard attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleCard.createdAt">(pybragerone.models.api.modules.ModuleCard attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="D" class="genindex-section">
+  <h2>D</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ApiResponse.data">data (pybragerone.models.api.ApiResponse attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.ApiResponse.data">(pybragerone.models.api.common.ApiResponse attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.debug_dump">debug_dump() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.debug_dump">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.TranslationConfig.default_translation">default_translation (pybragerone.models.catalog.TranslationConfig attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.describe">describe() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.describe">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.describe_symbol">describe_symbol() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.describe_symbol">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.RawMenuData.device_menu">device_menu (pybragerone.models.menu_manager.RawMenuData attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.RawMenuData.device_menu">(pybragerone.models.RawMenuData attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.deviceLanguageVariant">deviceLanguageVariant (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.deviceLanguageVariant">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.deviceMenu">deviceMenu (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.deviceMenu">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.devices">devices (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.devices">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.devid">devid (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.devid">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.FeatureChanged.devid">(pybragerone.models.events.FeatureChanged attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.ParamUpdate.devid">(pybragerone.models.events.ParamUpdate attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.system.html#pybragerone.models.api.system.SystemVersion.devMode">devMode (pybragerone.models.api.system.SystemVersion attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.SystemVersion.devMode">(pybragerone.models.api.SystemVersion attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.RealtimeManager.disconnect">disconnect() (pybragerone.api.RealtimeManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.ws.html#pybragerone.api.ws.RealtimeManager.disconnect">(pybragerone.api.ws.RealtimeManager method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuMeta.display_dropdown">display_dropdown (pybragerone.models.menu.MenuMeta attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuMeta.display_dropdown">(pybragerone.models.MenuMeta attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuMeta.display_name">display_name (pybragerone.models.menu.MenuMeta attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuMeta.display_name">(pybragerone.models.MenuMeta attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="E" class="genindex-section">
+  <h2>E</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.api.auth.html#pybragerone.models.api.auth.LoginRequest.email">email (pybragerone.models.api.auth.LoginRequest attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.LoginRequest.email">(pybragerone.models.api.LoginRequest attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.User.email">(pybragerone.models.api.User attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.user.html#pybragerone.models.api.user.User.email">(pybragerone.models.api.user.User attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.CLITokenStore.email">(pybragerone.models.CLITokenStore attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.CLITokenStore.email">(pybragerone.models.token.CLITokenStore attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.RealtimeManager.engine_sid">engine_sid() (pybragerone.api.RealtimeManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.ws.html#pybragerone.api.ws.RealtimeManager.engine_sid">(pybragerone.api.ws.RealtimeManager method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.ensure_auth">ensure_auth() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.ensure_auth">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetRef.etag">etag (pybragerone.models.catalog.AssetRef attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.EventBus">EventBus (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.EventBus">(class in pybragerone.models.events)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.ws.html#pybragerone.api.ws.EventDispatcher">EventDispatcher (class in pybragerone.api.ws)</a>
+</li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.Token.expires_at">expires_at (pybragerone.models.Token attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.Token.expires_at">(pybragerone.models.token.Token attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.auth.html#pybragerone.models.api.auth.AuthResponse.expiresAt">expiresAt (pybragerone.models.api.auth.AuthResponse attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.AuthResponse.expiresAt">(pybragerone.models.api.AuthResponse attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameter.extract_fields">extract_fields() (pybragerone.models.menu.MenuParameter class method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameter.extract_fields">(pybragerone.models.MenuParameter class method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="F" class="genindex-section">
+  <h2>F</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.families">families (pybragerone.models.param.ParamStore attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.families">(pybragerone.models.ParamStore attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.FeatureChanged.feature">feature (pybragerone.models.events.FeatureChanged attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.FeatureChanged">FeatureChanged (class in pybragerone.models.events)</a>
+</li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.fetch_json_one">fetch_json_one() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.fetch_json_one">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.fetch_text_one">fetch_text_one() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.fetch_text_one">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetIndex.find_asset_for_basename">find_asset_for_basename() (pybragerone.models.catalog.AssetIndex method)</a>
+</li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetIndex.find_asset_for_full_name">find_asset_for_full_name() (pybragerone.models.catalog.AssetIndex method)</a>
+</li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.flatten">flatten() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.flatten">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.gateway.html#pybragerone.gateway.BragerOneGateway.flatten_parameters">flatten_parameters() (pybragerone.gateway.BragerOneGateway method)</a>
+</li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.Token.from_login_payload">from_login_payload() (pybragerone.models.Token class method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.Token.from_login_payload">(pybragerone.models.token.Token class method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="G" class="genindex-section">
+  <h2>G</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.gateway">gateway (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.gateway">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamFamilyModel.get">get() (pybragerone.models.param.ParamFamilyModel method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamFamilyModel.get">(pybragerone.models.ParamFamilyModel method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.HttpCache.get_body">get_body() (pybragerone.api.client.HttpCache method)</a>
+</li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.get_bytes">get_bytes() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.get_bytes">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.MenuProcessor.get_clean_menu">get_clean_menu() (pybragerone.models.menu_manager.MenuProcessor method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuProcessor.get_clean_menu">(pybragerone.models.MenuProcessor method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.MenuManager.get_debug_info">get_debug_info() (pybragerone.models.menu_manager.MenuManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.MenuProcessor.get_debug_info">(pybragerone.models.menu_manager.MenuProcessor method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuManager.get_debug_info">(pybragerone.models.MenuManager method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuProcessor.get_debug_info">(pybragerone.models.MenuProcessor method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.get_family">get_family() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.get_family">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.LiveAssetsCatalog.get_i18n">get_i18n() (pybragerone.models.catalog.LiveAssetsCatalog method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.LiveAssetsCatalog.get_i18n">(pybragerone.models.LiveAssetsCatalog method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.get_i18n">(pybragerone.models.param.ParamStore method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.get_i18n">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.get_i18n_parameters">get_i18n_parameters() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.get_i18n_parameters">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.get_i18n_units">get_i18n_units() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.get_i18n_units">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.MenuManager.get_menu">get_menu() (pybragerone.models.menu_manager.MenuManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuManager.get_menu">(pybragerone.models.MenuManager method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.LiveAssetsCatalog.get_menu_debug_info">get_menu_debug_info() (pybragerone.models.catalog.LiveAssetsCatalog method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.LiveAssetsCatalog.get_menu_debug_info">(pybragerone.models.LiveAssetsCatalog method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.get_module_card">get_module_card() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.get_module_card">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.LiveAssetsCatalog.get_module_menu">get_module_menu() (pybragerone.models.catalog.LiveAssetsCatalog method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.LiveAssetsCatalog.get_module_menu">(pybragerone.models.LiveAssetsCatalog method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.get_module_menu">(pybragerone.models.param.ParamStore method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.get_module_menu">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.get_modules">get_modules() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.get_modules">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.get_object">get_object() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.get_object">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.get_object_permissions">get_object_permissions() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.get_object_permissions">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.get_objects">get_objects() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.get_objects">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.LiveAssetsCatalog.get_param_mapping">get_param_mapping() (pybragerone.models.catalog.LiveAssetsCatalog method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.LiveAssetsCatalog.get_param_mapping">(pybragerone.models.LiveAssetsCatalog method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.get_param_mapping">(pybragerone.models.param.ParamStore method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.get_param_mapping">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.LiveAssetsCatalog.get_raw_menu">get_raw_menu() (pybragerone.models.catalog.LiveAssetsCatalog method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.LiveAssetsCatalog.get_raw_menu">(pybragerone.models.LiveAssetsCatalog method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.MenuManager.get_raw_menu">(pybragerone.models.menu_manager.MenuManager method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuManager.get_raw_menu">(pybragerone.models.MenuManager method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.get_system_version">get_system_version() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.get_system_version">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.get_user">get_user() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.get_user">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.get_user_permissions">get_user_permissions() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.get_user_permissions">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.ParamMap.group">group (pybragerone.models.catalog.ParamMap attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.RealtimeManager.group_id">group_id (pybragerone.api.RealtimeManager property)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.ws.html#pybragerone.api.ws.RealtimeManager.group_id">(pybragerone.api.ws.RealtimeManager property)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="H" class="genindex-section">
+  <h2>H</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetRef.hash">hash (pybragerone.models.catalog.AssetRef attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.HATokenStore">HATokenStore (class in pybragerone.models.token)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ApiResponse.headers">headers (pybragerone.models.api.ApiResponse attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.ApiResponse.headers">(pybragerone.models.api.common.ApiResponse attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.HttpCache.headers_for">headers_for() (pybragerone.api.client.HttpCache method)</a>
+</li>
+        <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.HttpCache">HttpCache (class in pybragerone.api.client)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="I" class="genindex-section">
+  <h2>I</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuMeta.icon">icon (pybragerone.models.menu.MenuMeta attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuMeta.icon">(pybragerone.models.MenuMeta attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.BragerObject.id">id (pybragerone.models.api.BragerObject attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.id">(pybragerone.models.api.Module attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleCard.id">(pybragerone.models.api.ModuleCard attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleParameterSchema.id">(pybragerone.models.api.ModuleParameterSchema attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.id">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleCard.id">(pybragerone.models.api.modules.ModuleCard attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleParameterSchema.id">(pybragerone.models.api.modules.ModuleParameterSchema attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.BragerObject.id">(pybragerone.models.api.objects.BragerObject attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.User.id">(pybragerone.models.api.User attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.user.html#pybragerone.models.api.user.User.id">(pybragerone.models.api.user.User attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.ParamUpdate.idx">idx (pybragerone.models.events.ParamUpdate attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamFamilyModel.idx">(pybragerone.models.param.ParamFamilyModel attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamFamilyModel.idx">(pybragerone.models.ParamFamilyModel attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetIndex.index_bytes">index_bytes (pybragerone.models.catalog.AssetIndex attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.gateway.html#pybragerone.gateway.BragerOneGateway.ingest_activity_quantity">ingest_activity_quantity() (pybragerone.gateway.BragerOneGateway method)</a>
+</li>
+        <li><a href="generated/pybragerone.gateway.html#pybragerone.gateway.BragerOneGateway.ingest_prime_parameters">ingest_prime_parameters() (pybragerone.gateway.BragerOneGateway method)</a>
+</li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.ingest_prime_payload">ingest_prime_payload() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.ingest_prime_payload">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.init_assets">init_assets() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.init_assets">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.init_with_api">init_with_api() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.init_with_api">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetIndex.inline_param_candidates">inline_param_candidates (pybragerone.models.catalog.AssetIndex attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleGateway.interface">interface (pybragerone.models.api.ModuleGateway attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleGateway.interface">(pybragerone.models.api.modules.ModuleGateway attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ApiResponse.is_client_error">is_client_error (pybragerone.models.api.ApiResponse property)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.ApiResponse.is_client_error">(pybragerone.models.api.common.ApiResponse property)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ApiResponse.is_error">is_error (pybragerone.models.api.ApiResponse property)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.ApiResponse.is_error">(pybragerone.models.api.common.ApiResponse property)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.Token.is_expired">is_expired() (pybragerone.models.Token method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.Token.is_expired">(pybragerone.models.token.Token method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ApiResponse.is_server_error">is_server_error (pybragerone.models.api.ApiResponse property)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.ApiResponse.is_server_error">(pybragerone.models.api.common.ApiResponse property)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ApiResponse.is_success">is_success (pybragerone.models.api.ApiResponse property)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.ApiResponse.is_success">(pybragerone.models.api.common.ApiResponse property)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.isAcceptedAt">isAcceptedAt (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.isAcceptedAt">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.isConnectedAt">isConnectedAt (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.isConnectedAt">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="J" class="genindex-section">
+  <h2>J</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.utils.html#pybragerone.utils.json_preview">json_preview() (in module pybragerone.utils)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="K" class="genindex-section">
+  <h2>K</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.ParamMap.key">key (pybragerone.models.catalog.ParamMap attribute)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="L" class="genindex-section">
+  <h2>L</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.User.language">language (pybragerone.models.api.User attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.user.html#pybragerone.models.api.user.User.language">(pybragerone.models.api.user.User attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetRef.last_modified">last_modified (pybragerone.models.catalog.AssetRef attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.EventBus.last_seq">last_seq() (pybragerone.models.EventBus method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.EventBus.last_seq">(pybragerone.models.events.EventBus method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.ParamMap.limits">limits (pybragerone.models.catalog.ParamMap attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.MenuManager.list_cached_menus">list_cached_menus() (pybragerone.models.menu_manager.MenuManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuManager.list_cached_menus">(pybragerone.models.MenuManager method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.LiveAssetsCatalog.list_language_config">list_language_config() (pybragerone.models.catalog.LiveAssetsCatalog method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.LiveAssetsCatalog.list_language_config">(pybragerone.models.LiveAssetsCatalog method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.LiveAssetsCatalog.list_symbols_for_permissions">list_symbols_for_permissions() (pybragerone.models.catalog.LiveAssetsCatalog method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.LiveAssetsCatalog.list_symbols_for_permissions">(pybragerone.models.LiveAssetsCatalog method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.LiveAssetsCatalog">LiveAssetsCatalog (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.LiveAssetsCatalog">(class in pybragerone.models.catalog)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.CLITokenStore.load">load() (pybragerone.models.CLITokenStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.CLITokenStore.load">(pybragerone.models.token.CLITokenStore method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.HATokenStore.load">(pybragerone.models.token.HATokenStore method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.TokenStore.load">(pybragerone.models.token.TokenStore method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.TokenStore.load">(pybragerone.models.TokenStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.utils.html#pybragerone.utils.log_json_payload">log_json_payload() (in module pybragerone.utils)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.LoginRequest">LoginRequest (class in pybragerone.models.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.auth.html#pybragerone.models.api.auth.LoginRequest">(class in pybragerone.models.api.auth)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="M" class="genindex-section">
+  <h2>M</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.cli.html#pybragerone.cli.main">main() (in module pybragerone.cli)</a>
+</li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetIndex.menu_map">menu_map (pybragerone.models.catalog.AssetIndex attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuManager">MenuManager (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.MenuManager">(class in pybragerone.models.menu_manager)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuMeta">MenuMeta (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuMeta">(class in pybragerone.models.menu)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameter">MenuParameter (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameter">(class in pybragerone.models.menu)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameters">MenuParameters (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameters">(class in pybragerone.models.menu)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuProcessor">MenuProcessor (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.MenuProcessor">(class in pybragerone.models.menu_manager)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuResult">MenuResult (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuResult">(class in pybragerone.models.menu)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuRoute">MenuRoute (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuRoute">(class in pybragerone.models.menu)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.merge_assets_with_permissions">merge_assets_with_permissions() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.merge_assets_with_permissions">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.ParamUpdate.meta">meta (pybragerone.models.events.ParamUpdate attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuRoute.meta">(pybragerone.models.menu.MenuRoute attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuRoute.meta">(pybragerone.models.MenuRoute attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ApiResponse.model_config">model_config (pybragerone.models.api.ApiResponse attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.auth.html#pybragerone.models.api.auth.AuthResponse.model_config">(pybragerone.models.api.auth.AuthResponse attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.auth.html#pybragerone.models.api.auth.LoginRequest.model_config">(pybragerone.models.api.auth.LoginRequest attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.AuthResponse.model_config">(pybragerone.models.api.AuthResponse attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.BragerObject.model_config">(pybragerone.models.api.BragerObject attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.ApiResponse.model_config">(pybragerone.models.api.common.ApiResponse attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.Permission.model_config">(pybragerone.models.api.common.Permission attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.LoginRequest.model_config">(pybragerone.models.api.LoginRequest attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.model_config">(pybragerone.models.api.Module attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleCard.model_config">(pybragerone.models.api.ModuleCard attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleGateway.model_config">(pybragerone.models.api.ModuleGateway attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleParameterSchema.model_config">(pybragerone.models.api.ModuleParameterSchema attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.model_config">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleCard.model_config">(pybragerone.models.api.modules.ModuleCard attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleGateway.model_config">(pybragerone.models.api.modules.ModuleGateway attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleParameterSchema.model_config">(pybragerone.models.api.modules.ModuleParameterSchema attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ObjectDetails.model_config">(pybragerone.models.api.ObjectDetails attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.BragerObject.model_config">(pybragerone.models.api.objects.BragerObject attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.ObjectDetails.model_config">(pybragerone.models.api.objects.ObjectDetails attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Permission.model_config">(pybragerone.models.api.Permission attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.system.html#pybragerone.models.api.system.SystemVersion.model_config">(pybragerone.models.api.system.SystemVersion attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.SystemVersion.model_config">(pybragerone.models.api.SystemVersion attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.User.model_config">(pybragerone.models.api.User attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.user.html#pybragerone.models.api.user.User.model_config">(pybragerone.models.api.user.User attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuMeta.model_config">(pybragerone.models.menu.MenuMeta attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameter.model_config">(pybragerone.models.menu.MenuParameter attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameters.model_config">(pybragerone.models.menu.MenuParameters attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuResult.model_config">(pybragerone.models.menu.MenuResult attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuRoute.model_config">(pybragerone.models.menu.MenuRoute attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuMeta.model_config">(pybragerone.models.MenuMeta attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameter.model_config">(pybragerone.models.MenuParameter attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameters.model_config">(pybragerone.models.MenuParameters attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuResult.model_config">(pybragerone.models.MenuResult attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuRoute.model_config">(pybragerone.models.MenuRoute attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamFamilyModel.model_config">(pybragerone.models.param.ParamFamilyModel attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.model_config">(pybragerone.models.param.ParamStore attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamFamilyModel.model_config">(pybragerone.models.ParamFamilyModel attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.model_config">(pybragerone.models.ParamStore attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.Token.model_config">(pybragerone.models.Token attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.Token.model_config">(pybragerone.models.token.Token attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.model_post_init">model_post_init() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.model_post_init">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.Permission.model_validate">model_validate() (pybragerone.models.api.common.Permission class method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Permission.model_validate">(pybragerone.models.api.Permission class method)</a>
+</li>
+        </ul></li>
+        <li>
+    module
+
+        <ul>
+          <li><a href="generated/pybragerone.api.html#module-pybragerone.api">pybragerone.api</a>
+</li>
+          <li><a href="generated/pybragerone.api.client.html#module-pybragerone.api.client">pybragerone.api.client</a>
+</li>
+          <li><a href="generated/pybragerone.api.constants.html#module-pybragerone.api.constants">pybragerone.api.constants</a>
+</li>
+          <li><a href="generated/pybragerone.api.endpoints.html#module-pybragerone.api.endpoints">pybragerone.api.endpoints</a>
+</li>
+          <li><a href="generated/pybragerone.api.ws.html#module-pybragerone.api.ws">pybragerone.api.ws</a>
+</li>
+          <li><a href="generated/pybragerone.cli.html#module-pybragerone.cli">pybragerone.cli</a>
+</li>
+          <li><a href="generated/pybragerone.gateway.html#module-pybragerone.gateway">pybragerone.gateway</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#module-pybragerone.models">pybragerone.models</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#module-pybragerone.models.api">pybragerone.models.api</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.auth.html#module-pybragerone.models.api.auth">pybragerone.models.api.auth</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.common.html#module-pybragerone.models.api.common">pybragerone.models.api.common</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.modules.html#module-pybragerone.models.api.modules">pybragerone.models.api.modules</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.objects.html#module-pybragerone.models.api.objects">pybragerone.models.api.objects</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.system.html#module-pybragerone.models.api.system">pybragerone.models.api.system</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.user.html#module-pybragerone.models.api.user">pybragerone.models.api.user</a>
+</li>
+          <li><a href="generated/pybragerone.models.catalog.html#module-pybragerone.models.catalog">pybragerone.models.catalog</a>
+</li>
+          <li><a href="generated/pybragerone.models.events.html#module-pybragerone.models.events">pybragerone.models.events</a>
+</li>
+          <li><a href="generated/pybragerone.models.menu.html#module-pybragerone.models.menu">pybragerone.models.menu</a>
+</li>
+          <li><a href="generated/pybragerone.models.menu_manager.html#module-pybragerone.models.menu_manager">pybragerone.models.menu_manager</a>
+</li>
+          <li><a href="generated/pybragerone.models.param.html#module-pybragerone.models.param">pybragerone.models.param</a>
+</li>
+          <li><a href="generated/pybragerone.models.token.html#module-pybragerone.models.token">pybragerone.models.token</a>
+</li>
+          <li><a href="generated/pybragerone.utils.html#module-pybragerone.utils">pybragerone.utils</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module">Module (class in pybragerone.models.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module">(class in pybragerone.models.api.modules)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.module_card_url">module_card_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.module_url">module_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.moduleAddress">moduleAddress (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.moduleAddress">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.moduleAlarms">moduleAlarms (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.moduleAlarms">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleCard">ModuleCard (class in pybragerone.models.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleCard">(class in pybragerone.models.api.modules)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleGateway">ModuleGateway (class in pybragerone.models.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleGateway">(class in pybragerone.models.api.modules)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleCard.moduleId">moduleId (pybragerone.models.api.ModuleCard attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleCard.moduleId">(pybragerone.models.api.modules.ModuleCard attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.moduleInterface">moduleInterface (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.moduleInterface">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleParameterSchema">ModuleParameterSchema (class in pybragerone.models.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleParameterSchema">(class in pybragerone.models.api.modules)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.modules_activity_quantity_prime">modules_activity_quantity_prime() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.modules_activity_quantity_prime">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.modules_activity_quantity_url">modules_activity_quantity_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.modules_connect">modules_connect() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.modules_connect">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.modules_connect_url">modules_connect_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.modules_parameters_prime">modules_parameters_prime() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.modules_parameters_prime">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.modules_parameters_url">modules_parameters_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.modules_url">modules_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.moduleServices">moduleServices (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.moduleServices">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.moduleTitle">moduleTitle (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.moduleTitle">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.moduleVersion">moduleVersion (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.moduleVersion">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="N" class="genindex-section">
+  <h2>N</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.BragerObject.name">name (pybragerone.models.api.BragerObject attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.Permission.name">(pybragerone.models.api.common.Permission attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.name">(pybragerone.models.api.Module attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleParameterSchema.name">(pybragerone.models.api.ModuleParameterSchema attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.name">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleParameterSchema.name">(pybragerone.models.api.modules.ModuleParameterSchema attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.BragerObject.name">(pybragerone.models.api.objects.BragerObject attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Permission.name">(pybragerone.models.api.Permission attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.User.name">(pybragerone.models.api.User attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.user.html#pybragerone.models.api.user.User.name">(pybragerone.models.api.user.User attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuRoute.name">(pybragerone.models.menu.MenuRoute attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuRoute.name">(pybragerone.models.MenuRoute attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuMeta.normalize_fields">normalize_fields() (pybragerone.models.menu.MenuMeta class method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuMeta.normalize_fields">(pybragerone.models.MenuMeta class method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameter.normalize_permission">normalize_permission() (pybragerone.models.menu.MenuParameter class method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameter.normalize_permission">(pybragerone.models.MenuParameter class method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="O" class="genindex-section">
+  <h2>O</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ObjectDetails.object">object (pybragerone.models.api.ObjectDetails attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.ObjectDetails.object">(pybragerone.models.api.objects.ObjectDetails attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.object_permissions_url">object_permissions_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.object_url">object_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ObjectDetails">ObjectDetails (class in pybragerone.models.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.ObjectDetails">(class in pybragerone.models.api.objects)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.auth.html#pybragerone.models.api.auth.AuthResponse.objects">objects (pybragerone.models.api.auth.AuthResponse attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.AuthResponse.objects">(pybragerone.models.api.AuthResponse attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.Token.objects">(pybragerone.models.Token attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.Token.objects">(pybragerone.models.token.Token attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.objects_url">objects_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.gateway.html#pybragerone.gateway.BragerOneGateway.on_any">on_any() (pybragerone.gateway.BragerOneGateway method)</a>
+</li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.RealtimeManager.on_event">on_event() (pybragerone.api.RealtimeManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.ws.html#pybragerone.api.ws.RealtimeManager.on_event">(pybragerone.api.ws.RealtimeManager method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.gateway.html#pybragerone.gateway.BragerOneGateway.on_parameters_change">on_parameters_change() (pybragerone.gateway.BragerOneGateway method)</a>
+</li>
+        <li><a href="generated/pybragerone.gateway.html#pybragerone.gateway.BragerOneGateway.on_snapshot">on_snapshot() (pybragerone.gateway.BragerOneGateway method)</a>
+</li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.ParamMap.origin">origin (pybragerone.models.catalog.ParamMap attribute)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="P" class="genindex-section">
+  <h2>P</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.LiveAssetsCatalog.PARAM_CALL_RE">PARAM_CALL_RE (pybragerone.models.catalog.LiveAssetsCatalog attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.LiveAssetsCatalog.PARAM_CALL_RE">(pybragerone.models.LiveAssetsCatalog attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameter.PARAM_REGEX">PARAM_REGEX (pybragerone.models.menu.MenuParameter attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameter.PARAM_REGEX">(pybragerone.models.MenuParameter attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuMeta.parameters">parameters (pybragerone.models.menu.MenuMeta attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuRoute.parameters">(pybragerone.models.menu.MenuRoute attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuMeta.parameters">(pybragerone.models.MenuMeta attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuRoute.parameters">(pybragerone.models.MenuRoute attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.parameterSchemas">parameterSchemas (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.parameterSchemas">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamFamilyModel">ParamFamilyModel (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamFamilyModel">(class in pybragerone.models.param)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.ParamMap">ParamMap (class in pybragerone.models.catalog)</a>
+</li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore">ParamStore (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore">(class in pybragerone.models.param)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.ParamUpdate">ParamUpdate (class in pybragerone.models.events)</a>
+</li>
+        <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.RawMenuData.parsed_at">parsed_at (pybragerone.models.menu_manager.RawMenuData attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.RawMenuData.parsed_at">(pybragerone.models.RawMenuData attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.auth.html#pybragerone.models.api.auth.LoginRequest.password">password (pybragerone.models.api.auth.LoginRequest attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.LoginRequest.password">(pybragerone.models.api.LoginRequest attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuRoute.path">path (pybragerone.models.menu.MenuRoute attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuRoute.path">(pybragerone.models.MenuRoute attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.ParamMap.paths">paths (pybragerone.models.catalog.ParamMap attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Permission">Permission (class in pybragerone.models.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.Permission">(class in pybragerone.models.api.common)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuMeta.permission">permission (pybragerone.models.menu.MenuMeta attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameter.permission">(pybragerone.models.menu.MenuParameter attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuMeta.permission">(pybragerone.models.MenuMeta attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameter.permission">(pybragerone.models.MenuParameter attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.permissions">permissions (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.permissions">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.ParamUpdate.pool">pool (pybragerone.models.events.ParamUpdate attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamFamilyModel.pool">(pybragerone.models.param.ParamFamilyModel attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamFamilyModel.pool">(pybragerone.models.ParamFamilyModel attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.EventBus.publish">publish() (pybragerone.models.EventBus method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.EventBus.publish">(pybragerone.models.events.EventBus method)</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.api
+
+        <ul>
+          <li><a href="generated/pybragerone.api.html#module-pybragerone.api">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.api.client
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#module-pybragerone.api.client">module</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li>
+    pybragerone.api.constants
+
+        <ul>
+          <li><a href="generated/pybragerone.api.constants.html#module-pybragerone.api.constants">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.api.endpoints
+
+        <ul>
+          <li><a href="generated/pybragerone.api.endpoints.html#module-pybragerone.api.endpoints">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.api.ws
+
+        <ul>
+          <li><a href="generated/pybragerone.api.ws.html#module-pybragerone.api.ws">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.cli
+
+        <ul>
+          <li><a href="generated/pybragerone.cli.html#module-pybragerone.cli">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.gateway
+
+        <ul>
+          <li><a href="generated/pybragerone.gateway.html#module-pybragerone.gateway">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#module-pybragerone.models">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.api
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.html#module-pybragerone.models.api">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.api.auth
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.auth.html#module-pybragerone.models.api.auth">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.api.common
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.common.html#module-pybragerone.models.api.common">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.api.modules
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#module-pybragerone.models.api.modules">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.api.objects
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.objects.html#module-pybragerone.models.api.objects">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.api.system
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.system.html#module-pybragerone.models.api.system">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.api.user
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.user.html#module-pybragerone.models.api.user">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.catalog
+
+        <ul>
+          <li><a href="generated/pybragerone.models.catalog.html#module-pybragerone.models.catalog">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.events
+
+        <ul>
+          <li><a href="generated/pybragerone.models.events.html#module-pybragerone.models.events">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.menu
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu.html#module-pybragerone.models.menu">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.menu_manager
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu_manager.html#module-pybragerone.models.menu_manager">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.param
+
+        <ul>
+          <li><a href="generated/pybragerone.models.param.html#module-pybragerone.models.param">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.models.token
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#module-pybragerone.models.token">module</a>
+</li>
+        </ul></li>
+        <li>
+    pybragerone.utils
+
+        <ul>
+          <li><a href="generated/pybragerone.utils.html#module-pybragerone.utils">module</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="R" class="genindex-section">
+  <h2>R</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.ParamMap.raw">raw (pybragerone.models.catalog.ParamMap attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuMeta.raw_icon">raw_icon (pybragerone.models.menu.MenuMeta attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuMeta.raw_icon">(pybragerone.models.MenuMeta attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameter.raw_parameter">raw_parameter (pybragerone.models.menu.MenuParameter attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameter.raw_parameter">(pybragerone.models.MenuParameter attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuMeta.raw_permission">raw_permission (pybragerone.models.menu.MenuMeta attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameter.raw_permission">(pybragerone.models.menu.MenuParameter attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuMeta.raw_permission">(pybragerone.models.MenuMeta attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameter.raw_permission">(pybragerone.models.MenuParameter attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.RawMenuData">RawMenuData (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.RawMenuData">(class in pybragerone.models.menu_manager)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameters.read">read (pybragerone.models.menu.MenuParameters attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameters.read">(pybragerone.models.MenuParameters attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.RealtimeManager">RealtimeManager (class in pybragerone.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.ws.html#pybragerone.api.ws.RealtimeManager">(class in pybragerone.api.ws)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.LiveAssetsCatalog.refresh_index">refresh_index() (pybragerone.models.catalog.LiveAssetsCatalog method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.LiveAssetsCatalog.refresh_index">(pybragerone.models.LiveAssetsCatalog method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.Token.refresh_token">refresh_token (pybragerone.models.Token attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.Token.refresh_token">(pybragerone.models.token.Token attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.auth.html#pybragerone.models.api.auth.AuthResponse.refreshToken">refreshToken (pybragerone.models.api.auth.AuthResponse attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.AuthResponse.refreshToken">(pybragerone.models.api.AuthResponse attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.resolve_label">resolve_label() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.resolve_label">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.resolve_unit">resolve_unit() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.resolve_unit">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.RealtimeManager.resubscribe">resubscribe() (pybragerone.api.RealtimeManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.ws.html#pybragerone.api.ws.RealtimeManager.resubscribe">(pybragerone.api.ws.RealtimeManager method)</a>
+</li>
+          <li><a href="generated/pybragerone.gateway.html#pybragerone.gateway.BragerOneGateway.resubscribe">(pybragerone.gateway.BragerOneGateway method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.revoke">revoke() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.revoke">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuResult.route_count">route_count() (pybragerone.models.menu.MenuResult method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.RawMenuData.route_count">(pybragerone.models.menu_manager.RawMenuData method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuResult.route_count">(pybragerone.models.MenuResult method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.RawMenuData.route_count">(pybragerone.models.RawMenuData method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuResult.routes">routes (pybragerone.models.menu.MenuResult attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.RawMenuData.routes">(pybragerone.models.menu_manager.RawMenuData attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuResult.routes">(pybragerone.models.MenuResult attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.RawMenuData.routes">(pybragerone.models.RawMenuData attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuResult.routes_by_path">routes_by_path() (pybragerone.models.menu.MenuResult method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuResult.routes_by_path">(pybragerone.models.MenuResult method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.cli.html#pybragerone.cli.run">run() (in module pybragerone.cli)</a>
+</li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.run_with_bus">run_with_bus() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.run_with_bus">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="S" class="genindex-section">
+  <h2>S</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.CLITokenStore.save">save() (pybragerone.models.CLITokenStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.CLITokenStore.save">(pybragerone.models.token.CLITokenStore method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.HATokenStore.save">(pybragerone.models.token.HATokenStore method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.TokenStore.save">(pybragerone.models.token.TokenStore method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.TokenStore.save">(pybragerone.models.TokenStore method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.utils.html#pybragerone.utils.save_json_payload">save_json_payload() (in module pybragerone.utils)</a>
+</li>
+        <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.ParamUpdate.seq">seq (pybragerone.models.events.ParamUpdate attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.CLITokenStore.service">service (pybragerone.models.CLITokenStore attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.CLITokenStore.service">(pybragerone.models.token.CLITokenStore attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.Module.services">services (pybragerone.models.api.Module attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.Module.services">(pybragerone.models.api.modules.Module attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamFamilyModel.set">set() (pybragerone.models.param.ParamFamilyModel method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamFamilyModel.set">(pybragerone.models.ParamFamilyModel method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.BragerOneApiClient.set_token_store">set_token_store() (pybragerone.api.BragerOneApiClient method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.BragerOneApiClient.set_token_store">(pybragerone.api.client.BragerOneApiClient method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.User.show_rate_us_modal">show_rate_us_modal (pybragerone.models.api.User attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.user.html#pybragerone.models.api.user.User.show_rate_us_modal">(pybragerone.models.api.user.User attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.RealtimeManager.sid">sid() (pybragerone.api.RealtimeManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.ws.html#pybragerone.api.ws.RealtimeManager.sid">(pybragerone.api.ws.RealtimeManager method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.utils.html#pybragerone.utils.spawn">spawn() (in module pybragerone.utils)</a>
+</li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameters.special">special (pybragerone.models.menu.MenuParameters attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameters.special">(pybragerone.models.MenuParameters attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.gateway.html#pybragerone.gateway.BragerOneGateway.start">start() (pybragerone.gateway.BragerOneGateway method)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ApiResponse.status">status (pybragerone.models.api.ApiResponse attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.common.html#pybragerone.models.api.common.ApiResponse.status">(pybragerone.models.api.common.ApiResponse attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ObjectDetails.status">(pybragerone.models.api.ObjectDetails attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.objects.html#pybragerone.models.api.objects.ObjectDetails.status">(pybragerone.models.api.objects.ObjectDetails attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameters.status">(pybragerone.models.menu.MenuParameters attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameters.status">(pybragerone.models.MenuParameters attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.ParamMap.status_conditions">status_conditions (pybragerone.models.catalog.ParamMap attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.ParamMap.status_flags">status_flags (pybragerone.models.catalog.ParamMap attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamFamilyModel.status_raw">status_raw (pybragerone.models.param.ParamFamilyModel property)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamFamilyModel.status_raw">(pybragerone.models.ParamFamilyModel property)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.gateway.html#pybragerone.gateway.BragerOneGateway.stop">stop() (pybragerone.gateway.BragerOneGateway method)</a>
+</li>
+        <li><a href="generated/pybragerone.models.menu_manager.html#pybragerone.models.menu_manager.MenuManager.store_raw_menu">store_raw_menu() (pybragerone.models.menu_manager.MenuManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuManager.store_raw_menu">(pybragerone.models.MenuManager method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuMeta.store_raw_values">store_raw_values() (pybragerone.models.menu.MenuMeta method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuMeta.store_raw_values">(pybragerone.models.MenuMeta method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.html#pybragerone.api.RealtimeManager.subscribe">subscribe() (pybragerone.api.RealtimeManager method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.api.ws.html#pybragerone.api.ws.RealtimeManager.subscribe">(pybragerone.api.ws.RealtimeManager method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.EventBus.subscribe">(pybragerone.models.EventBus method)</a>
+</li>
+          <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.EventBus.subscribe">(pybragerone.models.events.EventBus method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.utils.html#pybragerone.utils.summarize_top_level">summarize_top_level() (in module pybragerone.utils)</a>
+</li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.system_version_url">system_version_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.SystemVersion">SystemVersion (class in pybragerone.models.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.system.html#pybragerone.models.api.system.SystemVersion">(class in pybragerone.models.api.system)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="T" class="genindex-section">
+  <h2>T</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.Token">Token (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.Token">(class in pybragerone.models.token)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameter.token">token (pybragerone.models.menu.MenuParameter attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameter.token">(pybragerone.models.MenuParameter attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuResult.token_count">token_count() (pybragerone.models.menu.MenuResult method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuResult.token_count">(pybragerone.models.MenuResult method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.Token.token_type">token_type (pybragerone.models.Token attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.Token.token_type">(pybragerone.models.token.Token attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.TokenStore">TokenStore (class in pybragerone.models)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.TokenStore">(class in pybragerone.models.token)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.TranslationConfig">TranslationConfig (class in pybragerone.models.catalog)</a>
+</li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.TranslationConfig.translations">translations (pybragerone.models.catalog.TranslationConfig attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.ParamUpdate.ts">ts (pybragerone.models.events.ParamUpdate attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.auth.html#pybragerone.models.api.auth.AuthResponse.type">type (pybragerone.models.api.auth.AuthResponse attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.AuthResponse.type">(pybragerone.models.api.AuthResponse attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="U" class="genindex-section">
+  <h2>U</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamFamilyModel.unit_code">unit_code (pybragerone.models.param.ParamFamilyModel property)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamFamilyModel.unit_code">(pybragerone.models.ParamFamilyModel property)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.ParamMap.units">units (pybragerone.models.catalog.ParamMap attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.api.client.html#pybragerone.api.client.HttpCache.update">update() (pybragerone.api.client.HttpCache method)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleCard.updatedAt">updatedAt (pybragerone.models.api.ModuleCard attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleCard.updatedAt">(pybragerone.models.api.modules.ModuleCard attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamStore.upsert">upsert() (pybragerone.models.param.ParamStore method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamStore.upsert">(pybragerone.models.ParamStore method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.catalog.html#pybragerone.models.catalog.AssetRef.url">url (pybragerone.models.catalog.AssetRef attribute)</a>
+</li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.User">User (class in pybragerone.models.api)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.user.html#pybragerone.models.api.user.User">(class in pybragerone.models.api.user)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.auth.html#pybragerone.models.api.auth.AuthResponse.user">user (pybragerone.models.api.auth.AuthResponse attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.AuthResponse.user">(pybragerone.models.api.AuthResponse attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.html#pybragerone.models.Token.user_id">user_id (pybragerone.models.Token attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.token.html#pybragerone.models.token.Token.user_id">(pybragerone.models.token.Token attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.user_permissions_url">user_permissions_url() (in module pybragerone.api.endpoints)</a>
+</li>
+        <li><a href="generated/pybragerone.api.endpoints.html#pybragerone.api.endpoints.user_url">user_url() (in module pybragerone.api.endpoints)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="V" class="genindex-section">
+  <h2>V</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameter.validate_token_extracted">validate_token_extracted() (pybragerone.models.menu.MenuParameter method)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameter.validate_token_extracted">(pybragerone.models.MenuParameter method)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleParameterSchema.value">value (pybragerone.models.api.ModuleParameterSchema attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleParameterSchema.value">(pybragerone.models.api.modules.ModuleParameterSchema attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.FeatureChanged.value">(pybragerone.models.events.FeatureChanged attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.events.html#pybragerone.models.events.ParamUpdate.value">(pybragerone.models.events.ParamUpdate attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.param.html#pybragerone.models.param.ParamFamilyModel.value">(pybragerone.models.param.ParamFamilyModel property)</a>
+</li>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.ParamFamilyModel.value">(pybragerone.models.ParamFamilyModel property)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.ModuleGateway.version">version (pybragerone.models.api.ModuleGateway attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.api.modules.html#pybragerone.models.api.modules.ModuleGateway.version">(pybragerone.models.api.modules.ModuleGateway attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.system.html#pybragerone.models.api.system.SystemVersion.version">(pybragerone.models.api.system.SystemVersion attribute)</a>
+</li>
+          <li><a href="generated/pybragerone.models.api.html#pybragerone.models.api.SystemVersion.version">(pybragerone.models.api.SystemVersion attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="W" class="genindex-section">
+  <h2>W</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/pybragerone.models.menu.html#pybragerone.models.menu.MenuParameters.write">write (pybragerone.models.menu.MenuParameters attribute)</a>
+
+        <ul>
+          <li><a href="generated/pybragerone.models.html#pybragerone.models.MenuParameters.write">(pybragerone.models.MenuParameters attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2025, MarPi82
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=7026087e"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.4/dist/mermaid-layout-elk.esm.min.mjs"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs";import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.4/dist/mermaid-layout-elk.esm.min.mjs";mermaid.registerLayoutLoaders(elkLayouts);mermaid.initialize({startOnLoad:false});</script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs";
+window.addEventListener("load", () => mermaid.run());
+</script>
+    </body>
+</html>

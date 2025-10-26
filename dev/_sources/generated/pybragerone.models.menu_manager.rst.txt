@@ -1,0 +1,14 @@
+pybragerone.models.menu\_manager
+================================
+
+.. automodule:: pybragerone.models.menu_manager
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      MenuManager
+      MenuProcessor
+      RawMenuData
+   

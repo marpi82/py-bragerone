@@ -1,0 +1,16 @@
+pybragerone.models.catalog
+==========================
+
+.. automodule:: pybragerone.models.catalog
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      AssetIndex
+      AssetRef
+      LiveAssetsCatalog
+      ParamMap
+      TranslationConfig
+   

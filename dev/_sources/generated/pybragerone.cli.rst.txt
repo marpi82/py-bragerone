@@ -1,0 +1,14 @@
+﻿pybragerone.cli
+===============
+
+.. automodule:: pybragerone.cli
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      build_parser
+      main
+      run
+   

@@ -1,0 +1,13 @@
+pybragerone.api.ws
+==================
+
+.. automodule:: pybragerone.api.ws
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      EventDispatcher
+      RealtimeManager
+   

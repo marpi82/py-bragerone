@@ -1,0 +1,16 @@
+﻿pybragerone.api
+===============
+
+.. automodule:: pybragerone.api
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   client
+   constants
+   endpoints
+   ws

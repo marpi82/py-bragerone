@@ -1,0 +1,893 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Param Store Metadata Reference" href="param_store_metadata.html"><link rel="prev" title="pybragerone – Quick Cheatsheet" href="pybragerone_integration_cheatsheet.html">
+
+    <!-- Generated with Sphinx 8.2.3 and Furo 2025.09.25 -->
+        <title>pybragerone – Integration Notes - pybragerone 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=580074bf" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">pybragerone 0.0.0 documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+  
+  <span class="sidebar-brand-text">pybragerone 0.0.0 documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="README.html">pybragerone</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html">pybragerone – Quick Cheatsheet</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#tl-dr">TL;DR</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#key-objects">Key Objects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#paramstore-modes">ParamStore Modes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#ha-integration-flow">HA Integration Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#parameter-semantics">Parameter Semantics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#entity-guidelines">Entity Guidelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#operational-tips">Operational Tips</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#cli-hints">CLI Hints</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#parsers-ha-glue-tl-dr">Parsers + HA Glue TL;DR</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">pybragerone – Integration Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#core-principles">Core Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#architecture-high-level">Architecture (High-Level)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#data-model-semantics">Data Model &amp; Semantics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#paramstore">ParamStore</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#eventbus">EventBus</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#ha-integration-flow">HA Integration Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#entity-patterns-ha">Entity Patterns (HA)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#rest-endpoints-used-by-library">REST Endpoints (used by library)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#error-handling-robustness">Error Handling &amp; Robustness</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#logging-debugging">Logging &amp; Debugging</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#security-headers">Security &amp; Headers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#performance-notes">Performance Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#versioning-types">Versioning &amp; Types</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#cli-developer-utility">CLI (Developer Utility)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#future-work-todo">Future Work / TODO</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#appendix-minimal-interfaces">Appendix: Minimal Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#parsers-glue-integration">Parsers &amp; Glue: Integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="param_store_metadata.html">Param Store Metadata Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="api.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="generated/pybragerone.api.html">pybragerone.api</a><input aria-label="Toggle navigation of pybragerone.api" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.api.client.html">pybragerone.api.client</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.api.constants.html">pybragerone.api.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.api.endpoints.html">pybragerone.api.endpoints</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.api.ws.html">pybragerone.api.ws</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="generated/pybragerone.cli.html">pybragerone.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/pybragerone.gateway.html">pybragerone.gateway</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="generated/pybragerone.models.html">pybragerone.models</a><input aria-label="Toggle navigation of pybragerone.models" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="generated/pybragerone.models.api.html">pybragerone.models.api</a><input aria-label="Toggle navigation of pybragerone.models.api" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.auth.html">pybragerone.models.api.auth</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.common.html">pybragerone.models.api.common</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.modules.html">pybragerone.models.api.modules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.objects.html">pybragerone.models.api.objects</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.system.html">pybragerone.models.api.system</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.user.html">pybragerone.models.api.user</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.catalog.html">pybragerone.models.catalog</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.events.html">pybragerone.models.events</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.menu.html">pybragerone.models.menu</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.menu_manager.html">pybragerone.models.menu_manager</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.param.html">pybragerone.models.param</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.token.html">pybragerone.models.token</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="generated/pybragerone.utils.html">pybragerone.utils</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="new_models.html">New API Models Summary</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#id1">Changelog</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="_sources/pybragerone_integration_notes.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="pybragerone-integration-notes">
+<h1>pybragerone – Integration Notes<a class="headerlink" href="#pybragerone-integration-notes" title="Link to this heading">¶</a></h1>
+<p><strong>Last Updated:</strong> 2025-10-26
+<strong>Scope:</strong> Library architecture (REST/WS, EventBus, ParamStore), Home Assistant integration flow, debugging &amp; ops.
+<strong>Audience:</strong> Developers of <code class="xref py py-mod docutils literal notranslate"><span class="pre">pybragerone</span></code> and HA component maintainers.</p>
+</section>
+<section id="overview">
+<h1>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">pybragerone</span></code> integrates with the BragerOne backend using a lean runtime architecture.
+The key idea is to <strong>prime</strong> the state via REST, then keep it <strong>fresh</strong> via WebSocket deltas.
+In HA, we run as light as possible; rich metadata (via LiveAssetsCatalog) is used only at config time.</p>
+</section>
+<section id="core-principles">
+<h1>Core Principles<a class="headerlink" href="#core-principles" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p><strong>Prime is mandatory</strong> at startup and after reconnect. WebSocket does <strong>not</strong> provide a snapshot.</p></li>
+<li><p>Runtime is <strong>event-driven</strong> with a <strong>multicast EventBus</strong> (per-subscriber queue, FIFO).</p></li>
+<li><p><strong>ParamStore</strong> provides two usage modes:</p>
+<ul>
+<li><p><strong>Lightweight mode</strong> (runtime): Simple key→value store, minimal overhead, ignores meta-only events.</p></li>
+<li><p><strong>Asset-aware mode</strong> (config): Integration with LiveAssetsCatalog for rich metadata (labels/units/enums).</p></li>
+</ul>
+</li>
+<li><p>Consistent, explicit parameter addressing: <code class="docutils literal notranslate"><span class="pre">P&lt;n&gt;.&lt;chan&gt;&lt;idx&gt;</span></code> (e.g. <code class="docutils literal notranslate"><span class="pre">P4.v1</span></code>).</p></li>
+<li><p>Minimal coupling between WS flow and HA entities; HA entities rely on immutable references.</p></li>
+</ul>
+</section>
+<section id="architecture-high-level">
+<h1>Architecture (High-Level)<a class="headerlink" href="#architecture-high-level" title="Link to this heading">¶</a></h1>
+<pre  class="mermaid">
+        graph TB
+    subgraph &quot;External Services&quot;
+        Backend[&quot;🌐 BragerOne backend&lt;br/&gt;(io.brager.pl)&quot;]
+    end
+
+    subgraph &quot;pybragerone Core&quot;
+        API[&quot;📡 BragerOneApiClient&lt;br/&gt;(httpx)&quot;]
+        Gateway[&quot;🚪 BragerOneGateway&quot;]
+        Bus[&quot;📢 EventBus&lt;br/&gt;(multicast; per-subscriber queues)&quot;]
+    end
+
+    subgraph &quot;Data Layer&quot;
+        ParamStore[&quot;💾 ParamStore&lt;br/&gt;(runtime lightweight)&lt;br/&gt;OR (config asset-aware)&quot;]
+        Catalog[&quot;�️ LiveAssetsCatalog&lt;br/&gt;(optional; for i18n/metadata)&quot;]
+    end
+
+    subgraph &quot;Consumers&quot;
+        HA[&quot;🏠 Home Assistant Entities&lt;br/&gt;(binary_sensor, number, ...)&quot;]
+        Printer[&quot;🖨️ Printer&lt;br/&gt;(optional debug/CLI)&quot;]
+    end
+
+    %% Main data flow
+    API &lt;--&gt;|&quot;REST&lt;br/&gt;prime parameters&quot;| Backend
+    API --&gt;|&quot;WS (socket.io)&lt;br/&gt;subscribe&quot;| Gateway
+    Backend --&gt;|&quot;WS change events&quot;| Gateway
+    Gateway --&gt;|&quot;publish()&quot;| Bus
+
+    %% Store connections
+    Bus --&gt; ParamStore
+    Bus --&gt; Printer
+
+    %% Asset catalog (optional)
+    API -.-&gt; Catalog
+    Catalog -.-&gt; ParamStore
+
+    %% HA integration
+    ParamStore --&gt; HA
+    Catalog -.-&gt;|&quot;descriptors built&lt;br/&gt;(config only)&quot;| HA
+
+    %% Styling
+    classDef external fill:#e1f5fe
+    classDef core fill:#f3e5f5
+    classDef store fill:#e8f5e8
+    classDef consumer fill:#fff3e0
+
+    class Backend external
+    class API,Gateway,Bus core
+    class ParamStore,Catalog store
+    class HA,Printer consumer
+    </pre></section>
+<section id="data-model-semantics">
+<h1>Data Model &amp; Semantics<a class="headerlink" href="#data-model-semantics" title="Link to this heading">¶</a></h1>
+<section id="parameter-key-format">
+<h2>Parameter key format<a class="headerlink" href="#parameter-key-format" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">P&lt;n&gt;.&lt;chan&gt;&lt;idx&gt;</span></code> – examples: <code class="docutils literal notranslate"><span class="pre">P4.v1</span></code>, <code class="docutils literal notranslate"><span class="pre">P5.s40</span></code>, <code class="docutils literal notranslate"><span class="pre">P6.u13</span></code></p></li>
+<li><p>Channels:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">v</span></code> – value (primary reading / setpoint)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">s</span></code> – status (bitmask; per-bit entities possible)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">u</span></code> – unit code or enum index</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">n</span></code> / <code class="docutils literal notranslate"><span class="pre">x</span></code> – min / max</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">t</span></code> – type (when present)</p></li>
+<li><p>additional channels may appear; treat them generically</p></li>
+</ul>
+</li>
+<li><p>Status bit handling: read mask from <code class="docutils literal notranslate"><span class="pre">P*.s*</span></code> and map a single bit to a binary entity.</p></li>
+</ul>
+</section>
+<section id="prime-responses">
+<h2>Prime Responses<a class="headerlink" href="#prime-responses" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/modules/parameters</span></code> (prime parameters) returns a <strong>full snapshot</strong>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/modules/activity/quantity</span></code> (prime activity) returns activity counters; useful for logs/diagnostics.</p></li>
+<li><p>Some entries may be <strong>meta-only</strong> (e.g. <code class="docutils literal notranslate"><span class="pre">{&quot;storable&quot;:</span> <span class="pre">1}</span></code>); treat these as <em>meta</em>, not as values.</p></li>
+</ul>
+</section>
+<section id="event-normalization">
+<h2>Event Normalization<a class="headerlink" href="#event-normalization" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Gateway flattens any payload to <code class="xref py py-class docutils literal notranslate"><span class="pre">ParamUpdate</span></code> with <strong>two parts</strong>:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">value</span></code> – actual value or <code class="docutils literal notranslate"><span class="pre">None</span></code> if not present</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">meta</span></code> – everything else (timestamps, <code class="docutils literal notranslate"><span class="pre">storable</span></code>, averages, …)</p></li>
+</ul>
+</li>
+<li><p><code class="xref py py-class docutils literal notranslate"><span class="pre">ParamStore</span></code> in <strong>lightweight mode</strong> ignores events with <code class="docutils literal notranslate"><span class="pre">value</span> <span class="pre">is</span> <span class="pre">None</span></code>.</p></li>
+<li><p><code class="xref py py-class docutils literal notranslate"><span class="pre">ParamStore</span></code> in <strong>asset-aware mode</strong> can process metadata when integrated with LiveAssetsCatalog.</p></li>
+</ul>
+</section>
+</section>
+<section id="paramstore">
+<h1>ParamStore<a class="headerlink" href="#paramstore" title="Link to this heading">¶</a></h1>
+<p>ParamStore provides two operational modes depending on your needs:</p>
+<section id="lightweight-mode-runtime">
+<h2>Lightweight Mode (runtime)<a class="headerlink" href="#lightweight-mode-runtime" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><strong>Purpose</strong>: Fast, minimal-overhead key→value storage for HA runtime entities.</p></li>
+<li><p><strong>Responsibilities</strong>:</p>
+<ul>
+<li><p>Maintain a dictionary <code class="docutils literal notranslate"><span class="pre">&quot;P4.v1&quot;</span> <span class="pre">-&gt;</span> <span class="pre">20</span></code> (simple key→value).</p></li>
+<li><p>Provide <code class="xref py py-meth docutils literal notranslate"><span class="pre">flatten()</span></code> for diagnostics / exporting.</p></li>
+<li><p><strong>Ignore meta-only updates</strong> (where <code class="docutils literal notranslate"><span class="pre">value</span> <span class="pre">is</span> <span class="pre">None</span></code>).</p></li>
+</ul>
+</li>
+<li><p><strong>Usage</strong>: Default mode, no setup required.</p></li>
+<li><p><strong>Recommended for HA entities</strong>:</p>
+<ul>
+<li><p>Numeric entity: <code class="docutils literal notranslate"><span class="pre">native_value</span> <span class="pre">=</span> <span class="pre">param_store.get(&quot;P4.v1&quot;)</span></code></p></li>
+<li><p>Binary entity (status-bit): <code class="docutils literal notranslate"><span class="pre">is_on</span> <span class="pre">=</span> <span class="pre">bool(param_store.get(&quot;P5.s40&quot;)</span> <span class="pre">&amp;</span> <span class="pre">(1</span> <span class="pre">&lt;&lt;</span> <span class="pre">bit))</span></code></p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="asset-aware-mode-configuration-time">
+<h2>Asset-Aware Mode (configuration-time)<a class="headerlink" href="#asset-aware-mode-configuration-time" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><strong>Purpose</strong>: Rich metadata integration for config flows and entity setup.</p></li>
+<li><p><strong>Activation</strong>: Call <code class="docutils literal notranslate"><span class="pre">param_store.init_with_api(api,</span> <span class="pre">lang=&quot;pl&quot;)</span></code> to enable LiveAssetsCatalog.</p></li>
+<li><p><strong>Responsibilities</strong>:</p>
+<ul>
+<li><p>Keep per-device/per-family rich models (Pydantic v2).</p></li>
+<li><p>Provide i18n labels, units, enums via asset catalog parsing.</p></li>
+<li><p>Support menu generation with permission filtering.</p></li>
+<li><p>Provide methods: <code class="docutils literal notranslate"><span class="pre">get_menu()</span></code>, <code class="docutils literal notranslate"><span class="pre">get_label()</span></code>, <code class="docutils literal notranslate"><span class="pre">get_unit()</span></code>, etc.</p></li>
+</ul>
+</li>
+<li><p><strong>Used in config flow</strong> and <strong>reconfigure</strong> to build <strong>entity descriptors</strong>:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">unique_id</span></code> (stable): <code class="docutils literal notranslate"><span class="pre">bragerone_{devid}_{pool}_{chan}{idx}</span></code> (<code class="docutils literal notranslate"><span class="pre">_bitN</span></code> for bit entities).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">label</span></code> from i18n (e.g. <code class="docutils literal notranslate"><span class="pre">parameters.PARAM_0</span></code> → <code class="docutils literal notranslate"><span class="pre">&quot;Nastawa</span> <span class="pre">kotła&quot;</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">unit</span></code> from i18n (e.g. unit code → <code class="docutils literal notranslate"><span class="pre">&quot;°C&quot;</span></code>) or <strong>enum mapping</strong> when unit is an enum.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">min/max/step</span></code> and status-bit annotations when applicable.</p></li>
+<li><p>Immutable reference: <code class="docutils literal notranslate"><span class="pre">pool,</span> <span class="pre">chan,</span> <span class="pre">idx</span></code> (+ optional <code class="docutils literal notranslate"><span class="pre">bit</span></code>).</p></li>
+</ul>
+</li>
+</ul>
+</section>
+</section>
+<section id="eventbus">
+<h1>EventBus<a class="headerlink" href="#eventbus" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p>Multicast: each subscriber gets its own <a class="reference external" href="https://docs.python.org/3/library/asyncio-queue.html#asyncio.Queue" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">asyncio.Queue</span></code></a>; <code class="xref py py-meth docutils literal notranslate"><span class="pre">publish()</span></code> enqueues to <strong>all</strong>.</p></li>
+<li><p>FIFO ordering per subscriber.</p></li>
+<li><p>No history replay – subscribe <strong>before</strong> prime if you need to observe it.</p></li>
+</ul>
+</section>
+<section id="ha-integration-flow">
+<h1>HA Integration Flow<a class="headerlink" href="#ha-integration-flow" title="Link to this heading">¶</a></h1>
+<section id="config-flow-no-ws-required">
+<h2>Config Flow (no WS required)<a class="headerlink" href="#config-flow-no-ws-required" title="Link to this heading">¶</a></h2>
+<ol class="arabic simple">
+<li><p>Login via REST; user selects <code class="docutils literal notranslate"><span class="pre">object_id</span></code> and desired modules/devices.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">prime</span> <span class="pre">parameters</span></code> via REST; ingest into <strong>ParamStore</strong> with asset-aware mode (no WS needed here).</p></li>
+<li><p>Use ParamStore methods (<code class="docutils literal notranslate"><span class="pre">get_menu()</span></code>, <code class="docutils literal notranslate"><span class="pre">get_label()</span></code>, etc.) to enrich metadata from LiveAssetsCatalog.</p></li>
+<li><p>Build <strong>entity descriptors</strong> and store in <code class="docutils literal notranslate"><span class="pre">config_entry.data</span></code> (and/or options).</p></li>
+</ol>
+</section>
+<section id="runtime">
+<h2>Runtime<a class="headerlink" href="#runtime" title="Link to this heading">¶</a></h2>
+<ol class="arabic simple">
+<li><p>Create Gateway + <strong>ParamStore</strong> (lightweight mode for runtime performance).</p></li>
+<li><p>Connect WS, <code class="docutils literal notranslate"><span class="pre">modules.connect</span></code>, subscribe (<code class="docutils literal notranslate"><span class="pre">parameters:listen</span></code>, <code class="docutils literal notranslate"><span class="pre">activity:quantity:listen</span></code>).</p></li>
+<li><p><strong>Prime via REST</strong> → ingest into EventBus → ParamStore filled immediately.</p></li>
+<li><p>WS delivers deltas; entities update on <code class="docutils literal notranslate"><span class="pre">ParamUpdate</span></code> (match by ref).</p></li>
+</ol>
+</section>
+<section id="reconnect">
+<h2>Reconnect<a class="headerlink" href="#reconnect" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>On WS reconnect: run the same sequence: subscribe → <strong>prime via REST</strong> → ingest → resume deltas.</p></li>
+</ul>
+</section>
+</section>
+<section id="entity-patterns-ha">
+<h1>Entity Patterns (HA)<a class="headerlink" href="#entity-patterns-ha" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p><strong>Sensors/Numbers</strong>:</p>
+<ul>
+<li><p>Read: <code class="docutils literal notranslate"><span class="pre">param_store.get(&quot;P4.v1&quot;)</span></code></p></li>
+<li><p>Write (setters): POST to appropriate REST endpoint (group/number inferred from mapping, e.g. from parsed PARAM_*).</p></li>
+</ul>
+</li>
+<li><p><strong>Binary Sensors</strong> (status bits):</p>
+<ul>
+<li><p>Read: mask from <code class="docutils literal notranslate"><span class="pre">param_store.get(&quot;P5.s40&quot;)</span></code></p></li>
+<li><p>Computation: <code class="docutils literal notranslate"><span class="pre">bool(mask</span> <span class="pre">&amp;</span> <span class="pre">(1</span> <span class="pre">&lt;&lt;</span> <span class="pre">bit))</span></code></p></li>
+</ul>
+</li>
+<li><p><strong>Enums</strong>:</p>
+<ul>
+<li><p>If unit denotes enum: <code class="docutils literal notranslate"><span class="pre">value</span></code> is an <strong>index</strong> → map to localized text via enum map.</p></li>
+</ul>
+</li>
+<li><p><strong>Unique IDs</strong>:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">bragerone_{devid}_{pool}_{chan}{idx}</span></code> (<code class="docutils literal notranslate"><span class="pre">_bitN</span></code> suffix for bit entities).</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="rest-endpoints-used-by-library">
+<h1>REST Endpoints (used by library)<a class="headerlink" href="#rest-endpoints-used-by-library" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p>Auth:
+- <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/auth/user</span></code> – login → returns <code class="docutils literal notranslate"><span class="pre">accessToken</span></code>, <code class="docutils literal notranslate"><span class="pre">refreshToken</span></code>, <code class="docutils literal notranslate"><span class="pre">expiresAt</span></code>, and user objects list.
+- <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/auth/revoke</span></code> – logout (clean session).</p></li>
+<li><p>User &amp; permissions:
+- <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/user</span></code>, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/user/permissions</span></code></p></li>
+<li><p>Objects:
+- <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/objects</span></code>, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/objects/{id}</span></code>, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/objects/{id}/permissions</span></code></p></li>
+<li><p>Modules:
+- <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/modules?page=...&amp;limit=...&amp;group_id=...</span></code> (module list incl. <code class="docutils literal notranslate"><span class="pre">parameterSchemas</span></code>)
+- <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/modules/connect</span></code> (link WS <code class="docutils literal notranslate"><span class="pre">sid</span></code> + modules (+ group_id))
+- <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/modules/parameters</span></code> (<strong>prime snapshot</strong>)
+- <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/modules/activity/quantity</span></code> (diagnostics/metrics)</p></li>
+</ul>
+</section>
+<section id="error-handling-robustness">
+<h1>Error Handling &amp; Robustness<a class="headerlink" href="#error-handling-robustness" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p>Treat <strong>401/403</strong> as token/session problems → refresh/login and retry once.</p></li>
+<li><p>For prime calls add a small retry with backoff (e.g. 200→500→800 ms).</p></li>
+<li><p>WS reconnect should <strong>always</strong> re-run prime via REST (no WS snapshot available).</p></li>
+<li><p>In EventBus consumers (e.g., <code class="xref py py-class docutils literal notranslate"><span class="pre">ParamStore</span></code>), <strong>never</strong> let exceptions kill the task:
+catch and log, continue processing.</p></li>
+</ul>
+</section>
+<section id="logging-debugging">
+<h1>Logging &amp; Debugging<a class="headerlink" href="#logging-debugging" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p>For large JSONs use single-line preview and optional file dump:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">json.dumps(...,</span> <span class="pre">separators=(',',</span> <span class="pre">':'),</span> <span class="pre">ensure_ascii=False)</span></code> to avoid linebreaks.</p></li>
+<li><p>Save raw prime payloads to files for inspection.</p></li>
+</ul>
+</li>
+<li><p>Useful diagnostics:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">param_store.flatten()</span></code> size and sample keys.</p></li>
+<li><p>Compare values between different parameter families using ParamStore keys.</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="security-headers">
+<h1>Security &amp; Headers<a class="headerlink" href="#security-headers" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Authorization:</span> <span class="pre">Bearer</span> <span class="pre">&lt;TOKEN&gt;</span></code> for authorized endpoints.</p></li>
+<li><p>Browser-origin headers (<code class="docutils literal notranslate"><span class="pre">Origin</span></code>, <code class="docutils literal notranslate"><span class="pre">Referer</span></code>) sometimes expected by backend; replicate as needed.</p></li>
+<li><p>WS connects to <code class="docutils literal notranslate"><span class="pre">/socket.io</span></code> with namespace <code class="docutils literal notranslate"><span class="pre">/ws</span></code>; link via <code class="docutils literal notranslate"><span class="pre">/v1/modules/connect</span></code> using the <strong>namespace SID</strong>.</p></li>
+</ul>
+</section>
+<section id="performance-notes">
+<h1>Performance Notes<a class="headerlink" href="#performance-notes" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p>Runtime is driven by <code class="xref py py-class docutils literal notranslate"><span class="pre">ParamStore</span></code>; O(1) updates and reads.</p></li>
+<li><p>Avoid holding heavy structures in HA runtime; keep enum/unit/i18n in entity attributes saved during config flow.</p></li>
+<li><p>Consider a small rate limiter (semaphore) for write commands to respect backend pacing.</p></li>
+</ul>
+</section>
+<section id="versioning-types">
+<h1>Versioning &amp; Types<a class="headerlink" href="#versioning-types" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p>Models target <strong>Pydantic v2</strong>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">u</span></code> type may be <code class="docutils literal notranslate"><span class="pre">int</span> <span class="pre">|</span> <span class="pre">str</span> <span class="pre">|</span> <span class="pre">None</span></code> (unit code or enum name/index), be tolerant in parsing.</p></li>
+<li><p><code class="xref py py-class docutils literal notranslate"><span class="pre">ParamUpdate</span></code> carries <code class="docutils literal notranslate"><span class="pre">value</span></code> (or <code class="docutils literal notranslate"><span class="pre">None</span></code>) <strong>and</strong> <code class="docutils literal notranslate"><span class="pre">meta</span></code> (dict).</p></li>
+</ul>
+</section>
+<section id="cli-developer-utility">
+<h1>CLI (Developer Utility)<a class="headerlink" href="#cli-developer-utility" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p>Flags (example suggestions):</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">--debug</span></code> – verbose logs</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--raw-ws</span></code> – log raw WS payloads</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--dump-store</span></code> – write <code class="docutils literal notranslate"><span class="pre">param_store.json</span></code> and <code class="docutils literal notranslate"><span class="pre">state_store.json</span></code></p></li>
+</ul>
+</li>
+<li><p>Typical workflow:</p>
+<ol class="arabic simple">
+<li><p>Login (REST), pick <code class="docutils literal notranslate"><span class="pre">object_id</span></code>/modules.</p></li>
+<li><p>Start gateway → prime→ingest → observe <code class="docutils literal notranslate"><span class="pre">↺</span> <span class="pre">P*.v*</span> <span class="pre">=</span> <span class="pre">...</span></code> lines.</p></li>
+<li><p>(Optional) Dump stores to files to inspect current values.</p></li>
+</ol>
+</li>
+</ul>
+</section>
+<section id="future-work-todo">
+<h1>Future Work / TODO<a class="headerlink" href="#future-work-todo" title="Link to this heading">¶</a></h1>
+<ul class="simple">
+<li><p>Confirm/write endpoints for commands (set <code class="docutils literal notranslate"><span class="pre">v</span></code> and toggle <code class="docutils literal notranslate"><span class="pre">s</span></code> bits).</p></li>
+<li><p>Formalize enum/unit maps from assets (parameterSchemas + i18n) into reusable descriptors.</p></li>
+<li><p>Optional persistence cache for descriptors to avoid re-parsing assets on every reconfigure.</p></li>
+<li><p>Structured diff tool between prime payloads and live WS states for diagnostics.</p></li>
+<li><p>Tests (unit &amp; integration) for flatteners, stores, and gateway reconnect logic.</p></li>
+</ul>
+</section>
+<section id="appendix-minimal-interfaces">
+<h1>Appendix: Minimal Interfaces<a class="headerlink" href="#appendix-minimal-interfaces" title="Link to this heading">¶</a></h1>
+<section id="event">
+<h2>Event<a class="headerlink" href="#event" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ParamUpdate</span><span class="p">:</span>
+    <span class="n">devid</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">pool</span><span class="p">:</span> <span class="nb">str</span>    <span class="c1"># &quot;P4&quot;</span>
+    <span class="n">chan</span><span class="p">:</span> <span class="nb">str</span>    <span class="c1"># &quot;v&quot; / &quot;s&quot; / &quot;u&quot; / ...</span>
+    <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span>     <span class="c1"># 1</span>
+    <span class="n">value</span><span class="p">:</span> <span class="n">Any</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">meta</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">ts</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">)</span>
+    <span class="n">seq</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+</pre></div>
+</div>
+</section>
+<section id="id1">
+<h2>ParamStore<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">ParamStore</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Unified parameter store with two modes:</span>
+<span class="sd">    - Lightweight (default): Key→value for runtime</span>
+<span class="sd">    - Asset-aware (with init_with_api): Rich metadata access via LiveAssetsCatalog</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Lightweight mode (default)</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">run_with_bus</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bus</span><span class="p">:</span> <span class="n">EventBus</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">upsert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ParamFamilyModel</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">flatten</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span> <span class="o">...</span>
+
+    <span class="c1"># Asset-aware mode methods (require init_with_api)</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">init_with_api</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">api_client</span><span class="p">:</span> <span class="n">BragerOneApiClient</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_menu</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">device_menu</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">permissions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">MenuResult</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_label</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">device_menu</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">pool</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">chan</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_unit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">device_menu</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">pool</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_enum_options</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">lang</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;pl&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_permission</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</pre></div>
+</div>
+</section>
+<section id="gateway">
+<h2>Gateway<a class="headerlink" href="#gateway" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">BragerOneGateway</span><span class="p">:</span>
+    <span class="n">bus</span><span class="p">:</span> <span class="n">EventBus</span>
+    <span class="n">modules</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="n">object_id</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">stop</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">ingest_prime_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">flatten_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ParamUpdate</span><span class="p">]:</span> <span class="o">...</span>
+</pre></div>
+</div>
+</section>
+<section id="ha-entity-descriptor-example">
+<h2>HA Entity Descriptor (example)<a class="headerlink" href="#ha-entity-descriptor-example" title="Link to this heading">¶</a></h2>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;P4.v1&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;pool&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;P4&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;chan&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;v&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;idx&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;bit&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;label&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Nastawa kotła&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;°C&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;enum&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;min&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;max&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">80</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;devid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;FTTCTBSLCE&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Updated on 2025-09-21 21:44 UTC</p>
+</div>
+</section>
+</section>
+<section id="parsers-glue-integration">
+<h1>Parsers &amp; Glue: Integration<a class="headerlink" href="#parsers-glue-integration" title="Link to this heading">¶</a></h1>
+<p>This section documents the <strong>LiveAssetsCatalog</strong> (online asset parsing),
+and the <strong>Home Assistant integration patterns</strong>.</p>
+<section id="contents">
+<h2>Contents<a class="headerlink" href="#contents" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>LiveAssetsCatalog overview</p></li>
+<li><p>ParamStore integration with asset catalog</p></li>
+<li><p>HA integration patterns</p></li>
+<li><p>CLI usage</p></li>
+<li><p>Runtime flow with ParamStore</p></li>
+<li><p>Units normalization and HA attributes</p></li>
+</ul>
+</section>
+<section id="liveassetscatalog-pybragerone-models-catalog">
+<h2>LiveAssetsCatalog (<code class="docutils literal notranslate"><span class="pre">pybragerone.models.catalog</span></code>)<a class="headerlink" href="#liveassetscatalog-pybragerone-models-catalog" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Fetches and parses live JavaScript assets from BragerOne web app</p></li>
+<li><p>Uses tree-sitter for robust parsing of minified JS
+Returns <code class="docutils literal notranslate"><span class="pre">dict[str,</span> <span class="pre">str]</span></code>. Works for <em>parameters</em>, <em>units</em>, and other i18n files.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mappings.py</span></code>
+Parses parameter descriptor bundles (your <code class="docutils literal notranslate"><span class="pre">parametry/*.js</span></code>). Produces <code class="docutils literal notranslate"><span class="pre">ParamDescriptor</span></code>
+with references to <code class="docutils literal notranslate"><span class="pre">P{{pool}}.{{chan}}{{idx}}</span></code> plus optional bit for <code class="docutils literal notranslate"><span class="pre">s</span></code> (status).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">module_menu.py</span></code>
+Parses <code class="docutils literal notranslate"><span class="pre">module.menu-*.js</span></code> into a hierarchical <code class="docutils literal notranslate"><span class="pre">MenuTree</span></code>. Extracts parameters and
+their operations (READ/WRITE/STATUS) with required permissions (<code class="docutils literal notranslate"><span class="pre">permissionModule:</span> <span class="pre">A.X</span></code>).
+Tolerant to minification. Reconstructs sections (<code class="docutils literal notranslate"><span class="pre">label</span></code>/<code class="docutils literal notranslate"><span class="pre">title</span></code>/<code class="docutils literal notranslate"><span class="pre">name</span></code> and <code class="docutils literal notranslate"><span class="pre">t(&quot;...&quot;)</span></code>).</p></li>
+</ul>
+</section>
+<section id="glue-layer">
+<h2>Glue layer<a class="headerlink" href="#glue-layer" title="Link to this heading">¶</a></h2>
+<ul>
+<li><p>Function: <code class="docutils literal notranslate"><span class="pre">build_module_model(module_code,</span> <span class="pre">menu_js,</span> <span class="pre">mapping_js_list,</span> <span class="pre">i18n_parameters_js,</span> <span class="pre">i18n_units_js)</span></code></p></li>
+<li><p>Output structure:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{{</span>
+  <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;code&gt;&quot;</span><span class="p">,</span>
+  <span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="p">{{</span>
+    <span class="s2">&quot;&lt;KEY&gt;&quot;</span><span class="p">:</span> <span class="p">{{</span>
+      <span class="s2">&quot;label&quot;</span><span class="p">:</span> <span class="s2">&quot;...&quot;</span><span class="p">,</span>                     <span class="c1"># i18n label</span>
+      <span class="s2">&quot;operations&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;READ&quot;</span><span class="p">,</span><span class="s2">&quot;WRITE&quot;</span><span class="p">,</span><span class="s2">&quot;STATUS&quot;</span><span class="p">],</span>
+      <span class="s2">&quot;descriptor&quot;</span><span class="p">:</span> <span class="p">{{</span> <span class="o">...</span> <span class="n">ParamDescriptor</span> <span class="o">...</span> <span class="p">}},</span>
+      <span class="s2">&quot;unit_labels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;°C&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>          <span class="c1"># normalized symbols</span>
+    <span class="p">}}</span>
+  <span class="p">}},</span>
+  <span class="s2">&quot;sections&quot;</span><span class="p">:</span> <span class="p">{{</span> <span class="o">...</span> <span class="n">MenuTree</span> <span class="k">as</span> <span class="n">JSON</span> <span class="o">...</span> <span class="p">}}</span>
+<span class="p">}}</span>
+</pre></div>
+</div>
+</li>
+<li><p>Purpose: single source for config flows (full metadata) and for mapping to HA entities.</p></li>
+</ul>
+</section>
+<section id="home-assistant-glue">
+<h2>Home Assistant glue<a class="headerlink" href="#home-assistant-glue" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Function: <code class="docutils literal notranslate"><span class="pre">build_ha_blueprint(module_model)</span></code></p></li>
+<li><p>Produces a dict with entity groups: <code class="docutils literal notranslate"><span class="pre">sensor</span></code>, <code class="docutils literal notranslate"><span class="pre">number</span></code>, <code class="docutils literal notranslate"><span class="pre">select</span></code>, <code class="docutils literal notranslate"><span class="pre">switch</span></code>, <code class="docutils literal notranslate"><span class="pre">binary_sensor</span></code>.</p></li>
+<li><p>Encodes references in attributes:
+- <code class="docutils literal notranslate"><span class="pre">brager_value_ref:</span> <span class="pre">{{group,</span> <span class="pre">use:&quot;v&quot;,</span> <span class="pre">number}}</span></code>
+- <code class="docutils literal notranslate"><span class="pre">brager_unit_ref:</span>&#160; <span class="pre">{{group,</span> <span class="pre">use:&quot;u&quot;,</span> <span class="pre">number}}</span></code>
+- <code class="docutils literal notranslate"><span class="pre">brager_status_ref:{{group,</span> <span class="pre">use:&quot;s&quot;,</span> <span class="pre">number,</span> <span class="pre">bit}}</span></code> (for each status bit)</p></li>
+<li><p>Classification:
+- <code class="docutils literal notranslate"><span class="pre">WRITE</span></code> + enum(2) → <strong>switch</strong>
+- <code class="docutils literal notranslate"><span class="pre">WRITE</span></code> + enum(&gt;2) → <strong>select</strong>
+- <code class="docutils literal notranslate"><span class="pre">WRITE</span></code> + no enum → <strong>number</strong> (editable; step used if present; min/max left for runtime)
+- READ-only + value → <strong>sensor</strong>
+- any <code class="docutils literal notranslate"><span class="pre">s</span></code> bit → <strong>binary_sensor</strong></p></li>
+</ul>
+</section>
+<section id="cli-tools">
+<h2>CLI tools<a class="headerlink" href="#cli-tools" title="Link to this heading">¶</a></h2>
+<p>The package includes three CLIs (see <code class="docutils literal notranslate"><span class="pre">pyproject-snippet.toml</span></code>):</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">pybragerconnect-parsers</span></code> – debug single parsers.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pybragerconnect-glue</span></code> – menu + mappings + i18n → unified module JSON.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pybragerconnect-ha</span></code> – unified module JSON → HA blueprint entities.</p></li>
+</ul>
+<p>Examples:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pybragerconnect</span><span class="o">-</span><span class="n">parsers</span> <span class="o">--</span><span class="n">i18n</span> <span class="n">i18n</span><span class="o">/</span><span class="n">parameters</span><span class="o">-</span><span class="n">pl</span><span class="o">.</span><span class="n">js</span>
+<span class="n">pybragerconnect</span><span class="o">-</span><span class="n">parsers</span> <span class="o">--</span><span class="n">bundle</span> <span class="n">parametry</span><span class="o">/</span><span class="n">PARAM_0</span><span class="o">.</span><span class="n">js</span>
+<span class="n">pybragerconnect</span><span class="o">-</span><span class="n">parsers</span> <span class="o">--</span><span class="n">menu</span> <span class="n">module</span><span class="o">.</span><span class="n">menu</span><span class="o">-</span><span class="n">FTTCTBSLCE</span><span class="o">.</span><span class="n">js</span> <span class="o">--</span><span class="n">module</span><span class="o">-</span><span class="n">code</span> <span class="n">FTTCTBSLCE</span>
+
+<span class="n">pybragerconnect</span><span class="o">-</span><span class="n">glue</span> <span class="o">--</span><span class="n">module</span><span class="o">-</span><span class="n">code</span> <span class="n">FTTCTBSLCE</span> \
+    <span class="o">--</span><span class="n">menu</span> <span class="n">module</span><span class="o">.</span><span class="n">menu</span><span class="o">-</span><span class="n">FTTCTBSLCE</span><span class="o">.</span><span class="n">js</span> \
+    <span class="o">--</span><span class="n">mappings</span> <span class="n">parametry</span><span class="o">/</span><span class="n">PARAM_0</span><span class="o">.</span><span class="n">js</span> <span class="n">parametry</span><span class="o">/</span><span class="n">PARAM_4</span><span class="o">.</span><span class="n">js</span> \
+    <span class="o">--</span><span class="n">i18n</span><span class="o">-</span><span class="n">parameters</span> <span class="n">i18n</span><span class="o">/</span><span class="n">parameters</span><span class="o">-</span><span class="n">pl</span><span class="o">.</span><span class="n">js</span> \
+    <span class="o">--</span><span class="n">i18n</span><span class="o">-</span><span class="n">units</span> <span class="n">i18n</span><span class="o">/</span><span class="n">units</span><span class="o">-</span><span class="n">pl</span><span class="o">.</span><span class="n">js</span> \
+    <span class="o">--</span><span class="n">out</span> <span class="n">module_model</span><span class="o">.</span><span class="n">json</span>
+
+<span class="n">pybragerconnect</span><span class="o">-</span><span class="n">ha</span> <span class="o">--</span><span class="n">module</span><span class="o">-</span><span class="n">code</span> <span class="n">FTTCTBSLCE</span> \
+    <span class="o">--</span><span class="n">menu</span> <span class="n">module</span><span class="o">.</span><span class="n">menu</span><span class="o">-</span><span class="n">FTTCTBSLCE</span><span class="o">.</span><span class="n">js</span> \
+    <span class="o">--</span><span class="n">mappings</span> <span class="n">parametry</span><span class="o">/</span><span class="n">PARAM_0</span><span class="o">.</span><span class="n">js</span> <span class="n">parametry</span><span class="o">/</span><span class="n">PARAM_4</span><span class="o">.</span><span class="n">js</span> \
+    <span class="o">--</span><span class="n">i18n</span><span class="o">-</span><span class="n">parameters</span> <span class="n">i18n</span><span class="o">/</span><span class="n">parameters</span><span class="o">-</span><span class="n">pl</span><span class="o">.</span><span class="n">js</span> \
+    <span class="o">--</span><span class="n">i18n</span><span class="o">-</span><span class="n">units</span> <span class="n">i18n</span><span class="o">/</span><span class="n">units</span><span class="o">-</span><span class="n">pl</span><span class="o">.</span><span class="n">js</span> \
+    <span class="o">--</span><span class="n">out</span> <span class="n">ha_blueprint</span><span class="o">.</span><span class="n">json</span>
+</pre></div>
+</div>
+</section>
+<section id="runtime-flow">
+<h2>Runtime flow<a class="headerlink" href="#runtime-flow" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><strong>Config Flow</strong>: Use ParamStore with <code class="docutils literal notranslate"><span class="pre">init_with_api()</span></code> to access LiveAssetsCatalog.
+Call <code class="docutils literal notranslate"><span class="pre">get_menu()</span></code>, <code class="docutils literal notranslate"><span class="pre">get_label()</span></code>, <code class="docutils literal notranslate"><span class="pre">get_unit()</span></code> to build entity descriptors with i18n metadata.
+Persist entity references in <code class="docutils literal notranslate"><span class="pre">config_entry.data</span></code>.</p></li>
+<li><p><strong>Runtime</strong>: Use ParamStore in lightweight mode (no API integration needed).
+Update states via key→value lookups and WS delta events.
+Fast and minimal overhead for entity updates.</p></li>
+</ul>
+</section>
+<section id="units-normalization">
+<h2>Units normalization<a class="headerlink" href="#units-normalization" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">normalize_unit</span></code> maps common symbols (<code class="docutils literal notranslate"><span class="pre">°C</span></code>, <code class="docutils literal notranslate"><span class="pre">%</span></code>, <code class="docutils literal notranslate"><span class="pre">kWh</span></code>, <code class="docutils literal notranslate"><span class="pre">W</span></code>…) to HA-friendly strings.</p></li>
+<li><p>If deeper integration is needed, map them to <code class="docutils literal notranslate"><span class="pre">homeassistant.const</span></code> in the HA integration layer.</p></li>
+</ul>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="param_store_metadata.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Param Store Metadata Reference</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="pybragerone_integration_cheatsheet.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">pybragerone – Quick Cheatsheet</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2025, MarPi82
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=7026087e"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.4/dist/mermaid-layout-elk.esm.min.mjs"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs";import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.4/dist/mermaid-layout-elk.esm.min.mjs";mermaid.registerLayoutLoaders(elkLayouts);mermaid.initialize({startOnLoad:false});</script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs";
+window.addEventListener("load", () => mermaid.run());
+</script>
+    </body>
+</html>

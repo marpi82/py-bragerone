@@ -1,0 +1,12 @@
+pybragerone.models.api.system
+=============================
+
+.. automodule:: pybragerone.models.api.system
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      SystemVersion
+   

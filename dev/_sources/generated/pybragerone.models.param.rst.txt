@@ -1,0 +1,13 @@
+pybragerone.models.param
+========================
+
+.. automodule:: pybragerone.models.param
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      ParamFamilyModel
+      ParamStore
+   

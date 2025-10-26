@@ -1,0 +1,25 @@
+pybragerone.api.endpoints
+=========================
+
+.. automodule:: pybragerone.api.endpoints
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      auth_revoke_url
+      auth_user_url
+      module_card_url
+      module_url
+      modules_activity_quantity_url
+      modules_connect_url
+      modules_parameters_url
+      modules_url
+      object_permissions_url
+      object_url
+      objects_url
+      system_version_url
+      user_permissions_url
+      user_url
+   

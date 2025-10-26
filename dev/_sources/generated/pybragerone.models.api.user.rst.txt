@@ -1,0 +1,12 @@
+pybragerone.models.api.user
+===========================
+
+.. automodule:: pybragerone.models.api.user
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      User
+   

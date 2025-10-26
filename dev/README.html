@@ -1,0 +1,677 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="pybragerone – Quick Cheatsheet" href="pybragerone_integration_cheatsheet.html"><link rel="prev" title="Welcome to py-bragerone’s documentation!" href="index.html">
+
+    <!-- Generated with Sphinx 8.2.3 and Furo 2025.09.25 -->
+        <title>pybragerone - pybragerone 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=580074bf" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">pybragerone 0.0.0 documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+  
+  <span class="sidebar-brand-text">pybragerone 0.0.0 documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul class="current">
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">pybragerone</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html">pybragerone – Quick Cheatsheet</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#tl-dr">TL;DR</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#key-objects">Key Objects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#paramstore-modes">ParamStore Modes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#ha-integration-flow">HA Integration Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#parameter-semantics">Parameter Semantics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#entity-guidelines">Entity Guidelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#operational-tips">Operational Tips</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#cli-hints">CLI Hints</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_cheatsheet.html#parsers-ha-glue-tl-dr">Parsers + HA Glue TL;DR</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html">pybragerone – Integration Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#overview">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#core-principles">Core Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#architecture-high-level">Architecture (High-Level)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#data-model-semantics">Data Model &amp; Semantics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#paramstore">ParamStore</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#eventbus">EventBus</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#ha-integration-flow">HA Integration Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#entity-patterns-ha">Entity Patterns (HA)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#rest-endpoints-used-by-library">REST Endpoints (used by library)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#error-handling-robustness">Error Handling &amp; Robustness</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#logging-debugging">Logging &amp; Debugging</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#security-headers">Security &amp; Headers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#performance-notes">Performance Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#versioning-types">Versioning &amp; Types</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#cli-developer-utility">CLI (Developer Utility)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#future-work-todo">Future Work / TODO</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#appendix-minimal-interfaces">Appendix: Minimal Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pybragerone_integration_notes.html#parsers-glue-integration">Parsers &amp; Glue: Integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="param_store_metadata.html">Param Store Metadata Reference</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="api.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="generated/pybragerone.api.html">pybragerone.api</a><input aria-label="Toggle navigation of pybragerone.api" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.api.client.html">pybragerone.api.client</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.api.constants.html">pybragerone.api.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.api.endpoints.html">pybragerone.api.endpoints</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.api.ws.html">pybragerone.api.ws</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="generated/pybragerone.cli.html">pybragerone.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/pybragerone.gateway.html">pybragerone.gateway</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="generated/pybragerone.models.html">pybragerone.models</a><input aria-label="Toggle navigation of pybragerone.models" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="generated/pybragerone.models.api.html">pybragerone.models.api</a><input aria-label="Toggle navigation of pybragerone.models.api" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.auth.html">pybragerone.models.api.auth</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.common.html">pybragerone.models.api.common</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.modules.html">pybragerone.models.api.modules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.objects.html">pybragerone.models.api.objects</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.system.html">pybragerone.models.api.system</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/pybragerone.models.api.user.html">pybragerone.models.api.user</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.catalog.html">pybragerone.models.catalog</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.events.html">pybragerone.models.events</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.menu.html">pybragerone.models.menu</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.menu_manager.html">pybragerone.models.menu_manager</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.param.html">pybragerone.models.param</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/pybragerone.models.token.html">pybragerone.models.token</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="generated/pybragerone.utils.html">pybragerone.utils</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="new_models.html">New API Models Summary</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#id1">Changelog</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="_sources/README.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="pybragerone">
+<h1>pybragerone<a class="headerlink" href="#pybragerone" title="Link to this heading">¶</a></h1>
+<img alt="Alpha status" src="https://img.shields.io/badge/status-Alpha-yellow" />
+<img alt="Python 3.13.2+" src="https://img.shields.io/badge/python-3.13.2+-blue" />
+<img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green" />
+<p><strong>pybragerone</strong> is an alpha-stage Python library for integrating with <strong>BragerOne</strong>.
+It provides an async REST client, a Socket.IO realtime client, an internal event bus,
+and <strong>ParamStore</strong> (with optional rich metadata via LiveAssetsCatalog) so you can
+build efficient automations and a clean Home Assistant integration.</p>
+<section id="highlights">
+<h2>Highlights<a class="headerlink" href="#highlights" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><strong>REST (httpx)</strong>: login, user &amp; permissions, objects, modules, <code class="docutils literal notranslate"><span class="pre">modules.connect</span></code>,
+snapshot endpoints (<code class="docutils literal notranslate"><span class="pre">modules/parameters</span></code>, <code class="docutils literal notranslate"><span class="pre">modules/activity/quantity</span></code>).</p></li>
+<li><p><strong>Realtime (python-socketio)</strong>: namespace <code class="docutils literal notranslate"><span class="pre">/ws</span></code>; subscribes to
+<code class="docutils literal notranslate"><span class="pre">app:modules:parameters:listen</span></code> and <code class="docutils literal notranslate"><span class="pre">app:modules:activity:quantity:listen</span></code>.</p></li>
+<li><p><strong>EventBus</strong>: in-process async fan-out of structured updates.</p></li>
+<li><p><strong>ParamStore</strong>: lightweight key→value view (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;P4.v1&quot;</span> <span class="pre">-&gt;</span> <span class="pre">20.5</span></code>) for runtime.
+- Optional: <code class="docutils literal notranslate"><span class="pre">init_with_api()</span></code> enables rich metadata (i18n labels, units, enums) via LiveAssetsCatalog.</p></li>
+<li><p><strong>Online asset parsers</strong>: i18n translations, parameter mappings, <code class="docutils literal notranslate"><span class="pre">module.menu</span></code> features.</p></li>
+<li><p><strong>CLI</strong>: quick diagnostics, raw WS debug, and snapshot prime helpers.</p></li>
+<li><p><strong>HA-ready</strong>: designed so HA runtime relies on ParamStore; config flow uses asset catalog.</p></li>
+</ul>
+</section>
+<section id="architecture">
+<h2>Architecture<a class="headerlink" href="#architecture" title="Link to this heading">¶</a></h2>
+<pre  class="mermaid">
+        flowchart LR
+  subgraph Client[&quot;pybragerone package&quot;]
+    API[&quot;BragerOneApiClient (REST/httpx)&quot;]
+    WS[&quot;RealtimeManager (Socket.IO)&quot;]
+    GW[&quot;BragerOneGateway&quot;]
+    BUS[&quot;EventBus&quot;]
+    PS[&quot;ParamStore&quot;]
+    CATALOG[&quot;LiveAssetsCatalog (optional)&quot;]
+    API -- &quot;login, lists, prime&quot; --&gt; GW
+    WS -- &quot;connect, subscribe&quot; --&gt; GW
+    GW -- &quot;ParamUpdate events&quot; --&gt; BUS
+    BUS --&gt; PS
+    API -.-&gt; CATALOG
+    CATALOG -.-&gt; PS
+  end
+  CLOUD[&quot;BragerOne Cloud&quot;]
+  CLOUD -- &quot;/v1/*&quot; --&gt; API
+  CLOUD -- &quot;/socket.io (/ws)&quot; --&gt; WS
+  PS -- &quot;runtime + metadata&quot; --&gt; HA[&quot;Home Assistant integration&quot;]
+  CATALOG -- &quot;config flow&quot; --&gt; HA
+    </pre></section>
+<section id="version-python">
+<h2>Version &amp; Python<a class="headerlink" href="#version-python" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><strong>Alpha</strong>: APIs may still evolve.</p></li>
+<li><p><strong>Python</strong>: <strong>3.13.2+</strong> (aligned with Home Assistant 2025).</p></li>
+</ul>
+</section>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h2>
+<p>Stable (PyPI, when published):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">pybragerone</span>
+</pre></div>
+</div>
+<p>Pre-release (TestPyPI):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="o">-</span><span class="n">i</span> <span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">test</span><span class="o">.</span><span class="n">pypi</span><span class="o">.</span><span class="n">org</span><span class="o">/</span><span class="n">simple</span><span class="o">/</span> <span class="n">pybragerone</span>
+</pre></div>
+</div>
+<p>Optional extras:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="s2">&quot;pybragerone[cli]&quot;</span>      <span class="c1"># CLI with typer, rich, aiofiles</span>
+<span class="n">pip</span> <span class="n">install</span> <span class="s2">&quot;pybragerone[keyring]&quot;</span>  <span class="c1"># Secure token storage with keyring</span>
+</pre></div>
+</div>
+</section>
+<section id="quick-start-cli">
+<h2>Quick Start (CLI)<a class="headerlink" href="#quick-start-cli" title="Link to this heading">¶</a></h2>
+<p>Run the CLI for a guided session (object &amp; module selection, WS link, prime):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pybragerone</span><span class="o">-</span><span class="n">cli</span> <span class="o">--</span><span class="n">email</span> <span class="n">YOU</span><span class="nd">@example</span><span class="o">.</span><span class="n">com</span> <span class="o">--</span><span class="n">password</span> <span class="s2">&quot;***&quot;</span> <span class="o">--</span><span class="n">debug</span>
+</pre></div>
+</div>
+<p>Press <code class="docutils literal notranslate"><span class="pre">Ctrl+C</span></code> to stop. Use <code class="docutils literal notranslate"><span class="pre">--raw-ws</span></code> for raw payload logging.</p>
+</section>
+<section id="minimal-example-lightweight-runtime">
+<h2>Minimal Example – Lightweight (runtime)<a class="headerlink" href="#minimal-example-lightweight-runtime" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pybragerone</span><span class="w"> </span><span class="kn">import</span> <span class="n">BragerOneApiClient</span><span class="p">,</span> <span class="n">BragerOneGateway</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pybragerone.models.param</span><span class="w"> </span><span class="kn">import</span> <span class="n">ParamStore</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="c1"># Gateway handles API client internally</span>
+    <span class="n">gw</span> <span class="o">=</span> <span class="n">BragerOneGateway</span><span class="p">(</span>
+        <span class="n">email</span><span class="o">=</span><span class="s2">&quot;you@example.com&quot;</span><span class="p">,</span>
+        <span class="n">password</span><span class="o">=</span><span class="s2">&quot;secret&quot;</span><span class="p">,</span>
+        <span class="n">object_id</span><span class="o">=</span><span class="mi">12345</span><span class="p">,</span>  <span class="c1"># Your object ID</span>
+        <span class="n">modules</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;ABC123&quot;</span><span class="p">,</span> <span class="s2">&quot;DEF456&quot;</span><span class="p">]</span>  <span class="c1"># Your device IDs (devids)</span>
+    <span class="p">)</span>
+
+    <span class="n">pstore</span> <span class="o">=</span> <span class="n">ParamStore</span><span class="p">()</span>
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">pstore</span><span class="o">.</span><span class="n">run_with_bus</span><span class="p">(</span><span class="n">gw</span><span class="o">.</span><span class="n">bus</span><span class="p">))</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">printer</span><span class="p">():</span>
+        <span class="k">async</span> <span class="k">for</span> <span class="n">upd</span> <span class="ow">in</span> <span class="n">gw</span><span class="o">.</span><span class="n">bus</span><span class="o">.</span><span class="n">subscribe</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">upd</span><span class="o">.</span><span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">upd</span><span class="o">.</span><span class="n">pool</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">upd</span><span class="o">.</span><span class="n">chan</span><span class="si">}{</span><span class="n">upd</span><span class="o">.</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;↺ </span><span class="si">{</span><span class="n">upd</span><span class="o">.</span><span class="n">devid</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2"> = </span><span class="si">{</span><span class="n">upd</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">printer</span><span class="p">())</span>
+
+    <span class="k">await</span> <span class="n">gw</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">gw</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</pre></div>
+</div>
+</section>
+<section id="advanced-example-with-rich-metadata-config-flow">
+<h2>Advanced Example – With Rich Metadata (config flow)<a class="headerlink" href="#advanced-example-with-rich-metadata-config-flow" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pybragerone</span><span class="w"> </span><span class="kn">import</span> <span class="n">BragerOneApiClient</span><span class="p">,</span> <span class="n">BragerOneGateway</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pybragerone.models.param</span><span class="w"> </span><span class="kn">import</span> <span class="n">ParamStore</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="c1"># For config flow or when you need i18n/labels/enums</span>
+    <span class="n">api</span> <span class="o">=</span> <span class="n">BragerOneApiClient</span><span class="p">()</span>
+    <span class="k">await</span> <span class="n">api</span><span class="o">.</span><span class="n">ensure_auth</span><span class="p">(</span><span class="s2">&quot;you@example.com&quot;</span><span class="p">,</span> <span class="s2">&quot;secret&quot;</span><span class="p">)</span>
+
+    <span class="n">user</span> <span class="o">=</span> <span class="k">await</span> <span class="n">api</span><span class="o">.</span><span class="n">get_user</span><span class="p">()</span>
+    <span class="n">object_id</span> <span class="o">=</span> <span class="n">user</span><span class="o">.</span><span class="n">objects</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">id</span>
+    <span class="n">modules_resp</span> <span class="o">=</span> <span class="k">await</span> <span class="n">api</span><span class="o">.</span><span class="n">get_modules</span><span class="p">(</span><span class="n">object_id</span><span class="o">=</span><span class="n">object_id</span><span class="p">)</span>
+    <span class="n">devids</span> <span class="o">=</span> <span class="p">[</span><span class="n">m</span><span class="o">.</span><span class="n">devid</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">modules_resp</span> <span class="k">if</span> <span class="n">m</span><span class="o">.</span><span class="n">devid</span><span class="p">]</span>
+
+    <span class="n">pstore</span> <span class="o">=</span> <span class="n">ParamStore</span><span class="p">()</span>
+    <span class="n">pstore</span><span class="o">.</span><span class="n">init_with_api</span><span class="p">(</span><span class="n">api</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;pl&quot;</span><span class="p">)</span>  <span class="c1"># Enables LiveAssetsCatalog</span>
+
+    <span class="n">gw</span> <span class="o">=</span> <span class="n">BragerOneGateway</span><span class="p">(</span>
+        <span class="n">email</span><span class="o">=</span><span class="s2">&quot;you@example.com&quot;</span><span class="p">,</span>
+        <span class="n">password</span><span class="o">=</span><span class="s2">&quot;secret&quot;</span><span class="p">,</span>
+        <span class="n">object_id</span><span class="o">=</span><span class="n">object_id</span><span class="p">,</span>
+        <span class="n">modules</span><span class="o">=</span><span class="n">devids</span>
+    <span class="p">)</span>
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">pstore</span><span class="o">.</span><span class="n">run_with_bus</span><span class="p">(</span><span class="n">gw</span><span class="o">.</span><span class="n">bus</span><span class="p">))</span>
+
+    <span class="k">await</span> <span class="n">gw</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># Now you can use rich metadata methods</span>
+        <span class="n">menu</span> <span class="o">=</span> <span class="k">await</span> <span class="n">pstore</span><span class="o">.</span><span class="n">get_menu</span><span class="p">(</span><span class="s2">&quot;device123&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;param.edit&quot;</span><span class="p">])</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Available parameters: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">menu</span><span class="o">.</span><span class="n">items</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Get translated label</span>
+        <span class="n">label</span> <span class="o">=</span> <span class="k">await</span> <span class="n">pstore</span><span class="o">.</span><span class="n">get_label</span><span class="p">(</span><span class="s2">&quot;device123&quot;</span><span class="p">,</span> <span class="s2">&quot;P4&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;v&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Label for P4.v1: </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">gw</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+        <span class="k">await</span> <span class="n">api</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</pre></div>
+</div>
+</section>
+<section id="event-bus-update-model">
+<h2>Event Bus &amp; Update Model<a class="headerlink" href="#event-bus-update-model" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ParamUpdate</span></code> carries atomic updates:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">devid</span></code> – device code (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;FTTCTBSLCE&quot;</span></code>)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pool</span></code> – parameter group (<code class="docutils literal notranslate"><span class="pre">P4</span></code>, <code class="docutils literal notranslate"><span class="pre">P5</span></code>, …)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">chan</span></code> – channel (<code class="docutils literal notranslate"><span class="pre">v</span></code>, <code class="docutils literal notranslate"><span class="pre">s</span></code>, <code class="docutils literal notranslate"><span class="pre">u</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, …)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">idx</span></code> – index within the pool</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">value</span></code> – parsed value (int/float/str/bool) or <code class="docutils literal notranslate"><span class="pre">None</span></code> for meta-only frames</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">meta</span></code> – timestamps, storable flag, averages, etc.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">seq</span></code> – monotonically increasing sequence assigned by the EventBus</p></li>
+</ul>
+<p>Example of flattening parameters (gateway helper):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">updates</span> <span class="o">=</span> <span class="n">gateway</span><span class="o">.</span><span class="n">flatten_parameters</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">upd</span> <span class="ow">in</span> <span class="n">updates</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">upd</span><span class="o">.</span><span class="n">devid</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">upd</span><span class="o">.</span><span class="n">pool</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">upd</span><span class="o">.</span><span class="n">chan</span><span class="si">}{</span><span class="n">upd</span><span class="o">.</span><span class="n">idx</span><span class="si">}</span><span class="s2"> = </span><span class="si">{</span><span class="n">upd</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="paramstore-details">
+<h2>ParamStore Details<a class="headerlink" href="#paramstore-details" title="Link to this heading">¶</a></h2>
+<p><strong>ParamStore</strong> provides two modes of operation:</p>
+<ul class="simple">
+<li><p><strong>Lightweight mode</strong> (default):
+- Simple key→value storage (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;P4.v1&quot;</span> <span class="pre">-&gt;</span> <span class="pre">20.5</span></code>)
+- Minimal memory footprint
+- Perfect for HA runtime entities &amp; frequent updates</p></li>
+<li><p><strong>Asset-aware mode</strong> (with <code class="docutils literal notranslate"><span class="pre">init_with_api()</span></code>):
+- Connects to LiveAssetsCatalog for rich metadata
+- Provides i18n labels, units, enums, and visibility rules
+- Used during HA config flow to build entity descriptors
+- Methods: <code class="docutils literal notranslate"><span class="pre">get_menu()</span></code>, <code class="docutils literal notranslate"><span class="pre">get_label()</span></code>, <code class="docutils literal notranslate"><span class="pre">get_unit()</span></code>, etc.</p></li>
+</ul>
+<p>Choose lightweight for runtime performance, asset-aware for config/bootstrap when you need metadata.</p>
+</section>
+<section id="online-asset-parsers">
+<h2>Online Asset Parsers<a class="headerlink" href="#online-asset-parsers" title="Link to this heading">¶</a></h2>
+<p>pybragerone can resolve labels, units, and visibility rules directly from online assets via LiveAssetsCatalog:</p>
+<ul class="simple">
+<li><p><strong>i18n JSON</strong>: language packs (e.g. <code class="docutils literal notranslate"><span class="pre">.../resources/languages/pl/parameters.json</span></code>)</p></li>
+<li><p><strong>parameters bundles</strong>: e.g. <code class="docutils literal notranslate"><span class="pre">PARAM_0</span></code> to map pools (<code class="docutils literal notranslate"><span class="pre">P6.v0/s0/u0/...</span></code>)</p></li>
+<li><p><strong>module.menu</strong>: sections, required permission levels, and parameter visibility</p></li>
+</ul>
+<p>Sessions are shared with the REST client, so fetching assets respects authentication and CORS.</p>
+</section>
+<section id="home-assistant-integration">
+<h2>Home Assistant Integration<a class="headerlink" href="#home-assistant-integration" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><strong>Runtime</strong>: subscribe to the EventBus and source states from <strong>ParamStore</strong> (lightweight mode).</p></li>
+<li><p><strong>Config Flow</strong>: enumerate entities and their metadata via <strong>ParamStore</strong> with <code class="docutils literal notranslate"><span class="pre">init_with_api()</span></code>
+(asset-aware mode provides labels, units, enums).</p></li>
+<li><p><strong>Units mapping</strong>: a helper maps Brager unit codes (or i18n unit text) to HA canonical
+units (e.g. <code class="docutils literal notranslate"><span class="pre">°C</span></code> → <code class="docutils literal notranslate"><span class="pre">temperature</span></code>, <code class="docutils literal notranslate"><span class="pre">%</span></code> → <code class="docutils literal notranslate"><span class="pre">percentage</span></code>).</p></li>
+</ul>
+</section>
+<section id="security-notes">
+<h2>Security Notes<a class="headerlink" href="#security-notes" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Store and refresh the bearer token responsibly (e.g. OS keyring in real deployments).</p></li>
+<li><p>Always pass <code class="docutils literal notranslate"><span class="pre">Origin</span></code> and <code class="docutils literal notranslate"><span class="pre">Referer</span></code> headers consistent with the official UI.</p></li>
+<li><p>Use TLS (HTTPS) for all requests; the realtime client upgrades via the engine automatically.</p></li>
+</ul>
+</section>
+<section id="troubleshooting">
+<h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><strong>403 Forbidden</strong> on REST requests:
+- check <code class="docutils literal notranslate"><span class="pre">Authorization:</span> <span class="pre">Bearer</span> <span class="pre">&lt;token&gt;</span></code>
+- ensure your <code class="docutils literal notranslate"><span class="pre">Origin</span></code> and <code class="docutils literal notranslate"><span class="pre">Referer</span></code> headers match the UI domain</p></li>
+<li><p><strong>No WS events</strong> after connecting:
+- verify <code class="docutils literal notranslate"><span class="pre">modules.connect</span></code> succeeded
+- re-check your namespace SID versus engine SID when passing to <code class="docutils literal notranslate"><span class="pre">modules.connect</span></code></p></li>
+<li><p><strong>CORS preflight (OPTIONS)</strong>:
+- required by the browser; not needed when calling from Python unless API enforces it</p></li>
+</ul>
+</section>
+<section id="development">
+<h2>Development<a class="headerlink" href="#development" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Python <strong>3.13.2+</strong></p></li>
+<li><p><strong>Ruff</strong> as formatter and linter (<code class="docutils literal notranslate"><span class="pre">line-length</span> <span class="pre">=</span> <span class="pre">100</span></code>)</p></li>
+<li><p><strong>mypy –strict</strong> with <code class="docutils literal notranslate"><span class="pre">pydantic.mypy</span></code> plugin</p></li>
+<li><p>Type hints are shipped (<code class="docutils literal notranslate"><span class="pre">py.typed</span></code>)</p></li>
+</ul>
+<p>Common tasks:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">ruff</span> <span class="nb">format</span>
+<span class="n">ruff</span> <span class="n">check</span> <span class="n">src</span><span class="o">/</span><span class="n">pybragerone</span> <span class="o">--</span><span class="n">fix</span>
+<span class="n">mypy</span> <span class="n">src</span><span class="o">/</span><span class="n">pybragerone</span> <span class="o">--</span><span class="n">strict</span>
+</pre></div>
+</div>
+<p>Release flow (suggestion):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mf">1.</span> <span class="n">Bump</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">pyproject</span>
+<span class="mf">2.</span> <span class="n">Tag</span> <span class="o">&amp;</span> <span class="n">GitHub</span> <span class="n">release</span>
+<span class="mf">3.</span> <span class="n">Build</span><span class="p">:</span>  <span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">build</span>
+<span class="mf">4.</span> <span class="n">Publish</span><span class="p">:</span> <span class="n">twine</span> <span class="n">upload</span> <span class="n">dist</span><span class="o">/*</span>   <span class="p">(</span><span class="ow">or</span> <span class="n">TestPyPI</span> <span class="n">first</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="contributing">
+<h2>Contributing<a class="headerlink" href="#contributing" title="Link to this heading">¶</a></h2>
+<p>Issues and PRs are welcome. Please follow:
+- Conventional commits (optional but helpful)
+- Keep public methods fully typed &amp; documented (Google docstrings)
+- Keep runtime lightweight; push heavy mapping to setup/config-time</p>
+</section>
+<section id="license">
+<h2>License<a class="headerlink" href="#license" title="Link to this heading">¶</a></h2>
+<p>MIT – see <code class="docutils literal notranslate"><span class="pre">LICENSE</span></code>.</p>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="pybragerone_integration_cheatsheet.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">pybragerone – Quick Cheatsheet</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Home</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2025, MarPi82
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">pybragerone</a><ul>
+<li><a class="reference internal" href="#highlights">Highlights</a></li>
+<li><a class="reference internal" href="#architecture">Architecture</a></li>
+<li><a class="reference internal" href="#version-python">Version &amp; Python</a></li>
+<li><a class="reference internal" href="#installation">Installation</a></li>
+<li><a class="reference internal" href="#quick-start-cli">Quick Start (CLI)</a></li>
+<li><a class="reference internal" href="#minimal-example-lightweight-runtime">Minimal Example – Lightweight (runtime)</a></li>
+<li><a class="reference internal" href="#advanced-example-with-rich-metadata-config-flow">Advanced Example – With Rich Metadata (config flow)</a></li>
+<li><a class="reference internal" href="#event-bus-update-model">Event Bus &amp; Update Model</a></li>
+<li><a class="reference internal" href="#paramstore-details">ParamStore Details</a></li>
+<li><a class="reference internal" href="#online-asset-parsers">Online Asset Parsers</a></li>
+<li><a class="reference internal" href="#home-assistant-integration">Home Assistant Integration</a></li>
+<li><a class="reference internal" href="#security-notes">Security Notes</a></li>
+<li><a class="reference internal" href="#troubleshooting">Troubleshooting</a></li>
+<li><a class="reference internal" href="#development">Development</a></li>
+<li><a class="reference internal" href="#contributing">Contributing</a></li>
+<li><a class="reference internal" href="#license">License</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=7026087e"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.4/dist/mermaid-layout-elk.esm.min.mjs"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs";import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.4/dist/mermaid-layout-elk.esm.min.mjs";mermaid.registerLayoutLoaders(elkLayouts);mermaid.initialize({startOnLoad:false});</script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs";
+window.addEventListener("load", () => mermaid.run());
+</script>
+    </body>
+</html>

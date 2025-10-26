@@ -1,0 +1,16 @@
+pybragerone.models.menu
+=======================
+
+.. automodule:: pybragerone.models.menu
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      MenuMeta
+      MenuParameter
+      MenuParameters
+      MenuResult
+      MenuRoute
+   

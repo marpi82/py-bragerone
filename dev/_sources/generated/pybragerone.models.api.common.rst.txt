@@ -1,0 +1,13 @@
+pybragerone.models.api.common
+=============================
+
+.. automodule:: pybragerone.models.api.common
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      ApiResponse
+      Permission
+   

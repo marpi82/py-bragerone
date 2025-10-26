@@ -1,0 +1,13 @@
+pybragerone.models.api.auth
+===========================
+
+.. automodule:: pybragerone.models.api.auth
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      AuthResponse
+      LoginRequest
+   

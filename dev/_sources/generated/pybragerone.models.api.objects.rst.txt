@@ -1,0 +1,13 @@
+pybragerone.models.api.objects
+==============================
+
+.. automodule:: pybragerone.models.api.objects
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      BragerObject
+      ObjectDetails
+   

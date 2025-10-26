@@ -1,0 +1,19 @@
+pybragerone.api.client
+======================
+
+.. automodule:: pybragerone.api.client
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      BragerOneApiClient
+      HttpCache
+   
+   .. rubric:: Exceptions
+
+   .. autosummary::
+   
+      ApiError
+   

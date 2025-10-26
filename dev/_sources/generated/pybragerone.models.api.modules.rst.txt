@@ -1,0 +1,15 @@
+pybragerone.models.api.modules
+==============================
+
+.. automodule:: pybragerone.models.api.modules
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      Module
+      ModuleCard
+      ModuleGateway
+      ModuleParameterSchema
+   
