@@ -245,7 +245,7 @@ class HATokenStore(TokenStore):
 
     def load(self) -> Token | None:
         """Return a cached Token or None if not present."""
-        data = None
+        data: Any = None
         with contextlib.suppress(Exception):
             data = self._loader()
         if not isinstance(data, dict):

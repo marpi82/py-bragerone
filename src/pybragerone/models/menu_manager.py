@@ -171,7 +171,7 @@ class MenuProcessor:
             result: list[dict[str, Any]] = []
             for route in processed:
                 if not isinstance(route, dict):
-                    continue
+                    continue  # type: ignore[unreachable]
                 if not include_invisible and not route.get("_visible", False):
                     continue
                 clean = dict(route)
