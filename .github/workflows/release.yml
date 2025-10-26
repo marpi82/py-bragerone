@@ -56,7 +56,7 @@ jobs:
       - name: Verify build artifacts
         run: |
           ls -lh dist/
-          uv run twine check dist/*
+          uv tool run twine check dist/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
