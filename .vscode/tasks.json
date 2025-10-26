@@ -6,90 +6,199 @@
   },
   "tasks": [
     {
-      "label": "Bootstrap (poetry+groups)",
+      "label": "Poetry: bootstrap",
       "type": "shell",
-      "command": "poetry run poe bootstrap",
-      "detail": "poetry install --with dev,test,docs"
+      "command": "poetry install --with dev,test,docs",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "clear": true }
     },
     {
-      "label": "Lint (ruff via poe)",
+      "label": "Quality: format",
       "type": "shell",
-      "command": "poetry run poe lint",
-      "group": "build"
+      "command": "poetry run ruff format",
+      "problemMatcher": [],
+      "group": "build",
+      "presentation": { "reveal": "never", "clear": true }
     },
     {
-      "label": "Format (black+ruff+isort via poe)",
+      "label": "Quality: lint/fix",
       "type": "shell",
-      "command": "poetry run poe fmt"
+      "command": "poetry run ruff check . --fix",
+      "problemMatcher": [
+        {
+          "owner": "ruff",
+          "fileLocation": ["relative", "${workspaceFolder}"],
+          // file.py:10:5: F401 message...
+          "pattern": {
+            "regexp": "^(.*?):(\\d+):(\\d+):\\s+([A-Z]\\d{3})\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "code": 4,
+            "message": 5,
+            "severity": "error"
+          }
+        }
+      ],
+      "group": "build",
+      "presentation": { "reveal": "never", "clear": true }
     },
     {
-      "label": "Quick fix (ruff --fix + format via poe)",
+      "label": "Quality: typecheck",
       "type": "shell",
-      "command": "poetry run poe fix"
+      "command": "poetry run mypy --hide-error-context --show-column-numbers --no-color-output",
+      "problemMatcher": [
+        {
+          "owner": "mypy",
+          "fileLocation": ["relative", "${workspaceFolder}"],
+          // file:line:col: (error|warning|note): message
+          "pattern": {
+            "regexp": "^(.*?):(\\d+):(\\d+):\\s+(error|warning|note):\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "severity": 4,
+            "message": 5
+          }
+        }
+      ],
+      "group": "build",
+      "presentation": { "reveal": "never", "clear": true }
     },
     {
-      "label": "Type-check (mypy via poe)",
-      "type": "shell",
-      "command": "poetry run poe typecheck",
-      "group": "build"
+      "label": "Quality: All quality checks",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Quality: format", "Quality: lint/fix", "Quality: typecheck"],
+      "problemMatcher": [],
+      "presentation": { "reveal": "never", "clear": true }
     },
     {
-      "label": "Tests (pytest via poe)",
+      "label": "Security: Bandit (security linting)",
       "type": "shell",
-      "command": "poetry run poe test",
-      "group": "test"
+      // custom template for problemMatcher: file:line:column/code/severity/message
+      "command": "poetry run bandit -r src -q -f custom --msg-template \"{path}:{line}:{col}: {test_id} {severity}: {msg}\"",
+      "problemMatcher": [
+        {
+          "owner": "bandit",
+          "fileLocation": ["relative", "${workspaceFolder}"],
+          // file.py:12:0: Bxxx HIGH: message...
+          "pattern": {
+            "regexp": "^(.*?):(\\d+):(\\d+):\\s+([A-Z]\\d{3})\\s+(LOW|MEDIUM|HIGH|UNDEFINED):\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "code": 4,
+            "severity": 5,
+            "message": 6
+          }
+        }
+      ],
+      "presentation": { "reveal": "never", "clear": true }
     },
     {
-      "label": "Coverage (pytest-cov via poe)",
+      "label": "Security: Semgrep (security checks)",
       "type": "shell",
-      "command": "poetry run poe cov",
-      "group": "test"
+      // --error => exit!=0 when there are findings of appropriate severity
+      "command": "poetry run semgrep --config p/ci --error .",
+      "problemMatcher": [
+        {
+          "owner": "semgrep",
+          "fileLocation": ["relative", "${workspaceFolder}"],
+          // typical: file.py:12:3: WARNING rule.id: message
+          "pattern": {
+            "regexp": "^(.*?):(\\d+):(\\d+):\\s+(ERROR|WARNING|INFO)\\s+([^:]+):\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "severity": 4,
+            "code": 5,
+            "message": 6
+          }
+        }
+      ],
+      "presentation": { "reveal": "never", "clear": true }
     },
     {
-      "label": "Docs: build (Sphinx via poe)",
+      "label": "Security: pip-audit (dependency audit)",
       "type": "shell",
-      "command": "poetry run poe docs-build",
-      "group": "build"
+      "command": "poetry run pip-audit --skip-editable --progress-spinner off --ignore-vuln GHSA-4xh5-x5gv-qwph",
+      // pip-audit prints a table by default; parsing 'Problems' can be unreliable → leave the exit code
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "clear": true }
+    },
+    {
+      "label": "Security: All security checks",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Security: Bandit (security linting)", "Security: Semgrep (security checks)", "Security: pip-audit (dependency audit)"],
+      "problemMatcher": [],
+      "presentation": { "reveal": "never", "clear": true }
+    },
+    {
+      "label": "Tests: run",
+      "type": "shell",
+      // JUnit → Problems via $junit; -q stays, but we add a report
+      "command": "poetry run pytest -q --junitxml=reports/junit.xml",
+      "problemMatcher": "$junit",
+      "group": { "kind": "test", "isDefault": true },
+      "presentation": { "reveal": "never", "clear": true }
+    },
+    {
+      "label": "Tests: coverage",
+      "type": "shell",
+      "command": "poetry run pytest -q --cov=pybragerone --cov-report=term-missing --junitxml=reports/junit.xml",
+      "problemMatcher": "$junit",
+      "group": "test",
+      "presentation": { "reveal": "never", "clear": true }
+    },
+    {
+      "label": "Validate: Full validation",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Quality: All quality checks", "Security: All security checks", "Tests: run"],
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "never", "clear": true }
+    },
+    {
+      "label": "Build dist",
+      "type": "shell",
+      "command": "poetry build",
+      "problemMatcher": [],
+      "group": "build",
+      "presentation": { "reveal": "always", "clear": true }
+    },
+    {
+      "label": "Docs: build (Sphinx)",
+      "type": "shell",
+      "command": "bash -lc 'export LC_ALL=C.utf8 2>/dev/null || export LC_ALL=C.UTF-8 2>/dev/null || true; poetry run sphinx-build -b html docs docs/_build/html'",
+      "problemMatcher": [],
+      "group": "build",
+      "presentation": { "reveal": "never", "clear": true }
     },
     {
       "label": "Docs: serve (local http.server)",
       "type": "shell",
-      "command": "poetry run poe docs-serve",
+      "command": "python -m http.server --directory docs/_build/html 8000",
       "isBackground": true,
-      "problemMatcher": []
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": false }
     },
     {
-      "label": "Build dist (poetry build via poe)",
+      "label": "Publish: PyPI",
       "type": "shell",
-      "command": "poetry run poe build",
-      "group": "build"
+      "command": "poetry publish --build --no-interaction",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "clear": true }
     },
     {
-      "label": "Publish: TestPyPI (via poe)",
+      "label": "Publish: TestPyPI",
       "type": "shell",
-      "command": "poetry run poe publish-testpypi"
-    },
-    {
-      "label": "Publish: PyPI (via poe)",
-      "type": "shell",
-      "command": "poetry run poe publish-pypi"
-    },
-    {
-      "label": "All: lint + type + tests",
-      "type": "shell",
-      "command": "poetry run poe lint && poetry run poe typecheck && poetry run poe test",
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      }
+      "command": "poetry publish --build --repository testpypi --no-interaction",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "clear": true }
     }
   ],
-  "inputs": [
-    {
-      "id": "pytestExpr",
-      "type": "promptString",
-      "description": "Optional -k/::test for filtering tests (leave empty to run all)",
-      "default": ""
-    }
-  ]
+
+  "runOptions": {
+    "reevaluateOnRerun": true
+  }
 }

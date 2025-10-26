@@ -1,3 +1,5 @@
+"""Configuration file for the Sphinx documentation builder."""
+
 import os
 import sys
 from datetime import datetime
@@ -102,4 +104,4 @@ version = release
 # nitpicky = True
 
 # If you want literalinclude to catch files from tests/, make sure paths are relative
-# to the docs/ directory (e.g. ../../tests/test_live_api.py) – you already have this in .rst files
+# to the docs/ directory (e.g. ../../tests/test_live_api.py) - you already have this in .rst files

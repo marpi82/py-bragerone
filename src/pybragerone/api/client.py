@@ -6,25 +6,42 @@ import asyncio
 import contextlib
 import json
 import logging
-from collections.abc import Callable
-from types import SimpleNamespace
+from collections.abc import Callable, Mapping
 from typing import Any
 
-from aiohttp import (
-    ClientSession,
-    TraceConfig,
-    TraceRequestEndParams,
-    TraceRequestStartParams,
+import httpx
+
+from pybragerone.models.api import (
+    AuthResponse,
+    BragerObject,
+    Module,
+    ModuleCard,
+    ObjectDetails,
+    Permission,
+    SystemVersion,
+    User,
 )
 
-from .consts import API_BASE, ONE_BASE
-from .token_store import Token, TokenStore
+from ..models.token import Token, TokenStore
+from .constants import ONE_BASE
+from .endpoints import (
+    auth_revoke_url,
+    auth_user_url,
+    module_card_url,
+    modules_activity_quantity_url,
+    modules_connect_url,
+    modules_parameters_url,
+    modules_url,
+    object_permissions_url,
+    object_url,
+    objects_url,
+    system_version_url,
+    user_permissions_url,
+    user_url,
+)
 
 LOG = logging.getLogger("pybragerone.api")
 LOG_HTTP = logging.getLogger("pybragerone.http")
-
-# TODO: add this endpoint?
-# GET /v1/system/version?container=BragerOne&platform=0 → 200
 
 
 class ApiError(RuntimeError):
@@ -50,6 +67,69 @@ class ApiError(RuntimeError):
         self.headers = headers or {}
 
 
+class HttpCache:
+    """Simple HTTP cache using ETag/Last-Modified headers with in-memory body storage.
+
+    This cache implementation stores response bodies along with their cache headers
+    to enable efficient HTTP caching with proper conditional request handling.
+    """
+
+    def __init__(self) -> None:
+        """Initialize an empty HTTP cache.
+
+        Creates an empty cache store that maps URLs to tuples containing
+        ETag, Last-Modified, and response body data.
+        """
+        self._store: dict[str, tuple[str | None, str | None, bytes]] = {}
+
+    def headers_for(self, url: str) -> dict[str, str]:
+        """Generate conditional request headers for cached URL.
+
+        Returns appropriate If-None-Match and If-Modified-Since headers
+        based on cached ETag and Last-Modified values for the given URL.
+
+        Args:
+            url: The URL to generate headers for.
+
+        Returns:
+            Dictionary of conditional headers to include in the request.
+        """
+        etag, last_mod, _ = self._store.get(url, (None, None, b""))
+        headers = {}
+        if etag:
+            headers["If-None-Match"] = etag
+        if last_mod:
+            headers["If-Modified-Since"] = last_mod
+        return headers
+
+    def update(self, url: str, headers: Mapping[str, str], body: bytes) -> None:
+        """Update cache entry with response data.
+
+        Stores the response body along with ETag and Last-Modified headers
+        for the given URL to enable future conditional requests.
+
+        Args:
+            url: The URL being cached.
+            headers: Response headers containing cache information.
+            body: The response body to cache.
+        """
+        etag = headers.get("ETag")
+        last_mod = headers.get("Last-Modified")
+        self._store[url] = (etag, last_mod, body)
+
+    def get_body(self, url: str) -> bytes | None:
+        """Retrieve cached response body for URL.
+
+        Args:
+            url: The URL to retrieve the cached body for.
+
+        Returns:
+            Cached response body as bytes, or None if not cached.
+        """
+        val = self._store.get(url)
+        return val[2] if val else None
+
+
 CredProvider = Callable[[], tuple[str, str]]  # -> (email, password)
 
 
@@ -69,6 +149,8 @@ class BragerOneApiClient:
         creds_provider: CredProvider | None = None,
         validate_on_start: bool = True,
         refresh_leeway: int = 90,
+        timeout: float = 8.0,
+        concurrency: int = 4,
     ):
         """Initialize the API client.
 
@@ -79,8 +161,10 @@ class BragerOneApiClient:
             creds_provider: Function that provides email/password credentials.
             validate_on_start: Whether to validate tokens on first use.
             refresh_leeway: Time in seconds before token expiry to refresh.
+            timeout: Request timeout in seconds.
+            concurrency: Maximum number of concurrent requests.
         """
-        self._session: ClientSession | None = None
+        self._session: httpx.AsyncClient | None = None
 
         self._enable_http_trace = enable_http_trace
         self._redact_secrets = redact_secrets
@@ -102,6 +186,10 @@ class BragerOneApiClient:
         self._auth_lock = asyncio.Lock()
         self._connect_variant: dict[str, Any] | None = None
 
+        self._cache = HttpCache()
+        self._timeout = timeout
+        self._sem = asyncio.Semaphore(concurrency)
+
     # ----------------- session helpers -----------------
 
     def set_token_store(self, store: TokenStore | None) -> None:
@@ -119,69 +207,55 @@ class BragerOneApiClient:
         self._token_saver = store.save
         self._token_clearer = store.clear
 
-    async def _ensure_session(self) -> ClientSession:
-        """Ensure we have a ClientSession (with optional HTTP tracing).
+    async def _ensure_session(self) -> httpx.AsyncClient:
+        """Ensure we have an AsyncClient (with optional HTTP tracing).
 
         Returns:
-            An active aiohttp ClientSession with configured headers and tracing.
+            An active httpx AsyncClient with configured headers and event hooks.
         """
-        if self._session and not self._session.closed:
+        if self._session and not self._session.is_closed:
             return self._session
 
-        trace_configs: list[TraceConfig] = []
-        if self._enable_http_trace:
-            trace = TraceConfig()
+        # Configure default headers
+        headers = {"Origin": ONE_BASE, "Referer": f"{ONE_BASE}/"}
 
-            @trace.on_request_start.append
-            async def _on_start(
-                session: ClientSession,
-                ctx: SimpleNamespace,
-                params: TraceRequestStartParams,
-            ) -> None:
-                """Log the request.
+        # Configure timeout
+        timeout = httpx.Timeout(self._timeout)
 
-                Args:
-                    session: The aiohttp ClientSession.
-                    ctx: The aiohttp TraceRequestStartParams.
-                    params: The aiohttp TraceRequestStartParams.
-
-                Returns:
-                    None
-                """
-                safe_headers = dict(params.headers or {})
-                if self._redact_secrets and "Authorization" in safe_headers:
-                    safe_headers["Authorization"] = "<redacted>"
-                LOG_HTTP.debug("→ %s %s headers=%s", params.method, params.url, safe_headers)
-
-            @trace.on_request_end.append
-            async def _on_end(
-                session: ClientSession,
-                ctx: SimpleNamespace,
-                params: TraceRequestEndParams,
-            ) -> None:
-                """Log the response.
-
-                Args:
-                    session: The aiohttp ClientSession.
-                    ctx: The aiohttp TraceRequestEndParams.
-                    params: The aiohttp TraceRequestEndParams.
-
-                Returns:
-                    None
-                """
-                resp = params.response
-                LOG_HTTP.debug("← %s %s → %s", params.method, params.url, resp.status)
-
-            trace_configs.append(trace)
-
-        self._session = ClientSession(
-            headers={
-                "Origin": ONE_BASE,
-                "Referer": f"{ONE_BASE}/",
-            },
-            trace_configs=trace_configs,
+        # Create client
+        self._session = httpx.AsyncClient(
+            headers=headers,
+            timeout=timeout,
+            follow_redirects=True,
         )
+
+        # Add HTTP tracing event hooks if enabled
+        if self._enable_http_trace:
+            self._session.event_hooks = {
+                "request": [self._log_request],
+                "response": [self._log_response],
+            }
+
         return self._session
+
+    async def _log_request(self, request: httpx.Request) -> None:
+        """Log HTTP request for tracing.
+
+        Args:
+            request: The httpx Request object.
+        """
+        safe_headers = dict(request.headers)
+        if self._redact_secrets and "Authorization" in safe_headers:
+            safe_headers["Authorization"] = "<redacted>"
+        LOG_HTTP.debug("→ %s %s headers=%s", request.method, request.url, safe_headers)
+
+    async def _log_response(self, response: httpx.Response) -> None:
+        """Log HTTP response for tracing.
+
+        Args:
+            response: The httpx Response object.
+        """
+        LOG_HTTP.debug("← %s %s → %s", response.request.method, response.request.url, response.status_code)
 
     async def close(self) -> None:
         """Close the underlying HTTP session.
@@ -189,8 +263,8 @@ class BragerOneApiClient:
         This should be called when the client is no longer needed to properly
         release resources.
         """
-        if self._session and not self._session.closed:
-            await self._session.close()
+        if self._session and not self._session.is_closed:
+            await self._session.aclose()
 
     # ----------------- request -----------------
 
@@ -230,38 +304,58 @@ class BragerOneApiClient:
                 raise ApiError(401, {"message": "No token"}, {})
             hdrs["Authorization"] = f"Bearer {self._token.access_token}"
 
-        async with sess.request(method, path, json=json, data=data, headers=hdrs) as resp:
-            status = resp.status
-            ctype = resp.headers.get("Content-Type", "")
-            try:
-                body = await (resp.json(content_type=None) if "application/json" in ctype else resp.text())
-            except Exception:
-                body = None
+        resp = await sess.request(method, path, json=json, data=data, headers=hdrs)
+        status = resp.status_code
+        ctype = resp.headers.get("Content-Type", "")
+        try:
+            body = resp.json() if "application/json" in ctype else resp.text
+        except Exception:
+            body = None
 
-            if status == 401 and auth and _retry:
-                LOG.debug("401 received — attempting token refresh & single retry")
-                em, pw = (None, None)
-                if self._creds_provider:
-                    with contextlib.suppress(Exception):
-                        em, pw = self._creds_provider()
+        if status == 401 and auth and _retry:
+            LOG.debug("401 received — attempting token refresh & single retry")
+            em, pw = (None, None)
+            if self._creds_provider:
                 with contextlib.suppress(Exception):
-                    await self.ensure_auth(em, pw)
-                    return await self._req(
-                        method,
-                        path,
-                        json=json,
-                        data=data,
-                        headers=headers,
-                        auth=auth,
-                        _retry=False,
-                    )
+                    em, pw = self._creds_provider()
+            with contextlib.suppress(Exception):
+                await self.ensure_auth(em, pw)
+                return await self._req(
+                    method,
+                    path,
+                    json=json,
+                    data=data,
+                    headers=headers,
+                    auth=auth,
+                    _retry=False,
+                )
 
-            if status >= 400:
-                raise ApiError(status, body, dict(resp.headers))
+        if status >= 400:
+            raise ApiError(status, body, dict(resp.headers))
 
-            return status, body, dict(resp.headers)
+        return status, body, dict(resp.headers)
 
-    # ----------------- auth -----------------
+    # -------- SYSTEM --------
+
+    async def get_system_version(self) -> SystemVersion:
+        """Get system version information.
+
+        Returns:
+            System version information as a Pydantic model.
+
+        Raises:
+            ApiError: If the request fails.
+        """
+        status, data, _ = await self._req("GET", system_version_url(), auth=False)
+        if status != 200:
+            raise ApiError(status, data)
+        if not isinstance(data, dict):
+            raise ApiError(500, {"message": "Unexpected version payload"}, {})
+        # API returns {"version": {...}}, extract the inner object
+        version_data = data.get("version", data)
+        return SystemVersion.model_validate(version_data)
+
+    # ----------------- AUTH -----------------
 
     async def ensure_auth(self, email: str | None = None, password: str | None = None) -> Token:
         """Ensure valid token: use cache + validation, and if missing/expired — login.
@@ -309,7 +403,7 @@ class BragerOneApiClient:
             # 4) classic login
             return await self._post_login(em, pw)
 
-    async def _do_login_request(self, email: str, password: str) -> tuple[int, dict[str, Any] | None, dict[str, Any]]:
+    async def _do_login_request(self, email: str, password: str) -> AuthResponse:
         """Execute login request to the authentication endpoint.
 
         Args:
@@ -317,14 +411,22 @@ class BragerOneApiClient:
             password: User password.
 
         Returns:
-            Tuple of (status, response_data, headers).
+            Authentication response as a Pydantic model.
+
+        Raises:
+            ApiError: If the request fails.
         """
-        return await self._req(
+        status, data, _ = await self._req(
             "POST",
-            f"{API_BASE}/auth/user",
+            auth_user_url(),
             json={"email": email, "password": password},
             auth=False,
         )
+        if status != 200:
+            raise ApiError(status, data)
+        if not isinstance(data, dict):
+            raise ApiError(500, {"message": "Unexpected login payload"}, {})
+        return AuthResponse.model_validate(data)
 
     async def _post_login(self, email: str, password: str) -> Token:
         """Login via /v1/auth/user. On 500/ER_DUP_ENTRY try short backoff and retry.
@@ -345,19 +447,17 @@ class BragerOneApiClient:
 
         for _, d in enumerate([*delays, None]):  # last attempt without sleep after
             try:
-                _, data, _ = await self._do_login_request(email, password)
+                auth_response = await self._do_login_request(email, password)
             except ApiError as e:
                 # only retry 500/duplicate errors
                 if e.status == 500 and self._is_duplicate_token_error(e.data) and d is not None:
-                    jitter = random.uniform(0.0, 0.15)
+                    jitter = random.uniform(0.0, 0.15)  # nosec B311 - non-cryptographic jitter for retry backoff
                     await asyncio.sleep(d + jitter)
                     continue
                 raise
 
-            if not isinstance(data, dict):
-                raise ApiError(500, {"message": "Unexpected login payload"}, {})
-
-            tok = Token.from_login_payload(data)
+            # Convert AuthResponse to Token using existing method
+            tok = Token.from_login_payload(auth_response.model_dump())
             if not tok.access_token:
                 raise ApiError(500, {"message": "No accessToken in login payload"}, {})
 
@@ -380,7 +480,7 @@ class BragerOneApiClient:
         if not self._token:
             raise ApiError(401, {"message": "No token"}, {})
         try:
-            status, _data, _hdrs = await self._req("GET", f"{API_BASE}/user", auth=True, _retry=False)
+            status, _data, _hdrs = await self._req("GET", user_url(), auth=True, _retry=False)
             if status == 200:
                 self._validated = True
                 return
@@ -407,8 +507,6 @@ class BragerOneApiClient:
         msg = str(data.get("message", "")).lower()
         return "duplicate entry" in msg or "er_dup_entry" in msg
 
-    # ----------------- API endpoints -----------------
-
     async def revoke(self) -> None:
         """Server-side logout + local cleanup of token and persistence.
 
@@ -416,7 +514,7 @@ class BragerOneApiClient:
         regardless of server response.
         """
         try:
-            await self._req("POST", f"{API_BASE}/auth/revoke", auth=True)
+            await self._req("POST", auth_revoke_url(), auth=True)
         except ApiError as e:
             if e.status not in (401, 403, 404):
                 raise
@@ -428,132 +526,160 @@ class BragerOneApiClient:
             if self._token_clearer:
                 with contextlib.suppress(Exception):
                     self._token_clearer()
-            # „nie ładuj od razu” na kolejnym ensure_auth w tym samym cyklu
+            # "don't load immediately" on the next ensure_auth in the same cycle
             self._skip_load_once = True
 
     # -------- USER --------
 
-    async def get_user(self) -> dict[str, Any]:
+    async def get_user(self) -> User:
         """Get current user information.
 
         Returns:
-            User information dictionary.
+            User information as a Pydantic model.
 
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", f"{API_BASE}/user")
+        status, data, _ = await self._req("GET", user_url())
         if status != 200:
             raise ApiError(status, data)
         if not isinstance(data, dict):
             raise ApiError(500, {"message": "Unexpected user payload"}, {})
-        return data
+        # API returns {"user": {...}}, extract the inner object
+        user_data = data.get("user", data)
+        return User.model_validate(user_data)
 
-    async def get_user_permissions(self) -> list[str]:
+    async def get_user_permissions(self) -> list[Permission]:
         """Get current user permissions.
 
         Returns:
-            List of permission strings.
+            List of user permissions.
 
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", f"{API_BASE}/user/permissions")
+        status, data, _ = await self._req("GET", user_permissions_url())
         if status != 200:
             raise ApiError(status, data)
-        return data if isinstance(data, list) else []
+        # API returns {"permissions": [...]} format
+        permissions_list: list[str] = []
+        if isinstance(data, dict):
+            permissions_list = data.get("permissions", [])
+        elif isinstance(data, list):
+            permissions_list = data
+        # Convert strings to Permission objects
+        return [Permission.model_validate(perm) for perm in permissions_list]
 
     # -------- OBJECTS --------
 
-    async def objects_list(self) -> list[dict[str, Any]]:
+    async def get_objects(self) -> list[BragerObject]:
         """GET /v1/objects → list of objects (with tolerance for different shapes).
 
         Returns:
-            List of object dictionaries.
+            List of BragerObject models.
         """
-        st, data, _ = await self._req("GET", f"{API_BASE}/objects")
+        st, data, _ = await self._req("GET", objects_url())
         if st != 200:
             return []
-        if isinstance(data, dict) and isinstance(data.get("data"), list):
-            return list(data["data"])
-        if isinstance(data, dict) and isinstance(data.get("objects"), list):
-            return list(data["objects"])
-        if isinstance(data, list):
-            return list(data)
-        return []
 
-    async def get_object(self, object_id: int) -> dict[str, Any]:
+        # Extract objects array from different response formats
+        objects_data = []
+        if isinstance(data, dict) and isinstance(data.get("data"), list):
+            objects_data = data["data"]
+        elif isinstance(data, dict) and isinstance(data.get("objects"), list):
+            objects_data = data["objects"]
+        elif isinstance(data, list):
+            objects_data = data
+
+        # Convert to Pydantic models
+        return [BragerObject.model_validate(obj) for obj in objects_data]
+
+    async def get_object(self, object_id: int) -> ObjectDetails:
         """Get object by ID.
 
         Args:
             object_id: The object identifier.
 
         Returns:
-            Object information dictionary.
+            Object details with operational status.
 
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", f"{API_BASE}/objects/{object_id}")
+        status, data, _ = await self._req("GET", object_url(object_id))
         if status != 200:
             raise ApiError(status, data)
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            raise ApiError(500, {"message": "Unexpected object payload"}, {})
+        return ObjectDetails.model_validate(data)
 
-    async def get_object_permissions(self, object_id: int) -> list[str]:
-        """Get object permissions by ID.
+    async def get_object_permissions(self, object_id: int) -> list[Permission]:
+        """Get object-specific permissions for the current user.
 
         Args:
-            object_id: The object identifier.
+            object_id: The ID of the object to get permissions for.
 
         Returns:
-            List of permission strings for the object.
+            List of object-specific permissions.
 
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", f"{API_BASE}/objects/{object_id}/permissions")
+        status, data, _ = await self._req("GET", object_permissions_url(object_id))
         if status != 200:
             raise ApiError(status, data)
-        return data if isinstance(data, list) else []
+        # API returns {"permissions": [...]} format
+        permissions_list: list[str] = []
+        if isinstance(data, dict):
+            permissions_list = data.get("permissions", [])
+        elif isinstance(data, list):
+            permissions_list = data
+        # Convert strings to Permission objects
+        return [Permission.model_validate(perm) for perm in permissions_list]
 
     # -------- MODULES --------
 
-    async def modules_list(self, object_id: int) -> list[dict[str, Any]]:
+    async def get_modules(self, object_id: int) -> list[Module]:
         """GET /v1/modules?page=1&limit=999&group_id=<object_id> → list of modules.
 
         Args:
             object_id: The object/group identifier.
 
         Returns:
-            List of module dictionaries.
+            List of Module models.
         """
-        path = f"{API_BASE}/modules?page=1&limit=999&group_id={object_id}"
-        st, data, _ = await self._req("GET", path)
+        st, data, _ = await self._req("GET", modules_url(object_id))
         if st != 200:
             return []
-        # zwykle jest {data:[...]} lub po prostu lista
-        if isinstance(data, dict) and isinstance(data.get("data"), list):
-            return list(data["data"])
-        if isinstance(data, list):
-            return list(data)
-        return []
 
-    async def get_module_card(self, code: str) -> dict[str, Any]:
+        # Extract modules array from different response formats
+        modules_data = []
+        if isinstance(data, dict) and isinstance(data.get("data"), list):
+            modules_data = data["data"]
+        elif isinstance(data, list):
+            modules_data = data
+
+        # Convert to Pydantic models
+        return [Module.model_validate(mod) for mod in modules_data]
+
+    async def get_module_card(self, code: str) -> ModuleCard:
         """Get module card information by code.
 
         Args:
             code: The module code identifier.
 
         Returns:
-            Module card information dictionary.
+            Module card information as a Pydantic model.
 
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", f"{API_BASE}/modules/{code}/card")
+        status, data, _ = await self._req("GET", module_card_url(code))
         if status != 200:
             raise ApiError(status, data)
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            raise ApiError(500, {"message": "Unexpected module card payload"}, {})
+        return ModuleCard.model_validate(data)
 
     async def modules_connect(
         self,
@@ -615,7 +741,7 @@ class BragerOneApiClient:
                 uniq.append(c)
 
         for body in uniq:
-            status, data, _ = await self._req("POST", "/modules/connect", json=body, headers=headers)
+            status, data, _ = await self._req("POST", modules_connect_url(), json=body, headers=headers)
             LOG.debug("modules.connect try %s → %s %s", body, status, data if isinstance(data, dict) else "")
             if status in (200, 204):
                 self._connect_variant = body
@@ -633,7 +759,7 @@ class BragerOneApiClient:
             Tuple of (status, data) if return_data=True, otherwise boolean success.
         """
         payload = {"modules": modules}
-        status, data, _ = await self._req("POST", f"{API_BASE}/modules/parameters", json=payload)
+        status, data, _ = await self._req("POST", modules_parameters_url(), json=payload)
         # log_json_payload(LOG, "prime.modules.parameters", summarize_top_level(data))
         return (status, data) if return_data else (status in (200, 204))
 
@@ -648,7 +774,7 @@ class BragerOneApiClient:
             Tuple of (status, data) if return_data=True, otherwise boolean success.
         """
         payload = {"modules": modules}
-        status, data, _ = await self._req("POST", f"{API_BASE}/modules/activity/quantity", json=payload)
+        status, data, _ = await self._req("POST", modules_activity_quantity_url(), json=payload)
         # log_json_payload(LOG, "prime.modules.activity.quantity", summarize_top_level(data))
         return (status, data) if return_data else (status in (200, 204))
 
@@ -686,3 +812,44 @@ class BragerOneApiClient:
             return st, json.loads(txt)
         except Exception:
             return st, None
+
+    async def get_bytes(self, url: str) -> bytes:
+        """Get raw bytes from URL with caching (ETag/Last-Modified).
+
+        Args:
+            url: The URL to fetch.
+
+        Returns:
+            The raw bytes of the response.
+
+        Raises:
+            ApiError: If the request fails.
+
+        Note:
+            This method uses an in-memory cache to store ETag and Last-Modified headers
+            to optimize subsequent requests to the same URL.
+        """
+        sess = await self._ensure_session()
+        headers = self._cache.headers_for(url)
+        async with self._sem:
+            LOG.debug("HTTP GET %s", url)
+            try:
+                r = await sess.get(url, headers=headers)
+                if r.status_code == 304:
+                    body = self._cache.get_body(url)
+                    if body is None:
+                        # 304 without previous body - fetch full content
+                        r2 = await sess.get(url)
+                        r2.raise_for_status()
+                        body = r2.content
+                        self._cache.update(url, r2.headers, body)
+                        return body
+                    # Body from cache is guaranteed to be bytes
+                    return body
+                r.raise_for_status()
+                body = r.content
+                self._cache.update(url, r.headers, body)
+                return body
+            except Exception as e:
+                LOG.warning("HTTP error for %s: %s", url, e)
+                raise

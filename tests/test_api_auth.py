@@ -3,10 +3,10 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from aioresponses import aioresponses
+from pytest_httpx import HTTPXMock
 
 from pybragerone.api import BragerOneApiClient
-from pybragerone.token_store import Token
+from pybragerone.models import Token
 
 API = "https://io.brager.pl"
 TEST_EMAIL = "a@b"
@@ -29,10 +29,10 @@ class _TestTokenStore:
         return self._token
 
     def save(self, token: Token) -> None:
-        """Save a token to storage.
+        """Save a token.
 
         Args:
-            token: The token to save.
+            token: The token to store.
         """
         self._token = token
 
@@ -42,7 +42,7 @@ class _TestTokenStore:
 
 
 @pytest.mark.asyncio
-async def test_initial_login_and_validate() -> None:
+async def test_initial_login_and_validate(httpx_mock: HTTPXMock) -> None:
     """Test initial login flow and token validation on startup.
 
     Verifies that the client can successfully authenticate and validate
@@ -50,26 +50,46 @@ async def test_initial_login_and_validate() -> None:
     """
     client = BragerOneApiClient(creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD), validate_on_start=True)
 
-    with aioresponses() as m:
-        m.post(
-            f"{API}/v1/auth/user",
-            payload={
-                "accessToken": "T1",
-                "refreshToken": "R1",
-                "type": "bearer",
-                "expiresAt": (datetime.now(UTC) + timedelta(minutes=10)).isoformat(),
-            },
-        )
-        m.get(f"{API}/v1/user", payload={"ok": True})
+    httpx_mock.add_response(
+        method="POST",
+        url=f"{API}/v1/auth/user",
+        json={
+            "accessToken": "T1",
+            "refreshToken": "R1",
+            "type": "bearer",
+            "expiresAt": (datetime.now(UTC) + timedelta(minutes=10)).isoformat(),
+        },
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{API}/v1/user",
+        json={
+            "user": {
+                "id": 1,
+                "name": "Test User",
+                "email": TEST_EMAIL,
+                "language": "en",
+                "allow_email_type_informations": True,
+                "allow_email_type_alarms": True,
+                "allow_email_type_marketing": False,
+                "allow_email_type_warnings": True,
+                "activated_at": "2023-01-01T00:00:00Z",
+                "show_rate_us_modal": False,
+            }
+        },
+    )
 
-        tok = await client.ensure_auth()
-        assert tok.access_token == "T1"
+    tok = await client.ensure_auth()
+    assert tok.access_token == "T1"
 
+    # Call get_user to trigger validation
+    user = await client.get_user()
+    assert user.email == TEST_EMAIL
     await client.close()
 
 
 @pytest.mark.asyncio
-async def test_proactive_relogin_when_expiring() -> None:
+async def test_proactive_relogin_when_expiring(httpx_mock: HTTPXMock) -> None:
     """Test proactive re-login when token is about to expire.
 
     Verifies that the client automatically re-authenticates when the current
@@ -83,24 +103,24 @@ async def test_proactive_relogin_when_expiring() -> None:
     store = _TestTokenStore(expiring)
     client = BragerOneApiClient(token_store=store, creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD))
 
-    with aioresponses() as m:
-        m.post(
-            f"{API}/v1/auth/user",
-            payload={
-                "accessToken": "NEW",
-                "type": "bearer",
-                "expiresAt": (datetime.now(UTC) + timedelta(minutes=10)).isoformat(),
-            },
-        )
+    httpx_mock.add_response(
+        method="POST",
+        url=f"{API}/v1/auth/user",
+        json={
+            "accessToken": "NEW",
+            "type": "bearer",
+            "expiresAt": (datetime.now(UTC) + timedelta(minutes=10)).isoformat(),
+        },
+    )
 
-        tok = await client.ensure_auth()
-        assert tok.access_token == "NEW"
+    tok = await client.ensure_auth()
+    assert tok.access_token == "NEW"
 
     await client.close()
 
 
 @pytest.mark.asyncio
-async def test_reactive_refresh_on_401_retry_once() -> None:
+async def test_reactive_refresh_on_401_retry_once(httpx_mock: HTTPXMock) -> None:
     """Test reactive token refresh on 401 response with single retry.
 
     Verifies that when a request fails with 401, the client automatically
@@ -108,51 +128,62 @@ async def test_reactive_refresh_on_401_retry_once() -> None:
     """
     client = BragerOneApiClient(creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD))
 
-    with aioresponses() as m:
-        m.post(
-            f"{API}/v1/auth/user",
-            payload={
-                "accessToken": "T1",
-                "type": "bearer",
-                "expiresAt": (datetime.now(UTC) + timedelta(minutes=1)).isoformat(),
-            },
-        )
-        tok = await client.ensure_auth()
-        assert tok.access_token == "T1"
+    httpx_mock.add_response(
+        method="POST",
+        url=f"{API}/v1/auth/user",
+        json={
+            "accessToken": "T1",
+            "type": "bearer",
+            "expiresAt": (datetime.now(UTC) + timedelta(minutes=1)).isoformat(),
+        },
+    )
+    tok = await client.ensure_auth()
+    assert tok.access_token == "T1"
 
-        m.get(f"{API}/v1/user", status=401)
-        m.post(
-            f"{API}/v1/auth/user",
-            payload={
-                "accessToken": "T2",
-                "type": "bearer",
-                "expiresAt": (datetime.now(UTC) + timedelta(minutes=10)).isoformat(),
-            },
-        )
-        m.get(f"{API}/v1/user", payload={"ok": True})
+    # Mock 401 response then successful retry
+    httpx_mock.add_response(method="GET", url=f"{API}/v1/user", status_code=401)
+    httpx_mock.add_response(
+        method="POST",
+        url=f"{API}/v1/auth/user",
+        json={
+            "accessToken": "T2",
+            "type": "bearer",
+            "expiresAt": (datetime.now(UTC) + timedelta(minutes=10)).isoformat(),
+        },
+    )
+    httpx_mock.add_response(method="GET", url=f"{API}/v1/user", json={"ok": True})
 
-        status, payload, _ = await client._req("GET", f"{API}/v1/user")
-        assert status == 200
-        assert payload == {"ok": True}
+    status, payload, _ = await client._req("GET", f"{API}/v1/user")
+    assert status == 200
+    assert payload == {"ok": True}
 
     await client.close()
 
 
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
 @pytest.mark.asyncio
-async def test_revoke_swallows_errors() -> None:
+async def test_revoke_swallows_errors(httpx_mock: HTTPXMock) -> None:
     """Test that token revoke gracefully handles server errors.
 
     Verifies that the revoke method clears the local token state even
     when the server returns an error response.
     """
-    client = BragerOneApiClient(creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD))
-    with aioresponses() as m:
-        m.post(f"{API}/v1/auth/user", payload={"accessToken": "T1"})
-        await client.ensure_auth()
+    # Use validate_on_start=False to avoid validation calls
+    client = BragerOneApiClient(creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD), validate_on_start=False)
 
-        # Test that 401/403/404 errors are swallowed but token is cleared
-        m.post(f"{API}/v1/auth/revoke", status=401, payload={"message": "unauthorized"})
-        await client.revoke()
-        assert client._token is None
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T1"})
+    # Pre-mock the revoke call
+    httpx_mock.add_response(
+        method="POST",
+        url=f"{API}/v1/auth/revoke",
+        status_code=401,
+        json={"message": "unauthorized"},
+    )
+
+    await client.ensure_auth()
+
+    # Test that 401/403/404 errors are swallowed but token is cleared
+    await client.revoke()
+    assert client._token is None
 
     await client.close()

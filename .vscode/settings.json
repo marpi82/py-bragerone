@@ -4,6 +4,10 @@
   // ─────────────────────────────────────────────────────────────
   // Use the project's in-repo virtualenv created by Poetry
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "terminal.integrated.env.linux": {
+    "VIRTUAL_ENV": "${workspaceFolder}/.venv",
+    "PATH": "${workspaceFolder}/.venv/bin:${env:PATH}"
+  },
 
   // Load environment variables from .env (used in terminal/debug)
   "python.envFile": "${workspaceFolder}/.env",

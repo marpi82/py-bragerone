@@ -12,10 +12,8 @@ from asyncio import CancelledError, Event, Task, TaskGroup, create_task, gather,
 from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from typing import Any
 
-from .api import BragerOneApiClient
-from .consts import API_BASE
-from .events import EventBus, ParamUpdate
-from .ws import RealtimeManager
+from .api import API_BASE, BragerOneApiClient, RealtimeManager
+from .models.events import EventBus, ParamUpdate
 
 LOG = logging.getLogger(__name__)
 
@@ -165,7 +163,8 @@ class BragerOneGateway:
 
     async def _prime(self) -> tuple[bool, bool]:
         """Fetch initial state via REST (/modules/parameters + /modules/activity/quantity)."""
-        assert self.api is not None
+        if self.api is None:
+            raise RuntimeError("API client not initialized")
         ok_params = False
         ok_act = False
 
@@ -348,7 +347,8 @@ class BragerOneGateway:
         group_id: int | None,
         engine_sid: str | None,
     ) -> bool:
-        assert self.api is not None
+        if self.api is None:
+            raise RuntimeError("API client not initialized")
         payloads: list[dict[str, Any]] = [
             {"wsid": wsid, "modules": list(modules)},
             {"sid": wsid, "modules": list(modules)},
@@ -363,11 +363,12 @@ class BragerOneGateway:
                 if st == 200:
                     return True
             except Exception:
-                continue
+                continue  # nosec B112 - intentionally try multiple payloads until one succeeds
         return False
 
     async def _api_modules_parameters_prime(self, modules: Iterable[str], *, return_data: bool = True) -> tuple[int, Any | None]:
-        assert self.api is not None
+        if self.api is None:
+            raise RuntimeError("API client not initialized")
         pl = {"modules": list(modules)}
         st, data, _ = await self.api._req("POST", f"{API_BASE}/modules/parameters", json=pl)
         return st, (data if return_data else None)
@@ -375,7 +376,8 @@ class BragerOneGateway:
     async def _api_modules_activity_quantity_prime(
         self, modules: Iterable[str], *, return_data: bool = True
     ) -> tuple[int, Any | None]:
-        assert self.api is not None
+        if self.api is None:
+            raise RuntimeError("API client not initialized")
         pl = {"modules": list(modules)}
         st, data, _ = await self.api._req("POST", f"{API_BASE}/modules/activity/quantity", json=pl)
         return st, (data if return_data else None)

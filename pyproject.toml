@@ -10,10 +10,10 @@ maintainers = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
 dynamic = [ # version is managed by poetry-dynamic-versioning
   "version",
   "readme",
+  "classifiers", # Let Poetry auto-enrich classifiers
 ]
 license = "MIT"
-license-files = ["LICENSE"] # PEP 621 way to declare license file
-requires-python = ">=3.13.0,<4"
+requires-python = ">=3.13.2,<4"
 keywords = [
   "home",
   "automation",
@@ -21,15 +21,17 @@ keywords = [
   "bragerone",
   "socket.io",
   "websocket",
-  "aiohttp",
+  "httpx",
   "pydantic",
   "home-assistant",
 ]
 dependencies = [
-  "aiohttp>=3.11.11,<4.0.0",
-  "python-socketio[asyncio_client]>=5.11.4,<6.0.0",
-  "pydantic>=2.10.6,<3.0.0",
-  "typing-extensions>=4.12.2,<5.0.0",
+  "httpx>=0.25.0,<1.0.0",
+  "python-socketio[asyncio_client]>=5.14.0,<6.0.0",
+  "pydantic>=2.12.2,<3.0.0",
+  "typing-extensions>=4.15.0,<5.0.0",
+  "tree-sitter>=0.21.3",
+  "tree-sitter-javascript>=0.21.1",
 ]
 
 [project.urls]
@@ -45,14 +47,8 @@ pybragerone-cli = "pybragerone.cli:main"
 pybragerone-parsers = "pybragerone.cli_extras.parsers:main"
 
 [project.optional-dependencies]
-cli = ["typer>=0.12.5", "rich>=13.9", "aiofiles>=24.1"]
-ha = ["homeassistant>=2025.2.0"]
-all = [
-  "typer>=0.12.5",
-  "rich>=13.9",
-  "aiofiles>=24.1",
-  "homeassistant>=2025.2.0",
-]
+cli = ["typer>=0.16.0", "rich>=12.6.0", "aiofiles>=24.1"]
+keyring = ["keyring>=25.0.0"]
 
 [tool.poetry]
 requires-poetry = ">=2.0.0"
@@ -61,14 +57,14 @@ packages = [{ include = "pybragerone", from = "src" }]
 include = ["src/pybragerone/py.typed"]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3 :: Only",
   "Operating System :: OS Independent",
+  "Intended Audience :: Developers",
   "Topic :: Home Automation",
+  "Typing :: Typed",
 ]
-
-# -------- Developer groups (local only, not published to PyPI) --------
-version = "0.0.0" # placeholder needed by Poetry
+version = "2025" # placeholder needed by Poetry
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.37.0"
@@ -76,12 +72,16 @@ ruff = "^0.13.0"
 mypy = { extras = ["dmypy"], version = "^1.18.1" }
 pre-commit = "^4.3.0"
 python-dotenv = "^1.1.1"
+pip-audit = "^2.4.0"
+bandit = "^1.8.4"
+semgrep = ">=1.89"
+keyring = "^25.0.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.3"
 pytest-asyncio = "^0.24.0"
 pytest-cov = "^5.0.0"
-aioresponses = "^0.7.6"
+pytest-httpx = "^0.35.0"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=8.0.2,<9.0"
@@ -89,8 +89,7 @@ furo = "^2024.8.6"
 myst-parser = "^4.0.0"
 sphinx-autodoc-typehints = "^3.2.0"
 sphinx-copybutton = "^0.5.2"
-sphinxcontrib-mermaid = "^0.9.2"
-mike = "^2.1.3"
+sphinxcontrib-mermaid = ">=1.0.0"
 
 [tool.poetry-dynamic-versioning]
 enable = true
@@ -118,7 +117,7 @@ unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
 #"__init__.py" = ["E402"]
-"**/{tests,docs,tools}/*" = ["ALL"]
+#"**/{tests,docs,tools}/*" = ["ALL"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -131,12 +130,13 @@ line-ending = "lf"
 # ---------------- mypy (strict) ----------------
 [tool.mypy]
 python_version = "3.13"
-files = ["src/pybragerone"]
+files = ["src/pybragerone", "tests"]
 strict = true
-warn_unused_ignores = true
-disallow_untyped_defs = true
-no_implicit_optional = true
-strict_optional = true
+exclude = ["scripts/"]
+#warn_unused_ignores = true
+#disallow_untyped_defs = true
+#no_implicit_optional = true
+#strict_optional = true
 plugins = ["pydantic.mypy"]
 
 # ---------------- pytest ----------------
@@ -165,15 +165,23 @@ bootstrap = { cmd = "poetry install --with dev,test,docs" }
 # format/lint/typecheck
 fmt = "ruff format"
 lint = "ruff check . --fix"
-typecheck = "mypy . --strict"
+fix = ["lint", "fmt"]
+typecheck = "mypy"
 all = ["fmt", "lint", "typecheck"]
+# Security
+bandit = { cmd = "bandit -r src -q" }
+semgrep = { cmd = "semgrep --config p/ci --error ." }
+pip-audit = { cmd = "pip-audit --skip-editable --progress-spinner off --ignore-vuln GHSA-4xh5-x5gv-qwph" }
+security = ["bandit", "semgrep", "pip-audit"]
+# Full validation (quality + security + tests)
+validate = ["fmt", "lint", "typecheck", "security", "test"]
 # Tests
 test = { cmd = "pytest -q" }
 cov = { cmd = "pytest -q --cov=pybragerone --cov-report=term-missing" }
 # Build
 build = { cmd = "poetry build" }
 # Docs
-docs-build = { cmd = "sphinx-build -b html docs docs/_build/html" }
+docs-build = { shell = "export LC_ALL=C.utf8 2>/dev/null || export LC_ALL=C.UTF-8 2>/dev/null || true && poetry run sphinx-build -b html docs docs/_build/html" }
 docs-serve = { shell = "python -m http.server --directory docs/_build/html 8000" }
 # Publication (local; CI have its own secrets)
 publish-pypi = { shell = "poetry publish --build --no-interaction" }

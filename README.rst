@@ -105,4 +105,3 @@ Documentation
 -------------
 
 Full documentation: https://marpi82.github.io/py-bragerone
-

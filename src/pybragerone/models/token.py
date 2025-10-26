@@ -1,4 +1,51 @@
-"""Token storage implementations for pybragerone."""
+"""Token storage implementations for pybragerone.
+
+This module provides token management and persistence strategies for the pybragerone
+library. It includes:
+
+- Token: A Pydantic model representing OAuth2-style authentication tokens
+- TokenStore: A protocol defining the interface for token persistence
+- CLITokenStore: A concrete implementation for CLI applications using keyring/file storage
+- HATokenStore: An adapter for Home Assistant integration storage
+
+The token storage implementations handle secure persistence of authentication tokens,
+including access tokens, refresh tokens, and expiration information.
+
+Classes:
+    Token: Pydantic model representing an authentication token with expiration tracking.
+    TokenStore: Protocol defining the interface for token storage implementations.
+    CLITokenStore: Token storage for CLI applications with keyring and file fallback.
+    HATokenStore: Adapter for Home Assistant storage with callable-based implementation.
+
+Examples:
+    Using CLITokenStore for CLI applications:
+        >>> store = CLITokenStore(email="user@example.com")
+        >>> token = store.load()
+        >>> if token and not token.is_expired():
+        ...     print("Token is valid")
+
+    Using HATokenStore with custom storage callbacks:
+        >>> def my_loader() -> Token | None:
+        ...     # Load from HA storage
+        ...     pass
+        >>> def my_saver(token: Token) -> None:
+        ...     # Save to HA storage
+        ...     pass
+        >>> def my_clearer() -> None:
+        ...     # Clear from HA storage
+        ...     pass
+        >>> store = HATokenStore(loader=my_loader, saver=my_saver, clearer=my_clearer)
+
+Notes:
+    - CLITokenStore prefers system keyring when available, falling back to file storage
+    - File storage uses 0600 permissions for security
+    - All token storage operations suppress exceptions to prevent disruption
+    - Token expiration includes a configurable leeway period (default 60 seconds)
+
+Attributes:
+    _HAS_KEYRING (bool): Whether the keyring library is available for secure storage.
+    log (logging.Logger): Module logger for debugging and error reporting.
+"""
 
 from __future__ import annotations
 
@@ -16,10 +63,10 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 try:
-    import keyring  # type: ignore
+    import keyring
 
     _HAS_KEYRING = True
-except Exception:
+except ImportError:
     _HAS_KEYRING = False
 
 log = logging.getLogger(__name__)

@@ -12,22 +12,35 @@ exclude: |
 repos:
   # Ruff → linter + formatter
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.13.0
+    rev: v0.14.1
     hooks:
       - id: ruff
-        args: ["--fix"]     # lint + autofix (bez I jeśli nie chcesz sortować importów ruffem)
-      - id: ruff-format     # formatter (zastępuje Black)
+        args: ["--fix"] # lint + autofix (bez I jeśli nie chcesz sortować importów ruffem)
+      - id: ruff-format # formatter (zastępuje Black)
 
   # Mypy → type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.18.1
+    rev: v1.18.2
     hooks:
       - id: mypy
-        args: ["--ignore-missing-imports", "--show-column-numbers"]
+        args: ["--strict", "--show-column-numbers", "--show-error-codes"]
+        files: ^(src/|tests/)
+        additional_dependencies:
+          [
+            "pydantic>=2.0",
+            "httpx",
+            "pytest-httpx",
+            "types-aiofiles",
+            "python-socketio",
+            "tree-sitter",
+            "tree-sitter-javascript",
+            "keyring",
+            "python-dotenv",
+          ]
 
   # Secrets scanning with Gitleaks
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.24.2
+    rev: v8.28.0
     hooks:
       - id: gitleaks
         name: gitleaks (protect staged)
@@ -45,3 +58,65 @@ repos:
       - id: detect-private-key
       - id: end-of-file-fixer
       - id: trailing-whitespace
+
+  # --- SECURITY: code (SAST) ---
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.6
+    hooks:
+      - id: bandit
+        name: bandit (scan src/)
+        args: ["-r", "src", "-q"]
+        pass_filenames: false
+
+  # --- SECURITY: Semgrep ---
+  - repo: https://github.com/returntocorp/semgrep
+    rev: v1.89.0
+    hooks:
+      - id: semgrep
+        name: semgrep (p/ci rules)
+        args: ["--config", "p/ci", "--error"]
+        pass_filenames: true
+
+  # --- SECURITY: dependencies (SCA) with poetry export + pip-audit ---
+  # Strategy: Generate requirements.txt on-the-fly during pre-commit, then audit it
+  - repo: https://github.com/python-poetry/poetry-plugin-export
+    rev: 1.8.0
+    hooks:
+      - id: poetry-export
+        name: poetry export requirements.txt
+        args:
+          [
+            "--without-hashes",
+            "--format",
+            "requirements.txt",
+            "-o",
+            "requirements.txt",
+          ]
+        stages: [pre-commit]
+        always_run: true # Run even if poetry.lock unchanged
+
+  - repo: https://github.com/pypa/pip-audit
+    rev: v2.9.0
+    hooks:
+      - id: pip-audit
+        name: pip-audit (scan requirements.txt)
+        args:
+          [
+            "--requirement",
+            "requirements.txt",
+            "--progress-spinner",
+            "off",
+            "--strict",
+          ]
+        stages: [pre-commit]
+        always_run: true # Run even if requirements.txt not staged
+
+  # --- TESTY na pre-push z progiem coverage ---
+  - repo: local
+    hooks:
+      - id: pytest-pre-push
+        name: pytest (coverage gate on push)
+        language: system
+        entry: bash -c 'poetry run pytest --maxfail=1 --disable-warnings -q --cov=src --cov-report=term-missing --cov-fail-under=80'
+        pass_filenames: false
+        stages: [pre-push]
