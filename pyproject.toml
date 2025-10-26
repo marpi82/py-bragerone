@@ -85,7 +85,7 @@ pytest-httpx = "^0.35.0"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=8.0.2,<9.0"
-furo = "^2024.8.6"
+furo = "^2025.9.25"
 myst-parser = "^4.0.0"
 sphinx-autodoc-typehints = "^3.2.0"
 sphinx-copybutton = "^0.5.2"
