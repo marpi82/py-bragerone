@@ -27,6 +27,15 @@ echo "📦 Installing uv..."
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 
+# Fix permissions for mounted volumes (they may be owned by root)
+echo "🔧 Fixing volume permissions..."
+if [ -d "$HOME/.cache/uv" ]; then
+    sudo chown -R vscode:vscode "$HOME/.cache/uv" 2>/dev/null || true
+fi
+if [ -d "${VIRTUAL_ENV:-$PWD/.venv}" ]; then
+    sudo chown -R vscode:vscode "${VIRTUAL_ENV:-$PWD/.venv}" 2>/dev/null || true
+fi
+
 # Sync dependencies
 echo "📦 Syncing project dependencies..."
 uv sync --locked --group dev --group test --group docs

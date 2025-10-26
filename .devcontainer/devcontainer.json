@@ -31,6 +31,7 @@
       ]
     }
   },
+  "postStartCommand": "sudo chown -R vscode:vscode /home/vscode/.cache/uv ${containerWorkspaceFolder}/.venv 2>/dev/null || true",
   "postCreateCommand": "bash .devcontainer/setup.sh",
   "remoteEnv": {
     "UV_PROJECT_ENVIRONMENT": ".venv",
