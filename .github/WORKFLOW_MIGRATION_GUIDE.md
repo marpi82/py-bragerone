@@ -1,9 +1,10 @@
 # Workflow Migration Guide - Branch Protection Compatibility
 
-## 🔍 Problem: Zmiana nazw jobów
+## 🔍 Issue: Job Name Changes
 
-### Obecne joby w `ci.yml`:
-```
+### Current jobs in `ci.yml`
+
+```text
 - secrets
 - lint
 - typecheck
@@ -12,27 +13,29 @@
 - build
 ```
 
-### Nowe joby w `ci-optimized.yml`:
-```
+### New jobs in optimized workflow
+
+```text
 - secrets
-- quality      ← ZMIANA: łączy lint + typecheck
+- quality      ← CHANGE: merges lint + typecheck
 - tests
 - docs-verify
 - build
 ```
 
-## ⚠️ Impact na Branch Protection Rules
+## ⚠️ Impact on Branch Protection Rules
 
-Jeśli masz branch protection rules wymagające statusów:
-- ❌ `lint` - **NIE BĘDZIE ISTNIEĆ**
-- ❌ `typecheck` - **NIE BĘDZIE ISTNIEĆ**
-- ✅ `quality` - **NOWY STATUS**
+If you have branch protection rules requiring statuses:
 
-## 🎯 Rozwiązania (wybierz jedno)
+- ❌ `lint` - **WILL NOT EXIST**
+- ❌ `typecheck` - **WILL NOT EXIST**
+- ✅ `quality` - **NEW STATUS**
 
-### Opcja 1: Backward Compatible (ZALECANE) ⭐
+## 🎯 Solutions (choose one)
 
-Zachowaj stare nazwy jobów dla kompatybilności z branch protection:
+### Option 1: Backward Compatible (RECOMMENDED) ⭐
+
+Keep old job names for branch protection compatibility:
 
 ```yaml
 jobs:
@@ -40,20 +43,20 @@ jobs:
     name: secrets (gitleaks)
     # ...
 
-  # Zachowaj nazwę "lint" dla branch protection compatibility
+  # Keep "lint" name for branch protection compatibility
   lint:
     name: quality (lint + typecheck)
     runs-on: ubuntu-latest
     steps:
-      # ... wszystkie kroki z quality
+      # ... all steps from quality
 
-  # Alias job - przekierowuje do lint
+  # Alias job - redirects to lint
   typecheck:
     name: typecheck (→ lint)
     needs: lint
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Typecheck wykonany w jobie 'lint'"
+      - run: echo "Typecheck executed in 'lint' job"
 
   tests:
     # ...
@@ -66,29 +69,32 @@ jobs:
     # ...
 ```
 
-**Korzyści:**
-- ✅ Zero zmian w branch protection rules
-- ✅ Wszystkie istniejące statusy dalej działają
-- ✅ Optymalizacja (lint wykonuje się raz, typecheck to tylko alias)
+**Benefits:**
 
-**Wady:**
-- Mało eleganckie (dummy job)
-- Nieprecyzyjna nazwa "lint" (robi też typecheck)
+- ✅ Zero changes to branch protection rules
+- ✅ All existing statuses continue to work
+- ✅ Optimization achieved (lint executes once, typecheck is just an alias)
+
+**Drawbacks:**
+
+- Less elegant (dummy job)
+- Imprecise "lint" name (also does typecheck)
 
 ---
 
-### Opcja 2: Clean Migration (wymaga aktualizacji rules)
+### Option 2: Clean Migration (requires rules update)
 
-Wprowadź nowe nazwy i zaktualizuj branch protection:
+Introduce new names and update branch protection:
 
-**Krok 1: Dodaj przejściowy okres**
+**Step 1: Add transition period**
+
 ```yaml
 jobs:
   quality:
     name: quality (lint + typecheck)
-    # ... nowy job
+    # ... new job
 
-  # Aliasy dla backward compatibility - usuń po migracji
+  # Aliases for backward compatibility - remove after migration
   lint:
     name: lint (deprecated → quality)
     needs: quality
@@ -104,81 +110,91 @@ jobs:
       - run: echo "Moved to 'quality' job"
 ```
 
-**Krok 2: Zaktualizuj Branch Protection Rules**
+**Step 2: Update Branch Protection Rules**
+
 - Settings → Branches → Branch protection rules
-- Zamień `lint` i `typecheck` na `quality`
+- Replace `lint` and `typecheck` with `quality`
 
-**Krok 3: Usuń aliasy po 1-2 tygodniach**
+**Step 3: Remove aliases after 1-2 weeks**
 
-**Korzyści:**
-- ✅ Czysty, nowoczesny workflow
-- ✅ Lepsze nazewnictwo
-- ✅ Pełna optymalizacja
+**Benefits:**
 
-**Wady:**
-- Wymaga ręcznej zmiany settings
-- Przejściowy okres z dummy jobami
+- ✅ Clean, modern workflow
+- ✅ Better naming
+- ✅ Full optimization
+
+**Drawbacks:**
+
+- Requires manual settings change
+- Transition period with dummy jobs
 
 ---
 
-### Opcja 3: Stopniowa Migracja (najlepsza dla produkcji)
+### Option 3: Gradual Migration (best for production)
 
-**Faza 1: Dodaj nowy workflow równolegle**
+**Phase 1: Add new workflow in parallel**
+
 ```bash
-# Zachowaj ci.yml
-# Dodaj ci-v2.yml z nowymi nazwami
+# Keep ci.yml
+# Add ci-v2.yml with new names
 ```
 
-**Faza 2: Przetestuj nowy workflow**
-- Stwórz test branch
-- Sprawdź, czy wszystko działa
+**Phase 2: Test new workflow**
 
-**Faza 3: Zaktualizuj branch protection**
-- Dodaj `quality` do required checks
-- Usuń `lint` i `typecheck` z required checks
+- Create test branch
+- Verify everything works
 
-**Faza 4: Zastąp ci.yml → ci-v2.yml**
+**Phase 3: Update branch protection**
 
-**Korzyści:**
+- Add `quality` to required checks
+- Remove `lint` and `typecheck` from required checks
+
+**Phase 4: Replace ci.yml → ci-v2.yml**
+
+**Benefits:**
+
 - ✅ Zero downtime
-- ✅ Bezpieczna migracja
-- ✅ Rollback możliwy
+- ✅ Safe migration
+- ✅ Rollback possible
 
 ---
 
-## 📋 Checklist: Co sprawdzić przed migracją
+## 📋 Checklist: What to check before migration
 
 ```bash
-# 1. Sprawdź obecne branch protection rules
+# 1. Check current branch protection rules
 gh api repos/:owner/:repo/branches/main/protection \
   --jq '.required_status_checks.contexts[]'
 
-# 2. Sprawdź jakie statusy są obecnie required
-# Szukaj: "lint", "typecheck"
+# 2. Check which statuses are currently required
+# Look for: "lint", "typecheck"
 
-# 3. Po migracji sprawdź statusy
+# 3. After migration, check statuses
 gh pr checks <PR_NUMBER>
 ```
 
-## 🔧 Moje rekomendacje dla Ciebie
+## 🔧 Recommendations
 
-Biorąc pod uwagę, że jesteś w fazie alpha (release/2025a4):
+Considering you're in alpha phase (release/2025a4):
 
-### Wariant A: Jeśli NIE masz branch protection na main
-→ **Użyj Opcji 2 (Clean Migration)** bez przejściowych aliasów
+### Variant A: If NO branch protection on main
 
-### Wariant B: Jeśli MASZ branch protection
-→ **Użyj Opcji 1 (Backward Compatible)** i zmień później
+→ **Use Option 2 (Clean Migration)** without transition aliases
 
-### Wariant C: Dla maksymalnego bezpieczeństwa
-→ **Użyj Opcji 3 (Stopniowa Migracja)**
+### Variant B: If branch protection EXISTS
 
-## 💡 Moja sugestia implementacji
+→ **Use Option 1 (Backward Compatible)** and change later
 
-Ponieważ jesteś na branchu `release/2025a4`, proponuję:
+### Variant C: For maximum safety
 
-1. **Teraz**: Wprowadzam Opcję 1 (backward compatible)
-2. **Po merge do main**: Sprawdzisz branch protection rules
-3. **Po weryfikacji**: Zdecydujesz, czy chcesz przejść na clean variant
+→ **Use Option 3 (Gradual Migration)**
 
-Tak?
+## 💡 Implementation Suggestion
+
+Since you're on `release/2025a4` branch, I propose:
+
+1. **Now**: Implement Option 1 (backward compatible)
+2. **After merge to main**: Check branch protection rules
+3. **After verification**: Decide if you want to switch to clean variant
+
+Agreed?
