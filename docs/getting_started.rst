@@ -1,6 +1,6 @@
 
-pybragerone
-===========
+Getting Started
+===============
 
 .. image:: https://img.shields.io/badge/status-Alpha-yellow
    :alt: Alpha status

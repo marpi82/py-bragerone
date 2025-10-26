@@ -1,5 +1,7 @@
-pybragerone – Integration Notes
-===============================
+Architecture & Integration Guide
+=================================
+
+Deep dive into pybragerone architecture, data flow, and Home Assistant integration patterns.
 
 **Last Updated:** 2025-10-26
 **Scope:** Library architecture (REST/WS, EventBus, ParamStore), Home Assistant integration flow, debugging & ops.

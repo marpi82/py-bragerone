@@ -1,7 +1,7 @@
-pybragerone – Quick Cheatsheet
-==============================
+Quick Reference
+===============
 
-**Date:** 2025-09-20
+A quick reference guide for common patterns and usage in pybragerone.
 
 .. contents:: :local:
 
