@@ -3105,21 +3105,6 @@ socks = ["PySocks (>=1.5.6,!=1.5.7)"]
 use-chardet-on-py3 = ["chardet (>=3.0.2,<6)"]
 
 [[package]]
-name = "respx"
-version = "0.20.2"
-description = "A utility for mocking out the Python HTTPX and HTTP Core libraries."
-optional = false
-python-versions = ">=3.7"
-groups = ["test"]
-files = [
-    {file = "respx-0.20.2-py2.py3-none-any.whl", hash = "sha256:ab8e1cf6da28a5b2dd883ea617f8130f77f676736e6e9e4a25817ad116a172c9"},
-    {file = "respx-0.20.2.tar.gz", hash = "sha256:07cf4108b1c88b82010f67d3c831dae33a375c7b436e54d87737c7f9f99be643"},
-]
-
-[package.dependencies]
-httpx = ">=0.21.0"
-
-[[package]]
 name = "rich"
 version = "13.5.3"
 description = "Render rich text, tables, progress bars, syntax highlighting, markdown and more to the terminal"
@@ -4288,4 +4273,4 @@ keyring = ["keyring"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13.2,<4"
-content-hash = "affe75250a08c67849e862ea0d4ba16ec1e3a6b1d411954a104e9a7187007b9a"
+content-hash = "d32b74dc232484077b7a4c57fa4da4c2fe2f793fccf97302161a2578549f220e"
