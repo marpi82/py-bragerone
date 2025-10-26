@@ -908,13 +908,8 @@
                 <span class="sa">r</span><span class="s1">&#39;\(\(\)\=\&gt;import\(&quot;\./(module\.menu-[A-Za-z0-9_]+)\.js&quot;\)&#39;</span>
             <span class="p">)</span>
 
-            <span class="c1"># Ensure code is a string for regex</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">code</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-                <span class="n">code_str</span> <span class="o">=</span> <span class="n">code</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
-            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">code</span><span class="p">,</span> <span class="p">(</span><span class="nb">bytearray</span><span class="p">,</span> <span class="nb">memoryview</span><span class="p">)):</span>
-                <span class="n">code_str</span> <span class="o">=</span> <span class="nb">bytes</span><span class="p">(</span><span class="n">code</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">code_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">code</span><span class="p">)</span>
+            <span class="c1"># Code is bytes (from function parameter), decode to string for regex</span>
+            <span class="n">code_str</span> <span class="o">=</span> <span class="n">code</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
 
             <span class="k">for</span> <span class="n">match</span> <span class="ow">in</span> <span class="n">re</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="n">device_menu_pattern</span><span class="p">,</span> <span class="n">code_str</span><span class="p">):</span>
                 <span class="n">device_menu_num</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
