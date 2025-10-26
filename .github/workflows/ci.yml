@@ -72,7 +72,7 @@ jobs:
         run: echo "✓ Typecheck wykonany w jobie 'quality'"
 
   tests:
-    name: tests (py${{ matrix.python }})
+    name: tests (${{ matrix.python }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
