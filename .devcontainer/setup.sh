@@ -13,20 +13,15 @@ apt-get install -y --no-install-recommends \
     git \
     ca-certificates
 
-# Install uv
+# Install uv globally
 echo "📦 Installing uv..."
 curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="/root/.cargo/bin:$PATH"
+export PATH="/root/.local/bin:$PATH"
 
-# Make uv available for vscode user
-if [ -d "/home/vscode" ]; then
-    cp -r /root/.cargo /home/vscode/.cargo || true
-    chown -R vscode:vscode /home/vscode/.cargo || true
-    echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> /home/vscode/.bashrc
-    echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> /home/vscode/.zshrc
-fi
+# Make uv available system-wide
+ln -sf /root/.local/bin/uv /usr/local/bin/uv || true
 
-# Sync dependencies
+# Sync dependencies as root (will be accessible by vscode user)
 echo "📦 Syncing project dependencies..."
 uv sync --locked --group dev --group test --group docs
 
@@ -34,10 +29,10 @@ uv sync --locked --group dev --group test --group docs
 echo "🪝 Installing pre-commit hooks..."
 uv run --group dev pre-commit install
 
-# Set ownership to vscode user
-if [ -d "/home/vscode" ]; then
-    chown -R vscode:vscode .venv || true
-fi
+# Fix ownership for vscode user
+echo "🔧 Fixing permissions for vscode user..."
+chown -R vscode:vscode .venv
+chown -R vscode:vscode .git/hooks
 
 echo "✅ Devcontainer setup complete!"
 echo ""
