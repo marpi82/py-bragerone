@@ -31,11 +31,11 @@
       ]
     }
   },
-  "postStartCommand": "sudo chown -R vscode:vscode /home/vscode/.cache/uv ${containerWorkspaceFolder}/.venv 2>/dev/null || true",
+  "postStartCommand": "sudo chown -R vscode:vscode /home/vscode/.cache ${containerWorkspaceFolder}/.venv 2>/dev/null || true",
   "postCreateCommand": "bash .devcontainer/setup.sh",
   "remoteEnv": {
     "UV_PROJECT_ENVIRONMENT": ".venv",
-    "UV_LINK_MODE": "hardlink",
+    "UV_LINK_MODE": "copy",
     "RUFF_NUM_THREADS": "1",
     "PATH": "${containerEnv:HOME}/.local/bin:${containerEnv:PATH}"
   },
