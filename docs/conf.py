@@ -80,6 +80,7 @@ todo_include_todos = True
 # Suppress duplicate target warnings for re-exported classes (e.g., from __init__.py)
 suppress_warnings = [
     "ref.python",  # Suppress "more than one target found" for cross-references
+    "toc.not_included",  # Suppress warnings for autosummary generated files not in toctree
 ]
 
 # --- HTML theme ---
