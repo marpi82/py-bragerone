@@ -86,7 +86,36 @@ suppress_warnings = [
 ]
 
 # --- HTML theme ---
-html_theme = "furo"  # or alabaster
+html_theme = "furo"
+
+# Furo theme options for better readability
+html_theme_options = {
+    "light_css_variables": {
+        "color-brand-primary": "#2962ff",
+        "color-brand-content": "#2962ff",
+        "font-stack": "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
+        "font-stack--monospace": "Consolas, Monaco, 'Courier New', monospace",
+        "font-size--normal": "17px",
+        "font-size--small": "15px",
+        "sidebar-width": "280px",
+    },
+    "dark_css_variables": {
+        "color-brand-primary": "#448aff",
+        "color-brand-content": "#448aff",
+        "font-size--normal": "17px",
+        "font-size--small": "15px",
+        "sidebar-width": "280px",
+    },
+    "sidebar_hide_name": False,
+    "navigation_with_keys": True,
+}
+
+# Static path for custom CSS/JS (if needed)
+html_static_path = ["_static"]
+
+# Syntax highlighting style
+pygments_style = "sphinx"
+pygments_dark_style = "monokai"
 
 # --- Version resolution ---
 try:
