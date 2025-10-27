@@ -8,8 +8,6 @@ A quick reference guide for common patterns and usage in pybragerone.
    - :doc:`architecture_guide` - Deep dive into architecture
    - :doc:`api_reference` - Complete API documentation
 
-.. contents:: :local:
-
 Essential Concepts
 ------------------
 

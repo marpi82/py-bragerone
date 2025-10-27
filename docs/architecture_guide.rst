@@ -12,10 +12,6 @@ Deep dive into pybragerone architecture, data flow, and Home Assistant integrati
 **Scope:** Library architecture (REST/WS, EventBus, ParamStore), Home Assistant integration flow, debugging & ops.
 **Audience:** Developers of :mod:`pybragerone` and HA component maintainers.
 
-.. contents:: Table of Contents
-   :local:
-   :depth: 2
-
 Overview
 ========
 
