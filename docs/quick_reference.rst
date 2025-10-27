@@ -5,160 +5,357 @@ A quick reference guide for common patterns and usage in pybragerone.
 
 .. contents:: :local:
 
-TL;DR
-=====
+Essential Concepts
+==================
 
-- **Prime via REST is mandatory** at startup and after WS reconnect.
-- **Runtime** uses **ParamStore** (lightweight mode: key→value) + EventBus.
-- **Config/Reconfigure** uses **ParamStore** (asset-aware mode with ``init_with_api()`` + LiveAssetsCatalog) to build entity descriptors.
-- WebSocket does **not** provide a snapshot; always re-prime after resubscribe.
+.. important::
+   **Always fetch initial data via REST API** when starting up or after reconnecting WebSocket.
+   WebSocket only sends updates, never the full state!
 
-Key Objects
-===========
+.. tip::
+   **Two modes for ParamStore:**
+
+   - **Lightweight mode** (runtime): Simple key→value storage, fast and minimal overhead
+   - **Asset-aware mode** (setup): Rich metadata with labels, units, and translations
+
+Key Workflows
+=============
+
+.. note::
+   **For Home Assistant integration:**
+
+   1. **Setup phase** (config flow): Use asset-aware mode to discover entities
+   2. **Runtime phase**: Switch to lightweight mode for performance
+   3. **After reconnect**: Always re-fetch data from REST API
+
+Core Components
+===============
 
 EventBus
 --------
 
-- Multicast with per-subscriber queues (FIFO).
-- ``publish(ParamUpdate)`` → delivered to *all* subscribers.
-- No history replay; subscribe **before** prime if you need those events.
+The EventBus handles real-time parameter updates with multicast delivery.
 
-ParamUpdate
------------
+.. code-block:: python
 
-- Key fields: ``devid``, ``pool`` (e.g. ``"P4"``), ``chan`` (``"v" / "s" / "u"``), ``idx`` (int)
-- ``value`` – real value or ``None`` if missing
-- ``meta`` – dict with extra info (timestamps, ``storable``, averages, ...)
+   from pybragerone.models.events import EventBus, ParamUpdate
 
-ParamStore Modes
+   # Create event bus
+   event_bus = EventBus()
+
+   # Subscribe to updates
+   async for event in event_bus.subscribe():
+       if isinstance(event, ParamUpdate):
+           print(f"Parameter {event.pool}.{event.chan}{event.idx} = {event.value}")
+
+.. tip::
+   Subscribe **before** fetching initial data to avoid missing updates.
+
+ParamUpdate Events
+------------------
+
+Every parameter change triggers a ``ParamUpdate`` event with these fields:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Field
+     - Description
+   * - ``devid``
+     - Device identifier
+   * - ``pool``
+     - Parameter pool (e.g., ``"P4"``, ``"P5"``)
+   * - ``chan``
+     - Channel type: ``"v"`` (value), ``"s"`` (status), ``"u"`` (unit)
+   * - ``idx``
+     - Parameter index (integer)
+   * - ``value``
+     - Current value or ``None`` if metadata-only
+   * - ``meta``
+     - Additional info (timestamps, averages, etc.)
+
+ParamStore Usage
 ================
 
-Lightweight Mode (runtime)
---------------------------
+Lightweight Mode (Runtime)
+---------------------------
 
-- Holds only **real values** (meta-only events ignored).
-- Flatten format: ``{"P4.v1": 20, "P5.s40": 1, ...}``.
-- Use in HA entities:
-  - Sensor/Number: ``param_store.get("P4.v1")``
-  - Binary (bit): ``bool(param_store.get("P5.s40") & (1 << bit))``
+For production use, lightweight mode provides fast access to parameter values.
 
-Asset-Aware Mode (config-time)
-------------------------------
+.. code-block:: python
 
-- Initialize with ``await param_store.init_with_api(api_client)`` to enable **LiveAssetsCatalog** integration.
-- Provides rich metadata: labels, units, enums, permissions via ``param_store.get_label()``, ``get_unit()``, etc.
-- Used during **config flow** to build **entity descriptors** (label/unit/enum/min/max/step/bit).
-- Returns ``None`` for metadata queries if not initialized or parameter not found.
+   from pybragerone.models.param import ParamStore
 
-HA Integration Flow
-===================
+   # Create store
+   param_store = ParamStore()
 
-Config Flow (no WS required)
-----------------------------
+   # Subscribe to EventBus
+   async for event in event_bus.subscribe():
+       param_store.upsert(event)
 
-1. REST login; choose ``object_id`` + modules.
-2. Create **ParamStore** and call ``await param_store.init_with_api(api_client)`` to enable asset-aware mode.
-3. REST **prime parameters** → ingest into **ParamStore** (now has access to LiveAssetsCatalog for metadata).
-4. Build and store **descriptors** using ParamStore metadata methods (``get_label()``, ``get_unit()``, etc.) in ``config_entry.data``.
-
-Runtime
--------
-
-1. Start Gateway + **ParamStore** subscriber(s).
-2. WS connect → ``modules.connect`` → **subscribe** (``parameters:listen`` + ``activity:quantity:listen``).
-3. **REST prime** → ingest to EventBus → ParamStore filled.
-4. Entities update on ParamUpdate matches.
-
-Reconnect
----------
-
-- Repeat: subscribe → **prime via REST** → ingest → continue.
-
-Parameter Semantics
-===================
-
-- Key format: ``P<n>.<chan><idx>`` e.g. ``P4.v1``, ``P5.s40``, ``P6.u13``.
-- Channels:
-  - ``v`` value, ``s`` status (bitmask), ``u`` unit/enum, ``n`` min, ``x`` max, ``t`` type.
-- Meta-only entries (e.g. ``{"storable":1}``) → **not** values.
-
-Entity Guidelines
-=================
-
-- **unique_id**: ``bragerone_{devid}_{pool}_{chan}{idx}`` (``_bitN`` for bit entities).
-- **label/unit**: from i18n; enum index → enum text.
-- Writes:
-  - Numbers: POST new ``v``.
-  - Bits: read mask, set/clear bit, POST new ``s``.
-
-Operational Tips
-================
-
-- Use single-line JSON previews for logs; dump large payloads to files.
-- Catch and log exceptions in store consumers; **never** let tasks die.
-- Add small retry/backoff for prime (e.g. 200/500/800 ms).
-- Rate-limit write commands with a small semaphore.
-
-CLI Hints
-=========
-
-- ``--debug`` – verbose logs
-- ``--raw-ws`` – raw WebSocket payloads
-- ``--dump-store`` – save ``param_store.json`` and ``state_store.json``
-- Typical dev loop:
-  1) login & select object/modules
-  2) start gateway (subscribe → prime)
-  3) watch ``↺ P*.v* = ...`` or dump stores
+   # Read values
+   temperature = param_store.get("P4.v1")  # Returns value or None
+   status = param_store.get("P5.s40")      # Returns status bitmask
 
 .. note::
-   Updated on 2025-09-21 21:44 UTC
+   **Binary sensor pattern** for status bits:
 
-Parsers + HA Glue TL;DR
-=======================
+   .. code-block:: python
 
-Build unified model
+      status_value = param_store.get("P5.s40")
+      bit_index = 3
+      is_active = bool(status_value & (1 << bit_index))
+
+Asset-Aware Mode (Setup)
+-------------------------
+
+For config flow and entity discovery, enable rich metadata support.
+
+.. code-block:: python
+
+   # Initialize with API client
+   await param_store.init_with_api(api_client)
+
+   # Access metadata
+   label = param_store.get_label("P4.v1", lang="en")     # "Temperature"
+   unit = param_store.get_unit("P4.v1")                   # "°C"
+   enum_options = param_store.get_enum_labels("P5.u1")   # ["Off", "On", "Auto"]
+
+.. warning::
+   Asset-aware mode requires fetching JavaScript assets from BragerOne web app.
+   Use only during setup, not in production runtime!
+
+Home Assistant Integration
+===========================
+
+The typical integration flow has two distinct phases:
+
+Configuration Phase
 -------------------
 
-::
+During config flow, use asset-aware mode to discover entities.
 
-  pybragerconnect-glue --module-code FTTCTBSLCE \
-    --menu module.menu-FTTCTBSLCE.js \
-    --mappings parametry/PARAM_0.js parametry/PARAM_4.js ... \
-    --i18n-parameters i18n/parameters-pl.js \
-    --i18n-units i18n/units-pl.js \
-    --out module_model.json
+.. code-block:: python
 
-Generate HA blueprint
----------------------
+   # 1. Login via REST
+   await api_client.login(email, password)
 
-::
+   # 2. Select object and modules
+   objects = await api_client.get_objects()
+   modules = await api_client.get_modules(object_id)
 
-  pybragerconnect-ha --module-code FTTCTBSLCE \
-    --menu module.menu-FTTCTBSLCE.js \
-    --mappings parametry/PARAM_0.js parametry/PARAM_4.js ... \
-    --i18n-parameters i18n/parameters-pl.js \
-    --i18n-units i18n/units-pl.js \
-    --out ha_blueprint.json
+   # 3. Enable asset-aware mode
+   param_store = ParamStore()
+   await param_store.init_with_api(api_client)
 
-Entities mapping (rules of thumb)
----------------------------------
+   # 4. Fetch initial parameters
+   params = await api_client.get_parameters(device_id, module_ids)
+   for event in params:
+       param_store.upsert(event)
 
-- WRITE + enum(2) → switch
-- WRITE + enum(>2) → select
-- WRITE + no enum → number
-- READ-only + value → sensor
-- any status bit (``s``) → binary_sensor
+   # 5. Build entity descriptors with metadata
+   descriptors = []
+   for key in param_store.keys():
+       descriptor = {
+           "key": key,
+           "label": param_store.get_label(key, lang="en"),
+           "unit": param_store.get_unit(key),
+           "enum_labels": param_store.get_enum_labels(key),
+       }
+       descriptors.append(descriptor)
 
-Attributes stored in entities
------------------------------
+.. note::
+   No WebSocket connection needed during config flow!
 
-- ``brager_value_ref: {{group, use:"v", number}}``
-- ``brager_unit_ref:  {{group, use:"u", number}}``
-- ``brager_status_ref:{{group, use:"s", number, bit}}``
+Runtime Phase
+-------------
 
-Runtime
--------
+At runtime, use lightweight mode for best performance.
 
-- Setup uses full metadata from **ParamStore asset-aware mode** (sections/labels/units/enums).
-- After setup: only WS updates → **ParamStore lightweight mode** (fast path).
-- Asset-aware mode (with LiveAssetsCatalog) not needed at runtime after entity descriptors are created.
+.. code-block:: python
+
+   # 1. Create gateway and lightweight ParamStore
+   gateway = BragerOneGateway(api_client)
+   param_store = ParamStore()  # No init_with_api()
+
+   # 2. Subscribe to updates
+   async def handle_updates():
+       async for event in gateway.event_bus.subscribe():
+           param_store.upsert(event)
+           # Trigger HA entity updates
+
+   # 3. Start gateway (connects WS, subscribes, primes)
+   await gateway.start(device_id, module_ids)
+
+.. important::
+   **After WebSocket reconnect:** Always re-fetch parameters via REST!
+
+   .. code-block:: python
+
+      # On reconnect
+      await gateway.subscribe(device_id, module_ids)
+      params = await api_client.get_parameters(device_id, module_ids)
+      for event in params:
+          param_store.upsert(event)
+
+Parameter Format
+================
+
+Parameters use a structured addressing scheme:
+
+Format
+------
+
+.. code-block:: text
+
+   P<pool_number>.<channel><index>
+
+   Examples:
+   - P4.v1    → Pool 4, value channel, index 1
+   - P5.s40   → Pool 5, status channel, index 40
+   - P6.u13   → Pool 6, unit channel, index 13
+
+Channels
+--------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 20 70
+
+   * - Channel
+     - Name
+     - Purpose
+   * - ``v``
+     - Value
+     - Primary reading or setpoint
+   * - ``s``
+     - Status
+     - Binary status bitmask (use bit extraction)
+   * - ``u``
+     - Unit
+     - Unit code or enum index
+   * - ``n``
+     - Min
+     - Minimum allowed value
+   * - ``x``
+     - Max
+     - Maximum allowed value
+   * - ``t``
+     - Type
+     - Data type identifier
+
+.. tip::
+   **Extracting status bits:**
+
+   .. code-block:: python
+
+      # P5.s40 holds a bitmask
+      status = param_store.get("P5.s40")  # e.g., 0b00001010 = 10
+
+      # Check individual bits
+      bit_0 = bool(status & (1 << 0))  # False (pump off)
+      bit_1 = bool(status & (1 << 1))  # True (heater on)
+      bit_3 = bool(status & (1 << 3))  # True (alarm active)
+
+Entity Naming
+=============
+
+.. code-block:: python
+
+   # Recommended unique_id format for HA entities
+   unique_id = f"bragerone_{device_id}_{pool}_{chan}{idx}"
+
+   # For binary sensors from status bits
+   unique_id = f"bragerone_{device_id}_{pool}_{chan}{idx}_bit{bit_index}"
+
+   # Examples:
+   # - bragerone_ABC123_P4_v1
+   # - bragerone_ABC123_P5_s40_bit3
+
+Best Practices
+==============
+
+Logging & Debugging
+-------------------
+
+.. code-block:: python
+
+   # Use single-line JSON for logs
+   import json
+   logger.debug(f"Event: {json.dumps(event.model_dump(), separators=(',', ':'))}")
+
+   # Dump large payloads to files
+   with open("param_store.json", "w") as f:
+       json.dump(param_store.to_dict(), f, indent=2)
+
+.. tip::
+   **CLI debugging flags:**
+
+   - ``--debug`` → Verbose logging
+   - ``--raw-ws`` → Show raw WebSocket payloads
+   - ``--dump-store`` → Save ParamStore to JSON
+
+Error Handling
+--------------
+
+.. warning::
+   **Never let EventBus consumers crash!**
+
+   .. code-block:: python
+
+      async def safe_consumer():
+          async for event in event_bus.subscribe():
+              try:
+                  await process_event(event)
+              except Exception as e:
+                  logger.error(f"Event processing failed: {e}", exc_info=True)
+                  # Continue processing other events
+
+Performance Tips
+----------------
+
+- **Rate limiting:** Use ``asyncio.Semaphore`` for write operations
+- **Retry logic:** Add exponential backoff for REST prime (200/500/800ms)
+- **Lightweight mode:** Always use in production runtime
+- **Batch updates:** Group entity updates to reduce overhead
+
+Writing Parameters
+==================
+
+Number Values
+-------------
+
+.. code-block:: python
+
+   # Write a new value
+   await api_client.set_parameter(
+       device_id=device_id,
+       pool="P4",
+       chan="v",
+       idx=1,
+       value=22.5
+   )
+
+Status Bits
+-----------
+
+.. code-block:: python
+
+   # Read-modify-write pattern for bits
+   current = param_store.get("P5.s40")
+
+   # Set bit 3 to True
+   new_value = current | (1 << 3)
+
+   # Set bit 3 to False
+   new_value = current & ~(1 << 3)
+
+   # Write back
+   await api_client.set_parameter(
+       device_id=device_id,
+       pool="P5",
+       chan="s",
+       idx=40,
+       value=new_value
+   )

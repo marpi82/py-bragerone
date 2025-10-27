@@ -1,5 +1,5 @@
 Pydantic Models Guide
-====================
+=====================
 
 This guide covers the Pydantic models implementation for the BragerOne API.
 
