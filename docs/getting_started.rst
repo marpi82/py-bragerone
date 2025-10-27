@@ -31,28 +31,52 @@ Highlights
 Architecture
 ------------
 
+The library consists of several key components working together:
+
 .. mermaid::
 
-   flowchart LR
-     subgraph Client["pybragerone package"]
-       API["BragerOneApiClient (REST/httpx)"]
-       WS["RealtimeManager (Socket.IO)"]
-       GW["BragerOneGateway"]
-       BUS["EventBus"]
-       PS["ParamStore"]
-       CATALOG["LiveAssetsCatalog (optional)"]
-       API -- "login, lists, prime" --> GW
-       WS -- "connect, subscribe" --> GW
-       GW -- "ParamUpdate events" --> BUS
-       BUS --> PS
-       API -.-> CATALOG
-       CATALOG -.-> PS
+   flowchart TB
+     subgraph cloud["☁️ BragerOne Cloud"]
+       REST["/v1/* REST API"]
+       WS["/socket.io WebSocket"]
      end
-     CLOUD["BragerOne Cloud"]
-     CLOUD -- "/v1/*" --> API
-     CLOUD -- "/socket.io (/ws)" --> WS
-     PS -- "runtime + metadata" --> HA["Home Assistant integration"]
-     CATALOG -- "config flow" --> HA
+
+     subgraph pybragerone["📦 pybragerone Package"]
+       direction TB
+       API["🔌 BragerOneApiClient<br/>(httpx)"]
+       REALTIME["⚡ RealtimeManager<br/>(Socket.IO)"]
+       GATEWAY["🚪 BragerOneGateway<br/>(orchestration)"]
+       EVENTBUS["📡 EventBus<br/>(pub/sub)"]
+       STORE["💾 ParamStore<br/>(key→value)"]
+       CATALOG["📚 LiveAssetsCatalog<br/>(metadata)"]
+
+       API --> GATEWAY
+       REALTIME --> GATEWAY
+       GATEWAY --> EVENTBUS
+       EVENTBUS --> STORE
+       API -.metadata.-> CATALOG
+       CATALOG -.labels/units.-> STORE
+     end
+
+     subgraph integration["🏠 Home Assistant"]
+       CONFIG["Config Flow<br/>(uses metadata)"]
+       RUNTIME["Runtime<br/>(lightweight mode)"]
+     end
+
+     REST --> API
+     WS --> REALTIME
+     STORE --> CONFIG
+     STORE --> RUNTIME
+     CATALOG --> CONFIG
+
+.. note::
+   **Data Flow:**
+
+   1. **REST API** provides initial state and snapshots
+   2. **WebSocket** delivers real-time updates
+   3. **Gateway** orchestrates connection and subscriptions
+   4. **EventBus** broadcasts updates to all subscribers
+   5. **ParamStore** maintains current parameter values
 
 Version & Python
 ----------------
