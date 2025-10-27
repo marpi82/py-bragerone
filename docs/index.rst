@@ -73,26 +73,42 @@ Key Features
 🎯 **Type Safe**
    Full Pydantic models with mypy strict mode compliance
 
-Documentation Guide
-===================
+Documentation
+=============
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Getting Started
+
+   guides/quickstart
+   guides/getting_started
 
 .. toctree::
    :maxdepth: 2
-   :caption: Guides
+   :caption: Quick Reference
 
-   quickstart
-   getting_started
-   quick_reference
-   architecture_guide
-   param_store_metadata
+   reference/core_components
+   reference/paramstore_usage
+   reference/param_store_metadata
+   reference/ha_integration
+   reference/parameter_format
+   reference/best_practices
 
 .. toctree::
    :maxdepth: 2
-   :titlesonly:
-   :caption: API
+   :caption: API Documentation
 
-   api_reference
-   pydantic_models
+   api/api_reference
+   api/pydantic_models
+   architecture/overview
+   architecture/operations
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Developer Guides
+
+   typing
+   tests_guidelines
 
 .. toctree::
    :maxdepth: 1

@@ -48,10 +48,7 @@ myst_enable_extensions = [
 myst_heading_anchors = 3
 
 # --- Source discovery ---
-exclude_patterns = [
-    "tests_guidelines.rst",
-    "typing.rst",
-]
+exclude_patterns = []
 
 # --- Autodoc / typing ---
 autosummary_generate = True

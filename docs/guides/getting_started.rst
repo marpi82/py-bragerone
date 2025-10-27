@@ -15,9 +15,9 @@ and **ParamStore** (with optional rich metadata via LiveAssetsCatalog) so you ca
 build efficient automations and a clean Home Assistant integration.
 
 .. seealso::
-   - :doc:`quick_reference` - Quick patterns cheat sheet
-   - :doc:`architecture_guide` - Detailed architecture documentation
-   - :doc:`api_reference` - Full API reference
+   - :doc:`../reference/core_components` - Quick patterns cheat sheet
+   - :doc:`../architecture/overview` - Detailed architecture documentation
+   - :doc:`../api/api_reference` - Full API reference
 
 Highlights
 ----------

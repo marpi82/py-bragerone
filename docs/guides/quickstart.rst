@@ -37,7 +37,7 @@ Step 1: Login and Get Devices
 
 Complete example: `examples/basic_login.py <https://github.com/marpi82/py-bragerone/blob/main/examples/basic_login.py>`_
 
-.. literalinclude:: ../examples/basic_login.py
+.. literalinclude:: ../../examples/basic_login.py
    :language: python
    :lines: 30-65
    :linenos:
@@ -48,7 +48,7 @@ Step 2: Read Parameters
 
 Complete example: `examples/read_parameters.py <https://github.com/marpi82/py-bragerone/blob/main/examples/read_parameters.py>`_
 
-.. literalinclude:: ../examples/read_parameters.py
+.. literalinclude:: ../../examples/read_parameters.py
    :language: python
    :lines: 32-80
    :linenos:
@@ -59,7 +59,7 @@ Step 3: Real-time Updates with Gateway
 
 Complete example: `examples/realtime_updates.py <https://github.com/marpi82/py-bragerone/blob/main/examples/realtime_updates.py>`_
 
-.. literalinclude:: ../examples/realtime_updates.py
+.. literalinclude:: ../../examples/realtime_updates.py
    :language: python
    :lines: 68-92
    :linenos:
@@ -80,7 +80,7 @@ Step 4: Using ParamStore
 
 Complete example: `examples/paramstore_usage.py <https://github.com/marpi82/py-bragerone/blob/main/examples/paramstore_usage.py>`_
 
-.. literalinclude:: ../examples/paramstore_usage.py
+.. literalinclude:: ../../examples/paramstore_usage.py
    :language: python
    :lines: 65-90
    :linenos:
@@ -92,7 +92,7 @@ Complete example: `examples/paramstore_usage.py <https://github.com/marpi82/py-b
    - **Lightweight mode** (shown above): Fast key→value storage for runtime
    - **Asset-aware mode**: Rich metadata with i18n labels/units (use during HA config flow)
 
-   See :doc:`architecture_guide` for details on when to use each mode.
+   See :doc:`../architecture/overview` for details on when to use each mode.
 
 Using the CLI
 -------------
@@ -117,10 +117,10 @@ Next Steps
 ----------
 
 .. seealso::
-   - :doc:`quick_reference` - Common patterns and workflows
-   - :doc:`architecture_guide` - Understand the architecture
-   - :doc:`api_reference` - Complete API documentation
-   - :doc:`pydantic_models` - Data models reference
+   - :doc:`../reference/core_components` - Common patterns and workflows
+   - :doc:`../architecture/overview` - Understand the architecture
+   - :doc:`../api/api_reference` - Complete API documentation
+   - :doc:`../api/pydantic_models` - Data models reference
 
 Common Patterns
 ~~~~~~~~~~~~~~~
