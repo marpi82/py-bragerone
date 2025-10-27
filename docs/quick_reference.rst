@@ -11,7 +11,7 @@ A quick reference guide for common patterns and usage in pybragerone.
 .. contents:: :local:
 
 Essential Concepts
-==================
+------------------
 
 .. important::
    **Always fetch initial data via REST API** when starting up or after reconnecting WebSocket.
@@ -24,7 +24,7 @@ Essential Concepts
    - **Asset-aware mode** (setup): Rich metadata with labels, units, and translations
 
 Key Workflows
-=============
+-------------
 
 .. note::
    **For Home Assistant integration:**
@@ -34,10 +34,10 @@ Key Workflows
    3. **After reconnect**: Always re-fetch data from REST API
 
 Core Components
-===============
+---------------
 
 EventBus
---------
+~~~~~~~~
 
 The EventBus handles real-time parameter updates with multicast delivery.
 
@@ -57,7 +57,7 @@ The EventBus handles real-time parameter updates with multicast delivery.
    Subscribe **before** fetching initial data to avoid missing updates.
 
 ParamUpdate Events
-------------------
+~~~~~~~~~~~~~~~~~~
 
 Every parameter change triggers a ``ParamUpdate`` event with these fields:
 
@@ -81,10 +81,10 @@ Every parameter change triggers a ``ParamUpdate`` event with these fields:
      - Additional info (timestamps, averages, etc.)
 
 ParamStore Usage
-================
+----------------
 
 Lightweight Mode (Runtime)
----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For production use, lightweight mode provides fast access to parameter values.
 
@@ -113,7 +113,7 @@ For production use, lightweight mode provides fast access to parameter values.
       is_active = bool(status_value & (1 << bit_index))
 
 Asset-Aware Mode (Setup)
--------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For config flow and entity discovery, enable rich metadata support.
 
@@ -132,12 +132,12 @@ For config flow and entity discovery, enable rich metadata support.
    Use only during setup, not in production runtime!
 
 Home Assistant Integration
-===========================
+---------------------------
 
 The typical integration flow has two distinct phases:
 
 Configuration Phase
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 During config flow, use asset-aware mode to discover entities.
 
@@ -174,7 +174,7 @@ During config flow, use asset-aware mode to discover entities.
    No WebSocket connection needed during config flow!
 
 Runtime Phase
--------------
+~~~~~~~~~~~~~
 
 At runtime, use lightweight mode for best performance.
 
@@ -205,12 +205,12 @@ At runtime, use lightweight mode for best performance.
           param_store.upsert(event)
 
 Parameter Format
-================
+----------------
 
 Parameters use a structured addressing scheme:
 
 Format
-------
+~~~~~~
 
 .. code-block:: text
 
@@ -222,7 +222,7 @@ Format
    - P6.u13   → Pool 6, unit channel, index 13
 
 Channels
---------
+~~~~~~~~
 
 .. list-table::
    :header-rows: 1
@@ -264,7 +264,7 @@ Channels
       bit_3 = bool(status & (1 << 3))  # True (alarm active)
 
 Entity Naming
-=============
+-------------
 
 .. code-block:: python
 
@@ -279,10 +279,10 @@ Entity Naming
    # - bragerone_ABC123_P5_s40_bit3
 
 Best Practices
-==============
+--------------
 
 Logging & Debugging
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -302,7 +302,7 @@ Logging & Debugging
    - ``--dump-store`` → Save ParamStore to JSON
 
 Error Handling
---------------
+~~~~~~~~~~~~~~
 
 .. warning::
    **Never let EventBus consumers crash!**
@@ -318,7 +318,7 @@ Error Handling
                   # Continue processing other events
 
 Performance Tips
-----------------
+~~~~~~~~~~~~~~~~
 
 - **Rate limiting:** Use ``asyncio.Semaphore`` for write operations
 - **Retry logic:** Add exponential backoff for REST prime (200/500/800ms)
@@ -326,10 +326,10 @@ Performance Tips
 - **Batch updates:** Group entity updates to reduce overhead
 
 Writing Parameters
-==================
+------------------
 
 Number Values
--------------
+~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -343,7 +343,7 @@ Number Values
    )
 
 Status Bits
------------
+~~~~~~~~~~~
 
 .. code-block:: python
 

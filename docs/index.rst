@@ -78,7 +78,6 @@ Documentation Guide
 
 .. toctree::
    :maxdepth: 2
-   :titlesonly:
    :caption: Guides
 
    quickstart
