@@ -35,7 +35,7 @@ Basic Usage
 Step 1: Login and Get Devices
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Complete example in :doc:`../examples/basic_login.py <../examples/basic_login>`:
+Complete example: `examples/basic_login.py <https://github.com/marpi82/py-bragerone/blob/main/examples/basic_login.py>`_
 
 .. literalinclude:: ../examples/basic_login.py
    :language: python
@@ -46,7 +46,7 @@ Complete example in :doc:`../examples/basic_login.py <../examples/basic_login>`:
 Step 2: Read Parameters
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Complete example in :doc:`../examples/read_parameters.py <../examples/read_parameters>`:
+Complete example: `examples/read_parameters.py <https://github.com/marpi82/py-bragerone/blob/main/examples/read_parameters.py>`_
 
 .. literalinclude:: ../examples/read_parameters.py
    :language: python
@@ -57,7 +57,7 @@ Complete example in :doc:`../examples/read_parameters.py <../examples/read_param
 Step 3: Real-time Updates with Gateway
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Complete example in :doc:`../examples/realtime_updates.py <../examples/realtime_updates>`:
+Complete example: `examples/realtime_updates.py <https://github.com/marpi82/py-bragerone/blob/main/examples/realtime_updates.py>`_
 
 .. literalinclude:: ../examples/realtime_updates.py
    :language: python
@@ -78,7 +78,7 @@ Complete example in :doc:`../examples/realtime_updates.py <../examples/realtime_
 Step 4: Using ParamStore
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Complete example in :doc:`../examples/paramstore_usage.py <../examples/paramstore_usage>`:
+Complete example: `examples/paramstore_usage.py <https://github.com/marpi82/py-bragerone/blob/main/examples/paramstore_usage.py>`_
 
 .. literalinclude:: ../examples/paramstore_usage.py
    :language: python
