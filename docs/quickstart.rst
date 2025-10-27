@@ -35,150 +35,64 @@ Basic Usage
 Step 1: Login and Get Devices
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: python
+Complete example in :doc:`../examples/basic_login.py <../examples/basic_login>`:
 
-   import asyncio
-   from pybragerone.api import BragerOneApiClient
-
-   async def main():
-       # Create API client
-       async with BragerOneApiClient() as client:
-           # Login with your credentials
-           await client.login("user@example.com", "password")
-
-           # Get available objects (heating systems)
-           objects = await client.get_objects()
-           print(f"Found {len(objects)} objects")
-
-           for obj in objects:
-               print(f"- {obj.name} (ID: {obj.id}, Device: {obj.deviceId})")
-
-   asyncio.run(main())
+.. literalinclude:: ../examples/basic_login.py
+   :language: python
+   :lines: 30-65
+   :linenos:
+   :emphasize-lines: 11-12, 15-16, 21-28
 
 Step 2: Read Parameters
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: python
+Complete example in :doc:`../examples/read_parameters.py <../examples/read_parameters>`:
 
-   import asyncio
-   from pybragerone.api import BragerOneApiClient
+.. literalinclude:: ../examples/read_parameters.py
+   :language: python
+   :lines: 32-80
+   :linenos:
+   :emphasize-lines: 9-11, 25-32
 
-   async def main():
-       async with BragerOneApiClient() as client:
-           await client.login("user@example.com", "password")
+Step 3: Real-time Updates with Gateway
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-           # Get first object
-           objects = await client.get_objects()
-           obj = objects[0]
+Complete example in :doc:`../examples/realtime_updates.py <../examples/realtime_updates>`:
 
-           # Get modules for this object
-           modules = await client.get_modules(obj.id)
-           print(f"Object has {len(modules)} modules")
+.. literalinclude:: ../examples/realtime_updates.py
+   :language: python
+   :lines: 68-92
+   :linenos:
+   :emphasize-lines: 6-7, 14-16, 20-23
 
-           # Get parameters for the device
-           device_id = obj.deviceId
-           module_ids = [m.id for m in modules]
+.. tip::
+   Set environment variables for easy testing:
 
-           params = await client.get_parameters(device_id, module_ids)
+   .. code-block:: bash
 
-           # Display parameters
-           for param in params:
-               if param.value is not None:
-                   print(f"{param.pool}.{param.chan}{param.idx} = {param.value}")
-
-   asyncio.run(main())
-
-Step 3: Real-time Updates
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   import asyncio
-   from pybragerone.api import BragerOneApiClient
-   from pybragerone.gateway import BragerOneGateway
-
-   async def main():
-       async with BragerOneApiClient() as client:
-           await client.login("user@example.com", "password")
-
-           # Get device info
-           objects = await client.get_objects()
-           obj = objects[0]
-           modules = await client.get_modules(obj.id)
-
-           # Create gateway for real-time updates
-           gateway = BragerOneGateway(client)
-
-           # Start gateway (connects WebSocket, subscribes, fetches initial data)
-           await gateway.start(obj.deviceId, [m.id for m in modules])
-
-           # Subscribe to parameter updates
-           print("Listening for updates (press Ctrl+C to stop)...")
-           try:
-               async for event in gateway.event_bus.subscribe():
-                   print(f"Update: {event.pool}.{event.chan}{event.idx} = {event.value}")
-           except KeyboardInterrupt:
-               print("Stopping...")
-
-           # Cleanup
-           await gateway.stop()
-
-   asyncio.run(main())
+      export PYBO_EMAIL="user@example.com"
+      export PYBO_PASSWORD="your-password"
+      export PYBO_OBJECT_ID="12345"
+      export PYBO_MODULES="MODULE1,MODULE2"
 
 Step 4: Using ParamStore
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: python
+Complete example in :doc:`../examples/paramstore_usage.py <../examples/paramstore_usage>`:
 
-   import asyncio
-   from pybragerone.api import BragerOneApiClient
-   from pybragerone.gateway import BragerOneGateway
-   from pybragerone.models.param import ParamStore
+.. literalinclude:: ../examples/paramstore_usage.py
+   :language: python
+   :lines: 65-90
+   :linenos:
+   :emphasize-lines: 5-6, 14-18, 22-26
 
-   async def main():
-       async with BragerOneApiClient() as client:
-           await client.login("user@example.com", "password")
+.. note::
+   **ParamStore modes:**
 
-           objects = await client.get_objects()
-           obj = objects[0]
-           modules = await client.get_modules(obj.id)
+   - **Lightweight mode** (shown above): Fast key→value storage for runtime
+   - **Asset-aware mode**: Rich metadata with i18n labels/units (use during HA config flow)
 
-           # Create ParamStore to track current values
-           param_store = ParamStore()
-
-           # Create gateway
-           gateway = BragerOneGateway(client)
-
-           # Subscribe ParamStore to updates
-           async def update_store():
-               async for event in gateway.event_bus.subscribe():
-                   param_store.upsert(event)
-
-           # Start update task
-           import asyncio
-           update_task = asyncio.create_task(update_store())
-
-           # Start gateway
-           await gateway.start(obj.deviceId, [m.id for m in modules])
-
-           # Wait a bit for initial data
-           await asyncio.sleep(2)
-
-           # Read from ParamStore
-           print("Current parameters:")
-           for key, value in param_store.items():
-               print(f"  {key} = {value}")
-
-           # Get specific parameter
-           temp = param_store.get("P4.v1")
-           if temp is not None:
-               print(f"Temperature: {temp}°C")
-
-           # Cleanup
-           update_task.cancel()
-           await gateway.stop()
-
-   asyncio.run(main())
+   See :doc:`architecture_guide` for details on when to use each mode.
 
 Using the CLI
 -------------
