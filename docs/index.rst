@@ -82,6 +82,8 @@ Documentation
 
    guides/quickstart
    guides/getting_started
+   guides/typing
+   guides/tests_guidelines
 
 .. toctree::
    :maxdepth: 2
@@ -102,13 +104,6 @@ Documentation
    api/pydantic_models
    architecture/overview
    architecture/operations
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Developer Guides
-
-   typing
-   tests_guidelines
 
 .. toctree::
    :maxdepth: 1
