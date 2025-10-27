@@ -81,6 +81,7 @@ Documentation Guide
    :titlesonly:
    :caption: Guides
 
+   quickstart
    getting_started
    quick_reference
    architecture_guide

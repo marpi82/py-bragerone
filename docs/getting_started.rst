@@ -14,6 +14,11 @@ It provides an async REST client, a Socket.IO realtime client, an internal event
 and **ParamStore** (with optional rich metadata via LiveAssetsCatalog) so you can
 build efficient automations and a clean Home Assistant integration.
 
+.. seealso::
+   - :doc:`quick_reference` - Quick patterns cheat sheet
+   - :doc:`architecture_guide` - Detailed architecture documentation
+   - :doc:`api_reference` - Full API reference
+
 Highlights
 ----------
 

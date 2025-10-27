@@ -3,6 +3,11 @@ Architecture & Integration Guide
 
 Deep dive into pybragerone architecture, data flow, and Home Assistant integration patterns.
 
+.. seealso::
+   - :doc:`quick_reference` - Quick patterns and common usage
+   - :doc:`getting_started` - Installation and setup
+   - :doc:`pydantic_models` - Data models reference
+
 **Last Updated:** 2025-10-26
 **Scope:** Library architecture (REST/WS, EventBus, ParamStore), Home Assistant integration flow, debugging & ops.
 **Audience:** Developers of :mod:`pybragerone` and HA component maintainers.
