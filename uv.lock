@@ -1664,7 +1664,7 @@ requires-dist = [
     { name = "aiofiles", marker = "extra == 'cli'", specifier = ">=24.1" },
     { name = "httpx", specifier = ">=0.25.0,<1.0.0" },
     { name = "keyring", marker = "extra == 'keyring'", specifier = ">=25.0.0" },
-    { name = "pydantic", specifier = ">=2.12.2,<3.0.0" },
+    { name = "pydantic", specifier = ">=2.11.9,<3.0.0" },
     { name = "python-socketio", extras = ["asyncio-client"], specifier = ">=5.14.0,<6.0.0" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=12.6.0" },
     { name = "tree-sitter", specifier = ">=0.21.3" },
