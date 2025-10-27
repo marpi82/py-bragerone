@@ -114,8 +114,10 @@ html_theme_options = {
 html_static_path = ["_static"]
 
 # Syntax highlighting style
-pygments_style = "sphinx"
-pygments_dark_style = "monokai"
+# 'friendly' for light mode - clean, readable, works well with Furo's light theme
+# 'one-dark' for dark mode - modern, soft colors, easier on the eyes than monokai
+pygments_style = "friendly"
+pygments_dark_style = "one-dark"
 
 # --- Version resolution ---
 try:
