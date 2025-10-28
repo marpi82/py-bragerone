@@ -1,109 +1,55 @@
 API Reference
 =============
 
+This page provides comprehensive API documentation for all pybragerone modules.
+
 Core Components
 ---------------
 
-Gateway
-~~~~~~~
-.. automodule:: pybragerone.gateway
-   :members:
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
 
-CLI
-~~~
-.. automodule:: pybragerone.cli
-   :members:
-
-Utils
-~~~~~
-.. automodule:: pybragerone.utils
-   :members:
+   pybragerone.gateway
+   pybragerone.cli
+   pybragerone.utils
 
 API Client
 ----------
 
-Client
-~~~~~~
-.. automodule:: pybragerone.api.client
-   :members:
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
 
-WebSocket
-~~~~~~~~~
-.. automodule:: pybragerone.api.ws
-   :members:
-
-Endpoints
-~~~~~~~~~
-.. automodule:: pybragerone.api.endpoints
-   :members:
-
-Constants
-~~~~~~~~~
-.. automodule:: pybragerone.api.constants
-   :members:
+   pybragerone.api.client
+   pybragerone.api.ws
+   pybragerone.api.endpoints
+   pybragerone.api.constants
 
 Data Models
 -----------
 
-ParamStore
-~~~~~~~~~~
-.. automodule:: pybragerone.models.param
-   :members:
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
 
-Events
-~~~~~~
-.. automodule:: pybragerone.models.events
-   :members:
-
-Catalog
-~~~~~~~
-.. automodule:: pybragerone.models.catalog
-   :members:
-
-Menu
-~~~~
-.. automodule:: pybragerone.models.menu
-   :members:
-
-Menu Manager
-~~~~~~~~~~~~
-.. automodule:: pybragerone.models.menu_manager
-   :members:
-
-Token
-~~~~~
-.. automodule:: pybragerone.models.token
-   :members:
+   pybragerone.models.param
+   pybragerone.models.events
+   pybragerone.models.catalog
+   pybragerone.models.menu
+   pybragerone.models.menu_manager
+   pybragerone.models.token
 
 API Models
 ----------
 
-Authentication
-~~~~~~~~~~~~~~
-.. automodule:: pybragerone.models.api.auth
-   :members:
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
 
-Common
-~~~~~~
-.. automodule:: pybragerone.models.api.common
-   :members:
-
-Modules
-~~~~~~~
-.. automodule:: pybragerone.models.api.modules
-   :members:
-
-Objects
-~~~~~~~
-.. automodule:: pybragerone.models.api.objects
-   :members:
-
-System
-~~~~~~
-.. automodule:: pybragerone.models.api.system
-   :members:
-
-User
-~~~~
-.. automodule:: pybragerone.models.api.user
-   :members:
+   pybragerone.models.api.auth
+   pybragerone.models.api.common
+   pybragerone.models.api.modules
+   pybragerone.models.api.objects
+   pybragerone.models.api.system
+   pybragerone.models.api.user

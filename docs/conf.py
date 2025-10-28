@@ -16,15 +16,19 @@ copyright = f"{datetime.now():%Y}, {author}"
 # --- Sphinx extensions ---
 extensions = [
     "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",  # Google/NumPy docstrings
     "sphinx_autodoc_typehints",  # nice types in descriptions
     "sphinx.ext.todo",  # .. todo:: in documentation
     "sphinx.ext.viewcode",  # links to sources
     "sphinx.ext.intersphinx",  # links to external docs (optional)
+    "sphinx.ext.coverage",  # documentation coverage analysis
+    "sphinx.ext.doctest",  # test code examples in docstrings
+    "sphinx.ext.inheritance_diagram",  # class inheritance diagrams
     "myst_parser",  # Markdown + mdinclude (CHANGELOG.md),
     "sphinx.ext.mathjax",
     "sphinx_copybutton",
-    "sphinxcontrib.mermaid",  # mermaid diagrams
+    "sphinx.ext.graphviz",  # Graphviz diagrams
 ]
 
 # --- Sources ---
@@ -50,6 +54,11 @@ myst_heading_anchors = 3
 exclude_patterns = []
 
 # --- Autodoc / typing ---
+# Autosummary configuration to avoid duplicates from re-exports
+autosummary_generate = True
+autosummary_generate_overwrite = True
+autosummary_imported_members = False  # Key: Don't document imported members to avoid duplicates
+
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 napoleon_use_ivar = True
@@ -84,7 +93,7 @@ suppress_warnings = [
 # --- HTML theme ---
 html_theme = "furo"
 
-# Furo theme options for better readability
+# Furo theme options for better readability and navigation
 html_theme_options = {
     "light_css_variables": {
         "color-brand-primary": "#2962ff",
@@ -128,9 +137,28 @@ except Exception:
             exec(f.read(), _ns)
         release = _ns.get("__version__", "0.0.0")
     else:
-        release = "0.0.0"
+        release = "dev"
 
 version = release
+
+# --- New Extensions Configuration ---
+
+# Documentation coverage settings
+coverage_show_missing_items = True
+coverage_skip_undoc_in_source = True
+
+# Doctest settings
+doctest_default_flags = 1  # ELLIPSIS flag for ... in output
+doctest_global_setup = """
+import asyncio
+import json
+from pybragerone.models.param import ParamStore
+from pybragerone.utils import json_preview, summarize_top_level
+"""
+
+# Inheritance diagram settings (requires Graphviz)
+inheritance_graph_attrs = dict(rankdir="TB", size='"6.0, 8.0"', fontsize=14, ratio="compress")
+inheritance_node_attrs = dict(shape="ellipse", fontsize=14, color="blue", style="filled", fillcolor="lightblue")
 
 # --- Misc quality knobs ---
 # Set to True if you want Sphinx to complain about missing references (sometimes too strict)
