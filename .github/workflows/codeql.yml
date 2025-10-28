@@ -29,6 +29,12 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v5
 
+            - name: Initialize CodeQL
+              uses: github/codeql-action/init@v4
+              with:
+                  languages: ${{ matrix.language }}
+                  queries: security-and-quality
+
             - name: Set up Python
               uses: actions/setup-python@v6
               with:
@@ -43,12 +49,6 @@ jobs:
               run: |
                   uv python install 3.13
                   uv sync --locked
-
-            - name: Initialize CodeQL
-              uses: github/codeql-action/init@v4
-              with:
-                  languages: ${{ matrix.language }}
-                  queries: security-and-quality
 
             - name: Autobuild
               uses: github/codeql-action/autobuild@v4
