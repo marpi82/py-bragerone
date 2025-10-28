@@ -67,7 +67,7 @@ packages = ["src/pybragerone"]
 include = ["src/pybragerone/py.typed"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/pybragerone", "README.rst", "docs/README.rst", "LICENSE"]
+include = ["src/pybragerone", "README.rst", "docs/guides/getting_started.rst", "LICENSE"]
 
 [dependency-groups]
 dev = [

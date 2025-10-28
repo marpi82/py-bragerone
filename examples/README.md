@@ -41,6 +41,6 @@ python examples/basic_login.py --email user@example.com --password "***"
 
 These examples are documented in:
 
-- [Quick Start Tutorial](../docs/quickstart.rst)
-- [Quick Reference](../docs/quick_reference.rst)
-- [Architecture Guide](../docs/architecture_guide.rst)
+- [Quick Start Tutorial](../docs/guides/quickstart.rst)
+- [Quick Reference](../docs/reference/core_components.rst)
+- [Architecture Guide](../docs/architecture/overview.rst)

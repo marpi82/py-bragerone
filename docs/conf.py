@@ -113,9 +113,9 @@ html_static_path = ["_static"]
 
 # Syntax highlighting style
 # 'friendly' for light mode - clean, readable, works well with Furo's light theme
-# 'one-dark' for dark mode - modern, soft colors, easier on the eyes than monokai
+# 'monokai' for dark mode - dark background, bright colors, works well with Furo
 pygments_style = "friendly"
-pygments_dark_style = "one-dark"
+pygments_dark_style = "monokai"
 
 # --- Version resolution ---
 try:

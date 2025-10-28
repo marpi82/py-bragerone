@@ -57,7 +57,7 @@ async def main() -> None:
 
             for module in modules:
                 devid = module.devid or f"id:{module.id}"
-                version = module.moduleVersion or module.gateway.version or "unknown"
+                version = module.moduleVersion or (module.gateway.version if module.gateway else None) or "unknown"
                 print(f"      - {module.name} (devid: {devid}, version: {version})")
     finally:
         # Always close the client
