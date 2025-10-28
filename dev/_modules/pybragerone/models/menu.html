@@ -6,7 +6,7 @@
 
     <!-- Generated with Sphinx 8.2.3 and Furo 2025.09.25 -->
         <title>pybragerone.models.menu - pybragerone 0.0.0 documentation</title>
-      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d111a655" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d75fae25" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=580074bf" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -16,20 +16,37 @@
 
 <style>
   body {
-    --color-code-background: #f2f2f2;
-  --color-code-foreground: #1e1e1e;
+    --color-code-background: #f0f0f0;
+  --color-code-foreground: black;
+  --color-brand-primary: #2962ff;
+  --color-brand-content: #2962ff;
+  --font-stack: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif;
+  --font-stack--monospace: Consolas, Monaco, 'Courier New', monospace;
+  --font-size--normal: 17px;
+  --font-size--small: 15px;
+  --sidebar-width: 280px;
   
   }
   @media not print {
     body[data-theme="dark"] {
-      --color-code-background: #202020;
-  --color-code-foreground: #d0d0d0;
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #448aff;
+  --color-brand-content: #448aff;
+  --font-size--normal: 17px;
+  --font-size--small: 15px;
+  --sidebar-width: 280px;
   
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
-        --color-code-background: #202020;
-  --color-code-foreground: #d0d0d0;
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #448aff;
+  --color-brand-content: #448aff;
+  --font-size--normal: 17px;
+  --font-size--small: 15px;
+  --sidebar-width: 280px;
   
       }
     }
@@ -190,79 +207,32 @@
   <input type="hidden" name="area" value="default">
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
-  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+  <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../README.html">pybragerone</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html">pybragerone – Quick Cheatsheet</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#tl-dr">TL;DR</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#key-objects">Key Objects</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#paramstore-modes">ParamStore Modes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#ha-integration-flow">HA Integration Flow</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#parameter-semantics">Parameter Semantics</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#entity-guidelines">Entity Guidelines</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#operational-tips">Operational Tips</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#cli-hints">CLI Hints</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#parsers-ha-glue-tl-dr">Parsers + HA Glue TL;DR</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html">pybragerone – Integration Notes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#overview">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#core-principles">Core Principles</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#architecture-high-level">Architecture (High-Level)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#data-model-semantics">Data Model &amp; Semantics</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#paramstore">ParamStore</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#eventbus">EventBus</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#ha-integration-flow">HA Integration Flow</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#entity-patterns-ha">Entity Patterns (HA)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#rest-endpoints-used-by-library">REST Endpoints (used by library)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#error-handling-robustness">Error Handling &amp; Robustness</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#logging-debugging">Logging &amp; Debugging</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#security-headers">Security &amp; Headers</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#performance-notes">Performance Notes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#versioning-types">Versioning &amp; Types</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#cli-developer-utility">CLI (Developer Utility)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#future-work-todo">Future Work / TODO</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#appendix-minimal-interfaces">Appendix: Minimal Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#parsers-glue-integration">Parsers &amp; Glue: Integration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../param_store_metadata.html">Param Store Metadata Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/quickstart.html">Quick Start Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/typing.html">Typing guidelines for py-bragerone</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/tests_guidelines.html">Testing guidelines</a></li>
 </ul>
-<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<p class="caption" role="heading"><span class="caption-text">Quick Reference</span></p>
 <ul>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../../api.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../../generated/pybragerone.api.html">pybragerone.api</a><input aria-label="Toggle navigation of pybragerone.api" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.api.client.html">pybragerone.api.client</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.api.constants.html">pybragerone.api.constants</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.api.endpoints.html">pybragerone.api.endpoints</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.api.ws.html">pybragerone.api.ws</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/core_components.html">Core Components</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/paramstore_usage.html">ParamStore Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/param_store_metadata.html">Param Store Metadata Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/ha_integration.html">Home Assistant Integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/parameter_format.html">Parameter Format</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/best_practices.html">Best Practices</a></li>
 </ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../../../generated/pybragerone.cli.html">pybragerone.cli</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../../generated/pybragerone.gateway.html">pybragerone.gateway</a></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../../generated/pybragerone.models.html">pybragerone.models</a><input aria-label="Toggle navigation of pybragerone.models" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../../generated/pybragerone.models.api.html">pybragerone.models.api</a><input aria-label="Toggle navigation of pybragerone.models.api" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.auth.html">pybragerone.models.api.auth</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.common.html">pybragerone.models.api.common</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.modules.html">pybragerone.models.api.modules</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.objects.html">pybragerone.models.api.objects</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.system.html">pybragerone.models.api.system</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.user.html">pybragerone.models.api.user</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.catalog.html">pybragerone.models.catalog</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.events.html">pybragerone.models.events</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.menu.html">pybragerone.models.menu</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.menu_manager.html">pybragerone.models.menu_manager</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.param.html">pybragerone.models.param</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.token.html">pybragerone.models.token</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../../../generated/pybragerone.utils.html">pybragerone.utils</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="../../../new_models.html">New API Models Summary</a></li>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/pydantic_models.html">Pydantic Models Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture/overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture/operations.html">Operations &amp; Debugging</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Project</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html#id1">Changelog</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/marpi82/py-bragerone/releases">GitHub Releases</a></li>
 </ul>
 
 </div>
@@ -313,7 +283,7 @@
 
 
 <div class="viewcode-block" id="MenuParameter">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuParameter">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuParameter">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">MenuParameter</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Single parameter in a menu route with automatic cleanup.</span>
 
@@ -335,7 +305,7 @@
     <span class="n">PARAM_REGEX</span><span class="p">:</span> <span class="n">ClassVar</span><span class="p">[</span><span class="n">re</span><span class="o">.</span><span class="n">Pattern</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;[A-Za-z]\([^,]*?,\s*[</span><span class="se">\&#39;</span><span class="s1">&quot;]([^</span><span class="se">\&#39;</span><span class="s1">&quot;]+)[</span><span class="se">\&#39;</span><span class="s1">&quot;]\)&#39;</span><span class="p">)</span>
 
 <div class="viewcode-block" id="MenuParameter.extract_fields">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuParameter.extract_fields">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuParameter.extract_fields">[docs]</a>
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;before&quot;</span><span class="p">)</span>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">extract_fields</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
@@ -377,7 +347,7 @@
 
 
 <div class="viewcode-block" id="MenuParameter.normalize_permission">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuParameter.normalize_permission">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuParameter.normalize_permission">[docs]</a>
     <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">&quot;permission&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;before&quot;</span><span class="p">)</span>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">normalize_permission</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">v</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Permission</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
@@ -399,7 +369,7 @@
 
 
 <div class="viewcode-block" id="MenuParameter.validate_token_extracted">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuParameter.validate_token_extracted">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuParameter.validate_token_extracted">[docs]</a>
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">validate_token_extracted</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MenuParameter</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Ensure token was successfully extracted.&quot;&quot;&quot;</span>
@@ -421,7 +391,7 @@
 
 
 <div class="viewcode-block" id="MenuParameters">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuParameters">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuParameters">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">MenuParameters</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Collection of parameters organized by type (read/write/status/special).&quot;&quot;&quot;</span>
 
@@ -431,7 +401,7 @@
     <span class="n">special</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">MenuParameter</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
 
 <div class="viewcode-block" id="MenuParameters.all_tokens">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuParameters.all_tokens">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuParameters.all_tokens">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">all_tokens</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get all unique tokens from all parameter sections.&quot;&quot;&quot;</span>
         <span class="n">tokens</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -441,7 +411,7 @@
 
 
 <div class="viewcode-block" id="MenuParameters.all_permissions">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuParameters.all_permissions">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuParameters.all_permissions">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">all_permissions</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="n">Permission</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get all unique permissions from all parameters.&quot;&quot;&quot;</span>
         <span class="n">permissions</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="n">Permission</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -455,7 +425,7 @@
 
 
 <div class="viewcode-block" id="MenuMeta">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuMeta">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuMeta">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">MenuMeta</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Menu route metadata with automatic cleanup.&quot;&quot;&quot;</span>
 
@@ -470,7 +440,7 @@
     <span class="n">raw_icon</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 
 <div class="viewcode-block" id="MenuMeta.clean_icon">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuMeta.clean_icon">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuMeta.clean_icon">[docs]</a>
     <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">&quot;icon&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;before&quot;</span><span class="p">)</span>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">clean_icon</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">v</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
@@ -485,7 +455,7 @@
 
 
 <div class="viewcode-block" id="MenuMeta.normalize_fields">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuMeta.normalize_fields">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuMeta.normalize_fields">[docs]</a>
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;before&quot;</span><span class="p">)</span>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">normalize_fields</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
@@ -512,7 +482,7 @@
 
 
 <div class="viewcode-block" id="MenuMeta.store_raw_values">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuMeta.store_raw_values">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuMeta.store_raw_values">[docs]</a>
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">store_raw_values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MenuMeta</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Store raw values for reference.&quot;&quot;&quot;</span>
@@ -523,7 +493,7 @@
 
 
 <div class="viewcode-block" id="MenuRoute">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuRoute">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuRoute">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">MenuRoute</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Single menu route with automatic cleanup and validation.&quot;&quot;&quot;</span>
 
@@ -537,7 +507,7 @@
     <span class="n">parameters</span><span class="p">:</span> <span class="n">MenuParameters</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">MenuParameters</span><span class="p">)</span>
 
 <div class="viewcode-block" id="MenuRoute.all_tokens">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuRoute.all_tokens">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuRoute.all_tokens">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">all_tokens</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get all tokens from this route and its children recursively.&quot;&quot;&quot;</span>
         <span class="n">tokens</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -557,7 +527,7 @@
 
 
 <div class="viewcode-block" id="MenuRoute.all_permissions">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuRoute.all_permissions">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuRoute.all_permissions">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">all_permissions</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="n">Permission</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get all permissions from this route and its children recursively.&quot;&quot;&quot;</span>
         <span class="n">permissions</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="n">Permission</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -581,7 +551,7 @@
 
 
 <div class="viewcode-block" id="MenuResult">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuResult">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuResult">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">MenuResult</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Complete menu result with validation and statistics.&quot;&quot;&quot;</span>
 
@@ -589,7 +559,7 @@
     <span class="n">asset_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 
 <div class="viewcode-block" id="MenuResult.all_tokens">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuResult.all_tokens">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuResult.all_tokens">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">all_tokens</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get all unique tokens from all routes.&quot;&quot;&quot;</span>
         <span class="n">tokens</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -599,7 +569,7 @@
 
 
 <div class="viewcode-block" id="MenuResult.all_permissions">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuResult.all_permissions">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuResult.all_permissions">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">all_permissions</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="n">Permission</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get all unique permissions from all routes.&quot;&quot;&quot;</span>
         <span class="n">permissions</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="n">Permission</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -609,14 +579,14 @@
 
 
 <div class="viewcode-block" id="MenuResult.token_count">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuResult.token_count">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuResult.token_count">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">token_count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get total number of unique tokens.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">all_tokens</span><span class="p">())</span></div>
 
 
 <div class="viewcode-block" id="MenuResult.route_count">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuResult.route_count">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuResult.route_count">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">route_count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get total number of routes (including nested).&quot;&quot;&quot;</span>
 
@@ -630,7 +600,7 @@
 
 
 <div class="viewcode-block" id="MenuResult.routes_by_path">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.menu.html#pybragerone.models.MenuResult.routes_by_path">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.menu.MenuResult.routes_by_path">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">routes_by_path</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">MenuRoute</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get flat mapping of path -&gt; route for easy lookup.&quot;&quot;&quot;</span>
         <span class="n">result</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">MenuRoute</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
@@ -679,7 +649,7 @@
       
     </aside>
   </div>
-</div><script src="../../../_static/documentation_options.js?v=7026087e"></script>
+</div><script src="../../../_static/documentation_options.js?v=5c79bd3c"></script>
     <script src="../../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>

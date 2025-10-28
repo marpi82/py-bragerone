@@ -6,7 +6,7 @@
 
     <!-- Generated with Sphinx 8.2.3 and Furo 2025.09.25 -->
         <title>pybragerone.models.events - pybragerone 0.0.0 documentation</title>
-      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d111a655" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d75fae25" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=580074bf" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -16,20 +16,37 @@
 
 <style>
   body {
-    --color-code-background: #f2f2f2;
-  --color-code-foreground: #1e1e1e;
+    --color-code-background: #f0f0f0;
+  --color-code-foreground: black;
+  --color-brand-primary: #2962ff;
+  --color-brand-content: #2962ff;
+  --font-stack: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif;
+  --font-stack--monospace: Consolas, Monaco, 'Courier New', monospace;
+  --font-size--normal: 17px;
+  --font-size--small: 15px;
+  --sidebar-width: 280px;
   
   }
   @media not print {
     body[data-theme="dark"] {
-      --color-code-background: #202020;
-  --color-code-foreground: #d0d0d0;
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #448aff;
+  --color-brand-content: #448aff;
+  --font-size--normal: 17px;
+  --font-size--small: 15px;
+  --sidebar-width: 280px;
   
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
-        --color-code-background: #202020;
-  --color-code-foreground: #d0d0d0;
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #448aff;
+  --color-brand-content: #448aff;
+  --font-size--normal: 17px;
+  --font-size--small: 15px;
+  --sidebar-width: 280px;
   
       }
     }
@@ -190,79 +207,32 @@
   <input type="hidden" name="area" value="default">
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
-  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+  <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../README.html">pybragerone</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html">pybragerone – Quick Cheatsheet</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#tl-dr">TL;DR</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#key-objects">Key Objects</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#paramstore-modes">ParamStore Modes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#ha-integration-flow">HA Integration Flow</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#parameter-semantics">Parameter Semantics</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#entity-guidelines">Entity Guidelines</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#operational-tips">Operational Tips</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#cli-hints">CLI Hints</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#parsers-ha-glue-tl-dr">Parsers + HA Glue TL;DR</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html">pybragerone – Integration Notes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#overview">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#core-principles">Core Principles</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#architecture-high-level">Architecture (High-Level)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#data-model-semantics">Data Model &amp; Semantics</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#paramstore">ParamStore</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#eventbus">EventBus</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#ha-integration-flow">HA Integration Flow</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#entity-patterns-ha">Entity Patterns (HA)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#rest-endpoints-used-by-library">REST Endpoints (used by library)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#error-handling-robustness">Error Handling &amp; Robustness</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#logging-debugging">Logging &amp; Debugging</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#security-headers">Security &amp; Headers</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#performance-notes">Performance Notes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#versioning-types">Versioning &amp; Types</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#cli-developer-utility">CLI (Developer Utility)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#future-work-todo">Future Work / TODO</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#appendix-minimal-interfaces">Appendix: Minimal Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#parsers-glue-integration">Parsers &amp; Glue: Integration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../param_store_metadata.html">Param Store Metadata Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/quickstart.html">Quick Start Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/typing.html">Typing guidelines for py-bragerone</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/tests_guidelines.html">Testing guidelines</a></li>
 </ul>
-<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<p class="caption" role="heading"><span class="caption-text">Quick Reference</span></p>
 <ul>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../../api.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../../generated/pybragerone.api.html">pybragerone.api</a><input aria-label="Toggle navigation of pybragerone.api" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.api.client.html">pybragerone.api.client</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.api.constants.html">pybragerone.api.constants</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.api.endpoints.html">pybragerone.api.endpoints</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.api.ws.html">pybragerone.api.ws</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/core_components.html">Core Components</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/paramstore_usage.html">ParamStore Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/param_store_metadata.html">Param Store Metadata Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/ha_integration.html">Home Assistant Integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/parameter_format.html">Parameter Format</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/best_practices.html">Best Practices</a></li>
 </ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../../../generated/pybragerone.cli.html">pybragerone.cli</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../../generated/pybragerone.gateway.html">pybragerone.gateway</a></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../../generated/pybragerone.models.html">pybragerone.models</a><input aria-label="Toggle navigation of pybragerone.models" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../../generated/pybragerone.models.api.html">pybragerone.models.api</a><input aria-label="Toggle navigation of pybragerone.models.api" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.auth.html">pybragerone.models.api.auth</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.common.html">pybragerone.models.api.common</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.modules.html">pybragerone.models.api.modules</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.objects.html">pybragerone.models.api.objects</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.system.html">pybragerone.models.api.system</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.user.html">pybragerone.models.api.user</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.catalog.html">pybragerone.models.catalog</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.events.html">pybragerone.models.events</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.menu.html">pybragerone.models.menu</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.menu_manager.html">pybragerone.models.menu_manager</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.param.html">pybragerone.models.param</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.token.html">pybragerone.models.token</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../../../generated/pybragerone.utils.html">pybragerone.utils</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="../../../new_models.html">New API Models Summary</a></li>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/pydantic_models.html">Pydantic Models Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture/overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture/operations.html">Operations &amp; Debugging</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Project</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html#id1">Changelog</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/marpi82/py-bragerone/releases">GitHub Releases</a></li>
 </ul>
 
 </div>
@@ -309,7 +279,7 @@
 
 
 <div class="viewcode-block" id="FeatureChanged">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.events.html#pybragerone.models.FeatureChanged">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.events.FeatureChanged">[docs]</a>
 <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">FeatureChanged</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Feature changed event representing a change in device feature state.&quot;&quot;&quot;</span>
@@ -324,7 +294,7 @@
 
 
 <div class="viewcode-block" id="ParamUpdate">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.events.html#pybragerone.models.ParamUpdate">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.events.ParamUpdate">[docs]</a>
 <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">ParamUpdate</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Parameter update event carrying value and metadata updates.&quot;&quot;&quot;</span>
@@ -349,7 +319,7 @@
 
 
 <div class="viewcode-block" id="EventBus">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.events.html#pybragerone.models.EventBus">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.events.EventBus">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">EventBus</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Event bus for managing parameter update events.</span>
 
@@ -364,7 +334,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_lock</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
 
 <div class="viewcode-block" id="EventBus.last_seq">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.events.html#pybragerone.models.EventBus.last_seq">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.events.EventBus.last_seq">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">last_seq</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the last sequence number.</span>
 
@@ -375,7 +345,7 @@
 
 
 <div class="viewcode-block" id="EventBus.publish">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.events.html#pybragerone.models.EventBus.publish">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.events.EventBus.publish">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">publish</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">upd</span><span class="p">:</span> <span class="n">ParamUpdate</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Publish an event to all subscribers.</span>
 
@@ -393,7 +363,7 @@
 
 
 <div class="viewcode-block" id="EventBus.subscribe">
-<a class="viewcode-back" href="../../../generated/pybragerone.models.events.html#pybragerone.models.EventBus.subscribe">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.models.events.EventBus.subscribe">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">subscribe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncIterator</span><span class="p">[</span><span class="n">ParamUpdate</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Subscribe to events.</span>
 
@@ -445,7 +415,7 @@
       
     </aside>
   </div>
-</div><script src="../../../_static/documentation_options.js?v=7026087e"></script>
+</div><script src="../../../_static/documentation_options.js?v=5c79bd3c"></script>
     <script src="../../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>

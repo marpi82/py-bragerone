@@ -6,7 +6,7 @@
 
     <!-- Generated with Sphinx 8.2.3 and Furo 2025.09.25 -->
         <title>pybragerone.api.client - pybragerone 0.0.0 documentation</title>
-      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d111a655" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d75fae25" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=580074bf" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -16,20 +16,37 @@
 
 <style>
   body {
-    --color-code-background: #f2f2f2;
-  --color-code-foreground: #1e1e1e;
+    --color-code-background: #f0f0f0;
+  --color-code-foreground: black;
+  --color-brand-primary: #2962ff;
+  --color-brand-content: #2962ff;
+  --font-stack: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif;
+  --font-stack--monospace: Consolas, Monaco, 'Courier New', monospace;
+  --font-size--normal: 17px;
+  --font-size--small: 15px;
+  --sidebar-width: 280px;
   
   }
   @media not print {
     body[data-theme="dark"] {
-      --color-code-background: #202020;
-  --color-code-foreground: #d0d0d0;
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #448aff;
+  --color-brand-content: #448aff;
+  --font-size--normal: 17px;
+  --font-size--small: 15px;
+  --sidebar-width: 280px;
   
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
-        --color-code-background: #202020;
-  --color-code-foreground: #d0d0d0;
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #448aff;
+  --color-brand-content: #448aff;
+  --font-size--normal: 17px;
+  --font-size--small: 15px;
+  --sidebar-width: 280px;
   
       }
     }
@@ -190,79 +207,32 @@
   <input type="hidden" name="area" value="default">
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
-  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+  <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../README.html">pybragerone</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html">pybragerone – Quick Cheatsheet</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#tl-dr">TL;DR</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#key-objects">Key Objects</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#paramstore-modes">ParamStore Modes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#ha-integration-flow">HA Integration Flow</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#parameter-semantics">Parameter Semantics</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#entity-guidelines">Entity Guidelines</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#operational-tips">Operational Tips</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#cli-hints">CLI Hints</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_cheatsheet.html#parsers-ha-glue-tl-dr">Parsers + HA Glue TL;DR</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html">pybragerone – Integration Notes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#overview">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#core-principles">Core Principles</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#architecture-high-level">Architecture (High-Level)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#data-model-semantics">Data Model &amp; Semantics</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#paramstore">ParamStore</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#eventbus">EventBus</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#ha-integration-flow">HA Integration Flow</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#entity-patterns-ha">Entity Patterns (HA)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#rest-endpoints-used-by-library">REST Endpoints (used by library)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#error-handling-robustness">Error Handling &amp; Robustness</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#logging-debugging">Logging &amp; Debugging</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#security-headers">Security &amp; Headers</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#performance-notes">Performance Notes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#versioning-types">Versioning &amp; Types</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#cli-developer-utility">CLI (Developer Utility)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#future-work-todo">Future Work / TODO</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#appendix-minimal-interfaces">Appendix: Minimal Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../pybragerone_integration_notes.html#parsers-glue-integration">Parsers &amp; Glue: Integration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../param_store_metadata.html">Param Store Metadata Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/quickstart.html">Quick Start Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/typing.html">Typing guidelines for py-bragerone</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../guides/tests_guidelines.html">Testing guidelines</a></li>
 </ul>
-<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<p class="caption" role="heading"><span class="caption-text">Quick Reference</span></p>
 <ul>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../../api.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../../generated/pybragerone.api.html">pybragerone.api</a><input aria-label="Toggle navigation of pybragerone.api" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.api.client.html">pybragerone.api.client</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.api.constants.html">pybragerone.api.constants</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.api.endpoints.html">pybragerone.api.endpoints</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.api.ws.html">pybragerone.api.ws</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/core_components.html">Core Components</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/paramstore_usage.html">ParamStore Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/param_store_metadata.html">Param Store Metadata Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/ha_integration.html">Home Assistant Integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/parameter_format.html">Parameter Format</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reference/best_practices.html">Best Practices</a></li>
 </ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../../../generated/pybragerone.cli.html">pybragerone.cli</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../../generated/pybragerone.gateway.html">pybragerone.gateway</a></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../../generated/pybragerone.models.html">pybragerone.models</a><input aria-label="Toggle navigation of pybragerone.models" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../../generated/pybragerone.models.api.html">pybragerone.models.api</a><input aria-label="Toggle navigation of pybragerone.models.api" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.auth.html">pybragerone.models.api.auth</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.common.html">pybragerone.models.api.common</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.modules.html">pybragerone.models.api.modules</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.objects.html">pybragerone.models.api.objects</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.system.html">pybragerone.models.api.system</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../../generated/pybragerone.models.api.user.html">pybragerone.models.api.user</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.catalog.html">pybragerone.models.catalog</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.events.html">pybragerone.models.events</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.menu.html">pybragerone.models.menu</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.menu_manager.html">pybragerone.models.menu_manager</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.param.html">pybragerone.models.param</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../generated/pybragerone.models.token.html">pybragerone.models.token</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../../../generated/pybragerone.utils.html">pybragerone.utils</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="../../../new_models.html">New API Models Summary</a></li>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/pydantic_models.html">Pydantic Models Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture/overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture/operations.html">Operations &amp; Debugging</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Project</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html#id1">Changelog</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/marpi82/py-bragerone/releases">GitHub Releases</a></li>
 </ul>
 
 </div>
@@ -343,7 +313,7 @@
 
 
 <div class="viewcode-block" id="ApiError">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.ApiError">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.ApiError">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ApiError</span><span class="p">(</span><span class="ne">RuntimeError</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised for non-2xx HTTP responses.</span>
 
@@ -369,7 +339,7 @@
 
 
 <div class="viewcode-block" id="HttpCache">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.HttpCache">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.HttpCache">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">HttpCache</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Simple HTTP cache using ETag/Last-Modified headers with in-memory body storage.</span>
 
@@ -386,7 +356,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_store</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
 
 <div class="viewcode-block" id="HttpCache.headers_for">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.HttpCache.headers_for">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.HttpCache.headers_for">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">headers_for</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Generate conditional request headers for cached URL.</span>
 
@@ -409,7 +379,7 @@
 
 
 <div class="viewcode-block" id="HttpCache.update">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.HttpCache.update">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.HttpCache.update">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">headers</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">body</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Update cache entry with response data.</span>
 
@@ -427,7 +397,7 @@
 
 
 <div class="viewcode-block" id="HttpCache.get_body">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.HttpCache.get_body">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.HttpCache.get_body">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_body</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Retrieve cached response body for URL.</span>
 
@@ -447,7 +417,7 @@
 
 
 <div class="viewcode-block" id="BragerOneApiClient">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">BragerOneApiClient</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;HTTP API client with idempotent login and auto-refresh.</span>
 
@@ -508,7 +478,7 @@
     <span class="c1"># ----------------- session helpers -----------------</span>
 
 <div class="viewcode-block" id="BragerOneApiClient.set_token_store">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.set_token_store">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.set_token_store">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">set_token_store</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">store</span><span class="p">:</span> <span class="n">TokenStore</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Wire token persistence to a store that exposes load/save/clear.</span>
 
@@ -576,7 +546,7 @@
         <span class="n">LOG_HTTP</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;← </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> → </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">response</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">method</span><span class="p">,</span> <span class="n">response</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">url</span><span class="p">,</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">)</span>
 
 <div class="viewcode-block" id="BragerOneApiClient.close">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.close">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.close">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Close the underlying HTTP session.</span>
 
@@ -659,7 +629,7 @@
     <span class="c1"># -------- SYSTEM --------</span>
 
 <div class="viewcode-block" id="BragerOneApiClient.get_system_version">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.get_system_version">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.get_system_version">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_system_version</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SystemVersion</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get system version information.</span>
 
@@ -682,7 +652,7 @@
     <span class="c1"># ----------------- AUTH -----------------</span>
 
 <div class="viewcode-block" id="BragerOneApiClient.ensure_auth">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.ensure_auth">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.ensure_auth">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">ensure_auth</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">email</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">password</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Token</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Ensure valid token: use cache + validation, and if missing/expired — login.</span>
 
@@ -835,7 +805,7 @@
         <span class="k">return</span> <span class="s2">&quot;duplicate entry&quot;</span> <span class="ow">in</span> <span class="n">msg</span> <span class="ow">or</span> <span class="s2">&quot;er_dup_entry&quot;</span> <span class="ow">in</span> <span class="n">msg</span>
 
 <div class="viewcode-block" id="BragerOneApiClient.revoke">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.revoke">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.revoke">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">revoke</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Server-side logout + local cleanup of token and persistence.</span>
 
@@ -862,7 +832,7 @@
     <span class="c1"># -------- USER --------</span>
 
 <div class="viewcode-block" id="BragerOneApiClient.get_user">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.get_user">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.get_user">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_user</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">User</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get current user information.</span>
 
@@ -883,7 +853,7 @@
 
 
 <div class="viewcode-block" id="BragerOneApiClient.get_user_permissions">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.get_user_permissions">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.get_user_permissions">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_user_permissions</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Permission</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get current user permissions.</span>
 
@@ -909,7 +879,7 @@
     <span class="c1"># -------- OBJECTS --------</span>
 
 <div class="viewcode-block" id="BragerOneApiClient.get_objects">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.get_objects">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.get_objects">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_objects</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">BragerObject</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;GET /v1/objects → list of objects (with tolerance for different shapes).</span>
 
@@ -934,7 +904,7 @@
 
 
 <div class="viewcode-block" id="BragerOneApiClient.get_object">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.get_object">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.get_object">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_object</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">object_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ObjectDetails</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get object by ID.</span>
 
@@ -956,7 +926,7 @@
 
 
 <div class="viewcode-block" id="BragerOneApiClient.get_object_permissions">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.get_object_permissions">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.get_object_permissions">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_object_permissions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">object_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Permission</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get object-specific permissions for the current user.</span>
 
@@ -985,7 +955,7 @@
     <span class="c1"># -------- MODULES --------</span>
 
 <div class="viewcode-block" id="BragerOneApiClient.get_modules">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.get_modules">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.get_modules">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_modules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">object_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Module</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;GET /v1/modules?page=1&amp;limit=999&amp;group_id=&lt;object_id&gt; → list of modules.</span>
 
@@ -1011,7 +981,7 @@
 
 
 <div class="viewcode-block" id="BragerOneApiClient.get_module_card">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.get_module_card">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.get_module_card">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_module_card</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">code</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ModuleCard</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get module card information by code.</span>
 
@@ -1033,7 +1003,7 @@
 
 
 <div class="viewcode-block" id="BragerOneApiClient.modules_connect">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.modules_connect">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.modules_connect">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">modules_connect</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">wsid_ns</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
@@ -1103,7 +1073,7 @@
 
 
 <div class="viewcode-block" id="BragerOneApiClient.modules_parameters_prime">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.modules_parameters_prime">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.modules_parameters_prime">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">modules_parameters_prime</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">modules</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">return_data</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Prime modules parameters.</span>
 
@@ -1121,7 +1091,7 @@
 
 
 <div class="viewcode-block" id="BragerOneApiClient.modules_activity_quantity_prime">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.modules_activity_quantity_prime">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.modules_activity_quantity_prime">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">modules_activity_quantity_prime</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">modules</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">return_data</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Prime modules activity quantity.</span>
 
@@ -1141,7 +1111,7 @@
     <span class="c1"># -------- ASSETS --------</span>
 
 <div class="viewcode-block" id="BragerOneApiClient.fetch_text_one">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.fetch_text_one">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.fetch_text_one">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fetch_text_one</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Fetch text content from ONE_BASE.</span>
 
@@ -1156,7 +1126,7 @@
 
 
 <div class="viewcode-block" id="BragerOneApiClient.fetch_json_one">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.fetch_json_one">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.fetch_json_one">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fetch_json_one</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Fetch JSON content from ONE_BASE.</span>
 
@@ -1180,7 +1150,7 @@
 
 
 <div class="viewcode-block" id="BragerOneApiClient.get_bytes">
-<a class="viewcode-back" href="../../../generated/pybragerone.api.client.html#pybragerone.api.BragerOneApiClient.get_bytes">[docs]</a>
+<a class="viewcode-back" href="../../../api/api_reference.html#pybragerone.api.client.BragerOneApiClient.get_bytes">[docs]</a>
     <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_bytes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get raw bytes from URL with caching (ETag/Last-Modified).</span>
 
@@ -1255,7 +1225,7 @@
       
     </aside>
   </div>
-</div><script src="../../../_static/documentation_options.js?v=7026087e"></script>
+</div><script src="../../../_static/documentation_options.js?v=5c79bd3c"></script>
     <script src="../../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>
