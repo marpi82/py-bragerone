@@ -23,20 +23,12 @@ repos:
     rev: v1.18.2
     hooks:
       - id: mypy
-        args: ["--strict", "--show-column-numbers", "--show-error-codes"]
+        name: mypy
+        entry: uv run mypy
+        language: system
+        types: [python]
         files: ^(src/|tests/)
-        additional_dependencies:
-          [
-            "pydantic>=2.0",
-            "httpx",
-            "pytest-httpx",
-            "types-aiofiles",
-            "python-socketio",
-            "tree-sitter",
-            "tree-sitter-javascript",
-            "keyring",
-            "python-dotenv",
-          ]
+        pass_filenames: false
 
   # Secrets scanning with Gitleaks
   - repo: https://github.com/gitleaks/gitleaks

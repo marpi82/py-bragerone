@@ -36,9 +36,6 @@ jobs:
   security:
     name: security (pip-audit)
     runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      contents: read
     steps:
       - uses: actions/checkout@v5
         with:
@@ -55,21 +52,23 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --group dev --group test --group docs
 
-      - name: Run pip-audit with SARIF output
+      - name: Run pip-audit
         run: |
           uv run pip-audit \
-            --format=sarif \
-            --output=pip-audit-results.sarif \
+            --format=json \
+            --output=pip-audit-results.json \
             --progress-spinner=off \
             --skip-editable \
             --ignore-vuln GHSA-4xh5-x5gv-qwph
         continue-on-error: true
 
-      - name: Upload SARIF results to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v3
+      - name: Upload pip-audit results
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          sarif_file: pip-audit-results.sarif
+          name: pip-audit-results
+          path: pip-audit-results.json
+          retention-days: 30
 
   # Combined lint + typecheck job (optimization)
   quality:
@@ -144,6 +143,11 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --locked --group docs
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
 
       - name: Build Sphinx docs
         env:
