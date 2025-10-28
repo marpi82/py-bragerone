@@ -104,34 +104,121 @@ Examples
 Basic login and device listing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-See `examples/basic_login.py <examples/basic_login.py>`_ for a complete example:
+Minimal async example showing login and listing objects/modules:
 
-.. literalinclude:: examples/basic_login.py
-   :language: python
-   :lines: 30-65
-   :emphasize-lines: 11-12, 21-22
+.. code-block:: python
+   :linenos:
+
+   import asyncio
+   import os
+   from pybragerone.api import BragerOneApiClient
+
+   async def main() -> None:
+       email = os.getenv("PYBO_EMAIL", "user@example.com")
+       password = os.getenv("PYBO_PASSWORD", "password")
+       client = BragerOneApiClient()
+       try:
+           print(f"Logging in as {email}...")
+           await client.ensure_auth(email, password)
+           print("✓ Login successful")
+
+           objects = await client.get_objects()
+           print(f"Found {len(objects)} heating system(s)")
+           for obj in objects:
+               print(f"- {obj.name} (id={obj.id})")
+               modules = await client.get_modules(obj.id)
+               for m in modules:
+                   devid = m.devid or f"id:{m.id}"
+                   version = m.moduleVersion or (m.gateway.version if m.gateway else "unknown")
+                   print(f"  • {m.name} (devid={devid}, version={version})")
+       finally:
+           await client.close()
+
+   if __name__ == "__main__":
+       asyncio.run(main())
 
 Real-time parameter monitoring
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-See `examples/realtime_updates.py <examples/realtime_updates.py>`_ for WebSocket monitoring:
+Subscribing to updates via ``BragerOneGateway`` and printing changes:
 
-.. literalinclude:: examples/realtime_updates.py
-   :language: python
-   :lines: 68-92
-   :emphasize-lines: 6-7, 14-16
+.. code-block:: python
+   :linenos:
+
+   import asyncio
+   import os
+   from pybragerone import BragerOneGateway
+
+   async def main() -> None:
+       email = os.getenv("PYBO_EMAIL")
+       password = os.getenv("PYBO_PASSWORD")
+       object_id = int(os.getenv("PYBO_OBJECT_ID", "0"))
+       modules = [m.strip() for m in os.getenv("PYBO_MODULES", "").split(",") if m.strip()]
+
+       if not (email and password and object_id and modules):
+           print("Set PYBO_EMAIL, PYBO_PASSWORD, PYBO_OBJECT_ID, PYBO_MODULES")
+           return
+
+       gateway = BragerOneGateway(email=email, password=password, object_id=object_id, modules=modules)
+
+       async def monitor() -> None:
+           async for ev in gateway.bus.subscribe():
+               if ev.value is None:
+                   continue
+               key = f"{ev.pool}.{ev.chan}{ev.idx}"
+               print(f"{ev.devid:12} {key:15} = {ev.value}")
+
+       try:
+           await gateway.start()
+           task = asyncio.create_task(monitor())
+           await asyncio.sleep(10)   # demo run
+       finally:
+           task.cancel()
+           await gateway.stop()
+
+   if __name__ == "__main__":
+       asyncio.run(main())
 
 ParamStore lightweight mode
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-See `examples/paramstore_usage.py <examples/paramstore_usage.py>`_ for ParamStore usage:
+Attaching ``ParamStore`` to the EventBus and reading values:
 
-.. literalinclude:: examples/paramstore_usage.py
-   :language: python
-   :lines: 65-90
-   :emphasize-lines: 5-6, 14-18
+.. code-block:: python
+   :linenos:
 
-All examples use ``PYBO_*`` environment variables. See `examples/README.md <examples/README.md>`_ for details.
+   import asyncio
+   import os
+   from pybragerone import BragerOneGateway
+   from pybragerone.models.param import ParamStore
+
+   async def main() -> None:
+       email = os.getenv("PYBO_EMAIL")
+       password = os.getenv("PYBO_PASSWORD")
+       object_id = int(os.getenv("PYBO_OBJECT_ID", "0"))
+       modules = [m.strip() for m in os.getenv("PYBO_MODULES", "").split(",") if m.strip()]
+
+       if not (email and password and object_id and modules):
+           print("Set PYBO_EMAIL, PYBO_PASSWORD, PYBO_OBJECT_ID, PYBO_MODULES")
+           return
+
+       gateway = BragerOneGateway(email=email, password=password, object_id=object_id, modules=modules)
+       store = ParamStore()
+
+       task = asyncio.create_task(store.run_with_bus(gateway.bus))
+       try:
+           await gateway.start()
+           await asyncio.sleep(2)
+           params = store.flatten()
+           print(f"Total params: {len(params)}")
+           for k, v in list(params.items())[:10]:
+               print(f"{k:20} = {v}")
+       finally:
+           task.cancel()
+           await gateway.stop()
+
+   if __name__ == "__main__":
+       asyncio.run(main())
 
 Documentation
 -------------
