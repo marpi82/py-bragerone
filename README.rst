@@ -147,6 +147,7 @@ Subscribing to updates via ``BragerOneGateway`` and printing changes:
 
    import asyncio
    import os
+   from contextlib import suppress
    from pybragerone import BragerOneGateway
 
    async def main() -> None:
@@ -174,6 +175,8 @@ Subscribing to updates via ``BragerOneGateway`` and printing changes:
            await asyncio.sleep(10)   # demo run
        finally:
            task.cancel()
+           with suppress(asyncio.CancelledError):
+               await task
            await gateway.stop()
 
    if __name__ == "__main__":
@@ -189,6 +192,7 @@ Attaching ``ParamStore`` to the EventBus and reading values:
 
    import asyncio
    import os
+   from contextlib import suppress
    from pybragerone import BragerOneGateway
    from pybragerone.models.param import ParamStore
 
@@ -215,6 +219,8 @@ Attaching ``ParamStore`` to the EventBus and reading values:
                print(f"{k:20} = {v}")
        finally:
            task.cancel()
+           with suppress(asyncio.CancelledError):
+               await task
            await gateway.stop()
 
    if __name__ == "__main__":
