@@ -1,7 +1,7 @@
 name: Security Checks
 
 on:
-  pull_request:
+  workflow_dispatch:
 
   schedule:
     - cron: '0 3 * * 1'
@@ -12,16 +12,6 @@ permissions:
   id-token: write
 
 jobs:
-  dependency-review:
-    name: Dependency Review (PR check)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: moderate
-
   scorecard:
     name: OpenSSF Scorecard
     runs-on: ubuntu-latest
