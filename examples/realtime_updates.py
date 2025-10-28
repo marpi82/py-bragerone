@@ -110,8 +110,9 @@ async def main() -> None:
 
         await stop_event.wait()
 
-        # Cancel monitoring
+        # Cancel monitoring and wait for clean shutdown
         monitor_task.cancel()
+        # Await ensures task completes gracefully despite cancellation
         with contextlib.suppress(asyncio.CancelledError):
             await monitor_task
 
