@@ -21,57 +21,70 @@ Core Principles
 High-Level Architecture
 -----------------------
 
-.. mermaid::
+.. graphviz::
 
-   graph TB
-       subgraph "External Services"
-           Backend["🌐 BragerOne backend<br/>(io.brager.pl)"]
-       end
+   digraph overview {
+       rankdir=TB;
+       node [shape=box, style=filled];
 
-       subgraph "pybragerone Core"
-           API["📡 BragerOneApiClient<br/>(httpx)"]
-           Gateway["🚪 BragerOneGateway"]
-           Bus["📢 EventBus<br/>(multicast; per-subscriber queues)"]
-       end
+       // External Services
+       subgraph cluster_external {
+           label="External Services";
+           style=filled;
+           fillcolor="#e1f5fe";
 
-       subgraph "Data Layer"
-           ParamStore["💾 ParamStore<br/>(runtime lightweight)<br/>OR (config asset-aware)"]
-           Catalog["📋 LiveAssetsCatalog<br/>(optional; for i18n/metadata)"]
-       end
+           Backend [label="BragerOne Backend\n(io.brager.pl)", fillcolor="#e1f5fe"];
+       }
 
-       subgraph "Consumers"
-           HA["🏠 Home Assistant Entities<br/>(binary_sensor, number, ...)"]
-           Printer["🖨️ Printer<br/>(optional debug/CLI)"]
-       end
+       // pybragerone Core
+       subgraph cluster_core {
+           label="pybragerone Core";
+           style=filled;
+           fillcolor="#f3e5f5";
 
-       %% Main data flow
-       API <-->|"REST<br/>prime parameters"| Backend
-       API -->|"WS (socket.io)<br/>subscribe"| Gateway
-       Backend -->|"WS change events"| Gateway
-       Gateway -->|"publish()"| Bus
+           API [label="BragerOneApiClient\n(httpx)", fillcolor="#f3e5f5"];
+           Gateway [label="BragerOneGateway", fillcolor="#f3e5f5"];
+           Bus [label="EventBus\n(multicast; per-subscriber queues)", fillcolor="#f3e5f5"];
+       }
 
-       %% Store connections
-       Bus --> ParamStore
-       Bus --> Printer
+       // Data Layer
+       subgraph cluster_store {
+           label="Data Layer";
+           style=filled;
+           fillcolor="#e8f5e8";
 
-       %% Asset catalog (optional)
-       API -.-> Catalog
-       Catalog -.-> ParamStore
+           ParamStore [label="ParamStore\n(runtime lightweight)\nOR (config asset-aware)", fillcolor="#e8f5e8"];
+           Catalog [label="LiveAssetsCatalog\n(optional; for i18n/metadata)", fillcolor="#e8f5e8"];
+       }
 
-       %% HA integration
-       ParamStore --> HA
-       Catalog -.->|"descriptors built<br/>(config only)"| HA
+       // Consumers
+       subgraph cluster_consumer {
+           label="Consumers";
+           style=filled;
+           fillcolor="#fff3e0";
 
-       %% Styling
-       classDef external fill:#e1f5fe
-       classDef core fill:#f3e5f5
-       classDef store fill:#e8f5e8
-       classDef consumer fill:#fff3e0
+           HA [label="Home Assistant Entities\n(binary_sensor, number, ...)", fillcolor="#fff3e0"];
+           Printer [label="Printer\n(optional debug/CLI)", fillcolor="#fff3e0"];
+       }
 
-       class Backend external
-       class API,Gateway,Bus core
-       class ParamStore,Catalog store
-       class HA,Printer consumer
+       // Main data flow
+       API -> Backend [dir=both, label="REST\nprime parameters", color=blue];
+       API -> Gateway [label="WS (socket.io)\nsubscribe", color=darkgreen];
+       Backend -> Gateway [label="WS change events", color=red];
+       Gateway -> Bus [label="publish()", color=purple];
+
+       // Store connections
+       Bus -> ParamStore [color=orange];
+       Bus -> Printer [color=orange];
+
+       // Asset catalog (optional)
+       API -> Catalog [style=dashed, color=gray];
+       Catalog -> ParamStore [style=dashed, color=gray];
+
+       // HA integration
+       ParamStore -> HA [color=brown];
+       Catalog -> HA [style=dashed, color=gray, label="descriptors built\n(config only)"];
+   }
 
 Data Model & Semantics
 ----------------------

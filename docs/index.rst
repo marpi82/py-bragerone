@@ -73,19 +73,19 @@ Key Features
 🎯 **Type Safe**
    Full Pydantic models with mypy strict mode compliance
 
-Documentation
-=============
-
 .. toctree::
-   :maxdepth: 1
+   :hidden:
+   :maxdepth: 2
    :caption: Getting Started
 
    guides/quickstart
    guides/getting_started
    guides/typing
    guides/tests_guidelines
+   guides/quality
 
 .. toctree::
+   :hidden:
    :maxdepth: 2
    :caption: Quick Reference
 
@@ -97,6 +97,7 @@ Documentation
    reference/best_practices
 
 .. toctree::
+   :hidden:
    :maxdepth: 2
    :caption: API Documentation
 
@@ -106,14 +107,8 @@ Documentation
    architecture/operations
 
 .. toctree::
+   :hidden:
    :maxdepth: 1
    :caption: Project
 
    GitHub Releases <https://github.com/marpi82/py-bragerone/releases>
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`

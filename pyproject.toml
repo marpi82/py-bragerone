@@ -67,7 +67,12 @@ packages = ["src/pybragerone"]
 include = ["src/pybragerone/py.typed"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/pybragerone", "README.rst", "docs/guides/getting_started.rst", "LICENSE"]
+include = [
+  "src/pybragerone",
+  "README.rst",
+  "docs/guides/getting_started.rst",
+  "LICENSE",
+]
 
 [dependency-groups]
 dev = [
@@ -95,7 +100,6 @@ docs = [
   "myst-parser>=4.0.0,<5.0.0",
   "sphinx-autodoc-typehints>=3.2.0,<4.0.0",
   "sphinx-copybutton>=0.5.2,<0.6.0",
-  "sphinxcontrib-mermaid>=1.0.0,<2.0.0",
 ]
 
 # ---------------- Ruff (formatter + linter) ----------------

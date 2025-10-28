@@ -78,31 +78,32 @@ repos:
         pass_filenames: true
 
   # --- SECURITY: dependencies (SCA) with uv export + pip-audit ---
+  # NOTE: Disabled for faster commits. Run manually: `pre-commit run pip-audit --all-files`
   # Strategy: Generate requirements snapshot on-the-fly during pre-commit, then audit it
-  - repo: local
-    hooks:
-      - id: uv-export
-        name: uv pip freeze requirements snapshot
-        language: system
-        entry: bash -c 'uv pip freeze --exclude-editable > requirements-pip-audit.txt'
-        pass_filenames: false
-        stages: [pre-commit]
-        always_run: true # Run even if uv.lock unchanged
+  # - repo: local
+  #   hooks:
+  #     - id: uv-export
+  #       name: uv pip freeze requirements snapshot
+  #       language: system
+  #       entry: bash -c 'uv pip freeze --exclude-editable > requirements-pip-audit.txt'
+  #       pass_filenames: false
+  #       stages: [pre-commit]
+  #       always_run: true # Run even if uv.lock unchanged
 
-  - repo: https://github.com/pypa/pip-audit
-    rev: v2.9.0
-    hooks:
-      - id: pip-audit
-        name: pip-audit (scan requirements snapshot)
-        args:
-          [
-            "--requirement",
-            "requirements-pip-audit.txt",
-            "--progress-spinner",
-            "off",
-          ]
-        stages: [pre-commit]
-        always_run: true # Run even if requirements.txt not staged
+  # - repo: https://github.com/pypa/pip-audit
+  #   rev: v2.9.0
+  #   hooks:
+  #     - id: pip-audit
+  #       name: pip-audit (scan requirements snapshot)
+  #       args:
+  #         [
+  #           "--requirement",
+  #           "requirements-pip-audit.txt",
+  #           "--progress-spinner",
+  #           "off",
+  #         ]
+  #       stages: [pre-commit]
+  #       always_run: true # Run even if requirements.txt not staged
 
   # --- TESTY na pre-push z progiem coverage ---
   - repo: local

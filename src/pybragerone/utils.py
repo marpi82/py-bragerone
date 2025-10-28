@@ -1,4 +1,16 @@
-"""Library utilities."""
+"""Library utilities.
+
+This module provides utility functions for the pybragerone library, organized into categories:
+
+**Task Management:**
+    - :func:`spawn` - Background task spawning with error handling
+
+**JSON Utilities:**
+    - :func:`json_preview` - Single-line JSON preview with length limits
+    - :func:`log_json_payload` - Debug logging for JSON payloads
+    - :func:`save_json_payload` - Save JSON to UTF-8 files
+    - :func:`summarize_top_level` - Quick structural summary of JSON objects
+"""
 
 from __future__ import annotations
 
@@ -15,7 +27,17 @@ bg_tasks: set[asyncio.Task[Any]] = set()
 
 
 def spawn(coro: Coroutine[Any, Any, Any], name: str, log: Logger) -> None:
-    """Spawn a background task and track it in bg_tasks set."""
+    """Spawn a background task and track it in bg_tasks set.
+
+    Args:
+        coro: The coroutine to execute as a background task.
+        name: Descriptive name for the task (used in logging).
+        log: Logger instance for error reporting.
+
+    Note:
+        Tasks are automatically cleaned up on completion or cancellation.
+        Exceptions are logged but don't crash the application.
+    """
     t = asyncio.create_task(coro, name=name)
     bg_tasks.add(t)
 
@@ -33,9 +55,21 @@ def spawn(coro: Coroutine[Any, Any, Any], name: str, log: Logger) -> None:
 
 
 def json_preview(obj: Any, *, maxlen: int = 2000) -> str:
-    """Return a single-line JSON preview trimmed to ``maxlen`` with no indent.
+    """Return a single-line JSON preview trimmed to maxlen with no indent.
 
-    Handles primitive values without raising.
+    Converts any Python object to a compact JSON string representation,
+    truncating if necessary. Safe for any input type.
+
+    Args:
+        obj: Any Python object to preview.
+        maxlen: Maximum length of the returned string (default: 2000).
+
+    Returns:
+        A single-line JSON string, possibly truncated with "…".
+
+    Example:
+        >>> json_preview({"key": "value", "numbers": [1, 2, 3]})
+        '{"key":"value","numbers":[1,2,3]}'
     """
     try:
         s = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
@@ -77,6 +111,14 @@ def summarize_top_level(obj: Any) -> dict[str, Any]:
 
     Returns:
         A dictionary describing the top-level structure.
+
+    Example:
+        >>> summarize_top_level({"a": 1, "b": 2})
+        {'type': 'dict', 'keys': ['a', 'b'], 'len': 2}
+        >>> summarize_top_level([1, 2, 3])
+        {'type': 'list', 'len': 3, 'first_type': 'int'}
+        >>> summarize_top_level("hello")
+        {'type': 'str'}
     """
     if isinstance(obj, dict):
         return {
