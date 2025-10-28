@@ -6,13 +6,22 @@ on:
     types: [completed]
 
 permissions:
-  contents: write
-  id-token: write # Required for trusted publishing to PyPI/TestPyPI
+  contents: read
+  actions: read
 
 jobs:
   release:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_repository.fork == false &&
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'refs/tags/')
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      id-token: write
 
     steps:
       - name: Checkout target SHA
@@ -20,6 +29,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
 
       - name: Detect tag and pre-release
         id: meta
