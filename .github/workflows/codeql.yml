@@ -10,7 +10,7 @@ on:
         - cron: "0 0 * * 1"
 
 concurrency:
-    group: codeql-${{ github.workflow }}-${{ github.ref }}
+    group: codeql-${{ github.head_ref || github.ref }}
     cancel-in-progress: true
         
 jobs:
