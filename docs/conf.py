@@ -16,7 +16,6 @@ copyright = f"{datetime.now():%Y}, {author}"
 # --- Sphinx extensions ---
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",  # Google/NumPy docstrings
     "sphinx_autodoc_typehints",  # nice types in descriptions
     "sphinx.ext.todo",  # .. todo:: in documentation
@@ -51,8 +50,6 @@ myst_heading_anchors = 3
 exclude_patterns = []
 
 # --- Autodoc / typing ---
-autosummary_generate = True
-autosummary_generate_overwrite = True
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 napoleon_use_ivar = True
@@ -78,10 +75,11 @@ intersphinx_mapping = {
 todo_include_todos = True
 
 # --- Warnings suppression ---
-# Suppress duplicate target warnings for re-exported classes (e.g., from __init__.py)
+# Only minimal necessary warnings
 suppress_warnings = [
     "ref.python",  # Suppress "more than one target found" for cross-references
 ]
+
 
 # --- HTML theme ---
 html_theme = "furo"
