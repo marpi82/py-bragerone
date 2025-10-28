@@ -55,6 +55,11 @@ jobs:
             echo "Development build from main branch"
           fi
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
       - name: Build Sphinx docs
         env:
           LC_ALL: C.UTF-8
