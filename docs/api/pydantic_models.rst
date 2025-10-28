@@ -1,7 +1,7 @@
-New API Models Summary
-======================
+Pydantic Models Guide
+=====================
 
-This document summarizes the new Pydantic models implementation for the BragerOne API.
+This guide covers the Pydantic models implementation for the BragerOne API.
 
 Completed Models
 ----------------

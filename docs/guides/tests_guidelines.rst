@@ -23,13 +23,11 @@ Example layout::
 conftest.py (live toggle + session)
 -----------------------------------
 
-.. literalinclude:: ../tests/conftest.py
+.. literalinclude:: ../../tests/conftest.py
    :language: python
    :caption: conftest.py
 
-test_live_api.py (real HTTP)
-----------------------------
+Example Test File
+-----------------
 
-.. literalinclude:: ../tests/test_api_live.py
-   :language: python
-   :caption: test_api_live.py
+See the existing test files in the ``tests/`` directory for examples of proper test structure and patterns.

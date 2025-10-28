@@ -16,7 +16,6 @@ copyright = f"{datetime.now():%Y}, {author}"
 # --- Sphinx extensions ---
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",  # Google/NumPy docstrings
     "sphinx_autodoc_typehints",  # nice types in descriptions
     "sphinx.ext.todo",  # .. todo:: in documentation
@@ -48,13 +47,9 @@ myst_enable_extensions = [
 myst_heading_anchors = 3
 
 # --- Source discovery ---
-exclude_patterns = [
-    "tests_guidelines.rst",
-    "typing.rst",
-]
+exclude_patterns = []
 
 # --- Autodoc / typing ---
-autosummary_generate = True
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 napoleon_use_ivar = True
@@ -80,13 +75,45 @@ intersphinx_mapping = {
 todo_include_todos = True
 
 # --- Warnings suppression ---
-# Suppress duplicate target warnings for re-exported classes (e.g., from __init__.py)
+# Only minimal necessary warnings
 suppress_warnings = [
     "ref.python",  # Suppress "more than one target found" for cross-references
 ]
 
+
 # --- HTML theme ---
-html_theme = "furo"  # or alabaster
+html_theme = "furo"
+
+# Furo theme options for better readability
+html_theme_options = {
+    "light_css_variables": {
+        "color-brand-primary": "#2962ff",
+        "color-brand-content": "#2962ff",
+        "font-stack": "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
+        "font-stack--monospace": "Consolas, Monaco, 'Courier New', monospace",
+        "font-size--normal": "17px",
+        "font-size--small": "15px",
+        "sidebar-width": "280px",
+    },
+    "dark_css_variables": {
+        "color-brand-primary": "#448aff",
+        "color-brand-content": "#448aff",
+        "font-size--normal": "17px",
+        "font-size--small": "15px",
+        "sidebar-width": "280px",
+    },
+    "sidebar_hide_name": False,
+    "navigation_with_keys": True,
+}
+
+# Static path for custom CSS/JS (if needed)
+html_static_path = ["_static"]
+
+# Syntax highlighting style
+# 'friendly' for light mode - clean, readable, works well with Furo's light theme
+# 'monokai' for dark mode - dark background, bright colors, works well with Furo
+pygments_style = "friendly"
+pygments_dark_style = "monokai"
 
 # --- Version resolution ---
 try:

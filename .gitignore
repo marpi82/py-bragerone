@@ -91,12 +91,9 @@ Thumbs.db
 pybragerone.*
 /*.log
 /src/bragerone/
-examples/
-scripts/
-!scripts/setup_host_env.sh
+_archive/
 # keep specific markdown docs tracked
 /docs/[a-z]*.md
-!docs/changelog.md
 /docs/_build/
 /docs/generated/
 !docs/generated/

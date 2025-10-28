@@ -101,76 +101,37 @@ Run the CLI for guided login and WS session::
 Examples
 --------
 
-ParamStore (lightweight) example::
+Basic login and device listing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-  import asyncio
-  from pybragerone import BragerOneApiClient, BragerOneGateway
-  from pybragerone.models.param import ParamStore
+See `examples/basic_login.py <examples/basic_login.py>`_ for a complete example:
 
-  async def main():
-      # Gateway handles API client internally
-      gw = BragerOneGateway(
-          email="you@example.com",
-          password="secret",
-          object_id=12345,  # Your object ID
-          modules=["ABC123", "DEF456"]  # Your device IDs
-      )
+.. literalinclude:: examples/basic_login.py
+   :language: python
+   :lines: 30-65
+   :emphasize-lines: 11-12, 21-22
 
-      pstore = ParamStore()
-      asyncio.create_task(pstore.run_with_bus(gw.bus))
+Real-time parameter monitoring
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-      async def printer():
-          async for upd in gw.bus.subscribe():
-              if upd.value is not None:
-                  print(f"{upd.devid} {upd.pool}.{upd.chan}{upd.idx} = {upd.value}")
-      asyncio.create_task(printer())
+See `examples/realtime_updates.py <examples/realtime_updates.py>`_ for WebSocket monitoring:
 
-      await gw.start()
-      try:
-          await asyncio.sleep(30)
-      finally:
-          await gw.stop()
+.. literalinclude:: examples/realtime_updates.py
+   :language: python
+   :lines: 68-92
+   :emphasize-lines: 6-7, 14-16
 
-  asyncio.run(main())
+ParamStore lightweight mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Advanced: Using ParamStore with API for rich metadata::
+See `examples/paramstore_usage.py <examples/paramstore_usage.py>`_ for ParamStore usage:
 
-  import asyncio
-  from pybragerone import BragerOneApiClient, BragerOneGateway
-  from pybragerone.models.param import ParamStore
+.. literalinclude:: examples/paramstore_usage.py
+   :language: python
+   :lines: 65-90
+   :emphasize-lines: 5-6, 14-18
 
-  async def main():
-      # For config flow or when you need i18n/labels
-      api = BragerOneApiClient()
-      await api.ensure_auth("you@example.com", "secret")
-
-      user = await api.get_user()
-      object_id = user.objects[0].id
-      modules_resp = await api.get_modules(object_id=object_id)
-      devids = [m.devid for m in modules_resp if m.devid]
-
-      pstore = ParamStore()
-      pstore.init_with_api(api, lang="pl")  # Enables LiveAssetsCatalog
-
-      gw = BragerOneGateway(
-          email="you@example.com",
-          password="secret",
-          object_id=object_id,
-          modules=devids
-      )
-      asyncio.create_task(pstore.run_with_bus(gw.bus))
-
-      await gw.start()
-      try:
-          # Now you can use pstore.get_menu(), get_label(), etc.
-          menu = await pstore.get_menu("device123", ["param.edit"])
-          print(f"Available parameters: {len(menu.items)}")
-          await asyncio.sleep(30)
-      finally:
-          await gw.stop()
-          await api.close()
-
-  asyncio.run(main())
+All examples use ``PYBO_*`` environment variables. See `examples/README.md <examples/README.md>`_ for details.
 
 Documentation
 -------------
