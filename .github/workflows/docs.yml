@@ -61,18 +61,27 @@ jobs:
 
       - name: Prepare versioned site
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"          # np. 0.3.0 albo dev
+          IS_STABLE="${{ steps.version.outputs.is_stable }}"      # "true"/"false"
+
           mkdir -p site
           cp -r docs/_build/html "site/${VERSION}"
-          if [[ "${{ steps.version.outputs.is_stable }}" == "true" ]]; then
-            rm -rf "site/latest"
-            cp -r "site/${VERSION}" "site/latest"
-          fi
+
+          mkdir -p site/latest
+          cat > site/latest/index.html <<HTML
+          <!doctype html><meta charset="utf-8"><title>Redirect…</title>
+          <meta http-equiv="refresh" content="0; url=../${VERSION}/">
+          <p>Redirecting to <a href="../${VERSION}/">${VERSION}</a>…</p>
+          HTML
+
           cat > site/index.html <<'HTML'
           <!doctype html><meta charset="utf-8"><title>Redirect…</title>
           <meta http-equiv="refresh" content="0; url=latest/">
           <p>Redirecting to <a href="latest/">latest</a>…</p>
           HTML
+
+          echo "Prepared versioned site: ${VERSION} (stable=${IS_STABLE}) with latest/ redirect."
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
@@ -81,4 +90,3 @@ jobs:
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
-        with:
