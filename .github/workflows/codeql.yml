@@ -1,4 +1,4 @@
-name: CodeQL
+name: "CodeQL Advanced"
 
 on:
     push:
@@ -9,15 +9,16 @@ on:
         # Run at 00:00 UTC every Monday
         - cron: "0 0 * * 1"
 
-permissions:
-    actions: read
-    contents: read
-    security-events: write
-
 jobs:
     analyze:
         name: Analyze
         runs-on: ubuntu-latest
+
+        permissions:
+            security-events: write
+            packages: read
+            actions: read
+            contents: read
 
         strategy:
             fail-fast: false
@@ -27,6 +28,12 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@v5
+
+            - name: Initialize CodeQL
+              uses: github/codeql-action/init@v4
+              with:
+                  languages: ${{ matrix.language }}
+                  queries: security-and-quality
 
             - name: Set up Python
               uses: actions/setup-python@v6
@@ -42,12 +49,6 @@ jobs:
               run: |
                   uv python install 3.13
                   uv sync --locked
-
-            - name: Initialize CodeQL
-              uses: github/codeql-action/init@v4
-              with:
-                  languages: ${{ matrix.language }}
-                  queries: security-and-quality
 
             - name: Autobuild
               uses: github/codeql-action/autobuild@v4
