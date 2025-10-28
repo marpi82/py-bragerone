@@ -59,33 +59,27 @@ jobs:
           LANG: C.UTF-8
         run: uv run sphinx-build -W --keep-going -b html docs docs/_build/html
 
-      - name: Prepare versioned deployment
-        if: steps.version.outputs.version != ''
+      - name: Prepare versioned site
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          mkdir -p deploy_root
-
-          # Copy built docs to versioned directory
-          cp -r docs/_build/html "deploy_root/$VERSION"
-
-          # If stable version, create/update 'latest' symlink
+          mkdir -p site
+          cp -r docs/_build/html "site/${VERSION}"
           if [[ "${{ steps.version.outputs.is_stable }}" == "true" ]]; then
-            cd deploy_root
-            ln -sfn "$VERSION" latest
-            cd ..
-            echo "Created 'latest' symlink pointing to $VERSION"
+            rm -rf "site/latest"
+            cp -r "site/${VERSION}" "site/latest"
           fi
+          cat > site/index.html <<'HTML'
+          <!doctype html><meta charset="utf-8"><title>Redirect…</title>
+          <meta http-equiv="refresh" content="0; url=latest/">
+          <p>Redirecting to <a href="latest/">latest</a>…</p>
+          HTML
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        if: |
-          (github.ref == 'refs/heads/main') ||
-          (startsWith(github.ref, 'refs/tags/20') && steps.version.outputs.is_stable == 'true')
+        uses: actions/deploy-pages@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./deploy_root
-          destination_dir: .
-          keep_files: true
-          user_name: "github-actions[bot]"
-          user_email: "github-actions[bot]@users.noreply.github.com"
-          commit_message: "docs: deploy documentation ${{ steps.version.outputs.version }}"
+          artifact_name: github-pages
