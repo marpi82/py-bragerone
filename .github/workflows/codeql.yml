@@ -9,6 +9,10 @@ on:
         # Run at 00:00 UTC every Monday
         - cron: "0 0 * * 1"
 
+concurrency:
+    group: codeql-${{ github.head_ref || github.ref }}
+    cancel-in-progress: true
+        
 jobs:
     analyze:
         name: Analyze
@@ -34,11 +38,6 @@ jobs:
               with:
                   languages: ${{ matrix.language }}
                   queries: security-and-quality
-
-            - name: Set up Python
-              uses: actions/setup-python@v6
-              with:
-                  python-version: "3.13"
 
             - uses: astral-sh/setup-uv@v7
               with:
