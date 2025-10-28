@@ -107,7 +107,6 @@ Basic login and device listing
 Minimal async example showing login and listing objects/modules:
 
 .. code-block:: python
-   :linenos:
 
    import asyncio
    import os
@@ -143,7 +142,6 @@ Real-time parameter monitoring
 Subscribing to updates via ``BragerOneGateway`` and printing changes:
 
 .. code-block:: python
-   :linenos:
 
    import asyncio
    import os
@@ -188,7 +186,6 @@ ParamStore lightweight mode
 Attaching ``ParamStore`` to the EventBus and reading values:
 
 .. code-block:: python
-   :linenos:
 
    import asyncio
    import os
