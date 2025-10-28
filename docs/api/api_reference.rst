@@ -2,7 +2,7 @@ API Reference
 =============
 
 .. autosummary::
-   :toctree: ../generated
+   :toctree: generated
    :recursive:
 
    pybragerone.api
