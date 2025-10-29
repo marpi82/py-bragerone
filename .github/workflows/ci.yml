@@ -157,7 +157,7 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
-    needs: [secrets, security, quality, tests, docs-verify]
+    needs: [secrets, dependency-review, security, quality, tests, docs-verify]
     steps:
       - uses: actions/checkout@v5
         with:
