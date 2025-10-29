@@ -58,8 +58,7 @@ jobs:
             --format=json \
             --output=pip-audit-results.json \
             --progress-spinner=off \
-            --skip-editable \
-            --ignore-vuln GHSA-4xh5-x5gv-qwph
+            --skip-editable
         continue-on-error: true
 
       - name: Upload pip-audit results

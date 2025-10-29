@@ -15,8 +15,8 @@ repos:
     rev: v0.14.1
     hooks:
       - id: ruff
-        args: ["--fix"] # lint + autofix (bez I jeśli nie chcesz sortować importów ruffem)
-      - id: ruff-format # formatter (zastępuje Black)
+        args: ["--fix"]
+      - id: ruff-format
 
   # Mypy → type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
