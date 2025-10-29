@@ -38,41 +38,63 @@ Architecture
 
 The library consists of several key components working together:
 
-.. mermaid::
+.. graphviz::
 
-   flowchart TB
-     subgraph cloud["☁️ BragerOne Cloud"]
-       REST["/v1/* REST API"]
-       WS["/socket.io WebSocket"]
-     end
+   digraph architecture {
+       rankdir=TB;
+       node [shape=record, style=filled];
 
-     subgraph pybragerone["📦 pybragerone Package"]
-       direction TB
-       API["🔌 BragerOneApiClient<br/>(httpx)"]
-       REALTIME["⚡ RealtimeManager<br/>(Socket.IO)"]
-       GATEWAY["🚪 BragerOneGateway<br/>(orchestration)"]
-       EVENTBUS["📡 EventBus<br/>(pub/sub)"]
-       STORE["💾 ParamStore<br/>(key→value)"]
-       CATALOG["📚 LiveAssetsCatalog<br/>(metadata)"]
+       // Cloud services
+       subgraph cluster_cloud {
+           label="BragerOne Cloud";
+           style=filled;
+           fillcolor=lightblue;
 
-       API --> GATEWAY
-       REALTIME --> GATEWAY
-       GATEWAY --> EVENTBUS
-       EVENTBUS --> STORE
-       API -.metadata.-> CATALOG
-       CATALOG -.labels/units.-> STORE
-     end
+           REST [label="REST API\n/v1/*", fillcolor=lightgreen];
+           WS [label="WebSocket\n/socket.io", fillcolor=lightgreen];
+       }
 
-     subgraph integration["🏠 Home Assistant"]
-       CONFIG["Config Flow<br/>(uses metadata)"]
-       RUNTIME["Runtime<br/>(lightweight mode)"]
-     end
+       // pybragerone package
+       subgraph cluster_pybragerone {
+           label="pybragerone Package";
+           style=filled;
+           fillcolor=lightyellow;
 
-     REST --> API
-     WS --> REALTIME
-     STORE --> CONFIG
-     STORE --> RUNTIME
-     CATALOG --> CONFIG
+           API [label="BragerOneApiClient\n(httpx)", fillcolor=orange];
+           REALTIME [label="RealtimeManager\n(Socket.IO)", fillcolor=orange];
+           GATEWAY [label="BragerOneGateway\n(orchestration)", fillcolor=red];
+           EVENTBUS [label="EventBus\n(pub/sub)", fillcolor=pink];
+           STORE [label="ParamStore\n(key→value)", fillcolor=lightcyan];
+           CATALOG [label="LiveAssetsCatalog\n(metadata)", fillcolor=wheat];
+       }
+
+       // Home Assistant integration
+       subgraph cluster_ha {
+           label="Home Assistant";
+           style=filled;
+           fillcolor=lightgray;
+
+           CONFIG [label="Config Flow\n(uses metadata)", fillcolor=white];
+           RUNTIME [label="Runtime\n(lightweight mode)", fillcolor=white];
+       }
+
+       // Main data flow
+       REST -> API [color=blue];
+       WS -> REALTIME [color=blue];
+       API -> GATEWAY [color=darkgreen];
+       REALTIME -> GATEWAY [color=darkgreen];
+       GATEWAY -> EVENTBUS [color=red];
+       EVENTBUS -> STORE [color=purple];
+
+       // Metadata flow (dashed)
+       API -> CATALOG [style=dashed, color=gray, label="metadata"];
+       CATALOG -> STORE [style=dashed, color=gray, label="labels/units"];
+
+       // HA integration
+       STORE -> CONFIG [color=brown];
+       STORE -> RUNTIME [color=brown];
+       CATALOG -> CONFIG [color=gray];
+   }
 
 .. note::
    **Data Flow:**

@@ -33,6 +33,42 @@ jobs:
         with:
           fail-on-severity: moderate
 
+  security:
+    name: security (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --locked --group dev --group test --group docs
+
+      - name: Run pip-audit
+        run: |
+          uv run pip-audit \
+            --format=json \
+            --output=pip-audit-results.json \
+            --progress-spinner=off \
+            --skip-editable
+        continue-on-error: true
+
+      - name: Upload pip-audit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-results
+          path: pip-audit-results.json
+          retention-days: 30
+
   # Combined lint + typecheck job (optimization)
   quality:
     name: quality (lint + typecheck)
@@ -107,6 +143,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --group docs
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
       - name: Build Sphinx docs
         env:
           LC_ALL: C.UTF-8
@@ -116,7 +157,7 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
-    needs: [secrets, quality, tests, docs-verify]
+    needs: [secrets, security, quality, tests, docs-verify]
     steps:
       - uses: actions/checkout@v5
         with:
