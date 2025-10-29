@@ -91,6 +91,20 @@ Optional extras::
   pip install "pybragerone[cli]"      # CLI with typer, rich, aiofiles
   pip install "pybragerone[keyring]"  # Secure token storage with keyring
 
+Development Dependencies
+------------------------
+
+For building documentation with architectural diagrams::
+
+  # Ubuntu/Debian
+  sudo apt-get install graphviz
+
+  # macOS
+  brew install graphviz
+
+  # Windows (via Chocolatey)
+  choco install graphviz
+
 CLI usage
 ---------
 

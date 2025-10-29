@@ -15,28 +15,20 @@ repos:
     rev: v0.14.1
     hooks:
       - id: ruff
-        args: ["--fix"] # lint + autofix (bez I jeśli nie chcesz sortować importów ruffem)
-      - id: ruff-format # formatter (zastępuje Black)
+        args: ["--fix"]
+      - id: ruff-format
 
   # Mypy → type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.18.2
     hooks:
       - id: mypy
-        args: ["--strict", "--show-column-numbers", "--show-error-codes"]
+        name: mypy
+        entry: uv run mypy
+        language: system
+        types: [python]
         files: ^(src/|tests/)
-        additional_dependencies:
-          [
-            "pydantic>=2.0",
-            "httpx",
-            "pytest-httpx",
-            "types-aiofiles",
-            "python-socketio",
-            "tree-sitter",
-            "tree-sitter-javascript",
-            "keyring",
-            "python-dotenv",
-          ]
+        pass_filenames: false
 
   # Secrets scanning with Gitleaks
   - repo: https://github.com/gitleaks/gitleaks
@@ -78,7 +70,7 @@ repos:
         pass_filenames: true
 
   # --- SECURITY: dependencies (SCA) with uv export + pip-audit ---
-  # NOTE: Disabled for faster commits. Run manually: `pre-commit run pip-audit --all-files`
+  # NOTE: Disabled for faster commits. Runs automatically in CI with GitHub Code Scanning
   # Strategy: Generate requirements snapshot on-the-fly during pre-commit, then audit it
   # - repo: local
   #   hooks:

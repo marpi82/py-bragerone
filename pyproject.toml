@@ -145,6 +145,11 @@ warn_redundant_casts = true
 
 plugins = ["pydantic.mypy"]
 
+# Handle untyped third-party packages
+[[tool.mypy.overrides]]
+module = "socketio.*"
+ignore_missing_imports = true
+
 # ---------------- pytest ----------------
 [tool.pytest.ini_options]
 minversion = "8.0"
