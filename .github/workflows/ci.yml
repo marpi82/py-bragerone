@@ -26,7 +26,6 @@ jobs:
   dependency-review:
     name: dependency
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     steps:
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
