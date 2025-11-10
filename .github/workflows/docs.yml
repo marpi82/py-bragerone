@@ -96,7 +96,7 @@ jobs:
           echo "Prepared versioned site: ${VERSION} (stable=${IS_STABLE}) with latest/ redirect."
 
       - name: Upload Pages Artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: site
 
