@@ -6,15 +6,19 @@ on:
   schedule:
     - cron: '0 3 * * 1'
 
-permissions:
-  contents: read
-  security-events: write
-  id-token: write
-
 jobs:
   scorecard:
     name: OpenSSF Scorecard
     runs-on: ubuntu-latest
+    permissions:
+      # Required when publishing results (badge / API / code scanning)
+      security-events: write
+      id-token: write
+      # Recommended reads for private repos to avoid GraphQL/SAST gaps
+      contents: read
+      issues: read
+      pull-requests: read
+      checks: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
