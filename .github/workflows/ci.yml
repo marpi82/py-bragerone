@@ -32,6 +32,12 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: moderate
+          # Allow specific GHSAs with no patched version available
+          # GHSA-7gcm-g887-7qv7: CVE-2026-0994 - protobuf JSON recursion bypass
+          #   - No patched version available (all versions <= 6.33.4 vulnerable)
+          #   - Only affects dev dependency (semgrep), not runtime
+          #   - Remove when upstream releases patch (monitor PR #25239)
+          allow-ghsas: GHSA-7gcm-g887-7qv7
 
   security:
     name: security (pip-audit)
@@ -58,7 +64,9 @@ jobs:
             --format=json \
             --output=pip-audit-results.json \
             --progress-spinner=off \
-            --skip-editable
+            --skip-editable \
+            --ignore-vuln GHSA-4xh5-x5gv-qwph \
+            --ignore-vuln GHSA-7gcm-g887-7qv7
         continue-on-error: true
 
       - name: Upload pip-audit results
