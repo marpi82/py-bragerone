@@ -31,9 +31,13 @@ The following vulnerabilities are currently accepted with documented justificati
 - **Action Required**: Remove exception from `pyproject.toml` once a patched protobuf version is released
 - **Monitoring**: Check [PR #25239](https://github.com/protocolbuffers/protobuf/pull/25239) status regularly
 
-#### GHSA-4xh5-x5gv-qwph
+#### GHSA-4xh5-x5gv-qwph (pip tar extraction vulnerability)
 
-- **Status**: Previously documented exception (see git history for details)
+- **Status**: ✅ Resolved - Exception removed as of 2026-01-26
+- **Affected Package**: `pip` (versions <= 25.2)
+- **Vulnerability**: Tar extraction doesn't check symbolic links point to extraction directory
+- **Resolution**: This vulnerability only affects Python versions without PEP 706 implementation. Since this project requires Python >=3.13.2, which fully implements PEP 706, the vulnerability is not applicable.
+- **Action Taken**: Removed exception from CI workflow and pyproject.toml configuration
 
 ## Security Best Practices
 
