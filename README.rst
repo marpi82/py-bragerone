@@ -241,3 +241,8 @@ Documentation
 -------------
 
 Full documentation: https://marpi82.github.io/py-bragerone
+
+Security
+--------
+
+For information about security policies, vulnerability reporting, and known security exceptions, see `SECURITY.md <SECURITY.md>`_.

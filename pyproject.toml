@@ -182,7 +182,14 @@ all = ["fmt", "lint", "typecheck"]
 # Security
 bandit = { cmd = "bandit -r src -q" }
 semgrep = { cmd = "semgrep --config p/ci --error ." }
-pip-audit = { cmd = "pip-audit --skip-editable --progress-spinner off --ignore-vuln GHSA-4xh5-x5gv-qwph" }
+# SECURITY NOTE: Ignoring vulnerabilities that have no patch available yet:
+# - GHSA-4xh5-x5gv-qwph: (existing exception)
+# - GHSA-7gcm-g887-7qv7: CVE-2026-0994 - protobuf JSON recursion depth bypass (High severity)
+#   Status: No patched version available as of 2026-01-26. PR https://github.com/protocolbuffers/protobuf/pull/25239 is in progress.
+#   Affects: protobuf <= 6.33.4 (all current versions)
+#   Impact: Low risk - only affects dev dependency (semgrep), not runtime code
+#   Action required: Remove this exception once protobuf releases a patched version (monitor PR #25239)
+pip-audit = { cmd = "pip-audit --skip-editable --progress-spinner off --ignore-vuln GHSA-4xh5-x5gv-qwph --ignore-vuln GHSA-7gcm-g887-7qv7" }
 security = ["bandit", "semgrep", "pip-audit"]
 # Full validation (quality + security + tests)
 validate = ["fmt", "lint", "typecheck", "security", "test"]
