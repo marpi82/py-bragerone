@@ -5,21 +5,23 @@
   "enabledManagers": [
     "pep621"
   ],
-  "allowedCommands": [
-    "^uv lock$"
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["pyproject.toml"],
+      "matchStrings": [
+        "(?s).*"
+      ],
+      "datasourceTemplate": "pypi",
+      "depNameTemplate": "python-deps",
+      "versioningTemplate": "pep440",
+      "updateCommand": "uv lock"
+    }
   ],
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": [
       "every weekend"
-    ]
-  },
-  "postUpgradeTasks": {
-    "commands": [
-      "uv lock"
-    ],
-    "fileFilters": [
-      "uv.lock"
     ]
   },
   "packageRules": [
