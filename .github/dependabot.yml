@@ -5,7 +5,8 @@ updates:
     schedule:
       interval: "weekly"
     labels:
-      - "deps"
+      - "dependencies"
+      - "dependabot"
       - "ci"
 
   - package-ecosystem: "pip"
@@ -18,4 +19,6 @@ updates:
       - dependency-name: "uv"
       - dependency-name: "urllib3"
     labels:
-      - "deps"
+      - "security"
+      - "dependabot"
+    open-pull-requests-limit: 0
