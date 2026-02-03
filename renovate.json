@@ -5,19 +5,6 @@
   "enabledManagers": [
     "pep621"
   ],
-  "customManagers": [
-    {
-      "customType": "regex",
-      "fileMatch": ["pyproject.toml"],
-      "matchStrings": [
-        "(?s).*"
-      ],
-      "datasourceTemplate": "pypi",
-      "depNameTemplate": "python-deps",
-      "versioningTemplate": "pep440",
-      "updateCommand": "uv lock"
-    }
-  ],
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": [
