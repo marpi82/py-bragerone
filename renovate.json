@@ -1,29 +1,27 @@
 {
-  "extends": [
-    "config:recommended"
+  "extends": ["config:base"],
+
+  "enabledManagers": ["pep621"],
+
+  "allowedPostUpgradeCommands": [
+    "^uv lock$"
   ],
-  "enabledManagers": [
-    "pep621"
-  ],
+
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": [
-      "every weekend"
-    ]
+    "schedule": ["every weekend"]
   },
+
   "postUpgradeTasks": {
     "commands": [
       "uv lock"
     ],
-    "fileFilters": [
-      "uv.lock"
-    ]
+    "fileFilters": ["uv.lock"]
   },
+
   "packageRules": [
     {
-      "matchManagers": [
-        "pep621"
-      ],
+      "matchManagers": ["pep621"],
       "groupName": "python deps (uv)",
       "groupSlug": "python-uv-deps"
     }
