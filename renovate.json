@@ -3,6 +3,10 @@
 
   "enabledManagers": ["pep621"],
 
+  "allowedPostUpgradeCommands": [
+    "^uv lock$"
+  ],
+
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["every weekend"]
