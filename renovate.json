@@ -1,27 +1,34 @@
 {
-  "extends": ["config:base"],
-
-  "enabledManagers": ["pep621"],
-
-  "allowedPostUpgradeCommands": [
-    "^uv lock$"
+  "extends": [
+    "config:recommended"
   ],
-
+  "enabledManagers": [
+    "pep621"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["pyproject.toml"],
+      "matchStrings": [
+        "(?s).*"
+      ],
+      "datasourceTemplate": "pypi",
+      "depNameTemplate": "python-deps",
+      "versioningTemplate": "pep440",
+      "updateCommand": "uv lock"
+    }
+  ],
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": ["every weekend"]
+    "schedule": [
+      "every weekend"
+    ]
   },
-
-  "postUpgradeTasks": {
-    "commands": [
-      "uv lock"
-    ],
-    "fileFilters": ["uv.lock"]
-  },
-
   "packageRules": [
     {
-      "matchManagers": ["pep621"],
+      "matchManagers": [
+        "pep621"
+      ],
       "groupName": "python deps (uv)",
       "groupSlug": "python-uv-deps"
     }
