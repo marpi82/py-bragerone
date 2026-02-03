@@ -87,6 +87,8 @@ todo_include_todos = True
 # Only minimal necessary warnings
 suppress_warnings = [
     "ref.python",  # Suppress "more than one target found" for cross-references
+    "sphinx_autodoc_typehints.forward_reference",  # Suppress forward reference warnings (e.g., Pydantic's JsonValue)
+    "sphinx_autodoc_typehints.guarded_import",  # Suppress guarded import warnings
 ]
 
 
