@@ -24,7 +24,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           labels: |
-            deps
+            dependencies
       - name: Assign reviewer (marpi82)
         uses: actions/github-script@v8
         with:

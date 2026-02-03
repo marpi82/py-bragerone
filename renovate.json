@@ -19,5 +19,9 @@
       "groupName": "python deps (uv)",
       "groupSlug": "python-uv-deps"
     }
+  ],
+  "labels": [
+    "dependencies",
+    "renovate"
   ]
 }
