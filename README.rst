@@ -33,6 +33,10 @@ pybragerone
    :target: https://marpi82.github.io/py-bragerone/
    :alt: Documentation
 
+.. image:: https://img.shields.io/badge/maintaied%20with-renovate-blue?logo=renovatebot
+   :target: https://app.renovatebot.com/dashboard
+   :alt: Renovate
+
 .. image:: https://img.shields.io/badge/code%20style-ruff-000000.svg
    :target: https://github.com/astral-sh/ruff
    :alt: Code Style: Ruff
