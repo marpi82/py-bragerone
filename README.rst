@@ -33,8 +33,7 @@ pybragerone
    :target: https://marpi82.github.io/py-bragerone/
    :alt: Documentation
 
-.. image::
-https://img.shields.io/badge/maintaied%20with-renovate-blue?logo=renovatebot
+.. image:: https://img.shields.io/badge/maintaied%20with-renovate-blue?logo=renovatebot
    :target: https://app.renovatebot.com/dashboard
    :alt: Renovate
 
