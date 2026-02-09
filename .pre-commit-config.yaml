@@ -68,8 +68,8 @@ repos:
       - id: semgrep
         name: semgrep (p/ci rules)
         language: system
-        entry: bash -lc 'uv run --group dev semgrep --config p/ci --error .'
-        pass_filenames: false
+        entry: bash -lc 'uv run --group dev semgrep --config p/ci --error "$@"'
+        pass_filenames: true
 
   # --- SECURITY: dependencies (SCA) with uv export + pip-audit ---
   # NOTE: Disabled for faster commits. Runs automatically in CI with GitHub Code Scanning
