@@ -19,6 +19,25 @@ log = logging.getLogger(__name__)
 CHAN_RE = re.compile(r"^([a-z])(\d+)$")
 
 
+def _maybe_load_dotenv() -> None:
+    """Load environment variables from a `.env` file, if supported.
+
+    Notes:
+        The CLI reads defaults from `os.environ` (e.g. `PYBO_EMAIL`). Typical shells and `uv run` do not
+        automatically load `.env`, so we opportunistically load it when `python-dotenv` is installed.
+
+        Existing environment variables are not overridden.
+    """
+    try:
+        from dotenv import find_dotenv, load_dotenv
+    except Exception:
+        return
+
+    dotenv_path = find_dotenv(usecwd=True)
+    if dotenv_path:
+        load_dotenv(dotenv_path, override=False)
+
+
 def _setup_logging(debug: bool, quiet: bool) -> None:
     """Setup logging based on debug/quiet flags."""
     level = logging.DEBUG if debug else (logging.WARNING if quiet else logging.INFO)
@@ -29,41 +48,41 @@ async def _prompt_select_object(api: BragerOneApiClient) -> int | None:
     """Prompt user to select an object from the list of available ones."""
     items = await api.get_objects()
     if not items:
-        log.warning("Nie udało się pobrać listy obiektów (/v1/objects). Podaj --object-id.")
+        log.warning("Failed to fetch the list of objects (/v1/objects). Provide --object-id.")
         return None
 
-    print("\nWybierz obiekt (instalację):")
+    print("\nSelect an object (installation):")
     for i, o in enumerate(items, 1):
         name = o.name or f"object-{o.id}"
         print(f"[{i}] {name}  (id={o.id})")
     while True:
-        sel = input("Nr pozycji: ").strip()
+        sel = input("Item number: ").strip()
         if not sel.isdigit():
-            print("Podaj numer z listy.")
+            print("Enter a number from the list.")
             continue
         idx = int(sel)
         if 1 <= idx <= len(items):
             return items[idx - 1].id
-        print("Poza zakresem, spróbuj ponownie.")
+        print("Out of range, try again.")
 
 
 async def _prompt_select_modules(api: BragerOneApiClient, object_id: int) -> list[str]:
     """Prompt user to select modules from the list of available ones."""
     rows = await api.get_modules(object_id=object_id)
     if not rows:
-        print("Brak modułów dla wskazanego obiektu.")
+        print("No modules for the selected object.")
         return []
 
-    print("Dostępne moduły:")
+    print("Available modules:")
     for i, m in enumerate(rows, start=1):
         name = str(m.name or "-")
         code = m.devid or str(m.id)
         ver = m.moduleVersion or m.gateway.version or "-"
         print(f"[{i}] {name:24} code={code}  ver={ver}")
 
-    print("Wpisz numery rozdzielone przecinkami (np. 1,3) albo * dla wszystkich.")
+    print("Enter numbers separated by commas (e.g. 1,3) or * for all.")
     while True:
-        sel = input("Wybór: ").strip()
+        sel = input("Selection: ").strip()
         if sel == "*":
             # all
             all = {str(m.devid or m.id) for m in rows if (m.devid or m.id) is not None}
@@ -72,7 +91,7 @@ async def _prompt_select_modules(api: BragerOneApiClient, object_id: int) -> lis
         try:
             idxs = [int(x) for x in sel.replace(" ", "").split(",") if x]
         except ValueError:
-            print("Podaj numery z listy.")
+            print("Enter numbers from the list.")
             continue
 
         choices: set[str] = set()
@@ -86,7 +105,7 @@ async def _prompt_select_modules(api: BragerOneApiClient, object_id: int) -> lis
         if choices:
             return sorted(choices)
 
-        print("Nieprawidłowy wybór — spróbuj ponownie.")
+        print("Invalid selection — please try again.")
 
 
 async def run(args: argparse.Namespace) -> int:
@@ -103,28 +122,29 @@ async def run(args: argparse.Namespace) -> int:
 
     object_id = args.object_id or (await _prompt_select_object(api))
     if not object_id:
-        print("Brak object_id — kończę.")
+        print("Missing object_id — exiting.")
         await api.close()
         return 2
 
     modules: list[str]
     if args.modules:
         # you can provide: --module FOO --module BAR or PYBO_MODULES="FOO,BAR"
-        modules = [m for m in args.modules.split(",") if m] if isinstance(args.modules, str) else list(args.modules)
+        if isinstance(args.modules, str):
+            modules = [m for m in args.modules.split(",") if m]
+        else:
+            modules = [str(m) for m in args.modules if m]
     else:
         modules = await _prompt_select_modules(api, object_id)
     if not modules:
-        print("Nie wybrano żadnych modułów — kończę.")
+        print("No modules selected — exiting.")
         await api.close()
         return 2
-
-    # We do not keep this session - Gateway has its own lifecycle
-    await api.close()
 
     # ParamStore (heavy) + connection to the gateway's EventBus
     param_store = ParamStore()
 
-    gw = BragerOneGateway(email=args.email, password=args.password, object_id=object_id, modules=modules)
+    # Keep a single authenticated ApiClient instance and inject it into the Gateway.
+    gw = BragerOneGateway(api=api, object_id=object_id, modules=modules)
 
     spawn(param_store.run_with_bus(gw.bus), "ParamStore.run_with_bus", log)
 
@@ -141,7 +161,7 @@ async def run(args: argparse.Namespace) -> int:
 
             spawn(_printer(), "printer", log)
 
-        print("\n▶ Nasłuch uruchomiony przez Gateway. Ctrl+C aby zakończyć.\n")
+        print("\n▶ Listening started by Gateway. Ctrl+C to exit.\n")
         stop = asyncio.Event()
         for sig in (signal.SIGINT, signal.SIGTERM):
             with contextlib.suppress(NotImplementedError):
@@ -153,7 +173,7 @@ async def run(args: argparse.Namespace) -> int:
             # close gateway only on exit
             await gw.stop()
             await api.revoke()
-            log.info("Autch revoked on exit...")
+            log.info("Auth revoked on exit...")
             # clean up tasks
             for t in list(bg_tasks):
                 t.cancel()
@@ -209,6 +229,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     """Main entrypoint for CLI."""
+    _maybe_load_dotenv()
     parser = build_parser()
     args = parser.parse_args()
 

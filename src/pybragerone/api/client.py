@@ -403,6 +403,20 @@ class BragerOneApiClient:
             # 4) classic login
             return await self._post_login(em, pw)
 
+    @property
+    def access_token(self) -> str:
+        """Get the current access token.
+
+        Returns:
+            Current access token string.
+
+        Raises:
+            RuntimeError: If the client is not authenticated yet.
+        """
+        if self._token is None or not self._token.access_token:
+            raise RuntimeError("ApiClient has no access token; call ensure_auth() first")
+        return self._token.access_token
+
     async def _do_login_request(self, email: str, password: str) -> AuthResponse:
         """Execute login request to the authentication endpoint.
 

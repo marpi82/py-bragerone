@@ -62,7 +62,7 @@ async def main() -> None:
     print(f"   Modules: {', '.join(modules)}")
 
     # Create Gateway (handles API + WebSocket + EventBus)
-    gateway = BragerOneGateway(
+    gateway = await BragerOneGateway.from_credentials(
         email=email,
         password=password,
         object_id=object_id,

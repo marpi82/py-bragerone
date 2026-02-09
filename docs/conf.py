@@ -24,11 +24,9 @@ extensions = [
     "sphinx.ext.intersphinx",  # links to external docs (optional)
     "sphinx.ext.coverage",  # documentation coverage analysis
     "sphinx.ext.doctest",  # test code examples in docstrings
-    "sphinx.ext.inheritance_diagram",  # class inheritance diagrams
     "myst_parser",  # Markdown + mdinclude (CHANGELOG.md),
     "sphinx.ext.mathjax",
     "sphinx_copybutton",
-    "sphinx.ext.graphviz",  # Graphviz diagrams
 ]
 
 # --- Sources ---
@@ -157,10 +155,6 @@ import json
 from pybragerone.models.param import ParamStore
 from pybragerone.utils import json_preview, summarize_top_level
 """
-
-# Inheritance diagram settings (requires Graphviz)
-inheritance_graph_attrs = dict(rankdir="TB", size='"6.0, 8.0"', fontsize=14, ratio="compress")
-inheritance_node_attrs = dict(shape="ellipse", fontsize=14, color="blue", style="filled", fillcolor="lightblue")
 
 # --- Misc quality knobs ---
 # Set to True if you want Sphinx to complain about missing references (sometimes too strict)

@@ -21,70 +21,20 @@ Core Principles
 High-Level Architecture
 -----------------------
 
-.. graphviz::
+.. code-block:: text
 
-   digraph overview {
-       rankdir=TB;
-       node [shape=box, style=filled];
-
-       // External Services
-       subgraph cluster_external {
-           label="External Services";
-           style=filled;
-           fillcolor="#e1f5fe";
-
-           Backend [label="BragerOne Backend\n(io.brager.pl)", fillcolor="#e1f5fe"];
-       }
-
-       // pybragerone Core
-       subgraph cluster_core {
-           label="pybragerone Core";
-           style=filled;
-           fillcolor="#f3e5f5";
-
-           API [label="BragerOneApiClient\n(httpx)", fillcolor="#f3e5f5"];
-           Gateway [label="BragerOneGateway", fillcolor="#f3e5f5"];
-           Bus [label="EventBus\n(multicast; per-subscriber queues)", fillcolor="#f3e5f5"];
-       }
-
-       // Data Layer
-       subgraph cluster_store {
-           label="Data Layer";
-           style=filled;
-           fillcolor="#e8f5e8";
-
-           ParamStore [label="ParamStore\n(runtime lightweight)\nOR (config asset-aware)", fillcolor="#e8f5e8"];
-           Catalog [label="LiveAssetsCatalog\n(optional; for i18n/metadata)", fillcolor="#e8f5e8"];
-       }
-
-       // Consumers
-       subgraph cluster_consumer {
-           label="Consumers";
-           style=filled;
-           fillcolor="#fff3e0";
-
-           HA [label="Home Assistant Entities\n(binary_sensor, number, ...)", fillcolor="#fff3e0"];
-           Printer [label="Printer\n(optional debug/CLI)", fillcolor="#fff3e0"];
-       }
-
-       // Main data flow
-       API -> Backend [dir=both, label="REST\nprime parameters", color=blue];
-       API -> Gateway [label="WS (socket.io)\nsubscribe", color=darkgreen];
-       Backend -> Gateway [label="WS change events", color=red];
-       Gateway -> Bus [label="publish()", color=purple];
-
-       // Store connections
-       Bus -> ParamStore [color=orange];
-       Bus -> Printer [color=orange];
-
-       // Asset catalog (optional)
-       API -> Catalog [style=dashed, color=gray];
-       Catalog -> ParamStore [style=dashed, color=gray];
-
-       // HA integration
-       ParamStore -> HA [color=brown];
-       Catalog -> HA [style=dashed, color=gray, label="descriptors built\n(config only)"];
-   }
+   BragerOne Backend (io.brager.pl)
+    ^    \
+    |     \
+    REST     WS deltas
+    |        \
+   BragerOneApiClient  --->  BragerOneGateway  --->  EventBus  --->  ParamStore (runtime)
+      |                                  \                     \
+      |                                   \                     ---> Printer/CLI (optional)
+      |                                    \
+      +--> LiveAssetsCatalog (config only)  --->  ParamStore (asset-aware)
+                             \
+                            ---> HA entity descriptors (config only)
 
 Data Model & Semantics
 ----------------------
