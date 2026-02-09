@@ -36,6 +36,7 @@
   "remoteEnv": {
     "UV_PROJECT_ENVIRONMENT": ".venv",
     "UV_LINK_MODE": "copy",
+    "PRE_COMMIT_HOME": "${containerWorkspaceFolder}/.cache/pre-commit",
     "RUFF_NUM_THREADS": "1",
     "PATH": "${containerEnv:HOME}/.local/bin:${containerEnv:PATH}"
   },
