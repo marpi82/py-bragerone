@@ -61,13 +61,15 @@ repos:
         pass_filenames: false
 
   # --- SECURITY: Semgrep ---
-  - repo: https://github.com/returntocorp/semgrep
-    rev: v1.89.0
+  # NOTE: Use the uv-managed dev environment instead of pre-commit's isolated venv.
+  # This avoids Python 3.13 compatibility issues (e.g. missing pkg_resources).
+  - repo: local
     hooks:
       - id: semgrep
         name: semgrep (p/ci rules)
-        args: ["--config", "p/ci", "--error"]
-        pass_filenames: true
+        language: system
+        entry: bash -lc 'uv run --group dev semgrep --config p/ci --error .'
+        pass_filenames: false
 
   # --- SECURITY: dependencies (SCA) with uv export + pip-audit ---
   # NOTE: Disabled for faster commits. Runs automatically in CI with GitHub Code Scanning
@@ -97,7 +99,7 @@ repos:
   #       stages: [pre-commit]
   #       always_run: true # Run even if requirements.txt not staged
 
-  # --- TESTY na pre-push z progiem coverage ---
+  # --- Tests on pre-push with coverage gate ---
   - repo: local
     hooks:
       - id: pytest-pre-push
