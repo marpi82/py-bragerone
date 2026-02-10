@@ -80,6 +80,12 @@ class MenuProcessor:
         if resolve_tokens:
             working_routes = self._resolve_tokens(working_routes)
 
+        # Step 3.5: Prune invalid route nodes before validation.
+        # Some menu assets include redirect-only nodes (e.g. {redirect: {name: ...}}) that don't
+        # satisfy our MenuRoute schema (requires `path` and `name`). These nodes are not useful
+        # for parameter discovery and should not fail the entire menu parse.
+        working_routes = self._prune_invalid_routes(working_routes)
+
         # Step 4: Convert to clean Pydantic models with validation
         clean_menu = MenuResult.model_validate({"routes": working_routes, "asset_url": self.raw_menu.asset_url})
 
@@ -91,6 +97,28 @@ class MenuProcessor:
         )
 
         return clean_menu
+
+    def _prune_invalid_routes(self, routes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Remove route nodes that can't be validated as MenuRoute.
+
+        A valid route must include non-empty `path` and `name` strings.
+        """
+
+        def is_valid(node: dict[str, Any]) -> bool:
+            path = node.get("path")
+            name = node.get("name")
+            return isinstance(path, str) and bool(path.strip()) and isinstance(name, str) and bool(name.strip())
+
+        pruned: list[dict[str, Any]] = []
+        for node in routes:
+            if not is_valid(node):
+                continue
+            clean = dict(node)
+            children = clean.get("children")
+            if isinstance(children, list):
+                clean["children"] = self._prune_invalid_routes([c for c in children if isinstance(c, dict)])
+            pruned.append(clean)
+        return pruned
 
     def get_debug_info(self) -> dict[str, Any]:
         """Get debug information about the menu."""
@@ -134,8 +162,17 @@ class MenuProcessor:
             return normalized in permissions
 
         def gate(node: dict[str, Any]) -> dict[str, Any]:
-            meta = node.get("meta") or {}
-            visible = has_permission(meta.get("permissionModule"))
+            raw_meta = node.get("meta")
+            meta = raw_meta if isinstance(raw_meta, dict) else None
+            # Route permission may live either in meta.permissionModule (common) or directly on the route object
+            # depending on the bundler/build.
+            route_perm = None
+            if meta is not None and meta.get("permissionModule") is not None:
+                route_perm = meta.get("permissionModule")
+            elif node.get("permissionModule") is not None:
+                route_perm = node.get("permissionModule")
+
+            visible = has_permission(route_perm)
 
             def filter_parameters(container: dict[str, Any]) -> None:
                 for section in ("read", "write", "status", "special"):
@@ -155,11 +192,14 @@ class MenuProcessor:
                 filter_parameters(params)
                 node["parameters"] = params
 
-            meta_params = meta.get("parameters")
-            if isinstance(meta_params, dict):
-                filter_parameters(meta_params)
-                meta["parameters"] = meta_params
-            node["meta"] = meta
+            if meta is not None:
+                meta_params = meta.get("parameters")
+                if isinstance(meta_params, dict):
+                    filter_parameters(meta_params)
+                    meta["parameters"] = meta_params
+                node["meta"] = meta
+            else:
+                node.pop("meta", None)
 
             children = node.get("children") or []
             node["children"] = [gate(child) for child in children if isinstance(child, dict)]
@@ -245,16 +285,17 @@ class MenuProcessor:
         """Auto-detect permission prefixes used in the menu."""
         prefixes = set()
 
+        prefix_re = __import__("re").compile(r"^(?P<prefix>[A-Za-z]{1,3}\.)")
+
         def scan_route(route: dict[str, Any]) -> None:
             meta = route.get("meta", {})
 
             # Check route permission
-            perm = meta.get("permissionModule", "")
+            perm = meta.get("permissionModule") or route.get("permissionModule") or ""
             if perm:
-                for prefix in ["A.", "e.", "E."]:
-                    if perm.startswith(prefix):
-                        prefixes.add(prefix)
-                        break
+                m = prefix_re.match(str(perm))
+                if m:
+                    prefixes.add(m.group("prefix"))
 
             # Check parameter permissions
             params = meta.get("parameters", {})
@@ -264,10 +305,9 @@ class MenuProcessor:
                     if isinstance(item, dict):
                         item_perm = item.get("permissionModule", "")
                         if item_perm:
-                            for prefix in ["A.", "e.", "E."]:
-                                if item_perm.startswith(prefix):
-                                    prefixes.add(prefix)
-                                    break
+                            m = prefix_re.match(str(item_perm))
+                            if m:
+                                prefixes.add(m.group("prefix"))
 
             # Scan children
             for child in route.get("children", []):

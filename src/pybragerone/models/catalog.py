@@ -430,6 +430,9 @@ class LiveAssetsCatalog:
         self._log = logger or logging.getLogger(__name__)
         self._last_index_url: str | None = None
 
+        # Cache for language-scoped `app` namespace translations (from index-driven mapping)
+        self._cache_app_i18n: dict[str, dict[str, Any]] = {}
+
         # New menu management system
         self._menu_manager = MenuManager(self._log)
 
@@ -666,9 +669,24 @@ class LiveAssetsCatalog:
         # Find asset for device_menu
         menu_name = self._idx.menu_map.get(device_menu)
         if not menu_name:
-            self._log.warning("No menu mapping found for device_menu=%d", device_menu)
-            # Cache empty menu
-            self._menu_manager.store_raw_menu(device_menu, [], None)
+            # Some accounts/modules report device_menu=0 or values not present in index mappings.
+            # In such cases, the app often still has a generic `module.menu-<hash>.js`.
+            self._log.debug(
+                "No menu mapping found for device_menu=%d; falling back to generic module.menu asset (if available)",
+                device_menu,
+            )
+
+            asset = self._idx.find_asset_for_basename("module.menu")
+            if not asset:
+                self._log.warning("No menu asset found for device_menu=%d", device_menu)
+                self._menu_manager.store_raw_menu(device_menu, [], None)
+                return
+
+            self._log.info("Loading menu asset: %s", asset.url)
+            code = await self._api.get_bytes(asset.url)
+            raw_routes = self._parse_menu_routes(code)
+            self._menu_manager.store_raw_menu(device_menu=device_menu, routes=raw_routes, asset_url=asset.url)
+            self._log.info("Cached raw menu for device_menu=%d: %d routes", device_menu, len(raw_routes))
             return
 
         # Get asset reference
@@ -734,7 +752,8 @@ class LiveAssetsCatalog:
         raw_routes = extract_routes(export_obj)
         return [self._attach_parameters_tokens(route) for route in raw_routes]
 
-    PARAM_CALL_RE = re.compile(r"""[A-Za-z]\([^,]*?,\s*(['"])(?P<tok>[^'"]+)\1\)""")
+    # Build output may rename helper functions; do not rely on single-letter identifiers.
+    PARAM_CALL_RE = re.compile(r"""\b[A-Za-z_$][\w$]*\([^,]*?,\s*(['"])(?P<tok>[^'"]+)\1\)""")
 
     def _attach_parameters_tokens(self, node: dict[str, Any]) -> dict[str, Any]:
         """Attach parameter tokens to a node by processing its parameters section.
@@ -1138,6 +1157,10 @@ class LiveAssetsCatalog:
         Returns:
             Dictionary with translation mappings, or empty dict if not found.
         """
+        lang = str(lang).strip().lower()
+        # NOTE: Namespace names in the upstream bundles are case-sensitive (e.g. `diodeState.json`).
+        # We keep the original value and rely on `_find_i18n_asset()` to match case-insensitively.
+        namespace = str(namespace).strip()
         if not self._idx.index_bytes:
             await self._ensure_index_loaded()
         if not self._idx.index_bytes:
@@ -1162,6 +1185,114 @@ class LiveAssetsCatalog:
             self._log.warning("Failed to load i18n %s/%s: %s", lang, namespace, e)
             return {}
 
+    # ---------- app namespace helpers (index-driven, language-scoped) ----------
+
+    async def _get_app_i18n(self, lang: str) -> dict[str, Any]:
+        """Get `app` translations for a language.
+
+        The language->asset mapping is defined in `index-*.js` as imports of:
+            ../../resources/languages/<lang>/app.json
+        """
+        lang_norm = str(lang).lower().strip()
+        cached = self._cache_app_i18n.get(lang_norm)
+        if cached is not None:
+            return cached
+        data = await self.get_i18n(lang_norm, "app")
+        self._cache_app_i18n[lang_norm] = data
+        return data
+
+    @staticmethod
+    def _lookup_path(obj: Any, path: str) -> Any:
+        """Lookup a dotted path in a nested dict structure.
+
+        Accepts keys like `app.one.devicePumpStatus` and will also work if the
+        translation dict does not include the leading `app.`.
+        """
+        if not isinstance(path, str) or not path:
+            return None
+        p = path.strip()
+        if p.startswith("app."):
+            p = p[4:]
+        cur: Any = obj
+        for part in p.split("."):
+            if not isinstance(cur, Mapping):
+                return None
+            cur = cur.get(part)
+        return cur
+
+    async def resolve_app_one_field_label(self, *, name_key: str, lang: str) -> str | None:
+        """Resolve field label for keys embedded in STATUS assets (e.g. app.one.devicePumpStatus)."""
+        data = await self._get_app_i18n(lang)
+        val = self._lookup_path(data, name_key)
+        return val if isinstance(val, str) else None
+
+    async def resolve_app_one_value_label(self, *, name_key: str, value: str, lang: str) -> str | None:
+        """Resolve a computed value label for a known app.one status domain.
+
+        Example: name_key='app.one.boilerStatus.name' and value='14' -> 'Nadzór'
+        """
+        data = await self._get_app_i18n(lang)
+        table_key = name_key[:-5] if name_key.endswith(".name") else name_key
+        table = self._lookup_path(data, table_key)
+        if not isinstance(table, Mapping):
+            return None
+
+        if isinstance(value, str) and value.startswith("e."):
+            enum_tail = value[2:]
+            if enum_tail:
+                parts = [p for p in enum_tail.split("_") if p]
+                snake_key = "_".join(p.lower() for p in parts)
+                camel_key = parts[0].lower() + "".join(p.lower().title() for p in parts[1:])
+                candidates = [camel_key, snake_key, enum_tail, enum_tail.lower()]
+                for cand in candidates:
+                    if not cand:
+                        continue
+                    cv = table.get(cand)
+                    if isinstance(cv, str):
+                        return cv
+
+        if isinstance(value, str) and value.isdigit():
+            iv = table.get(int(value))
+            if isinstance(iv, str):
+                return iv
+        sv = table.get(value)
+        return sv if isinstance(sv, str) else None
+
+    async def resolve_app_enum_value_label(self, *, value: str, lang: str) -> str | None:
+        """Resolve enum-like UI values from the `app` translations.
+
+        The BragerOne bundles often encode UI states as enum-like values such as:
+        - "e.ON", "e.OFF"
+        - "e.OPENING", "e.CLOSING_MANUAL"
+
+        The translation source for these is the official `resources/languages/<lang>/app.json`.
+        This method performs a conservative lookup (no hardcoded strings).
+        """
+        v = value.strip()
+        if not v:
+            return None
+
+        data = await self._get_app_i18n(lang)
+
+        # Handle both structural and literal-dot keys.
+        direct = data.get(v)
+        if isinstance(direct, str):
+            return direct
+
+        looked_up = self._lookup_path(data, v)
+        if isinstance(looked_up, str):
+            return looked_up
+
+        # Some bundles may store enums under common tables.
+        enum_name = v[2:] if v.startswith("e.") else v
+        for prefix in ("e.", "enums.", "enum."):
+            cand_path = f"{prefix}{enum_name}"
+            cand = self._lookup_path(data, cand_path)
+            if isinstance(cand, str):
+                return cand
+
+        return None
+
     def _find_i18n_asset(self, lang: str, namespace: str) -> AssetRef | None:
         """Find i18n asset for given language and namespace.
 
@@ -1180,20 +1311,31 @@ class LiveAssetsCatalog:
 
         index_text = self._idx.index_bytes.decode("utf-8", errors="replace")
 
-        # Pattern to match: "../../resources/languages/{lang}/{namespace}.json":()=>d(()=>import("./filename-hash.js")
-        # We need to extract the import file path and hash
+        # Upstream namespaces are not consistently cased (e.g. `app.json` vs `diodeState.json`).
+        # Match case-insensitively by scanning all language imports and selecting the requested namespace.
+        want = str(namespace).strip().lower()
+        if not want:
+            return None
+
+        # Capture: <ns> + import("./<file_base>-<hash>.js")
         import_pattern = re.compile(
-            rf'["\']\.\.\/\.\.\/resources\/languages\/{re.escape(lang)}\/{re.escape(namespace)}\.json["\']'
+            rf'["\']\.\.\/\.\.\/resources\/languages\/{re.escape(lang)}\/([^"\']+)\.json["\']'
             r':\s*\(\)\s*=>\s*\w+\s*\(\s*\(\)\s*=>\s*import\s*\(\s*["\']\.\/([^"\']+)-([A-Za-z0-9_]+)\.js["\']'
         )
 
-        match = import_pattern.search(index_text)
+        match: re.Match[str] | None = None
+        for m in import_pattern.finditer(index_text):
+            ns_in_index = m.group(1)
+            if str(ns_in_index).strip().lower() == want:
+                match = m
+                break
+
         if not match:
-            self._log.debug("No i18n asset pattern match for %s/%s. Pattern: %s", lang, namespace, import_pattern.pattern)
+            self._log.debug("No i18n asset match for %s/%s (case-insensitive)", lang, namespace)
             return None
 
-        file_base = match.group(1)  # e.g., "parameters"
-        file_hash = match.group(2)  # e.g., "BNvCCsxi"
+        file_base = match.group(2)  # e.g., "parameters" or "diodeState"
+        file_hash = match.group(3)  # e.g., "BNvCCsxi"
 
         # Construct the full asset filename and URL
         asset_filename = f"{file_base}-{file_hash}.js"
@@ -1280,72 +1422,55 @@ class LiveAssetsCatalog:
             if translations is not None:
                 self._log.warning("i18n export is not an object: %s", type(translations))
             return {}
-
         except Exception as e:
-            self._log.warning("Failed to parse i18n JavaScript: %s", e)
+            self._log.warning("Failed to parse i18n bundle: %s", e)
             return {}
 
-    def _parse_language_config_from_js(self, js_bytes: bytes) -> TranslationConfig | None:
-        """Parse language configuration from JavaScript code using tree-sitter.
+    def _is_translations_array_bytes(self, array_node: Node, js_bytes: bytes) -> bool:
+        """Check if an array looks like a translations array (byte-safe).
 
-        Looks for language configuration objects with translations array and defaultTranslation.
-
-        Args:
-            js_bytes: Raw JavaScript code as bytes.
-
-        Returns:
-            TranslationConfig object or None if parsing fails.
+        Uses the same 70% threshold heuristic as the text-based variant.
         """
-        try:
-            tree = self._ts.parse(js_bytes)
+        valid_entries = 0
+        total_objects = 0
 
-            # Look for language configuration object by structure pattern
-            lang_config_object = self._find_language_config_object_bytes(tree, js_bytes)
-            if not lang_config_object:
-                return None
+        for child in array_node.children:
+            if child.type != "object":
+                continue
+            total_objects += 1
+            has_id = False
+            has_flag = False
 
-            # Extract translations array and defaultTranslation
-            translations = self._extract_translations_array_bytes(lang_config_object, js_bytes)
-            default_translation = self._extract_default_translation_bytes(lang_config_object, js_bytes)
+            for pair in child.children:
+                if pair.type != "pair":
+                    continue
+                key_node = pair.child_by_field_name("key")
+                if key_node is None:
+                    continue
+                key_bytes = js_bytes[key_node.start_byte : key_node.end_byte]
+                key_text = key_bytes.decode("utf-8", errors="replace")
+                if key_text == "id":
+                    has_id = True
+                elif key_text == "flag":
+                    has_flag = True
 
-            if not translations or not default_translation:
-                return None
+            if has_id and has_flag:
+                valid_entries += 1
 
-            return TranslationConfig(translations=translations, default_translation=default_translation)
+        threshold = total_objects * 0.7
+        return total_objects > 0 and valid_entries >= threshold
 
-        except Exception as e:
-            self._log.warning("Failed to parse JS language config: %s", e)
-            return None
+    def _parse_language_config_from_js(self, js_bytes: bytes) -> TranslationConfig:
+        """Parse TranslationConfig from index JS bytes.
 
-    def _find_language_config_object_bytes(self, tree: Tree, js_bytes: bytes) -> Node | None:
-        """Find language configuration object by structure pattern (bytes version).
-
-        Searches for objects containing:
-        - 'translations' array with objects having 'id' and 'flag' properties
-        - 'defaultTranslation' string property
-
-        This method is resilient to variable name changes during minification and
-        works with any variable assignment (var/const/let) or object property.
+        This is intentionally structural: it searches for an object literal containing:
+        - `translations`: array of objects with `id` and `flag` keys
+        - `defaultTranslation`: string
         """
-
-        def get_node_text_local(node: Node) -> str:
-            """Local helper to extract node text from bytes."""
-            node_bytes = js_bytes[node.start_byte : node.end_byte]
-            node_text = node_bytes.decode("utf-8", errors="replace")
-            # Remove quotes from string literals
-            if (
-                node.type in ("string", "property_identifier")
-                and len(node_text) >= 2
-                and (
-                    (node_text.startswith('"') and node_text.endswith('"'))
-                    or (node_text.startswith("'") and node_text.endswith("'"))
-                )
-            ):
-                return node_text[1:-1]
-            return node_text
+        tree = self._ts.parse(js_bytes)
+        root = tree.root_node
 
         def is_language_config_object(obj_node: Node) -> bool:
-            """Check if this object looks like a language configuration."""
             if obj_node.type != "object":
                 return False
 
@@ -1355,203 +1480,42 @@ class LiveAssetsCatalog:
             for pair in obj_node.children:
                 if pair.type != "pair":
                     continue
-
                 key_node = pair.child_by_field_name("key")
                 value_node = pair.child_by_field_name("value")
-
-                if not (key_node and value_node):
+                if key_node is None or value_node is None:
                     continue
 
-                key_text = get_node_text_local(key_node)
+                key_bytes = js_bytes[key_node.start_byte : key_node.end_byte]
+                key_text = key_bytes.decode("utf-8", errors="replace")
 
-                # Look for translations array
                 if key_text == "translations" and value_node.type == "array":
-                    # Check if array contains objects with language-like structure
-                    if is_translations_array_local(value_node):
+                    if self._is_translations_array_bytes(value_node, js_bytes):
                         has_translations = True
-
-                # Look for defaultTranslation string
                 elif key_text == "defaultTranslation" and value_node.type == "string":
                     has_default_translation = True
 
-            result = has_translations and has_default_translation
-            return result
-
-        def is_translations_array_local(array_node: Node) -> bool:
-            """Local helper to check if array looks like translations array."""
-            valid_entries = 0
-            total_objects = 0
-
-            for child in array_node.children:
-                if child.type == "object":
-                    total_objects += 1
-                    has_id = False
-                    has_flag = False
-
-                    for pair in child.children:
-                        if pair.type != "pair":
-                            continue
-
-                        key_node = pair.child_by_field_name("key")
-                        if not key_node:
-                            continue
-
-                        key_text = get_node_text_local(key_node)
-                        if key_text == "id":
-                            has_id = True
-                        elif key_text == "flag":
-                            has_flag = True
-
-                    if has_id and has_flag:
-                        valid_entries += 1
-
-            # Consider it a translations array if most objects have the expected structure
-            threshold = total_objects * 0.7
-            return total_objects > 0 and valid_entries >= threshold
+            return has_translations and has_default_translation
 
         def visit_node(node: Node) -> Node | None:
-            # Check all object literals for language config pattern
             if node.type == "object" and is_language_config_object(node):
                 return node
-
-            # Also check variable assignments and property values
-            if node.type == "variable_declarator":
-                value_node = node.child_by_field_name("value")
-                if value_node and value_node.type == "object" and is_language_config_object(value_node):
-                    return value_node
-
-            elif node.type == "assignment_expression":
-                right = node.child_by_field_name("right")
-                if right and right.type == "object" and is_language_config_object(right):
-                    return right
-
-            # Recursively search children
             for child in node.children:
-                result = visit_node(child)
-                if result:
-                    return result
+                found = visit_node(child)
+                if found is not None:
+                    return found
             return None
 
-        return visit_node(tree.root_node)
+        obj_node = visit_node(root)
+        if obj_node is None:
+            raise ValueError("Language config object not found")
 
-    def _find_language_config_object(self, tree: Tree, text: str) -> Node | None:
-        """Find language configuration object by structure pattern (string version).
+        translations = self._extract_translations_array_bytes(obj_node, js_bytes)
+        default_translation = self._extract_default_translation_bytes(obj_node, js_bytes)
 
-        Searches for objects containing:
-        - 'translations' array with objects having 'id' and 'flag' properties
-        - 'defaultTranslation' string property
+        if translations is None or default_translation is None:
+            raise ValueError("Language config object missing required fields")
 
-        This method is resilient to variable name changes during minification and
-        works with any variable assignment (var/const/let) or object property.
-
-        Note: This is the legacy string-based version. Use _find_language_config_object_bytes
-        for better Unicode support.
-        """
-
-        def get_node_text_local(node: Node) -> str:
-            """Local helper to extract node text."""
-            node_text = text[node.start_byte : node.end_byte]
-            # Remove quotes from string literals
-            if (
-                node.type in ("string", "property_identifier")
-                and len(node_text) >= 2
-                and (
-                    (node_text.startswith('"') and node_text.endswith('"'))
-                    or (node_text.startswith("'") and node_text.endswith("'"))
-                )
-            ):
-                return node_text[1:-1]
-            return node_text
-
-        def is_language_config_object(obj_node: Node) -> bool:
-            """Check if this object looks like a language configuration."""
-            if obj_node.type != "object":
-                return False
-
-            has_translations = False
-            has_default_translation = False
-
-            for pair in obj_node.children:
-                if pair.type != "pair":
-                    continue
-
-                key_node = pair.child_by_field_name("key")
-                value_node = pair.child_by_field_name("value")
-
-                if not (key_node and value_node):
-                    continue
-
-                key_text = get_node_text_local(key_node)
-
-                # Look for translations array
-                if key_text == "translations" and value_node.type == "array":
-                    # Check if array contains objects with language-like structure
-                    if is_translations_array_local(value_node):
-                        has_translations = True
-
-                # Look for defaultTranslation string
-                elif key_text == "defaultTranslation" and value_node.type == "string":
-                    has_default_translation = True
-
-            result = has_translations and has_default_translation
-            return result
-
-        def is_translations_array_local(array_node: Node) -> bool:
-            """Local helper to check if array looks like translations array."""
-            valid_entries = 0
-            total_objects = 0
-
-            for child in array_node.children:
-                if child.type == "object":
-                    total_objects += 1
-                    has_id = False
-                    has_flag = False
-
-                    for pair in child.children:
-                        if pair.type != "pair":
-                            continue
-
-                        key_node = pair.child_by_field_name("key")
-                        if not key_node:
-                            continue
-
-                        key_text = get_node_text_local(key_node)
-                        if key_text == "id":
-                            has_id = True
-                        elif key_text == "flag":
-                            has_flag = True
-
-                    if has_id and has_flag:
-                        valid_entries += 1
-
-            # Consider it a translations array if most objects have the expected structure
-            threshold = total_objects * 0.7
-            return total_objects > 0 and valid_entries >= threshold
-
-        def visit_node(node: Node) -> Node | None:
-            # Check all object literals for language config pattern
-            if node.type == "object" and is_language_config_object(node):
-                return node
-
-            # Also check variable assignments and property values
-            if node.type == "variable_declarator":
-                value_node = node.child_by_field_name("value")
-                if value_node and value_node.type == "object" and is_language_config_object(value_node):
-                    return value_node
-
-            elif node.type == "assignment_expression":
-                right = node.child_by_field_name("right")
-                if right and right.type == "object" and is_language_config_object(right):
-                    return right
-
-            # Recursively search children
-            for child in node.children:
-                result = visit_node(child)
-                if result:
-                    return result
-            return None
-
-        return visit_node(tree.root_node)
+        return TranslationConfig(translations=translations, default_translation=default_translation)
 
     def _is_translations_array(self, array_node: Node, text: str) -> bool:
         """Check if an array looks like a translations array.

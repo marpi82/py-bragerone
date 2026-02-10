@@ -92,6 +92,11 @@ pybragerone.*
 /*.log
 /src/bragerone/
 _archive/
+
+# local scratch / dev verification artifacts
+/app_*.txt
+/scripts/dump_menu_sections.py
+/reports/junit.xml
 # keep specific markdown docs tracked
 /docs/[a-z]*.md
 /docs/_build/

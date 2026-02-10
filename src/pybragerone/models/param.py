@@ -82,7 +82,7 @@ class ParamStore(BaseModel):
     def init_with_api(self, api: BragerOneApiClient, *, lang: str | None = None) -> None:
         """Preferred way: connects ParamStore with ApiClient and LiveAssetCatalog."""
         self._assets = LiveAssetsCatalog(api)
-        self._lang = lang
+        self._lang = None if lang is None else str(lang).strip().lower()
 
     async def run_with_bus(self, bus: EventBus) -> None:
         """Consume ParamUpdate events from EventBus and upsert into ParamStore (lightweight adapter)."""
@@ -170,7 +170,7 @@ class ParamStore(BaseModel):
     def init_assets(self, *, api: BragerOneApiClient, lang: str | None = None) -> None:
         """Alternative way to init assets if not using init_with_api()."""
         self._assets = LiveAssetsCatalog(api)
-        self._lang = lang
+        self._lang = None if lang is None else str(lang).strip().lower()
 
     async def _ensure_lang(self) -> str:
         """Ensure self._lang is set, loading from assets if needed."""
@@ -300,7 +300,7 @@ class ParamStore(BaseModel):
         if cleaned.startswith("[") and cleaned.endswith("]"):
             cleaned = cleaned[1:-1]
         parts = cleaned.split(".", 1)
-        if len(parts) == 2 and parts[0].lower() in {"e", "u", "t", "s", "r", "o", "p", "m"}:
+        if len(parts) == 2 and parts[0].lower() in {"a", "e", "u", "t", "s", "r", "o", "p", "m"}:
             cleaned = parts[1]
         return cleaned
 
@@ -363,6 +363,257 @@ class ParamStore(BaseModel):
                 entry.setdefault("condition", condition_name)
             formatted[condition_name] = formatted_entries
         return formatted
+
+    @staticmethod
+    def _extract_mapping_rule_inputs(raw: Any) -> list[dict[str, Any]]:
+        """Extract referenced addresses/bits/masks from rule-based mapping payloads.
+
+        The BragerOne assets include some computed/derived mappings (notably STATUS_*),
+        where the visible label/value is derived from a chain of conditional rules.
+        We do not attempt to evaluate the rules here; we only extract the set of
+        underlying parameter addresses that are referenced.
+
+        Supported shapes:
+        - normalized rule model with targets: {"rules": [{"conditions": [{"targets": [{"address": "P5.s0", ...}]}]}]}
+        - raw menu-like model: {"any": [{"if": [{"value": [{"group": "P5", "number": 0, "use": "s", ...}]}]}]}
+        """
+        if not isinstance(raw, dict):
+            return []
+
+        out: list[dict[str, Any]] = []
+        seen: set[tuple[str, int | None, int | None]] = set()
+
+        def _add(address: str, *, bit: Any = None, mask: Any = None) -> None:
+            if not isinstance(address, str) or not address:
+                return
+            bit_i: int | None = bit if isinstance(bit, int) else None
+            mask_i: int | None = mask if isinstance(mask, int) else None
+            key = (address, bit_i, mask_i)
+            if key in seen:
+                return
+            seen.add(key)
+            entry: dict[str, Any] = {"address": address}
+            if bit_i is not None:
+                entry["bit"] = bit_i
+            if mask_i is not None:
+                entry["mask"] = mask_i
+            out.append(entry)
+
+        # Shape 1: normalized rules with targets[].address
+        rules = raw.get("rules")
+        if isinstance(rules, list):
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                conditions = rule.get("conditions")
+                if not isinstance(conditions, list):
+                    continue
+                for cond in conditions:
+                    if not isinstance(cond, dict):
+                        continue
+                    targets = cond.get("targets")
+                    if not isinstance(targets, list):
+                        continue
+                    for tgt in targets:
+                        if not isinstance(tgt, dict):
+                            continue
+                        addr = tgt.get("address")
+                        if isinstance(addr, str) and addr:
+                            _add(addr, bit=tgt.get("bit"), mask=tgt.get("mask"))
+
+        # Shape 2: raw "any" rules with value[] selectors
+        any_rules = raw.get("any")
+        if isinstance(any_rules, list):
+            for rule in any_rules:
+                if not isinstance(rule, dict):
+                    continue
+                for key in ("if", "elseif"):
+                    conds = rule.get(key)
+                    if not isinstance(conds, list):
+                        continue
+                    for cond in conds:
+                        if not isinstance(cond, dict):
+                            continue
+                        values = cond.get("value")
+                        if not isinstance(values, list):
+                            continue
+                        for sel in values:
+                            if not isinstance(sel, dict):
+                                continue
+                            group = sel.get("group")
+                            number = sel.get("number")
+                            use = sel.get("use")
+                            if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
+                                continue
+                            address = f"{group}.{use[0]}{number}"
+                            _add(address, bit=sel.get("bit"), mask=sel.get("mask"))
+
+        return out
+
+    @staticmethod
+    def _extract_mapping_rule_values(raw: Any) -> list[str]:
+        """Extract possible output values from rule-based mapping payloads."""
+        if not isinstance(raw, dict):
+            return []
+        values: list[str] = []
+        seen: set[str] = set()
+        rules = raw.get("rules")
+        if isinstance(rules, list):
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                v = rule.get("value")
+                if isinstance(v, str) and v and v not in seen:
+                    seen.add(v)
+                    values.append(v)
+        return values
+
+    def _read_address_value(self, address: str) -> Any:
+        """Read a live value from ParamStore by full address (e.g. 'P5.s0')."""
+        try:
+            pool, rest = address.split(".", 1)
+            chan = rest[0]
+            idx = int(rest[1:])
+        except Exception:
+            return None
+        fam = self.get_family(pool, idx)
+        if fam is None:
+            return None
+        return fam.get(chan)
+
+    @staticmethod
+    def _normalize_computed_value(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            v = value.strip()
+            if not v:
+                return None
+            # Minified bundles may encode enums as "o.WORK"; keep last segment.
+            # Preserve the explicit enum namespace for values like "e.ON" so they
+            # can be translated via `app` assets.
+            if "." in v:
+                head, tail = v.rsplit(".", 1)
+                if head != "e":
+                    v = tail
+            return v
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        if isinstance(value, dict) and "value" in value:
+            return ParamStore._normalize_computed_value(value.get("value"))
+        return None
+
+    @staticmethod
+    def _operation_name(op: Any) -> str | None:
+        if op is None:
+            return None
+        s = op.strip() if isinstance(op, str) else str(op).strip()
+        if not s:
+            return None
+        if "." in s:
+            s = s.split(".")[-1]
+        return s
+
+    def _eval_condition_any(self, cond: dict[str, Any]) -> bool:
+        """Evaluate a single condition object.
+
+        The STATUS assets encode conditions like:
+            {expected: 1, operation: equalTo, value: [{group: 'P5', number: 0, use: 's', bit: 3}]}
+
+        We treat multiple selectors in the "value" array as OR; a condition passes
+        if ANY selector satisfies it.
+        """
+        expected = cond.get("expected")
+        op = self._operation_name(cond.get("operation"))
+        values = cond.get("value")
+        if not isinstance(values, list) or not values or op is None:
+            return False
+
+        def _compare(actual: Any) -> bool:
+            if op == "equalTo":
+                return bool(actual == expected)
+            if op == "notEqualTo":
+                return bool(actual != expected)
+            if op == "greaterThan":
+                return actual is not None and expected is not None and actual > expected
+            if op == "greaterThanOrEqualTo":
+                return actual is not None and expected is not None and actual >= expected
+            if op == "lessThan":
+                return actual is not None and expected is not None and actual < expected
+            if op == "lessThanOrEqualTo":
+                return actual is not None and expected is not None and actual <= expected
+            return False
+
+        for sel in values:
+            if not isinstance(sel, dict):
+                continue
+            group = sel.get("group")
+            number = sel.get("number")
+            use = sel.get("use")
+            if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
+                continue
+            addr = f"{group}.{use[0]}{number}"
+            raw_val = self._read_address_value(addr)
+            if raw_val is None:
+                continue
+            if not isinstance(raw_val, int):
+                try:
+                    raw_val = int(raw_val)
+                except (TypeError, ValueError):
+                    continue
+
+            bit = sel.get("bit")
+            mask = sel.get("mask")
+            if isinstance(bit, int):
+                actual = 1 if ((raw_val >> bit) & 1) else 0
+            elif isinstance(mask, int):
+                actual = raw_val & mask
+            else:
+                actual = raw_val
+
+            if _compare(actual):
+                return True
+        return False
+
+    def _eval_any_rules(self, any_rules: list[Any]) -> str | None:
+        """Evaluate a rule-based mapping payload (raw['any'])."""
+        for rule in any_rules:
+            if not isinstance(rule, dict):
+                continue
+            conds = rule.get("if")
+            if conds is None:
+                conds = rule.get("elseif")
+            if conds is None:
+                continue
+            if not isinstance(conds, list) or not conds:
+                continue
+            if all(isinstance(c, dict) and self._eval_condition_any(c) for c in conds):
+                then = rule.get("then")
+                if isinstance(then, dict):
+                    return self._normalize_computed_value(then.get("value"))
+                return self._normalize_computed_value(then)
+        return None
+
+    def _evaluate_computed_value(self, mapping_raw: Any) -> str | None:
+        """Evaluate computed value for mappings with a rule engine (STATUS assets)."""
+        if not isinstance(mapping_raw, dict):
+            return None
+        any_rules = mapping_raw.get("any")
+        if isinstance(any_rules, list):
+            return self._eval_any_rules(any_rules)
+
+        value_rules = mapping_raw.get("value")
+        if isinstance(value_rules, list):
+            return self._eval_any_rules(value_rules)
+
+        paths = mapping_raw.get("paths")
+        if isinstance(paths, dict):
+            value_rules = paths.get("value")
+            if isinstance(value_rules, list):
+                return self._eval_any_rules(value_rules)
+        return None
 
     @classmethod
     def _format_status_flags(cls, flags: list[Any] | None) -> list[Any]:
@@ -524,8 +775,32 @@ class ParamStore(BaseModel):
     async def describe_symbol(self, symbol: str) -> dict[str, Any]:
         """Describe a parameter by its symbolic name (e.g. PARAM_0)."""
         mapping = await self.get_param_mapping(symbol)
-        addr = self._mapping_primary_address(mapping.raw if mapping else None, symbol=symbol)
+        mapping_name_key: str | None = None
+        if mapping is not None and isinstance(mapping.raw, Mapping):
+            raw_name = mapping.raw.get("name")
+            if isinstance(raw_name, str) and raw_name.strip():
+                mapping_name_key = raw_name.strip()
+
+        computed_addr = self._mapping_primary_address(mapping.raw if mapping else None, symbol=symbol)
+        addr = computed_addr
+
+        # STATUS_* tokens are not raw value channels; they represent status registers (P<n>.s<idx>)
+        # with optional derived logic in the mapping asset. For these, prefer a stable canonical
+        # address derived from the token itself.
+        computed_primary: dict[str, Any] | None = None
+        status_match = _STATUS_POOL_RE.match(symbol)
+        if status_match:
+            status_pool = f"P{status_match.group('pool')}"
+            status_idx = int(status_match.group("idx"))
+            addr = (status_pool, "s", status_idx)
+            if computed_addr and computed_addr != addr:
+                computed_primary = {"pool": computed_addr[0], "chan": computed_addr[1], "idx": computed_addr[2]}
+
         label = await self.resolve_label(symbol)
+        if label is None and status_match:
+            lang_eff = await self._ensure_lang()
+            if self._assets is not None and mapping_name_key is not None:
+                label = await self._assets.resolve_app_one_field_label(name_key=mapping_name_key, lang=str(lang_eff))
         pool = idx = chan = None
         unit = value = None
         min_value = max_value = status_raw = unit_code = None
@@ -547,6 +822,8 @@ class ParamStore(BaseModel):
         if unit is None:
             unit = mapping_unit
         mapping_details: dict[str, Any] | None = None
+        computed_value: str | None = None
+        computed_value_label: str | None = None
         if mapping:
             formatted_channels = self._format_channels(mapping.paths)
             formatted_conditions = self._format_status_conditions(mapping.status_conditions)
@@ -556,6 +833,11 @@ class ParamStore(BaseModel):
             units_source = mapping.units
             if isinstance(units_source, str):
                 units_source = self._clean_symbolic_tag(units_source) or units_source
+
+            # Extract dependencies for computed/rule-based mappings (e.g. STATUS_*).
+            mapping_inputs = self._extract_mapping_rule_inputs(mapping.raw)
+            mapping_values = self._extract_mapping_rule_values(mapping.raw)
+
             mapping_details = {
                 "component_type": component_type_clean or mapping.component_type,
                 "channels": formatted_channels,
@@ -564,18 +846,95 @@ class ParamStore(BaseModel):
                 "limits": mapping.limits,
                 "status_flags": formatted_flags,
                 "command_rules": formatted_commands,
+                "inputs": mapping_inputs,
+                "values": mapping_values,
                 "units_source": units_source,
                 "origin": mapping.origin,
                 "raw": mapping.raw,
             }
+            computed_value = self._evaluate_computed_value(mapping.raw)
+            if computed_value is None and isinstance(mapping.paths, dict) and mapping.paths:
+                # Some STATUS assets encode computed mappings under `paths.value`.
+                computed_value = self._evaluate_computed_value({"paths": mapping.paths})
+            if computed_value is not None:
+                lang_eff = await self._ensure_lang()
+                if self._assets is not None and mapping_name_key is not None:
+                    computed_value_label = await self._assets.resolve_app_one_value_label(
+                        name_key=mapping_name_key,
+                        value=computed_value,
+                        lang=str(lang_eff),
+                    )
+                if (
+                    computed_value_label is None
+                    and self._assets is not None
+                    and isinstance(computed_value, str)
+                    and computed_value.startswith("e.")
+                ):
+                    computed_value_label = await self._assets.resolve_app_enum_value_label(
+                        value=computed_value,
+                        lang=str(lang_eff),
+                    )
+
+                # If `app.json` doesn't provide labels for enum-like values (e.g. `e.ON`),
+                # the official app often uses component-specific translation tables
+                # (e.g. `resources/languages/<lang>/diodeState.json`).
+                if (
+                    computed_value_label is None
+                    and self._assets is not None
+                    and isinstance(computed_value, str)
+                    and computed_value.startswith("e.")
+                    and isinstance(mapping.raw, Mapping)
+                ):
+                    raw_component = mapping.raw.get("useComponent")
+                    component = raw_component if isinstance(raw_component, str) else None
+                    if component:
+                        component_clean = self._clean_symbolic_tag(component) or component
+                        # Derive candidate namespaces without hardcoding: DIODE -> diodestate, diodeState.
+                        base = component_clean.strip()
+                        base_lower = base.lower()
+                        ns_candidates = [base_lower, f"{base_lower}state"]
+
+                        # Some enums are translated via `app.json` tables like `app.one.diodeState`.
+                        # This is still asset-driven and avoids hardcoding labels.
+                        app_table_key = f"app.one.{base_lower}State"
+                        computed_value_label = await self._assets.resolve_app_one_value_label(
+                            name_key=app_table_key,
+                            value=computed_value,
+                            lang=str(lang_eff),
+                        )
+                        if computed_value_label is not None:
+                            # Resolved from app.json; skip component i18n bundles.
+                            pass
+
+                        enum_tail = computed_value[2:]
+                        parts = [p for p in enum_tail.split("_") if p]
+                        snake_key = "_".join(p.lower() for p in parts) if parts else enum_tail.lower()
+                        camel_key = parts[0].lower() + "".join(p.lower().title() for p in parts[1:]) if parts else enum_tail
+                        key_candidates = [camel_key, snake_key, enum_tail, enum_tail.lower()]
+
+                        if computed_value_label is None:
+                            for ns in ns_candidates:
+                                tbl = await self._assets.get_i18n(str(lang_eff), ns)
+                                if not isinstance(tbl, dict) or not tbl:
+                                    continue
+                                for k in key_candidates:
+                                    v = tbl.get(k)
+                                    if isinstance(v, str):
+                                        computed_value_label = v
+                                        break
+                                if computed_value_label is not None:
+                                    break
         return {
             "symbol": symbol,
             "pool": pool,
             "idx": idx,
             "chan": chan,
+            "computed_primary": computed_primary,
             "label": label,
             "unit": unit,
             "value": value,
+            "computed_value": computed_value,
+            "computed_value_label": computed_value_label,
             "unit_code": unit_code,
             "min": min_value,
             "max": max_value,
