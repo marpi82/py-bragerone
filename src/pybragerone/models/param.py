@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from collections.abc import Iterable, Mapping
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
@@ -55,6 +57,49 @@ class ParamFamilyModel(BaseModel):
         return self.channels.get("s")
 
 
+@dataclass(slots=True)
+class ResolvedValue:
+    """Unified value resolution for a symbolic parameter.
+
+    The `value` field is the display value:
+    - for direct mappings it is the current register value
+    - for computed rule-based mappings it is the computed result (often a string like `e.ON`)
+    """
+
+    symbol: str
+    kind: Literal["direct", "computed"]
+    address: str | None
+    value: Any
+    value_label: str | None
+    unit: str | dict[str, str] | None
+
+
+@dataclass(slots=True)
+class _ComputedSpec:
+    symbol: str
+    mapping_raw: Mapping[str, Any]
+    mapping_paths: Mapping[str, Any] | None
+    mapping_name_key: str | None
+    use_component: str | None
+    inputs: frozenset[str]
+    computed_value: str | None = None
+    computed_value_label: str | None = None
+
+
+def _addr_key(pool: str, chan: str, idx: int) -> str:
+    return f"{pool}.{chan}{idx}"
+
+
+def _parse_addr_key(key: str) -> tuple[str, str, int] | None:
+    try:
+        pool, rest = key.split(".", 1)
+        chan = rest[0]
+        idx = int(rest[1:])
+    except Exception:
+        return None
+    return pool, chan, idx
+
+
 class ParamStore(BaseModel):
     """Heavy parameter store + asset-aware helpers.
 
@@ -77,6 +122,11 @@ class ParamStore(BaseModel):
     _cache_menu: dict[MenuCacheKey, MenuResult] = PrivateAttr(default_factory=dict)
     """Menu cache keyed by (device_menu, frozenset(permissions))."""
 
+    # Computed-value cache for rule-based mappings (reactive updates)
+    _computed_specs: dict[str, _ComputedSpec] = PrivateAttr(default_factory=dict)
+    _computed_by_input: dict[str, set[str]] = PrivateAttr(default_factory=dict)
+    _computed_lock: asyncio.Lock = PrivateAttr(default_factory=asyncio.Lock)
+
     model_config = ConfigDict(frozen=False, validate_assignment=True)
 
     def init_with_api(self, api: BragerOneApiClient, *, lang: str | None = None) -> None:
@@ -90,7 +140,7 @@ class ParamStore(BaseModel):
             # Skip metadata-only events that do not provide a value
             if getattr(upd, "value", None) is None:
                 continue
-            self.upsert(f"{upd.pool}.{upd.chan}{upd.idx}", upd.value)
+            await self.upsert_async(f"{upd.pool}.{upd.chan}{upd.idx}", upd.value)
 
     # ---------- basic updates ----------
 
@@ -112,6 +162,16 @@ class ParamStore(BaseModel):
             fam = ParamFamilyModel(pool=pool, idx=idx)
             self.families[fid] = fam
         fam.set(chan, value)
+        return fam
+
+    async def upsert_async(self, key: str, value: Any) -> ParamFamilyModel | None:
+        """Async upsert that also recomputes dependent computed values.
+
+        Prefer this method in async contexts (EventBus consumption, HA runtime)
+        when you want computed STATUS values to update reactively.
+        """
+        fam = self.upsert(key, value)
+        await self._recompute_dependents_for_key(key)
         return fam
 
     def get_family(self, pool: str, idx: int) -> ParamFamilyModel | None:
@@ -164,6 +224,224 @@ class ParamStore(BaseModel):
                                     fam.set(meta_key, body[meta_key])
                     else:
                         self.upsert(chan_key, body)
+
+    # ---------- computed values (reactive cache) ----------
+
+    def _read_channel_value(self, *, pool: str, chan: str, idx: int) -> Any:
+        fam = self.get_family(pool, idx)
+        if fam is None:
+            return None
+        return fam.get(chan)
+
+    @staticmethod
+    def _mapping_has_computed_rules(mapping: ParamMap | None) -> bool:
+        if mapping is None:
+            return False
+        raw = mapping.raw
+        if isinstance(raw, Mapping):
+            any_rules = raw.get("any")
+            if isinstance(any_rules, list) and any_rules:
+                return True
+            value_rules = raw.get("value")
+            if isinstance(value_rules, list) and value_rules:
+                return True
+        paths = mapping.paths
+        if isinstance(paths, Mapping):
+            v = paths.get("value")
+            if isinstance(v, list) and v:
+                return True
+        return False
+
+    @classmethod
+    def _mapping_canonical_address(cls, symbol: str, mapping: ParamMap | None) -> tuple[str, str, int] | None:
+        computed_addr = cls._mapping_primary_address(mapping.raw if mapping else None, symbol=symbol)
+        addr = computed_addr
+        status_match = _STATUS_POOL_RE.match(symbol)
+        if status_match:
+            status_pool = f"P{status_match.group('pool')}"
+            status_idx = int(status_match.group("idx"))
+            addr = (status_pool, "s", status_idx)
+        return addr
+
+    @staticmethod
+    def _extract_mapping_rule_inputs_addresses(raw: Any) -> set[str]:
+        inputs: set[str] = set()
+        for item in ParamStore._extract_mapping_rule_inputs(raw):
+            addr = item.get("address")
+            if isinstance(addr, str) and addr:
+                inputs.add(addr)
+        return inputs
+
+    async def _ensure_computed_registered(self, symbol: str, mapping: ParamMap) -> _ComputedSpec:
+        async with self._computed_lock:
+            existing = self._computed_specs.get(symbol)
+            if existing is not None:
+                return existing
+
+            mapping_name_key: str | None = None
+            raw_name = mapping.raw.get("name")
+            if isinstance(raw_name, str) and raw_name.strip():
+                mapping_name_key = raw_name.strip()
+
+            raw_component = mapping.raw.get("useComponent")
+            use_component = raw_component if isinstance(raw_component, str) and raw_component.strip() else None
+
+            inputs = self._extract_mapping_rule_inputs_addresses(mapping.raw)
+            if isinstance(mapping.paths, Mapping) and mapping.paths:
+                inputs |= self._extract_mapping_rule_inputs_addresses({"paths": mapping.paths})
+
+            spec = _ComputedSpec(
+                symbol=symbol,
+                mapping_raw=mapping.raw,
+                mapping_paths=mapping.paths if isinstance(mapping.paths, Mapping) else None,
+                mapping_name_key=mapping_name_key,
+                use_component=use_component,
+                inputs=frozenset(inputs),
+            )
+            self._computed_specs[symbol] = spec
+            for addr in spec.inputs:
+                self._computed_by_input.setdefault(addr, set()).add(symbol)
+            return spec
+
+    async def _compute_value_and_label_from_spec(self, spec: _ComputedSpec) -> tuple[str | None, str | None]:
+        computed_value = self._evaluate_computed_value(spec.mapping_raw)
+        if computed_value is None and spec.mapping_paths:
+            computed_value = self._evaluate_computed_value({"paths": spec.mapping_paths})
+        if computed_value is None:
+            return None, None
+
+        computed_value_label: str | None = None
+        lang_eff = await self._ensure_lang()
+
+        if self._assets is not None and spec.mapping_name_key is not None:
+            computed_value_label = await self._assets.resolve_app_one_value_label(
+                name_key=spec.mapping_name_key,
+                value=computed_value,
+                lang=str(lang_eff),
+            )
+
+        if (
+            computed_value_label is None
+            and self._assets is not None
+            and isinstance(computed_value, str)
+            and computed_value.startswith("e.")
+        ):
+            computed_value_label = await self._assets.resolve_app_enum_value_label(
+                value=computed_value,
+                lang=str(lang_eff),
+            )
+
+        if (
+            computed_value_label is None
+            and self._assets is not None
+            and isinstance(computed_value, str)
+            and computed_value.startswith("e.")
+            and spec.use_component is not None
+        ):
+            component_clean = self._clean_symbolic_tag(spec.use_component) or spec.use_component
+            base_lower = component_clean.strip().lower()
+            app_table_key = f"app.one.{base_lower}State"
+            computed_value_label = await self._assets.resolve_app_one_value_label(
+                name_key=app_table_key,
+                value=computed_value,
+                lang=str(lang_eff),
+            )
+
+            enum_tail = computed_value[2:]
+            parts = [p for p in enum_tail.split("_") if p]
+            snake_key = "_".join(p.lower() for p in parts) if parts else enum_tail.lower()
+            camel_key = parts[0].lower() + "".join(p.lower().title() for p in parts[1:]) if parts else enum_tail
+            key_candidates = [camel_key, snake_key, enum_tail, enum_tail.lower()]
+
+            if computed_value_label is None:
+                for ns in (base_lower, f"{base_lower}state"):
+                    tbl = await self._assets.get_i18n(str(lang_eff), ns)
+                    if not isinstance(tbl, dict) or not tbl:
+                        continue
+                    for k in key_candidates:
+                        v = tbl.get(k)
+                        if isinstance(v, str):
+                            computed_value_label = v
+                            break
+                    if computed_value_label is not None:
+                        break
+
+        return computed_value, computed_value_label
+
+    async def _recompute_dependents_for_key(self, key: str) -> None:
+        parsed = _parse_addr_key(key)
+        if parsed is None:
+            return
+        pool, chan, idx = parsed
+        addr = _addr_key(pool, chan, idx)
+
+        async with self._computed_lock:
+            dependents = set(self._computed_by_input.get(addr, set()))
+
+        for sym in dependents:
+            async with self._computed_lock:
+                spec = self._computed_specs.get(sym)
+            if spec is None:
+                continue
+            value, label = await self._compute_value_and_label_from_spec(spec)
+            async with self._computed_lock:
+                spec.computed_value = value
+                spec.computed_value_label = label
+
+    async def resolve_value(self, symbol: str) -> ResolvedValue:
+        """Resolve a symbol to a unified display value (direct or computed)."""
+        mapping = await self.get_param_mapping(symbol)
+        addr_tuple = self._mapping_canonical_address(symbol, mapping)
+
+        address_key: str | None = None
+        unit: str | dict[str, str] | None = None
+        if addr_tuple is not None:
+            address_key = _addr_key(addr_tuple[0], addr_tuple[1], addr_tuple[2])
+            fam = self.get_family(addr_tuple[0], addr_tuple[2])
+            if fam is not None:
+                unit = await self.resolve_unit(fam.unit_code)
+            if unit is None and mapping is not None and mapping.units is not None:
+                unit = await self.resolve_unit(mapping.units)
+                if unit is None:
+                    unit = self._normalize_unit_value(mapping.units)
+
+        if mapping is not None and self._mapping_has_computed_rules(mapping):
+            spec = await self._ensure_computed_registered(symbol, mapping)
+
+            async with self._computed_lock:
+                cached_value = spec.computed_value
+                cached_label = spec.computed_value_label
+
+            if cached_value is None:
+                value, label = await self._compute_value_and_label_from_spec(spec)
+                async with self._computed_lock:
+                    spec.computed_value = value
+                    spec.computed_value_label = label
+                cached_value, cached_label = value, label
+
+            if cached_value is None and addr_tuple is not None:
+                raw_val = self._read_channel_value(pool=addr_tuple[0], chan=addr_tuple[1], idx=addr_tuple[2])
+                return ResolvedValue(
+                    symbol=symbol, kind="direct", address=address_key, value=raw_val, value_label=None, unit=unit
+                )
+
+            return ResolvedValue(
+                symbol=symbol,
+                kind="computed",
+                address=address_key,
+                value=cached_value,
+                value_label=cached_label,
+                unit=unit,
+            )
+
+        val = None
+        if addr_tuple is not None:
+            val = self._read_channel_value(pool=addr_tuple[0], chan=addr_tuple[1], idx=addr_tuple[2])
+        return ResolvedValue(symbol=symbol, kind="direct", address=address_key, value=val, value_label=None, unit=unit)
+
+    async def get_value(self, symbol: str) -> Any:
+        """Convenience wrapper returning only the resolved display value."""
+        return (await self.resolve_value(symbol)).value
 
     # ---------- assets lifecycle ----------
 
@@ -447,6 +725,40 @@ class ParamStore(BaseModel):
                                 continue
                             address = f"{group}.{use[0]}{number}"
                             _add(address, bit=sel.get("bit"), mask=sel.get("mask"))
+
+        # Shape 3: computed rules under `paths.value` (same condition structure)
+        paths = raw.get("paths")
+        if isinstance(paths, dict):
+            value_rules = paths.get("value")
+            if isinstance(value_rules, list):
+                for rule in value_rules:
+                    if not isinstance(rule, dict):
+                        continue
+                    for key in ("if", "elseif"):
+                        conds = rule.get(key)
+                        if not isinstance(conds, list):
+                            continue
+                        for cond in conds:
+                            if not isinstance(cond, dict):
+                                continue
+                            values = cond.get("value")
+                            if not isinstance(values, list):
+                                continue
+                            for sel in values:
+                                if not isinstance(sel, dict):
+                                    continue
+                                group = sel.get("group")
+                                number = sel.get("number")
+                                use = sel.get("use")
+                                if (
+                                    not isinstance(group, str)
+                                    or not isinstance(number, int)
+                                    or not isinstance(use, str)
+                                    or not use
+                                ):
+                                    continue
+                                address = f"{group}.{use[0]}{number}"
+                                _add(address, bit=sel.get("bit"), mask=sel.get("mask"))
 
         return out
 
