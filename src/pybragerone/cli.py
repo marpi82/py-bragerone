@@ -5,10 +5,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import re
 import signal
+import threading
+from collections import deque
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Any
 
 from .api import BragerOneApiClient
 from .gateway import BragerOneGateway
@@ -17,6 +23,17 @@ from .utils import bg_tasks, spawn
 
 log = logging.getLogger(__name__)
 CHAN_RE = re.compile(r"^([a-z])(\d+)$")
+
+
+@dataclass(slots=True)
+class _WatchItem:
+    symbol: str
+    label: str
+    unit: str | dict[str, str] | None
+    address: str | None
+    value: Any
+    value_label: str | None
+    kind: str
 
 
 def _maybe_load_dotenv() -> None:
@@ -142,26 +159,32 @@ async def run(args: argparse.Namespace) -> int:
 
     # ParamStore (heavy) + connection to the gateway's EventBus
     param_store = ParamStore()
+    # Enable asset-driven labels and computed status evaluation.
+    param_store.init_with_api(api)
 
     # Keep a single authenticated ApiClient instance and inject it into the Gateway.
     gw = BragerOneGateway(api=api, object_id=object_id, modules=modules)
 
-    spawn(param_store.run_with_bus(gw.bus), "ParamStore.run_with_bus", log)
-
     try:
+        # Start TUI subscriber BEFORE gateway prime so we don't miss the initial snapshot.
+        spawn(
+            _run_tui(
+                api=api,
+                gw=gw,
+                store=param_store,
+                object_id=object_id,
+                module_ids=modules,
+                json_events=bool(args.json),
+                suppress_log=bool(args.no_diff),
+                debug_logging=bool(args.debug),
+            ),
+            "tui",
+            log,
+        )
+
         # Start gateway (REST prime + WS live)
         await gw.start()
 
-        # Simple event "printer" (if not requesting raw-ws/no-diff)
-        if not args.raw_ws and not args.no_diff:
-
-            async def _printer() -> None:
-                async for upd in gw.bus.subscribe():
-                    print(f"↺ {upd.pool}.{upd.chan}{upd.idx} = {upd.value}")
-
-            spawn(_printer(), "printer", log)
-
-        print("\n▶ Listening started by Gateway. Ctrl+C to exit.\n")
         stop = asyncio.Event()
         for sig in (signal.SIGINT, signal.SIGTERM):
             with contextlib.suppress(NotImplementedError):
@@ -185,6 +208,385 @@ async def run(args: argparse.Namespace) -> int:
         await api.close()
 
     return 0
+
+
+def _route_title(route: Any) -> str:
+    meta = getattr(route, "meta", None)
+    dn = getattr(meta, "display_name", None) if meta is not None else None
+    if isinstance(dn, str) and dn.strip():
+        return dn.strip()
+    name = getattr(route, "name", None)
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    path = getattr(route, "path", None)
+    return str(path or "-")
+
+
+def _iter_routes(routes: Iterable[Any]) -> Iterable[Any]:
+    stack = list(routes)[::-1]
+    while stack:
+        cur = stack.pop()
+        yield cur
+        children = getattr(cur, "children", None)
+        if isinstance(children, list):
+            for child in reversed(children):
+                stack.append(child)
+
+
+def _collect_route_symbols(route: Any) -> set[str]:
+    symbols: set[str] = set()
+
+    def add_from_container(container: Any) -> None:
+        if container is None:
+            return
+        for kind in ("read", "write", "status", "special"):
+            items = getattr(container, kind, None)
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                tok = getattr(item, "token", None)
+                if isinstance(tok, str) and tok:
+                    symbols.add(tok)
+
+    meta = getattr(route, "meta", None)
+    if meta is not None:
+        add_from_container(getattr(meta, "parameters", None))
+    # Legacy / compatibility field
+    add_from_container(getattr(route, "parameters", None))
+    return symbols
+
+
+def _normalize(s: str) -> str:
+    return "".join(ch for ch in s.casefold() if ch.isalnum() or ch.isspace()).strip()
+
+
+async def _build_watch_groups(
+    *,
+    api: BragerOneApiClient,
+    store: ParamStore,
+    object_id: int,
+    module_ids: list[str],
+) -> dict[str, list[str]]:
+    """Build watch groups using module menu routes.
+
+    This aims to approximate the official UI sections without hardcoding tokens.
+    """
+    modules = await api.get_modules(object_id=object_id)
+    selected = {m.devid: m for m in modules if m.devid is not None and str(m.devid) in set(module_ids)}
+    # Use the first module to derive the menu for grouping.
+    first_id = module_ids[0]
+    mod = selected.get(first_id)
+    if mod is None:
+        return {"Boiler": [], "DHW": [], "Valve 1": []}
+
+    device_menu = int(mod.deviceMenu)
+    perms = list(getattr(mod, "permissions", []) or [])
+    menu = await store.get_module_menu(device_menu=device_menu, permissions=perms)
+
+    routes_by_title: list[tuple[str, set[str]]] = []
+    for r in _iter_routes(menu.routes):
+        symbols = _collect_route_symbols(r)
+        if symbols:
+            routes_by_title.append((_route_title(r), symbols))
+
+    def pick(title_keywords: list[str]) -> set[str]:
+        want = [_normalize(k) for k in title_keywords]
+        out: set[str] = set()
+        for title, symbols in routes_by_title:
+            t = _normalize(title)
+            if any(w and w in t for w in want):
+                out |= symbols
+        return out
+
+    def _score_text(text: str, keywords: list[str]) -> int:
+        t = _normalize(text)
+        return sum(1 for k in keywords if k and k in t)
+
+    boiler = pick(["kocioł", "kotła", "boiler"])
+    dhw = pick(["cwu", "dhw"])
+    valve_title_keywords = [
+        "zawór 1",
+        "zawor 1",
+        "valve 1",
+        "zawór",
+        "zawor",
+        "miesz",
+        "mieszacz",
+        "mieszający",
+        "mieszajacy",
+        "obieg 1",
+        "obieg",
+        "co1",
+        "co 1",
+        "circuit",
+        "mix",
+        "mixing",
+    ]
+    valve = pick(valve_title_keywords)
+
+    # Fallback: if we couldn't match a valve-like section by title, choose the most valve-looking route
+    # by scoring titles + asset-driven parameter labels.
+    if not valve:
+        valve_label_keywords = [
+            "zawór",
+            "zawor",
+            "miesz",
+            "mieszacz",
+            "mieszający",
+            "mieszajacy",
+            "siłownik",
+            "silownik",
+            "pozyc",
+            "otwar",
+            "za zaworem",
+            "zaworem",
+            "4d",
+            "3d",
+            "valve",
+            "mixer",
+            "actuator",
+            "position",
+            "open",
+        ]
+
+        candidates: list[tuple[str, set[str]]] = []
+        for title, symbols in routes_by_title:
+            rest = set(symbols) - boiler - dhw
+            if rest:
+                candidates.append((title, rest))
+
+        # Only score a limited set (biggest first) to avoid excessive catalog fetches.
+        candidates.sort(key=lambda x: len(x[1]), reverse=True)
+        candidates = candidates[:12]
+
+        best: tuple[int, str, set[str]] | None = None
+        for title, symbols in candidates:
+            score = 0
+            score += 10 * _score_text(title, valve_title_keywords)
+
+            # Sample a subset of symbols and score their resolved labels.
+            sampled = list(symbols)[:20]
+            for sym in sampled:
+                desc = await store.describe_symbol(sym)
+                label = desc.get("label")
+                if isinstance(label, str) and label:
+                    score += _score_text(label, valve_label_keywords)
+
+            if best is None or score > best[0]:
+                best = (score, title, symbols)
+
+        if best is not None:
+            _score, best_title, best_symbols = best
+            log.info("Valve 1 fallback: using route '%s' with %d symbols", best_title, len(best_symbols))
+            valve = best_symbols
+
+    groups: dict[str, list[str]] = {
+        "Boiler": sorted(boiler),
+        "DHW": sorted(dhw),
+        "Valve 1": sorted(valve),
+    }
+    return groups
+
+
+async def _run_tui(
+    *,
+    api: BragerOneApiClient,
+    gw: BragerOneGateway,
+    store: ParamStore,
+    object_id: int,
+    module_ids: list[str],
+    json_events: bool,
+    suppress_log: bool,
+    debug_logging: bool = False,
+) -> None:
+    """Run a minimal Rich TUI with a live values area and a scrolling log."""
+    try:
+        from rich.console import Console
+        from rich.layout import Layout
+        from rich.live import Live
+        from rich.panel import Panel
+        from rich.table import Table
+        from rich.text import Text
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError(
+            "TUI mode requires optional CLI dependencies. Install the 'cli' extra (e.g. `pip install pybragerone[cli]`)."
+        ) from exc
+
+    console = Console()
+    log_lines: deque[str] = deque(maxlen=200)
+    log_lines.append("▶ Starting… waiting for prime and live updates. Ctrl+C to exit.")
+
+    loop = asyncio.get_running_loop()
+    log_lock = threading.Lock()
+
+    watch: dict[str, _WatchItem] = {}
+    group_symbols: dict[str, list[str]] = {"Boiler": [], "DHW": [], "Valve 1": []}
+
+    def render_group(name: str) -> Panel:
+        table = Table.grid(expand=True, padding=(0, 1))
+        table.add_column("Name", ratio=2, no_wrap=True, overflow="ellipsis")
+        table.add_column("Value", ratio=1, no_wrap=True, overflow="ellipsis")
+
+        symbols = group_symbols.get(name, [])
+        if not symbols:
+            table.add_row("Loading…", "")
+            return Panel(table, title=name)
+
+        for sym in symbols[:30]:
+            it = watch.get(sym)
+            if it is None:
+                continue
+            val = it.value_label if it.value_label is not None else it.value
+            if isinstance(it.unit, str):
+                val = f"{val} {it.unit}" if val is not None else "-"
+            table.add_row(str(it.label), str(val) if val is not None else "-")
+
+        return Panel(table, title=name)
+
+    def render_log() -> Panel:
+        text = Text("\n".join(log_lines))
+        return Panel(text, title="Console")
+
+    def build_layout() -> Layout:
+        root = Layout(name="root")
+        root.split_column(Layout(name="top", ratio=3), Layout(name="bottom", ratio=1))
+        root["top"].split_row(
+            Layout(name="boiler"),
+            Layout(name="dhw"),
+            Layout(name="valve"),
+        )
+        root["bottom"].update(render_log())
+        root["boiler"].update(render_group("Boiler"))
+        root["dhw"].update(render_group("DHW"))
+        root["valve"].update(render_group("Valve 1"))
+        return root
+
+    layout = build_layout()
+
+    def refresh_panels() -> None:
+        layout["bottom"].update(render_log())
+        layout["boiler"].update(render_group("Boiler"))
+        layout["dhw"].update(render_group("DHW"))
+        layout["valve"].update(render_group("Valve 1"))
+
+    dirty = asyncio.Event()
+
+    def _append_log_line(line: str) -> None:
+        with log_lock:
+            log_lines.append(line)
+        dirty.set()
+
+    class _TuiLogHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            # Keep noise down by default.
+            min_level = logging.DEBUG if debug_logging else logging.WARNING
+            if record.levelno < min_level:
+                return
+            msg = self.format(record)
+            loop.call_soon_threadsafe(_append_log_line, msg)
+
+    def _format_event_key(upd: Any) -> str:
+        pool_raw = getattr(upd, "pool", None)
+        pool = str(pool_raw)
+        if pool.isdigit():
+            pool = f"P{pool}"
+        elif not pool.startswith("P") and pool:
+            # Best-effort: if upstream provides pool without 'P' but not purely numeric.
+            pool = f"P{pool}"
+        return f"{pool}.{upd.chan}{upd.idx}"
+
+    async def bus_ingest() -> None:
+        async for upd in gw.bus.subscribe():
+            if getattr(upd, "value", None) is None:
+                continue
+            key = _format_event_key(upd)
+            await store.upsert_async(key, upd.value)
+            if not suppress_log:
+                if json_events:
+                    log_lines.append(json.dumps({"key": key, "value": upd.value}, ensure_ascii=False))
+                else:
+                    log_lines.append(f"↺ {key} = {upd.value}")
+            dirty.set()
+
+    async def init_watch() -> None:
+        groups = await _build_watch_groups(api=api, store=store, object_id=object_id, module_ids=module_ids)
+        group_symbols.clear()
+        group_symbols.update(groups)
+
+        # Build watch items (labels + mapping) once; values will be refreshed from ParamStore on dirty ticks.
+        for _group_name, symbols in group_symbols.items():
+            for sym in symbols[:30]:
+                if sym in watch:
+                    continue
+                desc = await store.describe_symbol(sym)
+                resolved = await store.resolve_value(sym)
+                watch[sym] = _WatchItem(
+                    symbol=sym,
+                    label=str(desc.get("label") or sym),
+                    unit=resolved.unit,
+                    address=resolved.address,
+                    value=resolved.value,
+                    value_label=resolved.value_label,
+                    kind=resolved.kind,
+                )
+
+        dirty.set()
+
+    async def refresh_loop(*, live: Live) -> None:
+        # Manual refresh to reduce blinking.
+        while True:
+            try:
+                await asyncio.wait_for(dirty.wait(), timeout=0.25)
+            except TimeoutError:
+                continue
+            dirty.clear()
+
+            # Re-resolve values from ParamStore so we don't depend on matching raw update keys.
+            for sym, it in watch.items():
+                resolved = await store.resolve_value(sym)
+                it.value = resolved.value
+                it.value_label = resolved.value_label
+
+            refresh_panels()
+            live.refresh()
+
+    live = Live(layout, console=console, screen=True, auto_refresh=False)
+
+    root_logger = logging.getLogger()
+    prev_handlers = list(root_logger.handlers)
+    prev_level = root_logger.level
+    prev_httpx_level = logging.getLogger("httpx").level
+    prev_ws_eio_level = logging.getLogger("pybragerone.api.ws.eio").level
+    prev_ws_sio_level = logging.getLogger("pybragerone.api.ws.sio").level
+    prev_catalog_level = logging.getLogger("pybragerone.models.catalog").level
+
+    handler = _TuiLogHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+
+    # In TUI mode, don't print logs to stdout/stderr.
+    root_logger.handlers = [handler]
+    root_logger.setLevel(logging.DEBUG if debug_logging else logging.WARNING)
+    if not debug_logging:
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("pybragerone.api.ws.eio").setLevel(logging.WARNING)
+        logging.getLogger("pybragerone.api.ws.sio").setLevel(logging.WARNING)
+        logging.getLogger("pybragerone.models.catalog").setLevel(logging.WARNING)
+
+    try:
+        with live, contextlib.suppress(asyncio.CancelledError):
+            refresh_panels()
+            live.refresh()
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(bus_ingest())
+                tg.create_task(init_watch())
+                tg.create_task(refresh_loop(live=live))
+    finally:
+        root_logger.handlers = prev_handlers
+        root_logger.setLevel(prev_level)
+        logging.getLogger("httpx").setLevel(prev_httpx_level)
+        logging.getLogger("pybragerone.api.ws.eio").setLevel(prev_ws_eio_level)
+        logging.getLogger("pybragerone.api.ws.sio").setLevel(prev_ws_sio_level)
+        logging.getLogger("pybragerone.models.catalog").setLevel(prev_catalog_level)
 
 
 def build_parser() -> argparse.ArgumentParser:
