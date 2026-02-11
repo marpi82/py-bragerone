@@ -10,10 +10,10 @@ Core Principles
 
 - **Prime is mandatory** at startup and after reconnect. WebSocket does **not** provide a snapshot.
 - Runtime is **event-driven** with a **multicast EventBus** (per-subscriber queue, FIFO).
-- **ParamStore** provides two usage modes:
 
-  - **Lightweight mode** (runtime): Simple key→value store, minimal overhead, ignores meta-only events.
-  - **Asset-aware mode** (config): Integration with LiveAssetsCatalog for rich metadata (labels/units/enums).
+- **ParamStore** is runtime-light and stores raw parameter values only.
+- **ParamResolver** (config/CLI) uses LiveAssetsCatalog to resolve rich metadata (labels/units/enums/menu/computed STATUS)
+  without burdening HA runtime.
 
 - Consistent, explicit parameter addressing: ``P<n>.<chan><idx>`` (e.g. ``P4.v1``).
 - Minimal coupling between WS flow and HA entities; HA entities rely on immutable references.
@@ -32,7 +32,7 @@ High-Level Architecture
       |                                  \                     \
       |                                   \                     ---> Printer/CLI (optional)
       |                                    \
-      +--> LiveAssetsCatalog (config only)  --->  ParamStore (asset-aware)
+    +--> LiveAssetsCatalog (config only)  --->  ParamResolver (config/CLI) ---> ParamStore (runtime values)
                              \
                             ---> HA entity descriptors (config only)
 
@@ -69,5 +69,5 @@ Event Normalization
   - ``value`` – actual value or ``None`` if not present
   - ``meta`` – everything else (timestamps, ``storable``, averages, ...)
 
-- :class:`ParamStore` in **lightweight mode** ignores events with ``value is None``.
-- :class:`ParamStore` in **asset-aware mode** can process metadata when integrated with LiveAssetsCatalog.
+- :class:`ParamStore` ignores events with ``value is None`` (meta-only frames).
+- Asset-driven metadata and discovery are handled by :class:`ParamResolver` (LiveAssetsCatalog-backed).

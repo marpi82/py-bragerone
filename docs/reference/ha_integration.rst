@@ -19,19 +19,29 @@ During config flow, use asset-aware mode to discover entities.
    modules_resp = await api_client.get_modules(object_id=object_id)
    module_ids = [str(m.devid or m.id) for m in modules_resp if (m.devid or m.id) is not None]
 
-   # 3. Enable asset-aware mode
+   # 3. Enable asset-aware resolution
    param_store = ParamStore()
-   param_store.init_with_api(api_client, lang="en")
+   resolver = ParamResolver.from_api(api=api_client, store=param_store, lang="en")
 
    # 4. Prime parameters via REST snapshot
    status, payload = await api_client.modules_parameters_prime(module_ids, return_data=True)
    if status in (200, 204) and isinstance(payload, dict):
        param_store.ingest_prime_payload(payload)
 
-   # 5. Build entity descriptors with metadata
-   descriptors = []
-   for key in param_store.flatten().keys():
-       descriptors.append({"key": key, "label": None, "unit": None, "enum_labels": None})
+      # 5. Build entity descriptors with metadata from assets
+      # Pick module permissions + menu id (deviceMenu) from one module; you can merge across modules if needed.
+      first = modules_resp[0]
+      device_menu = int(first.deviceMenu)
+      permissions = list(getattr(first, "permissions", []) or [])
+      symbols = await resolver.merge_assets_with_permissions(permissions=permissions, device_menu=device_menu)
+
+      descriptors = []
+      for symbol, desc in symbols.items():
+         descriptors.append({
+            "symbol": symbol,
+            "label": desc.get("label"),
+            "unit": desc.get("unit"),
+         })
 
 .. note::
    No WebSocket connection needed during config flow!
@@ -45,7 +55,7 @@ At runtime, use lightweight mode for best performance.
 
    # 1. Create gateway and lightweight ParamStore
    gateway = BragerOneGateway(api=api_client, object_id=object_id, modules=module_ids)
-   param_store = ParamStore()  # No init_with_api()
+   param_store = ParamStore()  # runtime-light (storage-only)
 
    # 2. Subscribe to updates
    async def handle_updates():

@@ -90,7 +90,7 @@ Complete example: `examples/paramstore_usage.py <https://github.com/marpi82/py-b
    **ParamStore modes:**
 
    - **Lightweight mode** (shown above): Fast key→value storage for runtime
-   - **Asset-aware mode**: Rich metadata with i18n labels/units (use during HA config flow)
+   - **Asset-aware mode**: Rich metadata with i18n labels/units via ``ParamResolver`` (use during HA config flow)
 
    See :doc:`../architecture/overview` for details on when to use each mode.
 
@@ -139,16 +139,16 @@ For Home Assistant config flow, you don't need WebSocket:
       modules = await client.get_modules(object_id=objects[0].id)
       devids = [str(m.devid or m.id) for m in modules if (m.devid or m.id) is not None]
 
-      # Enable asset-aware mode for metadata
-      param_store = ParamStore()
-      param_store.init_with_api(client, lang="en")
+   # Enable asset-aware resolution for metadata
+   param_store = ParamStore()
+   resolver = ParamResolver.from_api(api=client, store=param_store, lang="en")
 
       # Fetch initial data (REST prime)
       status, payload = await client.modules_parameters_prime(devids, return_data=True)
       if status in (200, 204) and isinstance(payload, dict):
          param_store.ingest_prime_payload(payload)
 
-      label = await param_store.resolve_label("PARAM_0")
+      label = await resolver.resolve_label("PARAM_0")
       print(f"Example label: {label}")
    finally:
       await client.close()
@@ -159,7 +159,7 @@ For runtime, use lightweight mode for best performance:
 
 .. code-block:: python
 
-   param_store = ParamStore()  # No init_with_api()
+   param_store = ParamStore()  # runtime-light (storage-only)
    asyncio.create_task(param_store.run_with_bus(gateway.bus))
 
    # Subscribe to updates

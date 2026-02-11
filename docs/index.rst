@@ -67,7 +67,7 @@ Key Features
    Socket.IO client with automatic reconnection and event streaming
 
 📊 **ParamStore**
-   Dual-mode storage: lightweight for runtime, asset-aware for discovery
+   Runtime-light storage for live values (use **ParamResolver** for asset-driven discovery/metadata)
 
 🏠 **Home Assistant Ready**
    Designed from the ground up for HA integration patterns

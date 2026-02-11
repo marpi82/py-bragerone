@@ -42,12 +42,14 @@ For config flow and entity discovery, enable rich metadata support.
 
 .. code-block:: python
 
-   # Initialize with API client
-   param_store.init_with_api(api_client, lang="en")
+   from pybragerone.models import ParamResolver
+
+   # ParamStore stays runtime-light; ParamResolver provides asset-driven metadata.
+   resolver = ParamResolver.from_api(api=api_client, store=param_store, lang="en")
 
    # Access metadata
-   label = await param_store.resolve_label("PARAM_0")
-   mapping = await param_store.get_param_mapping("PARAM_0")
+   label = await resolver.resolve_label("PARAM_0")
+   mapping = await resolver.get_param_mapping("PARAM_0")
    print(f"label={label} mapping={mapping}")
 
 .. warning::
