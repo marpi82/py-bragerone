@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
+from pybragerone.models import ParamResolver, ParamStore
 from pybragerone.models.catalog import ParamMap
-from pybragerone.models.param import ParamStore
+from pybragerone.models.param_resolver import AssetsProtocol
 
 
 @dataclass(slots=True)
@@ -30,9 +31,8 @@ class _StubAssets:
 
 @pytest.mark.asyncio
 async def test_resolve_value_computed_reactive_any_rules() -> None:
-    """Computed values register dependencies and update reactively on upserts."""
+    """Computed values reflect current inputs on subsequent upserts."""
     store = ParamStore()
-    store._lang = "en"
 
     raw = {
         "name": "app.one.devicePumpStatus",
@@ -74,16 +74,16 @@ async def test_resolve_value_computed_reactive_any_rules() -> None:
         raw=raw,
     )
 
-    store._assets = _StubAssets(mapping=mapping)  # type: ignore[assignment]
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping=mapping)), lang="en")
 
     await store.upsert_async("P5.s0", 1)
-    first = await store.resolve_value("STATUS_P5_0")
+    first = await resolver.resolve_value("STATUS_P5_0")
     assert first.kind == "computed"
     assert first.value == "e.ON"
     assert first.value_label == "ENUM[en]:e.ON"
 
     await store.upsert_async("P5.s0", 0)
-    second = await store.resolve_value("STATUS_P5_0")
+    second = await resolver.resolve_value("STATUS_P5_0")
     assert second.kind == "computed"
     assert second.value == "e.OFF"
     assert second.value_label == "ENUM[en]:e.OFF"
@@ -91,9 +91,8 @@ async def test_resolve_value_computed_reactive_any_rules() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_value_computed_reactive_paths_value_rules() -> None:
-    """Dependencies are detected in computed rules stored under paths.value."""
+    """Computed rules stored under paths.value are evaluated correctly."""
     store = ParamStore()
-    store._lang = "en"
 
     raw = {"name": "app.one.devicePumpStatus"}
     paths = {
@@ -135,14 +134,14 @@ async def test_resolve_value_computed_reactive_paths_value_rules() -> None:
         raw=raw,
     )
 
-    store._assets = _StubAssets(mapping=mapping)  # type: ignore[assignment]
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping=mapping)), lang="en")
 
     await store.upsert_async("P5.s13", 1 << 1)
-    first = await store.resolve_value("STATUS_P5_13")
+    first = await resolver.resolve_value("STATUS_P5_13")
     assert first.kind == "computed"
     assert first.value == "e.ON"
 
     await store.upsert_async("P5.s13", 0)
-    second = await store.resolve_value("STATUS_P5_13")
+    second = await resolver.resolve_value("STATUS_P5_13")
     assert second.kind == "computed"
     assert second.value == "e.OFF"

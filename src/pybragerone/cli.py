@@ -18,7 +18,7 @@ from typing import Any
 
 from .api import BragerOneApiClient
 from .gateway import BragerOneGateway
-from .models import CLITokenStore, ParamStore
+from .models import CLITokenStore, ParamResolver, ParamStore
 from .utils import bg_tasks, spawn
 
 log = logging.getLogger(__name__)
@@ -157,10 +157,9 @@ async def run(args: argparse.Namespace) -> int:
         await api.close()
         return 2
 
-    # ParamStore (heavy) + connection to the gateway's EventBus
+    # Runtime ParamStore is storage-only; opt into heavy resolution via ParamResolver.
     param_store = ParamStore()
-    # Enable asset-driven labels and computed status evaluation.
-    param_store.init_with_api(api)
+    resolver = ParamResolver.from_api(api=api, store=param_store, lang=str(args.lang).strip().lower())
 
     # Keep a single authenticated ApiClient instance and inject it into the Gateway.
     gw = BragerOneGateway(api=api, object_id=object_id, modules=modules)
@@ -172,6 +171,7 @@ async def run(args: argparse.Namespace) -> int:
                 api=api,
                 gw=gw,
                 store=param_store,
+                resolver=resolver,
                 object_id=object_id,
                 module_ids=modules,
                 json_events=bool(args.json),
@@ -263,7 +263,7 @@ def _normalize(s: str) -> str:
 async def _build_watch_groups(
     *,
     api: BragerOneApiClient,
-    store: ParamStore,
+    resolver: ParamResolver,
     object_id: int,
     module_ids: list[str],
 ) -> dict[str, list[str]]:
@@ -281,7 +281,7 @@ async def _build_watch_groups(
 
     device_menu = int(mod.deviceMenu)
     perms = list(getattr(mod, "permissions", []) or [])
-    menu = await store.get_module_menu(device_menu=device_menu, permissions=perms)
+    menu = await resolver.get_module_menu(device_menu=device_menu, permissions=perms)
 
     routes_by_title: list[tuple[str, set[str]]] = []
     for r in _iter_routes(menu.routes):
@@ -302,83 +302,9 @@ async def _build_watch_groups(
         t = _normalize(text)
         return sum(1 for k in keywords if k and k in t)
 
-    boiler = pick(["kocioł", "kotła", "boiler"])
-    dhw = pick(["cwu", "dhw"])
-    valve_title_keywords = [
-        "zawór 1",
-        "zawor 1",
-        "valve 1",
-        "zawór",
-        "zawor",
-        "miesz",
-        "mieszacz",
-        "mieszający",
-        "mieszajacy",
-        "obieg 1",
-        "obieg",
-        "co1",
-        "co 1",
-        "circuit",
-        "mix",
-        "mixing",
-    ]
-    valve = pick(valve_title_keywords)
-
-    # Fallback: if we couldn't match a valve-like section by title, choose the most valve-looking route
-    # by scoring titles + asset-driven parameter labels.
-    if not valve:
-        valve_label_keywords = [
-            "zawór",
-            "zawor",
-            "miesz",
-            "mieszacz",
-            "mieszający",
-            "mieszajacy",
-            "siłownik",
-            "silownik",
-            "pozyc",
-            "otwar",
-            "za zaworem",
-            "zaworem",
-            "4d",
-            "3d",
-            "valve",
-            "mixer",
-            "actuator",
-            "position",
-            "open",
-        ]
-
-        candidates: list[tuple[str, set[str]]] = []
-        for title, symbols in routes_by_title:
-            rest = set(symbols) - boiler - dhw
-            if rest:
-                candidates.append((title, rest))
-
-        # Only score a limited set (biggest first) to avoid excessive catalog fetches.
-        candidates.sort(key=lambda x: len(x[1]), reverse=True)
-        candidates = candidates[:12]
-
-        best: tuple[int, str, set[str]] | None = None
-        for title, symbols in candidates:
-            score = 0
-            score += 10 * _score_text(title, valve_title_keywords)
-
-            # Sample a subset of symbols and score their resolved labels.
-            sampled = list(symbols)[:20]
-            for sym in sampled:
-                desc = await store.describe_symbol(sym)
-                label = desc.get("label")
-                if isinstance(label, str) and label:
-                    score += _score_text(label, valve_label_keywords)
-
-            if best is None or score > best[0]:
-                best = (score, title, symbols)
-
-        if best is not None:
-            _score, best_title, best_symbols = best
-            log.info("Valve 1 fallback: using route '%s' with %d symbols", best_title, len(best_symbols))
-            valve = best_symbols
+    boiler = pick(["boiler"])
+    dhw = pick(["dhw"])
+    valve = pick(["valve_1"])
 
     groups: dict[str, list[str]] = {
         "Boiler": sorted(boiler),
@@ -393,6 +319,7 @@ async def _run_tui(
     api: BragerOneApiClient,
     gw: BragerOneGateway,
     store: ParamStore,
+    resolver: ParamResolver,
     object_id: int,
     module_ids: list[str],
     json_events: bool,
@@ -509,7 +436,7 @@ async def _run_tui(
             dirty.set()
 
     async def init_watch() -> None:
-        groups = await _build_watch_groups(api=api, store=store, object_id=object_id, module_ids=module_ids)
+        groups = await _build_watch_groups(api=api, resolver=resolver, object_id=object_id, module_ids=module_ids)
         group_symbols.clear()
         group_symbols.update(groups)
 
@@ -518,8 +445,8 @@ async def _run_tui(
             for sym in symbols[:30]:
                 if sym in watch:
                     continue
-                desc = await store.describe_symbol(sym)
-                resolved = await store.resolve_value(sym)
+                desc = await resolver.describe_symbol(sym)
+                resolved = await resolver.resolve_value(sym)
                 watch[sym] = _WatchItem(
                     symbol=sym,
                     label=str(desc.get("label") or sym),
@@ -543,7 +470,7 @@ async def _run_tui(
 
             # Re-resolve values from ParamStore so we don't depend on matching raw update keys.
             for sym, it in watch.items():
-                resolved = await store.resolve_value(sym)
+                resolved = await resolver.resolve_value(sym)
                 it.value = resolved.value
                 it.value_label = resolved.value_label
 
@@ -602,6 +529,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--password",
         default=os.environ.get("PYBO_PASSWORD"),
         help="Password (ENV: PYBO_PASSWORD)",
+    )
+    p.add_argument(
+        "--lang",
+        default=os.environ.get("PYBO_LANG", "en"),
+        help="Language code for asset-driven labels (ENV: PYBO_LANG). Default: en",
     )
     p.add_argument(
         "--object-id",

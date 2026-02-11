@@ -430,8 +430,9 @@ class LiveAssetsCatalog:
         self._log = logger or logging.getLogger(__name__)
         self._last_index_url: str | None = None
 
-        # Cache for language-scoped `app` namespace translations (from index-driven mapping)
-        self._cache_app_i18n: dict[str, dict[str, Any]] = {}
+        # Cache for language-scoped i18n namespaces (from index-driven mapping)
+        self._cache_i18n: dict[tuple[str, str], dict[str, Any]] = {}
+        self._i18n_lock = asyncio.Lock()
 
         # New menu management system
         self._menu_manager = MenuManager(self._log)
@@ -1157,33 +1158,46 @@ class LiveAssetsCatalog:
         Returns:
             Dictionary with translation mappings, or empty dict if not found.
         """
-        lang = str(lang).strip().lower()
-        # NOTE: Namespace names in the upstream bundles are case-sensitive (e.g. `diodeState.json`).
-        # We keep the original value and rely on `_find_i18n_asset()` to match case-insensitively.
-        namespace = str(namespace).strip()
-        if not self._idx.index_bytes:
-            await self._ensure_index_loaded()
-        if not self._idx.index_bytes:
-            self._log.warning("No index data available for i18n lookup")
+        lang_norm = str(lang).strip().lower()
+        namespace_norm = str(namespace).strip().lower()
+        if not lang_norm or not namespace_norm:
             return {}
 
-        try:
-            # Find the asset for this specific language/namespace combination
-            asset_ref = self._find_i18n_asset(lang, namespace)
-            if not asset_ref:
-                self._log.debug("No i18n asset found for %s/%s", lang, namespace)
+        cache_key = (lang_norm, namespace_norm)
+        cached = self._cache_i18n.get(cache_key)
+        if cached is not None:
+            return cached
+
+        async with self._i18n_lock:
+            cached2 = self._cache_i18n.get(cache_key)
+            if cached2 is not None:
+                return cached2
+
+            if not self._idx.index_bytes:
+                await self._ensure_index_loaded()
+            if not self._idx.index_bytes:
+                self._log.warning("No index data available for i18n lookup")
+                self._cache_i18n[cache_key] = {}
                 return {}
 
-            # Fetch and parse the i18n file
-            code = await self._api.get_bytes(asset_ref.url)
-            translations = self._parse_i18n_from_js(code)
+            try:
+                asset_ref = self._find_i18n_asset(lang_norm, namespace_norm)
+                if not asset_ref:
+                    self._log.debug("No i18n asset found for %s/%s", lang_norm, namespace_norm)
+                    self._cache_i18n[cache_key] = {}
+                    return {}
 
-            self._log.debug("Loaded i18n %s/%s: %d keys", lang, namespace, len(translations))
-            return translations
+                code = await self._api.get_bytes(asset_ref.url)
+                translations = self._parse_i18n_from_js(code)
+                result = translations if isinstance(translations, dict) else {}
+                self._cache_i18n[cache_key] = result
 
-        except Exception as e:
-            self._log.warning("Failed to load i18n %s/%s: %s", lang, namespace, e)
-            return {}
+                self._log.debug("Loaded i18n %s/%s: %d keys", lang_norm, namespace_norm, len(result))
+                return result
+            except Exception as e:
+                self._log.warning("Failed to load i18n %s/%s: %s", lang_norm, namespace_norm, e)
+                self._cache_i18n[cache_key] = {}
+                return {}
 
     # ---------- app namespace helpers (index-driven, language-scoped) ----------
 
@@ -1193,13 +1207,7 @@ class LiveAssetsCatalog:
         The language->asset mapping is defined in `index-*.js` as imports of:
             ../../resources/languages/<lang>/app.json
         """
-        lang_norm = str(lang).lower().strip()
-        cached = self._cache_app_i18n.get(lang_norm)
-        if cached is not None:
-            return cached
-        data = await self.get_i18n(lang_norm, "app")
-        self._cache_app_i18n[lang_norm] = data
-        return data
+        return await self.get_i18n(lang, "app")
 
     @staticmethod
     def _lookup_path(obj: Any, path: str) -> Any:

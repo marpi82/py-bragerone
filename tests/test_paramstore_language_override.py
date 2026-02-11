@@ -1,19 +1,20 @@
-"""Regression tests for ParamStore language overrides.
+"""Regression tests for resolver language behavior.
 
-These tests ensure that `ParamStore` resolves `app.one.*` labels via the
-index-driven `app` translations namespace for *any* language, and only uses
-Polish hardcoded fallbacks when the effective language is Polish.
+These tests ensure that `ParamResolver` resolves `app.one.*` labels via assets
+for any language, and never invents labels when assets cannot resolve them.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
+from pybragerone.models import ParamResolver, ParamStore
 from pybragerone.models.catalog import ParamMap
-from pybragerone.models.param import ParamStore
+from pybragerone.models.param_resolver import AssetsProtocol
 
 
 @dataclass(slots=True)
@@ -23,7 +24,7 @@ class _StubAssets:
     async def get_i18n(self, lang: str, namespace: str) -> dict[str, Any]:
         return {}
 
-    async def get_param_mapping(self, symbols: list[str]) -> dict[str, ParamMap | None]:
+    async def get_param_mapping(self, symbols: Iterable[str]) -> dict[str, ParamMap | None]:
         return {s: (self.mapping if s == self.mapping.key else None) for s in symbols}
 
     async def resolve_app_one_field_label(self, *, name_key: str, lang: str) -> str | None:
@@ -40,7 +41,6 @@ class _StubAssets:
 async def test_status_label_and_value_use_assets_for_non_pl_languages() -> None:
     """Resolve app.one.* labels via assets for non-Polish languages."""
     store = ParamStore()
-    store._lang = "de"
 
     raw = {
         "name": "app.one.boilerStatus.name",
@@ -70,12 +70,12 @@ async def test_status_label_and_value_use_assets_for_non_pl_languages() -> None:
         origin="inline:test",
         raw=raw,
     )
-    store._assets = _StubAssets(mapping=mapping)  # type: ignore[assignment]
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping=mapping)), lang="de")
 
     # Provide live input value for the rule engine (P5.s0 == 1)
     store.upsert("P5.s0", 1)
 
-    desc = await store.describe_symbol("STATUS_P5_0")
+    desc = await resolver.describe_symbol("STATUS_P5_0")
 
     assert desc["label"] == "FIELD[de]:app.one.boilerStatus.name"
     assert desc["computed_value"] == "0"
@@ -86,7 +86,6 @@ async def test_status_label_and_value_use_assets_for_non_pl_languages() -> None:
 async def test_polish_fallback_only_when_assets_do_not_resolve() -> None:
     """Do not invent Polish labels when assets cannot resolve them."""
     store = ParamStore()
-    store._lang = "pl"
 
     raw = {
         "name": "app.one.boilerStatus.name",
@@ -124,10 +123,10 @@ async def test_polish_fallback_only_when_assets_do_not_resolve() -> None:
         async def resolve_app_one_value_label(self, *, name_key: str, value: str, lang: str) -> str | None:
             return None
 
-    store._assets = _NoopAssets(mapping=mapping)  # type: ignore[assignment]
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _NoopAssets(mapping=mapping)), lang="pl")
 
     store.upsert("P5.s0", 1)
-    desc = await store.describe_symbol("STATUS_P5_0")
+    desc = await resolver.describe_symbol("STATUS_P5_0")
 
     # No hardcoded Polish fallbacks: if assets do not resolve, labels remain None.
     assert desc["label"] is None
@@ -139,7 +138,6 @@ async def test_polish_fallback_only_when_assets_do_not_resolve() -> None:
 async def test_enum_computed_value_label_uses_app_enum_lookup() -> None:
     """If app.one table lacks a value, fall back to app enum lookup."""
     store = ParamStore()
-    store._lang = "en"
 
     raw = {
         "name": "app.one.devicePumpStatus",
@@ -177,10 +175,10 @@ async def test_enum_computed_value_label_uses_app_enum_lookup() -> None:
         async def resolve_app_enum_value_label(self, *, value: str, lang: str) -> str | None:
             return f"ENUM[{lang}]:{value}"
 
-    store._assets = _EnumAssets(mapping=mapping)  # type: ignore[assignment]
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _EnumAssets(mapping=mapping)), lang="en")
     store.upsert("P5.s0", 1)
 
-    desc = await store.describe_symbol("STATUS_P5_0")
+    desc = await resolver.describe_symbol("STATUS_P5_0")
 
     assert desc["computed_value"] == "e.ON"
     assert desc["computed_value_label"] == "ENUM[en]:e.ON"
@@ -190,7 +188,6 @@ async def test_enum_computed_value_label_uses_app_enum_lookup() -> None:
 async def test_enum_computed_value_can_be_evaluated_from_mapping_paths() -> None:
     """Evaluate enum outputs from mapping `paths.value` rules."""
     store = ParamStore()
-    store._lang = "en"
 
     raw = {"name": "app.one.devicePumpStatus"}
     paths = {
@@ -238,10 +235,10 @@ async def test_enum_computed_value_can_be_evaluated_from_mapping_paths() -> None
         async def resolve_app_enum_value_label(self, *, value: str, lang: str) -> str | None:
             return f"ENUM[{lang}]:{value}"
 
-    store._assets = _EnumAssets(mapping=mapping)  # type: ignore[assignment]
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _EnumAssets(mapping=mapping)), lang="en")
     store.upsert("P5.s13", 1 << 1)
 
-    desc = await store.describe_symbol("STATUS_P5_13")
+    desc = await resolver.describe_symbol("STATUS_P5_13")
     assert desc["computed_value"] == "e.ON"
     assert desc["computed_value_label"] == "ENUM[en]:e.ON"
 
@@ -250,7 +247,6 @@ async def test_enum_computed_value_can_be_evaluated_from_mapping_paths() -> None
 async def test_enum_computed_value_label_uses_component_i18n_table_when_app_has_no_value_table() -> None:
     """Resolve enum labels from component i18n tables when needed."""
     store = ParamStore()
-    store._lang = "pl"
 
     raw = {
         "name": "app.one.deviceStatus",
@@ -295,10 +291,10 @@ async def test_enum_computed_value_label_uses_component_i18n_table_when_app_has_
                 return {"off_manual": "Wyłączony (ręcznie)", "on": "Włączony"}
             return {}
 
-    store._assets = _ComponentAssets(mapping=mapping)  # type: ignore[assignment]
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _ComponentAssets(mapping=mapping)), lang="pl")
     store.upsert("P5.s0", 1)
 
-    desc = await store.describe_symbol("STATUS_P5_0")
+    desc = await resolver.describe_symbol("STATUS_P5_0")
     assert desc["computed_value"] == "e.OFF_MANUAL"
     assert desc["computed_value_label"] == "Wyłączony (ręcznie)"
 
@@ -307,7 +303,6 @@ async def test_enum_computed_value_label_uses_component_i18n_table_when_app_has_
 async def test_enum_manual_labels_can_be_resolved_from_app_one_component_state_table() -> None:
     """Resolve manual enum labels from app.one.<component>State tables."""
     store = ParamStore()
-    store._lang = "pl"
 
     raw = {
         "name": "app.one.deviceStatus",
@@ -353,9 +348,9 @@ async def test_enum_manual_labels_can_be_resolved_from_app_one_component_state_t
         async def get_i18n(self, lang: str, namespace: str) -> dict[str, Any]:
             return {}
 
-    store._assets = _AppTableAssets(mapping=mapping)  # type: ignore[assignment]
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _AppTableAssets(mapping=mapping)), lang="pl")
     store.upsert("P5.s0", 1)
 
-    desc = await store.describe_symbol("STATUS_P5_0")
+    desc = await resolver.describe_symbol("STATUS_P5_0")
     assert desc["computed_value"] == "e.ON_MANUAL"
     assert desc["computed_value_label"] == "Włączone (ręcznie)"

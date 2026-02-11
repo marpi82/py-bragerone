@@ -11,12 +11,13 @@ we only validate that our lightweight evaluator can:
 
 from __future__ import annotations
 
-from pybragerone.models.param import ParamStore
+from pybragerone.models import ComputedValueEvaluator, ParamStore
 
 
 def test_evaluate_computed_status_any_rules_bit_and_mask() -> None:
     """Evaluate a rule chain using bit and mask extraction."""
     store = ParamStore()
+    evaluator = ComputedValueEvaluator(store)
     # P5.s4 bit 5 == 1
     store.upsert("P5.s4", 1 << 5)
     # P5.s5 masked with 0x0F00 equals 0x0300
@@ -49,12 +50,13 @@ def test_evaluate_computed_status_any_rules_bit_and_mask() -> None:
         ]
     }
 
-    assert store._evaluate_computed_value(raw) == "WORK"
+    assert evaluator.evaluate(raw) == "WORK"
 
 
 def test_evaluate_computed_status_returns_none_without_values() -> None:
     """Return None if the evaluator lacks required input values."""
     store = ParamStore()
+    evaluator = ComputedValueEvaluator(store)
     raw = {
         "any": [
             {
@@ -69,12 +71,13 @@ def test_evaluate_computed_status_returns_none_without_values() -> None:
             }
         ]
     }
-    assert store._evaluate_computed_value(raw) is None
+    assert evaluator.evaluate(raw) is None
 
 
 def test_evaluate_computed_status_paths_value_rules_enum_output() -> None:
     """Evaluate enum-like outputs from `paths.value` rule lists."""
     store = ParamStore()
+    evaluator = ComputedValueEvaluator(store)
     # P5.s13 has bit 1 set
     store.upsert("P5.s13", 1 << 1)
 
@@ -105,4 +108,4 @@ def test_evaluate_computed_status_paths_value_rules_enum_output() -> None:
         }
     }
 
-    assert store._evaluate_computed_value(raw) == "e.ON"
+    assert evaluator.evaluate(raw) == "e.ON"
