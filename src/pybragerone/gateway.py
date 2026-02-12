@@ -12,7 +12,7 @@ from asyncio import CancelledError, Event, Task, TaskGroup, create_task, gather,
 from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from typing import Any, Protocol
 
-from .api import BragerOneApiClient, RealtimeManager
+from .api import BragerOneApiClient, RealtimeManager, ServerConfig
 from .models.events import EventBus, ParamUpdate
 
 LOG = logging.getLogger(__name__)
@@ -142,6 +142,7 @@ class BragerOneGateway:
         password: str,
         object_id: int,
         modules: Iterable[str],
+        server: ServerConfig | None = None,
         ws: RealtimeManagerClient | None = None,
         api: BragerOneApiClient | None = None,
     ) -> BragerOneGateway:
@@ -154,6 +155,7 @@ class BragerOneGateway:
             password: BragerOne account password.
             object_id: BragerOne object/group ID.
             modules: Modules to subscribe.
+            server: Optional server/platform configuration (e.g. TiSConnect).
             ws: Optional WS client instance (testing).
             api: Optional API client instance (testing/customization).
 
@@ -161,7 +163,7 @@ class BragerOneGateway:
             An initialized gateway (not started).
         """
         owned_api = api is None
-        api_client = api or BragerOneApiClient()
+        api_client = api or BragerOneApiClient(server=server)
         await api_client.ensure_auth(email, password)
         return cls(api=api_client, object_id=object_id, modules=modules, ws=ws, owns_api=owned_api)
 
@@ -187,7 +189,15 @@ class BragerOneGateway:
 
         # 1) WS connect
         if self.ws is None:
-            self.ws = RealtimeManager(token=self.api.access_token)
+            if isinstance(self.api, BragerOneApiClient):
+                self.ws = RealtimeManager(
+                    token=self.api.access_token,
+                    origin=self.api.one_base,
+                    referer=f"{self.api.one_base}/",
+                    io_base=self.api.io_base,
+                )
+            else:
+                self.ws = RealtimeManager(token=self.api.access_token)
         ws = self.ws
         if ws is None:
             raise RuntimeError("RealtimeManager is not initialized")

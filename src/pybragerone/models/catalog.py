@@ -500,8 +500,10 @@ class LiveAssetsCatalog:
 
         try:
             # Try to discover index URL from assets page
+            base = self._api.one_base.rstrip("/")
+
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get("https://one.brager.pl/assets/")
+                resp = await client.get(f"{base}/assets/")
                 resp.raise_for_status()
                 assets_html = resp.text
 
@@ -510,13 +512,13 @@ class LiveAssetsCatalog:
 
             if m:
                 index_filename = m.group(1)
-                discovered_url = f"https://one.brager.pl/assets/{index_filename}"
+                discovered_url = f"{base}/assets/{index_filename}"
                 self._log.info("Discovered index: %s", discovered_url)
                 await self.refresh_index(discovered_url)
                 return
 
             # Try alternative URLs if discovery failed
-            alt_urls = ["https://one.brager.pl/assets/index-main.js", "https://one.brager.pl/assets/index.js"]
+            alt_urls = [f"{base}/assets/index-main.js", f"{base}/assets/index.js"]
 
             for alt_url in alt_urls:
                 try:

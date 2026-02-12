@@ -16,7 +16,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from .api import BragerOneApiClient
+import httpx
+
+from .api import BragerOneApiClient, Platform, server_for
+from .api.client import ApiError
 from .gateway import BragerOneGateway
 from .models import CLITokenStore, ParamResolver, ParamStore
 from .utils import bg_tasks, spawn
@@ -132,39 +135,40 @@ async def run(args: argparse.Namespace) -> int:
     store = CLITokenStore(args.email)
 
     # Temporary REST client for object/modules selection
-    api = BragerOneApiClient()
+    server = server_for(args.platform)
+    api = BragerOneApiClient(server=server)
     api.set_token_store(store)
 
-    await api.ensure_auth(args.email, args.password)
-
-    object_id = args.object_id or (await _prompt_select_object(api))
-    if not object_id:
-        print("Missing object_id — exiting.")
-        await api.close()
-        return 2
-
-    modules: list[str]
-    if args.modules:
-        # you can provide: --module FOO --module BAR or PYBO_MODULES="FOO,BAR"
-        if isinstance(args.modules, str):
-            modules = [m for m in args.modules.split(",") if m]
-        else:
-            modules = [str(m) for m in args.modules if m]
-    else:
-        modules = await _prompt_select_modules(api, object_id)
-    if not modules:
-        print("No modules selected — exiting.")
-        await api.close()
-        return 2
-
-    # Runtime ParamStore is storage-only; opt into heavy resolution via ParamResolver.
-    param_store = ParamStore()
-    resolver = ParamResolver.from_api(api=api, store=param_store, lang=str(args.lang).strip().lower())
-
-    # Keep a single authenticated ApiClient instance and inject it into the Gateway.
-    gw = BragerOneGateway(api=api, object_id=object_id, modules=modules)
+    gw: BragerOneGateway | None = None
 
     try:
+        await api.ensure_auth(args.email, args.password)
+
+        object_id = args.object_id or (await _prompt_select_object(api))
+        if not object_id:
+            print("Missing object_id — exiting.")
+            return 2
+
+        modules: list[str]
+        if args.modules:
+            # you can provide: --module FOO --module BAR or PYBO_MODULES="FOO,BAR"
+            if isinstance(args.modules, str):
+                modules = [m for m in args.modules.split(",") if m]
+            else:
+                modules = [str(m) for m in args.modules if m]
+        else:
+            modules = await _prompt_select_modules(api, object_id)
+        if not modules:
+            print("No modules selected — exiting.")
+            return 2
+
+        # Runtime ParamStore is storage-only; opt into heavy resolution via ParamResolver.
+        param_store = ParamStore()
+        resolver = ParamResolver.from_api(api=api, store=param_store, lang=str(args.lang).strip().lower())
+
+        # Keep a single authenticated ApiClient instance and inject it into the Gateway.
+        gw = BragerOneGateway(api=api, object_id=object_id, modules=modules)
+
         # Start TUI subscriber BEFORE gateway prime so we don't miss the initial snapshot.
         spawn(
             _run_tui(
@@ -190,24 +194,24 @@ async def run(args: argparse.Namespace) -> int:
             with contextlib.suppress(NotImplementedError):
                 asyncio.get_running_loop().add_signal_handler(sig, stop.set)
 
-        try:
-            await stop.wait()
-        finally:
-            # close gateway only on exit
-            await gw.stop()
-            await api.revoke()
-            log.info("Auth revoked on exit...")
-            # clean up tasks
-            for t in list(bg_tasks):
-                t.cancel()
-            with contextlib.suppress(Exception):
-                await asyncio.gather(*bg_tasks, return_exceptions=True)
-
+        await stop.wait()
+        return 0
     finally:
-        # and here (externally) close HTTP client
-        await api.close()
+        if gw is not None:
+            with contextlib.suppress(Exception):
+                await gw.stop()
 
-    return 0
+        # Best-effort token revoke (keep behavior, but never crash on exit)
+        with contextlib.suppress(Exception):
+            await api.revoke()
+
+        # Clean up background tasks
+        for t in list(bg_tasks):
+            t.cancel()
+        with contextlib.suppress(Exception):
+            await asyncio.gather(*bg_tasks, return_exceptions=True)
+
+        await api.close()
 
 
 def _route_title(route: Any) -> str:
@@ -531,6 +535,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Password (ENV: PYBO_PASSWORD)",
     )
     p.add_argument(
+        "--platform",
+        choices=[p.value for p in Platform],
+        default=os.environ.get("PYBO_PLATFORM", Platform.BRAGERONE.value),
+        help="Backend platform: bragerone or tisconnect (ENV: PYBO_PLATFORM). Default: bragerone",
+    )
+    p.add_argument(
         "--lang",
         default=os.environ.get("PYBO_LANG", "en"),
         help="Language code for asset-driven labels (ENV: PYBO_LANG). Default: en",
@@ -576,6 +586,12 @@ def main() -> None:
 
     try:
         code = asyncio.run(run(args))
+    except ApiError as exc:
+        payload = exc.data
+        body = json.dumps(payload, ensure_ascii=False) if isinstance(payload, (dict, list)) else str(payload)
+        raise SystemExit(f"HTTP {exc.status}: {body}") from None
+    except httpx.RequestError as exc:
+        raise SystemExit(f"Network error: {exc.__class__.__name__}: {exc}") from None
     except KeyboardInterrupt:
         code = 130
     raise SystemExit(code)
