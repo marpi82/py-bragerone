@@ -337,32 +337,20 @@ class ParamResolver:
     def _mapping_primary_address(mapping: Any, *, symbol: str | None = None) -> tuple[str, str, int] | None:
         """Best-effort extraction of (pool, chan, idx) from a mapping object."""
 
-        def _collect(node: Any, acc: list[tuple[str, str | None, int]]) -> None:
-            if isinstance(node, dict):
-                pool = node.get("group") if "group" in node else node.get("pool")
-                num_raw = node.get("number") if "number" in node else node.get("index")
-                use = node.get("use") or node.get("path") or node.get("pathType")
-                if isinstance(pool, str) and isinstance(num_raw, int):
-                    acc.append((pool, str(use) if isinstance(use, str) else None, num_raw))
-                for val in node.values():
-                    _collect(val, acc)
-            elif isinstance(node, list):
-                for item in node:
-                    _collect(item, acc)
-
-        candidates: list[tuple[str, str | None, int]] = []
-        if isinstance(mapping, dict):
-            _collect(mapping, candidates)
-
-        if not candidates:
-            if symbol:
-                match_param = _PARAM_POOL_RE.match(symbol)
-                if match_param:
-                    return f"P{match_param.group('pool')}", "v", int(match_param.group("idx"))
-                match_status = _STATUS_POOL_RE.match(symbol)
-                if match_status:
-                    return f"P{match_status.group('pool')}", "s", int(match_status.group("idx"))
+        def _normalize_pool(pool: str | int) -> str | None:
+            if isinstance(pool, int):
+                return f"P{pool}"
+            if isinstance(pool, str) and pool.strip():
+                return pool.strip()
             return None
+
+        def _normalize_idx(idx: int | str) -> int | None:
+            if isinstance(idx, int):
+                return idx
+            try:
+                return int(idx)
+            except (TypeError, ValueError):
+                return None
 
         def _chan_from_use(use: str | None) -> str:
             if not use:
@@ -384,6 +372,40 @@ class ParamResolver:
             if u.startswith("[t."):
                 return "s"
             return u[0]
+
+        def _collect(node: Any, acc: list[tuple[str, str | None, int]]) -> None:
+            if isinstance(node, dict):
+                pool_raw = node.get("group") if "group" in node else node.get("pool")
+                num_raw = node.get("number") if "number" in node else node.get("index")
+                if num_raw is None:
+                    num_raw = node.get("idx")
+                use = node.get("use") or node.get("path") or node.get("pathType")
+                if use is None:
+                    use = node.get("chan")
+
+                pool = _normalize_pool(pool_raw) if isinstance(pool_raw, (str, int)) else None
+                idx = _normalize_idx(num_raw) if isinstance(num_raw, (int, str)) else None
+                if pool is not None and idx is not None:
+                    acc.append((pool, str(use) if isinstance(use, str) else None, idx))
+                for val in node.values():
+                    _collect(val, acc)
+            elif isinstance(node, list):
+                for item in node:
+                    _collect(item, acc)
+
+        candidates: list[tuple[str, str | None, int]] = []
+        if isinstance(mapping, dict):
+            _collect(mapping, candidates)
+
+        if not candidates:
+            if symbol:
+                match_param = _PARAM_POOL_RE.match(symbol)
+                if match_param:
+                    return f"P{match_param.group('pool')}", "v", int(match_param.group("idx"))
+                match_status = _STATUS_POOL_RE.match(symbol)
+                if match_status:
+                    return f"P{match_status.group('pool')}", "s", int(match_status.group("idx"))
+            return None
 
         normalized = [(pool, _chan_from_use(use), num) for pool, use, num in candidates]
         for preferred in ("v", "s", "u", "x", "n"):
@@ -425,19 +447,22 @@ class ParamResolver:
         for entry in entries:
             group = entry.get("group") or entry.get("pool")
             use_raw = entry.get("use") or entry.get("path") or entry.get("pathType")
+            if use_raw is None:
+                use_raw = entry.get("chan")
             number_raw = entry.get("number") or entry.get("index")
+            if number_raw is None:
+                number_raw = entry.get("idx")
             if not isinstance(group, str) or not isinstance(use_raw, str) or number_raw is None:
                 continue
             try:
                 number = int(number_raw)
             except (TypeError, ValueError):
                 continue
-            use_clean = use_raw.strip()
-            if not use_clean:
+            addr = cls._mapping_primary_address({"group": group, "number": number, "use": use_raw})
+            if addr is None:
                 continue
-            if len(use_clean) > 1:
-                use_clean = use_clean[0]
-            address = f"{group}.{use_clean}{number}"
+            chan = addr[1]
+            address = f"{group}.{chan}{number}"
             formatted_entry: dict[str, Any] = {"address": address, "channel": address}
             bit = entry.get("bit")
             if isinstance(bit, int):

@@ -145,3 +145,41 @@ async def test_resolve_value_computed_reactive_paths_value_rules() -> None:
     second = await resolver.resolve_value("STATUS_P5_13")
     assert second.kind == "computed"
     assert second.value == "e.OFF"
+
+
+@pytest.mark.asyncio
+async def test_resolve_value_direct_from_param_map_pool_chan_idx_shape() -> None:
+    """Direct values resolve when ParamMap uses pool/chan/idx fields.
+
+    This matches the ParamMap shapes produced by LiveAssetsCatalog ParamMap parsing.
+    """
+    store = ParamStore()
+
+    raw = {
+        "group": "P4",
+        "use": {
+            "v": {"pool": "P4", "chan": "v", "idx": 1},
+        },
+    }
+
+    mapping = ParamMap(
+        key="PARAM_66",
+        group="P4",
+        paths={"value": [{"pool": "P4", "chan": "v", "idx": 1}]},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping=mapping)), lang="en")
+
+    await store.upsert_async("P4.v1", 42)
+    value = await resolver.resolve_value("PARAM_66")
+    assert value.kind == "direct"
+    assert value.address == "P4.v1"
+    assert value.value == 42
