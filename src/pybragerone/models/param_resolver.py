@@ -35,7 +35,7 @@ class AssetsProtocol(Protocol):
 
     async def get_param_mapping(self, tokens: Iterable[str]) -> dict[str, ParamMap]:
         """Return ParamMap objects for successfully resolved tokens."""
-        ...
+        raise NotImplementedError
 
     async def get_module_menu(
         self,
@@ -45,31 +45,31 @@ class AssetsProtocol(Protocol):
         debug_mode: bool = False,
     ) -> MenuResult:
         """Return processed module menu tree for the given device_menu."""
-        ...
+        raise NotImplementedError
 
     async def list_symbols_for_permissions(self, device_menu: int, permissions: Iterable[str]) -> set[str]:
         """Return tokens visible for the provided permission set."""
-        ...
+        raise NotImplementedError
 
     async def get_i18n(self, lang: str, namespace: str) -> dict[str, Any]:
         """Return translations for a given language and namespace."""
-        ...
+        raise NotImplementedError
 
     async def list_language_config(self) -> Any:
         """Return upstream translation configuration (or None)."""
-        ...
+        raise NotImplementedError
 
     async def resolve_app_one_field_label(self, *, name_key: str, lang: str) -> str | None:
         """Resolve app.json field label for a key."""
-        ...
+        raise NotImplementedError
 
     async def resolve_app_one_value_label(self, *, name_key: str, value: str, lang: str) -> str | None:
         """Resolve app.json value label for a key/value pair."""
-        ...
+        raise NotImplementedError
 
     async def resolve_app_enum_value_label(self, *, value: str, lang: str) -> str | None:
         """Resolve enum-like app values (e.g. e.ON) to human labels."""
-        ...
+        raise NotImplementedError
 
 
 @dataclass

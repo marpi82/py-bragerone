@@ -31,7 +31,7 @@ class ApiClient(Protocol):
 
     @property
     def access_token(self) -> str:  # noqa: D102
-        ...
+        raise NotImplementedError
 
     async def modules_connect(  # noqa: D102
         self,
@@ -39,16 +39,17 @@ class ApiClient(Protocol):
         modules: list[str],
         group_id: int | None = None,
         engine_sid: str | None = None,
-    ) -> bool: ...
+    ) -> bool:
+        raise NotImplementedError
 
     async def modules_parameters_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:  # noqa: D102
-        ...
+        raise NotImplementedError
 
     async def modules_activity_quantity_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:  # noqa: D102
-        ...
+        raise NotImplementedError
 
     async def close(self) -> None:  # noqa: D102
-        ...
+        raise NotImplementedError
 
 
 class RealtimeManagerClient(Protocol):
@@ -56,31 +57,32 @@ class RealtimeManagerClient(Protocol):
 
     @property
     def group_id(self) -> int | None:  # noqa: D102
-        ...
+        raise NotImplementedError
 
     @group_id.setter
-    def group_id(self, group_id: int | None) -> None: ...
+    def group_id(self, group_id: int | None) -> None:
+        raise NotImplementedError
 
     def on_event(self, handler: Any) -> None:  # noqa: D102
-        ...
+        raise NotImplementedError
 
     async def connect(self) -> None:  # noqa: D102
-        ...
+        raise NotImplementedError
 
     async def disconnect(self) -> None:  # noqa: D102
-        ...
+        raise NotImplementedError
 
     def add_on_connected(self, cb: Callable[[], None | Awaitable[None]]) -> None:  # noqa: D102
-        ...
+        raise NotImplementedError
 
     def sid(self) -> str | None:  # noqa: D102
-        ...
+        raise NotImplementedError
 
     def engine_sid(self) -> str | None:  # noqa: D102
-        ...
+        raise NotImplementedError
 
     async def subscribe(self, modules: list[str]) -> None:  # noqa: D102
-        ...
+        raise NotImplementedError
 
 
 class BragerOneGateway:
@@ -203,7 +205,7 @@ class BragerOneGateway:
             raise RuntimeError("RealtimeManager is not initialized")
         ws.on_event(self._ws_dispatch)
         await ws.connect()
-        ws.add_on_connected(lambda: self.resubscribe())  # in case of reconnect
+        ws.add_on_connected(self.resubscribe)  # in case of reconnect
 
         # 3) modules.connect binds the current WS session with modules
         sid_ns = ws.sid()

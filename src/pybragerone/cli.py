@@ -302,10 +302,6 @@ async def _build_watch_groups(
                 out |= symbols
         return out
 
-    def _score_text(text: str, keywords: list[str]) -> int:
-        t = _normalize(text)
-        return sum(1 for k in keywords if k and k in t)
-
     boiler = pick(["boiler"])
     dhw = pick(["dhw"])
     valve = pick(["valve_1"])
