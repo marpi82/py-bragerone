@@ -183,6 +183,26 @@ class TestI18nParser:
         assert await catalog.get_i18n("cz", "units") == {"meter": "m"}
         assert await catalog.get_i18n("de", "params") == {"param1": "Parameter 1"}
 
+    async def test_i18n_namespace_is_case_insensitive(self) -> None:
+        """Ensure i18n namespace lookup works for camelCase bundles like `diodeState.json`."""
+        index_content = """
+        var assets = {
+            "../../resources/languages/pl/diodeState.json": () => d(() => import("./diodeState-H1.js"), []).then(e => e.default)
+        };
+        """
+
+        i18n_files = {
+            "diodeState-H1.js": 'export default { "on": "Włączony", "off_manual": "Wyłączony (ręcznie)" };',
+        }
+
+        client = MockApiClient(index_content, i18n_files)
+        catalog = LiveAssetsCatalog(client)  # type: ignore
+        await catalog.refresh_index("http://example.com/index-main.js")
+
+        # Requesting the namespace in different casings should work.
+        assert await catalog.get_i18n("pl", "diodestate") == {"on": "Włączony", "off_manual": "Wyłączony (ręcznie)"}
+        assert await catalog.get_i18n("pl", "diodeState") == {"on": "Włączony", "off_manual": "Wyłączony (ręcznie)"}
+
     async def test_i18n_unicode_content(self) -> None:
         """Test i18n files with Unicode content."""
         index_content = """
@@ -211,3 +231,44 @@ class TestI18nParser:
         assert "±" in messages["symbols"]
         assert "ąćę" in messages["polish_chars"]
         assert "测试" in messages["unicode_test"]
+
+    async def test_app_one_table_enum_value_labels(self) -> None:
+        """Test resolving enum-like computed values via `app.one.<table>` translations."""
+        index_content = """
+        var assets = {
+            "../../resources/languages/pl/app.json": () => d(() => import("./app-HASH_PL.js"), []).then(e => e.default)
+        };
+        """
+
+        i18n_files = {
+            "app-HASH_PL.js": """export default {
+                one: {
+                    threeWayValveStatus: {
+                        name: "Status zaworu",
+                        disabled: "Nieaktywny",
+                        closingManual: "Zamykanie (ręczne)"
+                    }
+                }
+            };""",
+        }
+
+        client = MockApiClient(index_content, i18n_files)
+        catalog = LiveAssetsCatalog(client)  # type: ignore
+        await catalog.refresh_index("http://example.com/index-main.js")
+
+        assert (
+            await catalog.resolve_app_one_value_label(
+                name_key="app.one.threeWayValveStatus.name",
+                value="e.DISABLED",
+                lang="pl",
+            )
+            == "Nieaktywny"
+        )
+        assert (
+            await catalog.resolve_app_one_value_label(
+                name_key="app.one.threeWayValveStatus.name",
+                value="e.CLOSING_MANUAL",
+                lang="pl",
+            )
+            == "Zamykanie (ręczne)"
+        )

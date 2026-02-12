@@ -23,7 +23,7 @@ from pybragerone.models.api import (
 )
 
 from ..models.token import Token, TokenStore
-from .constants import ONE_BASE
+from .constants import API_BASE, ONE_BASE
 from .endpoints import (
     auth_revoke_url,
     auth_user_url,
@@ -39,6 +39,7 @@ from .endpoints import (
     user_permissions_url,
     user_url,
 )
+from .server import BRAGERONE_SERVER, ServerConfig
 
 LOG = logging.getLogger("pybragerone.api")
 LOG_HTTP = logging.getLogger("pybragerone.http")
@@ -143,6 +144,10 @@ class BragerOneApiClient:
     def __init__(
         self,
         *,
+        server: ServerConfig | None = None,
+        api_base: str = API_BASE,
+        one_base: str = ONE_BASE,
+        io_base: str | None = None,
         token_store: TokenStore | None = None,
         enable_http_trace: bool = False,
         redact_secrets: bool = True,
@@ -155,6 +160,12 @@ class BragerOneApiClient:
         """Initialize the API client.
 
         Args:
+            server: Optional server/platform configuration. If provided, it overrides
+                `api_base`, `one_base`, and `io_base`.
+            api_base: Base URL for the REST API.
+            one_base: Base URL for the web app/assets origin.
+            io_base: Base URL for the Engine.IO/Socket.IO server. When not provided,
+                it is derived from `api_base`.
             token_store: Optional token storage for persistence.
             enable_http_trace: Whether to enable HTTP request/response tracing.
             redact_secrets: Whether to redact sensitive information in logs.
@@ -165,6 +176,15 @@ class BragerOneApiClient:
             concurrency: Maximum number of concurrent requests.
         """
         self._session: httpx.AsyncClient | None = None
+
+        effective_server = server or BRAGERONE_SERVER
+        self._api_base = effective_server.api_base if server is not None else api_base.rstrip("/")
+        self._one_base = effective_server.one_base if server is not None else one_base.rstrip("/")
+        self._container = effective_server.container if server is not None else "BragerOne"
+        if server is not None:
+            self._io_base = effective_server.io_base.rstrip("/")
+        else:
+            self._io_base = (io_base or self._api_base.rsplit("/", 1)[0]).rstrip("/")
 
         self._enable_http_trace = enable_http_trace
         self._redact_secrets = redact_secrets
@@ -217,7 +237,7 @@ class BragerOneApiClient:
             return self._session
 
         # Configure default headers
-        headers = {"Origin": ONE_BASE, "Referer": f"{ONE_BASE}/"}
+        headers = {"Origin": self._one_base, "Referer": f"{self._one_base}/"}
 
         # Configure timeout
         timeout = httpx.Timeout(self._timeout)
@@ -346,7 +366,11 @@ class BragerOneApiClient:
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", system_version_url(), auth=False)
+        status, data, _ = await self._req(
+            "GET",
+            system_version_url(api_base=self._api_base, container=self._container),
+            auth=False,
+        )
         if status != 200:
             raise ApiError(status, data)
         if not isinstance(data, dict):
@@ -403,6 +427,35 @@ class BragerOneApiClient:
             # 4) classic login
             return await self._post_login(em, pw)
 
+    @property
+    def access_token(self) -> str:
+        """Get the current access token.
+
+        Returns:
+            Current access token string.
+
+        Raises:
+            RuntimeError: If the client is not authenticated yet.
+        """
+        if self._token is None or not self._token.access_token:
+            raise RuntimeError("ApiClient has no access token; call ensure_auth() first")
+        return self._token.access_token
+
+    @property
+    def api_base(self) -> str:
+        """Base URL for REST API calls."""
+        return self._api_base
+
+    @property
+    def one_base(self) -> str:
+        """Base URL for web app/assets origin."""
+        return self._one_base
+
+    @property
+    def io_base(self) -> str:
+        """Base URL for Engine.IO/Socket.IO server."""
+        return self._io_base
+
     async def _do_login_request(self, email: str, password: str) -> AuthResponse:
         """Execute login request to the authentication endpoint.
 
@@ -418,7 +471,7 @@ class BragerOneApiClient:
         """
         status, data, _ = await self._req(
             "POST",
-            auth_user_url(),
+            auth_user_url(api_base=self._api_base),
             json={"email": email, "password": password},
             auth=False,
         )
@@ -480,7 +533,12 @@ class BragerOneApiClient:
         if not self._token:
             raise ApiError(401, {"message": "No token"}, {})
         try:
-            status, _data, _hdrs = await self._req("GET", user_url(), auth=True, _retry=False)
+            status, _data, _hdrs = await self._req(
+                "GET",
+                user_url(api_base=self._api_base),
+                auth=True,
+                _retry=False,
+            )
             if status == 200:
                 self._validated = True
                 return
@@ -514,7 +572,7 @@ class BragerOneApiClient:
         regardless of server response.
         """
         try:
-            await self._req("POST", auth_revoke_url(), auth=True)
+            await self._req("POST", auth_revoke_url(api_base=self._api_base), auth=True)
         except ApiError as e:
             if e.status not in (401, 403, 404):
                 raise
@@ -540,7 +598,7 @@ class BragerOneApiClient:
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", user_url())
+        status, data, _ = await self._req("GET", user_url(api_base=self._api_base))
         if status != 200:
             raise ApiError(status, data)
         if not isinstance(data, dict):
@@ -558,7 +616,7 @@ class BragerOneApiClient:
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", user_permissions_url())
+        status, data, _ = await self._req("GET", user_permissions_url(api_base=self._api_base))
         if status != 200:
             raise ApiError(status, data)
         # API returns {"permissions": [...]} format
@@ -578,7 +636,7 @@ class BragerOneApiClient:
         Returns:
             List of BragerObject models.
         """
-        st, data, _ = await self._req("GET", objects_url())
+        st, data, _ = await self._req("GET", objects_url(api_base=self._api_base))
         if st != 200:
             return []
 
@@ -606,7 +664,7 @@ class BragerOneApiClient:
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", object_url(object_id))
+        status, data, _ = await self._req("GET", object_url(object_id, api_base=self._api_base))
         if status != 200:
             raise ApiError(status, data)
         if not isinstance(data, dict):
@@ -625,7 +683,7 @@ class BragerOneApiClient:
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", object_permissions_url(object_id))
+        status, data, _ = await self._req("GET", object_permissions_url(object_id, api_base=self._api_base))
         if status != 200:
             raise ApiError(status, data)
         # API returns {"permissions": [...]} format
@@ -648,7 +706,7 @@ class BragerOneApiClient:
         Returns:
             List of Module models.
         """
-        st, data, _ = await self._req("GET", modules_url(object_id))
+        st, data, _ = await self._req("GET", modules_url(object_id, api_base=self._api_base))
         if st != 200:
             return []
 
@@ -674,7 +732,7 @@ class BragerOneApiClient:
         Raises:
             ApiError: If the request fails.
         """
-        status, data, _ = await self._req("GET", module_card_url(code))
+        status, data, _ = await self._req("GET", module_card_url(code, api_base=self._api_base))
         if status != 200:
             raise ApiError(status, data)
         if not isinstance(data, dict):
@@ -741,7 +799,12 @@ class BragerOneApiClient:
                 uniq.append(c)
 
         for body in uniq:
-            status, data, _ = await self._req("POST", modules_connect_url(), json=body, headers=headers)
+            status, data, _ = await self._req(
+                "POST",
+                modules_connect_url(api_base=self._api_base),
+                json=body,
+                headers=headers,
+            )
             LOG.debug("modules.connect try %s → %s %s", body, status, data if isinstance(data, dict) else "")
             if status in (200, 204):
                 self._connect_variant = body
@@ -759,7 +822,7 @@ class BragerOneApiClient:
             Tuple of (status, data) if return_data=True, otherwise boolean success.
         """
         payload = {"modules": modules}
-        status, data, _ = await self._req("POST", modules_parameters_url(), json=payload)
+        status, data, _ = await self._req("POST", modules_parameters_url(api_base=self._api_base), json=payload)
         # log_json_payload(LOG, "prime.modules.parameters", summarize_top_level(data))
         return (status, data) if return_data else (status in (200, 204))
 
@@ -774,7 +837,7 @@ class BragerOneApiClient:
             Tuple of (status, data) if return_data=True, otherwise boolean success.
         """
         payload = {"modules": modules}
-        status, data, _ = await self._req("POST", modules_activity_quantity_url(), json=payload)
+        status, data, _ = await self._req("POST", modules_activity_quantity_url(api_base=self._api_base), json=payload)
         # log_json_payload(LOG, "prime.modules.activity.quantity", summarize_top_level(data))
         return (status, data) if return_data else (status in (200, 204))
 
@@ -789,7 +852,7 @@ class BragerOneApiClient:
         Returns:
             Tuple of (status_code, text_content).
         """
-        status, data, _ = await self._req("GET", f"{ONE_BASE}/{path}")
+        status, data, _ = await self._req("GET", f"{self._one_base}/{path.lstrip('/')}")
         return (status, data) if isinstance(data, str) else (status, "")
 
     async def fetch_json_one(self, path: str) -> tuple[int, dict[str, Any] | list[Any] | None]:

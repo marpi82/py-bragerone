@@ -11,8 +11,9 @@ Getting Started
 
 **pybragerone** is an alpha-stage Python library for integrating with **BragerOne**.
 It provides an async REST client, a Socket.IO realtime client, an internal event bus,
-and **ParamStore** (with optional rich metadata via LiveAssetsCatalog) so you can
-build efficient automations and a clean Home Assistant integration.
+and a runtime-light **ParamStore** plus an optional asset-driven **ParamResolver**
+(via LiveAssetsCatalog) so you can build efficient automations and a clean Home
+Assistant integration.
 
 .. seealso::
    - :doc:`../reference/core_components` - Quick patterns cheat sheet
@@ -28,7 +29,7 @@ Highlights
   ``app:modules:parameters:listen`` and ``app:modules:activity:quantity:listen``.
 - **EventBus**: in-process async fan-out of structured updates.
 - **ParamStore**: lightweight key→value view (e.g. ``"P4.v1" -> 20.5``) for runtime.
-  - Optional: ``init_with_api()`` enables rich metadata (i18n labels, units, enums) via LiveAssetsCatalog.
+- **ParamResolver**: optional asset-driven resolution (i18n labels, units/enums, menu grouping, computed STATUS).
 - **Online asset parsers**: i18n translations, parameter mappings, ``module.menu`` features.
 - **CLI**: quick diagnostics, raw WS debug, and snapshot prime helpers.
 - **HA-ready**: designed so HA runtime relies on ParamStore; config flow uses asset catalog.
@@ -38,63 +39,27 @@ Architecture
 
 The library consists of several key components working together:
 
-.. graphviz::
+.. code-block:: text
 
-   digraph architecture {
-       rankdir=TB;
-       node [shape=record, style=filled];
+   BragerOne Cloud
+   - REST API (/v1/*) -----------------------> BragerOneApiClient (httpx)
+   - WebSocket (/socket.io) ---------------> RealtimeManager (Socket.IO)
+                         |
+                         v
+                    BragerOneGateway (orchestration)
+                         |
+                         v
+                     EventBus (pub/sub)
+                         |
+                         v
+                     ParamStore (key→value)
 
-       // Cloud services
-       subgraph cluster_cloud {
-           label="BragerOne Cloud";
-           style=filled;
-           fillcolor=lightblue;
+   Metadata (config flow only)
+  BragerOneApiClient -> LiveAssetsCatalog -> ParamResolver -> ParamStore (labels/units/enums)
 
-           REST [label="REST API\n/v1/*", fillcolor=lightgreen];
-           WS [label="WebSocket\n/socket.io", fillcolor=lightgreen];
-       }
-
-       // pybragerone package
-       subgraph cluster_pybragerone {
-           label="pybragerone Package";
-           style=filled;
-           fillcolor=lightyellow;
-
-           API [label="BragerOneApiClient\n(httpx)", fillcolor=orange];
-           REALTIME [label="RealtimeManager\n(Socket.IO)", fillcolor=orange];
-           GATEWAY [label="BragerOneGateway\n(orchestration)", fillcolor=red];
-           EVENTBUS [label="EventBus\n(pub/sub)", fillcolor=pink];
-           STORE [label="ParamStore\n(key→value)", fillcolor=lightcyan];
-           CATALOG [label="LiveAssetsCatalog\n(metadata)", fillcolor=wheat];
-       }
-
-       // Home Assistant integration
-       subgraph cluster_ha {
-           label="Home Assistant";
-           style=filled;
-           fillcolor=lightgray;
-
-           CONFIG [label="Config Flow\n(uses metadata)", fillcolor=white];
-           RUNTIME [label="Runtime\n(lightweight mode)", fillcolor=white];
-       }
-
-       // Main data flow
-       REST -> API [color=blue];
-       WS -> REALTIME [color=blue];
-       API -> GATEWAY [color=darkgreen];
-       REALTIME -> GATEWAY [color=darkgreen];
-       GATEWAY -> EVENTBUS [color=red];
-       EVENTBUS -> STORE [color=purple];
-
-       // Metadata flow (dashed)
-       API -> CATALOG [style=dashed, color=gray, label="metadata"];
-       CATALOG -> STORE [style=dashed, color=gray, label="labels/units"];
-
-       // HA integration
-       STORE -> CONFIG [color=brown];
-       STORE -> RUNTIME [color=brown];
-       CATALOG -> CONFIG [color=gray];
-   }
+   Home Assistant usage
+  - Config Flow: uses ParamResolver + LiveAssetsCatalog-derived descriptors
+   - Runtime: uses ParamStore (lightweight mode)
 
 .. note::
    **Data Flow:**
@@ -142,34 +107,33 @@ Minimal Example – Lightweight (runtime)
 .. code-block:: python
 
    import asyncio
-   from pybragerone import BragerOneApiClient, BragerOneGateway
+   from pybragerone import BragerOneGateway
    from pybragerone.models.param import ParamStore
 
    async def main() -> None:
-       # Gateway handles API client internally
-       gw = BragerOneGateway(
-           email="you@example.com",
-           password="secret",
-           object_id=12345,  # Your object ID
-           modules=["ABC123", "DEF456"]  # Your device IDs (devids)
-       )
+     gw = await BragerOneGateway.from_credentials(
+       email="you@example.com",
+       password="secret",
+       object_id=12345,  # Your object ID
+       modules=["ABC123", "DEF456"],  # Your module codes (devids)
+     )
 
-       pstore = ParamStore()
-       asyncio.create_task(pstore.run_with_bus(gw.bus))
+     pstore = ParamStore()
+     asyncio.create_task(pstore.run_with_bus(gw.bus))
 
-       async def printer():
-           async for upd in gw.bus.subscribe():
-               if upd.value is None:
-                   continue
-               key = f"{upd.pool}.{upd.chan}{upd.idx}"
-               print(f"↺ {upd.devid} {key} = {upd.value}")
-       asyncio.create_task(printer())
+     async def printer():
+       async for upd in gw.bus.subscribe():
+         if upd.value is None:
+           continue
+         key = f"{upd.pool}.{upd.chan}{upd.idx}"
+         print(f"↺ {upd.devid} {key} = {upd.value}")
+     asyncio.create_task(printer())
 
-       await gw.start()
-       try:
-           await asyncio.sleep(60)
-       finally:
-           await gw.stop()
+     await gw.start()
+     try:
+       await asyncio.sleep(60)
+     finally:
+       await gw.stop()
 
    if __name__ == "__main__":
        asyncio.run(main())
@@ -181,7 +145,8 @@ Advanced Example – With Rich Metadata (config flow)
 
    import asyncio
    from pybragerone import BragerOneApiClient, BragerOneGateway
-   from pybragerone.models.param import ParamStore
+  from pybragerone.models import ParamResolver
+  from pybragerone.models.param import ParamStore
 
    async def main() -> None:
        # For config flow or when you need i18n/labels/enums
@@ -194,25 +159,19 @@ Advanced Example – With Rich Metadata (config flow)
        devids = [m.devid for m in modules_resp if m.devid]
 
        pstore = ParamStore()
-       pstore.init_with_api(api, lang="pl")  # Enables LiveAssetsCatalog
+      resolver = ParamResolver.from_api(api=api, store=pstore, lang="pl")
 
-       gw = BragerOneGateway(
-           email="you@example.com",
-           password="secret",
-           object_id=object_id,
-           modules=devids
-       )
+       gw = BragerOneGateway(api=api, object_id=object_id, modules=devids)
        asyncio.create_task(pstore.run_with_bus(gw.bus))
 
        await gw.start()
        try:
            # Now you can use rich metadata methods
-           menu = await pstore.get_menu("device123", ["param.edit"])
-           print(f"Available parameters: {len(menu.items)}")
+           menu = await resolver.get_module_menu(device_menu=0, permissions=["param.edit"])
+           print(f"Available routes: {len(menu.routes)}")
 
-           # Get translated label
-           label = await pstore.get_label("device123", "P4", 1, "v")
-           print(f"Label for P4.v1: {label}")
+           desc = await resolver.describe_symbol("PARAM_0")
+           print(f"PARAM_0 → label={desc['label']} unit={desc['unit']} value={desc['value']}")
 
            await asyncio.sleep(60)
        finally:
@@ -244,20 +203,12 @@ Example of flattening parameters (gateway helper)::
 ParamStore Details
 ------------------
 
-**ParamStore** provides two modes of operation:
+**ParamStore** is intentionally runtime-light and focused on storing values.
+When you need asset-driven metadata (menu grouping, i18n labels/units/enums, computed STATUS),
+use **ParamResolver** (config flow / CLI).
 
-- **Lightweight mode** (default):
-  - Simple key→value storage (e.g. ``"P4.v1" -> 20.5``)
-  - Minimal memory footprint
-  - Perfect for HA runtime entities & frequent updates
-
-- **Asset-aware mode** (with ``init_with_api()``):
-  - Connects to LiveAssetsCatalog for rich metadata
-  - Provides i18n labels, units, enums, and visibility rules
-  - Used during HA config flow to build entity descriptors
-  - Methods: ``get_menu()``, ``get_label()``, ``get_unit()``, etc.
-
-Choose lightweight for runtime performance, asset-aware for config/bootstrap when you need metadata.
+- **Runtime**: ParamStore + EventBus subscription (fast, minimal overhead)
+- **Setup / Config Flow**: ParamResolver + LiveAssetsCatalog (metadata, discovery)
 
 Online Asset Parsers
 --------------------
@@ -274,7 +225,7 @@ Home Assistant Integration
 --------------------------
 
 - **Runtime**: subscribe to the EventBus and source states from **ParamStore** (lightweight mode).
-- **Config Flow**: enumerate entities and their metadata via **ParamStore** with ``init_with_api()``
+- **Config Flow**: enumerate entities and their metadata via **ParamResolver**
   (asset-aware mode provides labels, units, enums).
 - **Units mapping**: a helper maps Brager unit codes (or i18n unit text) to HA canonical
   units (e.g. ``°C`` → ``temperature``, ``%`` → ``percentage``).

@@ -69,7 +69,12 @@ pybragerone
 
 **Status:** Alpha | Python 3.13.2+ required
 
-Python library for integrating with **BragerOne** cloud and realtime API.
+Python library for integrating with **BragerOne-compatible** cloud and realtime APIs.
+
+Supported platforms:
+
+- **BragerOne** (default): ``one.brager.pl`` / ``io.brager.pl``
+- **TiSConnect**: ``www.tisconnect.info`` / ``io.tisconnect.info``
 
 Features:
 - Async REST client (httpx, not aiohttp)
@@ -115,6 +120,10 @@ CLI usage
 Run the CLI for guided login and WS session::
 
   pybragerone-cli --email YOU@example.com --password "***"
+
+Select platform (useful for TiSConnect installations)::
+
+   pybragerone-cli --platform tisconnect --email YOU@example.com --password "***"
 
 Examples
 --------
@@ -176,7 +185,12 @@ Subscribing to updates via ``BragerOneGateway`` and printing changes:
            print("Set PYBO_EMAIL, PYBO_PASSWORD, PYBO_OBJECT_ID, PYBO_MODULES")
            return
 
-       gateway = BragerOneGateway(email=email, password=password, object_id=object_id, modules=modules)
+          gateway = await BragerOneGateway.from_credentials(
+                email=email,
+                password=password,
+                object_id=object_id,
+                modules=modules,
+          )
 
        async def monitor() -> None:
            async for ev in gateway.bus.subscribe():
@@ -185,15 +199,17 @@ Subscribing to updates via ``BragerOneGateway`` and printing changes:
                key = f"{ev.pool}.{ev.chan}{ev.idx}"
                print(f"{ev.devid:12} {key:15} = {ev.value}")
 
-       try:
-           await gateway.start()
-           task = asyncio.create_task(monitor())
-           await asyncio.sleep(10)   # demo run
-       finally:
-           task.cancel()
-           with suppress(asyncio.CancelledError):
-               await task
-           await gateway.stop()
+         task: asyncio.Task[None] | None = None
+         try:
+            await gateway.start()
+            task = asyncio.create_task(monitor())
+            await asyncio.sleep(10)   # demo run
+         finally:
+            if task is not None:
+               task.cancel()
+               with suppress(asyncio.CancelledError):
+                  await task
+            await gateway.stop()
 
    if __name__ == "__main__":
        asyncio.run(main())
@@ -221,7 +237,12 @@ Attaching ``ParamStore`` to the EventBus and reading values:
            print("Set PYBO_EMAIL, PYBO_PASSWORD, PYBO_OBJECT_ID, PYBO_MODULES")
            return
 
-       gateway = BragerOneGateway(email=email, password=password, object_id=object_id, modules=modules)
+         gateway = await BragerOneGateway.from_credentials(
+            email=email,
+            password=password,
+            object_id=object_id,
+            modules=modules,
+         )
        store = ParamStore()
 
        task = asyncio.create_task(store.run_with_bus(gateway.bus))

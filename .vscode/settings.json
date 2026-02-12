@@ -33,6 +33,9 @@
   // ─────────────────────────────────────────────────────────────
   // Format on save and apply "fix all" (Ruff will hook into this)
   "editor.formatOnSave": true,
+  // Keep diffs clean: enforce exactly one final newline
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true,
   "editor.codeActionsOnSave": {
     "source.organizeImports": "explicit",
     "source.fixAll": "explicit"

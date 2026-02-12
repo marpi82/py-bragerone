@@ -75,6 +75,9 @@ Complete example: `examples/realtime_updates.py <https://github.com/marpi82/py-b
       export PYBO_OBJECT_ID="12345"
       export PYBO_MODULES="MODULE1,MODULE2"
 
+      # Optional: select backend platform (default: bragerone)
+      export PYBO_PLATFORM="tisconnect"
+
 Step 4: Using ParamStore
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -90,7 +93,7 @@ Complete example: `examples/paramstore_usage.py <https://github.com/marpi82/py-b
    **ParamStore modes:**
 
    - **Lightweight mode** (shown above): Fast key→value storage for runtime
-   - **Asset-aware mode**: Rich metadata with i18n labels/units (use during HA config flow)
+   - **Asset-aware mode**: Rich metadata with i18n labels/units via ``ParamResolver`` (use during HA config flow)
 
    See :doc:`../architecture/overview` for details on when to use each mode.
 
@@ -103,6 +106,9 @@ For quick testing and debugging, use the CLI tool:
 
    # Interactive mode with guided login
    pybragerone-cli --email user@example.com --password "***"
+
+   # Select backend platform (e.g. TiSConnect)
+   pybragerone-cli --platform tisconnect --email user@example.com --password "***"
 
    # Enable debug logging
    pybragerone-cli --email user@example.com --password "***" --debug
@@ -132,23 +138,26 @@ For Home Assistant config flow, you don't need WebSocket:
 .. code-block:: python
 
    # Just REST API is enough
-   async with BragerOneApiClient() as client:
-       await client.login(email, password)
-       objects = await client.get_objects()
-       modules = await client.get_modules(object_id)
+   client = BragerOneApiClient()
+   await client.ensure_auth(email, password)
+   try:
+      objects = await client.get_objects()
+      modules = await client.get_modules(object_id=objects[0].id)
+      devids = [str(m.devid or m.id) for m in modules if (m.devid or m.id) is not None]
 
-       # Enable asset-aware mode for metadata
-       param_store = ParamStore()
-       await param_store.init_with_api(client)
+   # Enable asset-aware resolution for metadata
+   param_store = ParamStore()
+   resolver = ParamResolver.from_api(api=client, store=param_store, lang="en")
 
-       # Fetch initial data
-       params = await client.get_parameters(device_id, module_ids)
-       for event in params:
-           param_store.upsert(event)
+      # Fetch initial data (REST prime)
+      status, payload = await client.modules_parameters_prime(devids, return_data=True)
+      if status in (200, 204) and isinstance(payload, dict):
+         param_store.ingest_prime_payload(payload)
 
-       # Now you have metadata for entity discovery
-       label = param_store.get_label("P4.v1", lang="en")
-       unit = param_store.get_unit("P4.v1")
+      label = await resolver.resolve_label("PARAM_0")
+      print(f"Example label: {label}")
+   finally:
+      await client.close()
 
 **Runtime (Lightweight Mode)**
 
@@ -156,14 +165,16 @@ For runtime, use lightweight mode for best performance:
 
 .. code-block:: python
 
-   param_store = ParamStore()  # No init_with_api()
+   param_store = ParamStore()  # runtime-light (storage-only)
+   asyncio.create_task(param_store.run_with_bus(gateway.bus))
 
    # Subscribe to updates
-   async for event in gateway.event_bus.subscribe():
-       param_store.upsert(event)
+   async for event in gateway.bus.subscribe():
+      pass  # ParamStore is updated by the background task
 
    # Fast access
-   value = param_store.get("P4.v1")
+   fam = param_store.get_family("P4", 1)
+   value = fam.value if fam else None
 
 Troubleshooting
 ---------------

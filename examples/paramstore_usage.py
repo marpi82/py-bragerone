@@ -60,7 +60,7 @@ async def main() -> None:
     # Simple key→value storage, minimal overhead
     # Best for runtime performance
 
-    gateway = BragerOneGateway(
+    gateway = await BragerOneGateway.from_credentials(
         email=email,
         password=password,
         object_id=object_id,

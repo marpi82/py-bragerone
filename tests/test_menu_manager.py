@@ -189,3 +189,76 @@ async def test_catalog_integration() -> None:
 
     debug_info = catalog.get_menu_debug_info(0)
     assert debug_info["raw_routes_count"] == 1
+
+
+@pytest.mark.asyncio()
+async def test_redirect_only_nodes_are_pruned() -> None:
+    """Redirect-only nodes lacking name/path should not break menu parsing."""
+    mock_api = AsyncMock()
+    mock_api.get_bytes.return_value = b"""
+    export default [
+        {
+            path: "/root",
+            name: "root",
+            meta: {
+                displayName: "Root",
+                icon: "a.root",
+                permissionModule: "A.ROOT_PERM"
+            },
+            children: [
+                { redirect: { name: "moved" }, children: [] },
+                { path: "/child", name: "child", children: [] }
+            ]
+        }
+    ];
+    """
+
+    catalog = LiveAssetsCatalog(mock_api)
+
+    from pybragerone.models.catalog import AssetRef
+
+    test_asset = AssetRef(url="https://test.com/menu.js", base="module.menu", hash="test123")
+    catalog._idx.menu_map[0] = "module.menu-test123.js"
+    catalog._idx.assets_by_basename["module.menu"] = [test_asset]
+
+    menu = await catalog.get_module_menu(0, permissions=["ROOT_PERM"])
+
+    assert len(menu.routes) == 1
+    assert menu.routes[0].name == "root"
+    assert len(menu.routes[0].children) == 1
+    assert menu.routes[0].children[0].name == "child"
+
+
+@pytest.mark.asyncio()
+async def test_catalog_integration_fallback_when_no_device_menu_mapping() -> None:
+    """Use generic module.menu when deviceMenu mapping is missing (e.g. device_menu=0)."""
+    mock_api = AsyncMock()
+    mock_api.get_bytes.return_value = b"""
+    export default [
+        {
+            path: \"/test\",
+            name: \"test-route\",
+            meta: {
+                displayName: \"Test Route\",
+                icon: \"a.test\",
+                permissionModule: \"A.TEST_PERM\"
+            },
+            component: \"TestView\",
+            children: []
+        }
+    ];
+    """
+
+    catalog = LiveAssetsCatalog(mock_api)
+
+    from pybragerone.models.catalog import AssetRef
+
+    test_asset = AssetRef(url="https://test.com/menu.js", base="module.menu", hash="test123")
+    catalog._idx.assets_by_basename["module.menu"] = [test_asset]
+    # Intentionally do NOT provide catalog._idx.menu_map[0]
+
+    menu = await catalog.get_module_menu(0, permissions=["TEST_PERM"])
+
+    assert len(menu.routes) == 1
+    assert menu.routes[0].path == "/test"
+    assert menu.asset_url == "https://test.com/menu.js"

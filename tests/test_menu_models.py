@@ -154,6 +154,8 @@ def test_permission_prefix_variations() -> None:
     """Test different permission prefix patterns."""
     test_cases = [
         ("A.DISPLAY_PARAMETER", "DISPLAY_PARAMETER"),
+        ("a.DISPLAY_MENU_DHW", "DISPLAY_MENU_DHW"),
+        ("X.DISPLAY_MENU_PUMPS", "DISPLAY_MENU_PUMPS"),
         ("e.HeaterManagement", "HeaterManagement"),
         ("E.WRITE_ACCESS", "WRITE_ACCESS"),
         ("NO_PREFIX", "NO_PREFIX"),
@@ -178,6 +180,9 @@ def test_parameter_regex_edge_cases() -> None:
         # Standard formats
         ('e(E.READ,"TOKEN1")', "TOKEN1"),
         ("E(A.WRITE,'TOKEN2')", "TOKEN2"),
+        # Multi-character helper identifiers (minifier/build changes)
+        ('helper(E.READ,"TOKEN7")', "TOKEN7"),
+        ("doThing(A.WRITE,'TOKEN8')", "TOKEN8"),
         # With spaces
         ('e(E.READ, "TOKEN3")', "TOKEN3"),
         ("E(A.WRITE, 'TOKEN4')", "TOKEN4"),

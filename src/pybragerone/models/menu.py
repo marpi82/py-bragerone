@@ -24,6 +24,7 @@ class MenuParameter(BaseModel):
     And normalizes permissions by removing detected prefixes:
     - A.DISPLAY_PARAMETER_LEVEL_1 → DISPLAY_PARAMETER_LEVEL_1
     - e.HeaterManagement → HeaterManagement
+    - a.DISPLAY_MENU_DHW → DISPLAY_MENU_DHW
     """
 
     token: str = Field(description="Clean parameter token extracted from parameter expression")
@@ -31,8 +32,17 @@ class MenuParameter(BaseModel):
     raw_parameter: str = Field(..., alias="parameter", description="Original parameter expression")
     raw_permission: str | None = Field(None, alias="permissionModule", description="Original permission with prefix")
 
-    # Regex to extract token from parameter expressions
-    PARAM_REGEX: ClassVar[re.Pattern[str]] = re.compile(r'[A-Za-z]\([^,]*?,\s*[\'"]([^\'"]+)[\'"]\)')
+    # Regex to extract token from parameter expressions.
+    # Build output may rename helper functions; do not rely on single-letter identifiers.
+    PARAM_REGEX: ClassVar[re.Pattern[str]] = re.compile(r"\b[A-Za-z_$][\w$]*\([^,]*?,\s*['\"]([^'\"]+)['\"]\)")
+
+    # Prefixes like "A." / "e." are build artifacts; treat any short leading segment as a prefix.
+    PREFIX_RE: ClassVar[re.Pattern[str]] = re.compile(r"^(?P<prefix>[A-Za-z]{1,3})\.(?P<rest>.+)$")
+
+    @classmethod
+    def _strip_prefix(cls, value: str) -> str:
+        m = cls.PREFIX_RE.match(value)
+        return m.group("rest") if m else value
 
     @model_validator(mode="before")
     @classmethod
@@ -62,12 +72,7 @@ class MenuParameter(BaseModel):
         if "permission" not in result and "permissionModule" in result:
             perm_str = result["permissionModule"]
             if perm_str:
-                # Remove common prefixes
-                for prefix in ["A.", "e.", "E."]:
-                    if perm_str.startswith(prefix):
-                        perm_str = perm_str[len(prefix) :]
-                        break
-                result["permission"] = Permission(name=perm_str)
+                result["permission"] = Permission(name=cls._strip_prefix(str(perm_str)))
             else:
                 result["permission"] = None
 
@@ -83,14 +88,7 @@ class MenuParameter(BaseModel):
         perm_str = str(v)
         if not perm_str:
             return None
-
-        # Remove common prefixes
-        for prefix in ["A.", "e.", "E."]:
-            if perm_str.startswith(prefix):
-                perm_str = perm_str[len(prefix) :]
-                break
-
-        return Permission(name=perm_str)
+        return Permission(name=cls._strip_prefix(perm_str))
 
     @model_validator(mode="after")
     def validate_token_extracted(self) -> MenuParameter:
@@ -151,13 +149,14 @@ class MenuMeta(BaseModel):
     @field_validator("icon", mode="before")
     @classmethod
     def clean_icon(cls, v: Any) -> str | None:
-        """Remove 'a.' prefix from icons."""
+        """Remove build prefix from icons (commonly 'a.')."""
         if v is None:
             return None
 
         icon_str = str(v)
-        if icon_str.startswith("a."):
-            return icon_str[2:]  # Remove 'a.' prefix
+        m = MenuParameter.PREFIX_RE.match(icon_str)
+        if m:
+            return m.group("rest")
         return icon_str
 
     @model_validator(mode="before")
@@ -173,12 +172,7 @@ class MenuMeta(BaseModel):
         if "permission" not in result and "permissionModule" in result:
             perm_str = result["permissionModule"]
             if perm_str:
-                # Remove common prefixes
-                for prefix in ["A.", "e.", "E."]:
-                    if perm_str.startswith(prefix):
-                        perm_str = perm_str[len(prefix) :]
-                        break
-                result["permission"] = Permission(name=perm_str)
+                result["permission"] = Permission(name=MenuParameter._strip_prefix(str(perm_str)))
             else:
                 result["permission"] = None
 

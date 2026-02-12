@@ -53,7 +53,8 @@ Status Bits
    .. code-block:: python
 
       # P5.s40 holds a bitmask
-      status = param_store.get("P5.s40")  # e.g., 0b00001010 = 10
+      status_fam = param_store.get_family("P5", 40)
+      status = status_fam.status_raw if status_fam else 0  # e.g., 0b00001010 = 10
 
       # Check individual bits
       bit_0 = bool(status & (1 << 0))  # False (pump off)
@@ -63,39 +64,6 @@ Status Bits
 Writing Parameters
 ------------------
 
-Number Values
-~~~~~~~~~~~~~
+Parameter write helpers are not part of the public API yet.
 
-.. code-block:: python
-
-   # Write a new value
-   await api_client.set_parameter(
-       device_id=device_id,
-       pool="P4",
-       chan="v",
-       idx=1,
-       value=22.5
-   )
-
-Status Bits
-~~~~~~~~~~~
-
-.. code-block:: python
-
-   # Read-modify-write pattern for bits
-   current = param_store.get("P5.s40")
-
-   # Set bit 3 to True
-   new_value = current | (1 << 3)
-
-   # Set bit 3 to False
-   new_value = current & ~(1 << 3)
-
-   # Write back
-   await api_client.set_parameter(
-       device_id=device_id,
-       pool="P5",
-       chan="s",
-       idx=40,
-       value=new_value
-   )
+For now, treat this library as read-first (prime via REST + deltas via WebSocket) and use it primarily for state sync.

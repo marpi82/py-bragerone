@@ -35,25 +35,27 @@ Quick Example
 
 .. code-block:: python
 
-   from pybragerone.api import BragerOneApiClient
+   import asyncio
+
    from pybragerone.gateway import BragerOneGateway
 
-   # Create API client
-   async with BragerOneApiClient() as client:
-       # Login
-       await client.login("user@example.com", "password")
 
-       # Get devices and modules
-       objects = await client.get_objects()
-       modules = await client.get_modules(objects[0].id)
+   async def main() -> None:
+      gateway = await BragerOneGateway.from_credentials(
+         email="user@example.com",
+         password="password",
+         object_id=12345,
+         modules=["ABC123", "DEF456"],
+      )
+      await gateway.start()
+      try:
+         async for event in gateway.bus.subscribe():
+            print(f"Update: {event.pool}.{event.chan}{event.idx} = {event.value}")
+      finally:
+         await gateway.stop()
 
-       # Start gateway for real-time updates
-       gateway = BragerOneGateway(client)
-       await gateway.start(objects[0].deviceId, [m.id for m in modules])
 
-       # Subscribe to parameter updates
-       async for event in gateway.event_bus.subscribe():
-           print(f"Update: {event.pool}.{event.chan}{event.idx} = {event.value}")
+   asyncio.run(main())
 
 Key Features
 ============
@@ -65,7 +67,7 @@ Key Features
    Socket.IO client with automatic reconnection and event streaming
 
 📊 **ParamStore**
-   Dual-mode storage: lightweight for runtime, asset-aware for discovery
+   Runtime-light storage for live values (use **ParamResolver** for asset-driven discovery/metadata)
 
 🏠 **Home Assistant Ready**
    Designed from the ground up for HA integration patterns

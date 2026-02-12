@@ -1,14 +1,16 @@
-"""Integration test for ParamStore with i18n functionality."""
+"""Integration tests for asset-driven i18n.
 
-from typing import TYPE_CHECKING
+These tests validate that `LiveAssetsCatalog` and `I18nResolver` work together
+to provide language selection and translation/unit lookup.
+"""
+
+from typing import cast
 
 import pytest
 
+from pybragerone.api.client import BragerOneApiClient
 from pybragerone.models.catalog import LiveAssetsCatalog
-from pybragerone.models.param import ParamStore
-
-if TYPE_CHECKING:
-    from pybragerone.api import BragerOneApiClient
+from pybragerone.models.i18n import I18nResolver
 
 
 class MockApiClient:
@@ -16,7 +18,6 @@ class MockApiClient:
 
     def __init__(self) -> None:
         """Initialize the mock API client with test data."""
-        """Initialize mock API client with test data."""
         # Index with language config and i18n assets
         self.index_content = """
         var HL = {
@@ -74,79 +75,68 @@ class MockApiClient:
 
 
 @pytest.mark.asyncio
-class TestParamStoreI18nIntegration:
-    """Test integration between ParamStore and i18n system."""
+class TestI18nIntegration:
+    """Test integration between LiveAssetsCatalog and I18nResolver."""
 
-    async def test_param_store_with_i18n(self) -> None:
-        """Test ParamStore using i18n translations."""
-        client: BragerOneApiClient = MockApiClient()  # type: ignore
+    async def test_i18n_namespaces_fetch(self) -> None:
+        """Fetch i18n namespaces in two languages."""
+        client = cast(BragerOneApiClient, MockApiClient())
 
-        # Create ParamStore with i18n support
-        param_store = ParamStore()
-        param_store.init_with_api(client)
+        catalog = LiveAssetsCatalog(client)
+        await catalog.refresh_index("http://example.com/index-main.js")
 
-        # Initialize assets (normally done by refresh_index)
-        if param_store._assets:
-            await param_store._assets.refresh_index("http://example.com/index-main.js")
-
-        # Add some test parameters
-        param_store.upsert("P4.v1", 23.5)  # Temperature value
-        param_store.upsert("P4.u1", 1)  # Unit code for °C
-        param_store.upsert("P6.v2", 2.8)  # Pressure value
-        param_store.upsert("P6.u2", 2)  # Unit code for bar
+        resolver = I18nResolver(catalog)
 
         # Test Polish translations
-        pl_params = await param_store.get_i18n_parameters(lang="pl")
+        pl_params = await resolver.get_namespace("parameters", lang="pl")
         assert "TEMP_SENSOR_1" in pl_params
         assert pl_params["TEMP_SENSOR_1"] == "Czujnik temperatury 1"
         assert pl_params["PRESSURE_VALVE"] == "Zawór ciśnieniowy"
 
-        pl_units = await param_store.get_i18n_units(lang="pl")
+        pl_units = await resolver.get_namespace("units", lang="pl")
         assert pl_units["1"] == "°C"
         assert pl_units["2"] == "bar"
 
         # Test English translations
-        en_params = await param_store.get_i18n_parameters(lang="en")
+        en_params = await resolver.get_namespace("parameters", lang="en")
         assert en_params["TEMP_SENSOR_1"] == "Temperature sensor 1"
         assert en_params["PRESSURE_VALVE"] == "Pressure valve"
 
-        en_units = await param_store.get_i18n_units(lang="en")
+        en_units = await resolver.get_namespace("units", lang="en")
         assert en_units["1"] == "°C"
         assert en_units["2"] == "bar"
 
-    async def test_param_store_resolve_labels_and_units(self) -> None:
-        """Test resolving parameter labels and units through i18n."""
-        client: BragerOneApiClient = MockApiClient()  # type: ignore
+    async def test_i18n_resolve_label_and_units(self) -> None:
+        """Resolve parameter label and unit values."""
+        client = cast(BragerOneApiClient, MockApiClient())
 
-        param_store = ParamStore()
-        param_store.init_with_api(client)
+        catalog = LiveAssetsCatalog(client)
+        await catalog.refresh_index("http://example.com/index-main.js")
 
-        # Initialize assets
-        if param_store._assets:
-            await param_store._assets.refresh_index("http://example.com/index-main.js")
+        resolver = I18nResolver(catalog)
 
-        # Add parameter with unit
-        param_store.upsert("P4.v1", 25.0)  # Temperature
-        param_store.upsert("P4.u1", 1)  # °C unit code
+        # Should auto-detect Polish as default language
+        default_lang = await resolver.ensure_lang()
+        assert default_lang == "pl"
 
         # Test label resolution
-        label = await param_store.resolve_label("TEMP_SENSOR_1")
+        label = await resolver.resolve_param_label("TEMP_SENSOR_1")
         assert label == "Czujnik temperatury 1"  # Polish default
 
         # Test unit resolution
-        unit = await param_store.resolve_unit(1)  # °C
+        unit = await resolver.resolve_unit(1)  # °C
         assert unit == "°C"
 
-        unit = await param_store.resolve_unit(2)  # bar
+        unit = await resolver.resolve_unit(2)  # bar
         assert unit == "bar"
 
         # Test unknown unit
-        unit = await param_store.resolve_unit(999)
+        unit = await resolver.resolve_unit(999)
         assert unit is None
 
     async def test_language_config_integration(self) -> None:
-        """Test that ParamStore correctly detects available languages."""
-        client: BragerOneApiClient = MockApiClient()  # type: ignore
+        """Test that the catalog correctly detects available languages."""
+        client = cast(BragerOneApiClient, MockApiClient())
 
         # Test through LiveAssetsCatalog directly
         catalog = LiveAssetsCatalog(client)
@@ -164,20 +154,16 @@ class TestParamStoreI18nIntegration:
         assert "en" in lang_ids
 
     async def test_param_store_language_fallback(self) -> None:
-        """Test ParamStore language detection and fallback."""
-        client: BragerOneApiClient = MockApiClient()  # type: ignore
+        """Test default language detection and manual override."""
+        client = cast(BragerOneApiClient, MockApiClient())
 
-        param_store = ParamStore()
-        param_store.init_with_api(client)
+        catalog = LiveAssetsCatalog(client)
+        await catalog.refresh_index("http://example.com/index-main.js")
 
-        # Initialize assets
-        if param_store._assets:
-            await param_store._assets.refresh_index("http://example.com/index-main.js")
+        resolver = I18nResolver(catalog)
 
-        # Should auto-detect Polish as default language
-        default_lang = await param_store._ensure_lang()
-        assert default_lang == "pl"
+        assert await resolver.ensure_lang() == "pl"
 
-        # Test manual language override
-        en_params = await param_store.get_i18n_parameters(lang="en")
+        # Manual language override for a single lookup
+        en_params = await resolver.get_namespace("parameters", lang="en")
         assert en_params["TEMP_SENSOR_1"] == "Temperature sensor 1"

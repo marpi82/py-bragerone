@@ -11,31 +11,37 @@ During config flow, use asset-aware mode to discover entities.
 .. code-block:: python
 
    # 1. Login via REST
-   await api_client.login(email, password)
+   await api_client.ensure_auth(email, password)
 
    # 2. Select object and modules
    objects = await api_client.get_objects()
-   modules = await api_client.get_modules(object_id)
+   object_id = objects[0].id
+   modules_resp = await api_client.get_modules(object_id=object_id)
+   module_ids = [str(m.devid or m.id) for m in modules_resp if (m.devid or m.id) is not None]
 
-   # 3. Enable asset-aware mode
+   # 3. Enable asset-aware resolution
    param_store = ParamStore()
-   await param_store.init_with_api(api_client)
+   resolver = ParamResolver.from_api(api=api_client, store=param_store, lang="en")
 
-   # 4. Fetch initial parameters
-   params = await api_client.get_parameters(device_id, module_ids)
-   for event in params:
-       param_store.upsert(event)
+   # 4. Prime parameters via REST snapshot
+   status, payload = await api_client.modules_parameters_prime(module_ids, return_data=True)
+   if status in (200, 204) and isinstance(payload, dict):
+       param_store.ingest_prime_payload(payload)
 
-   # 5. Build entity descriptors with metadata
-   descriptors = []
-   for key in param_store.keys():
-       descriptor = {
-           "key": key,
-           "label": param_store.get_label(key, lang="en"),
-           "unit": param_store.get_unit(key),
-           "enum_labels": param_store.get_enum_labels(key),
-       }
-       descriptors.append(descriptor)
+      # 5. Build entity descriptors with metadata from assets
+      # Pick module permissions + menu id (deviceMenu) from one module; you can merge across modules if needed.
+      first = modules_resp[0]
+      device_menu = int(first.deviceMenu)
+      permissions = list(getattr(first, "permissions", []) or [])
+      symbols = await resolver.merge_assets_with_permissions(permissions=permissions, device_menu=device_menu)
+
+      descriptors = []
+      for symbol, desc in symbols.items():
+         descriptors.append({
+            "symbol": symbol,
+            "label": desc.get("label"),
+            "unit": desc.get("unit"),
+         })
 
 .. note::
    No WebSocket connection needed during config flow!
@@ -48,28 +54,27 @@ At runtime, use lightweight mode for best performance.
 .. code-block:: python
 
    # 1. Create gateway and lightweight ParamStore
-   gateway = BragerOneGateway(api_client)
-   param_store = ParamStore()  # No init_with_api()
+   gateway = BragerOneGateway(api=api_client, object_id=object_id, modules=module_ids)
+   param_store = ParamStore()  # runtime-light (storage-only)
 
    # 2. Subscribe to updates
    async def handle_updates():
-       async for event in gateway.event_bus.subscribe():
-           param_store.upsert(event)
+       async for event in gateway.bus.subscribe():
+           if event.value is None:
+               continue
+           param_store.upsert(f"{event.pool}.{event.chan}{event.idx}", event.value)
            # Trigger HA entity updates
 
    # 3. Start gateway (connects WS, subscribes, primes)
-   await gateway.start(device_id, module_ids)
+   await gateway.start()
 
 .. important::
    **After WebSocket reconnect:** Always re-fetch parameters via REST!
 
    .. code-block:: python
 
-      # On reconnect
-      await gateway.subscribe(device_id, module_ids)
-      params = await api_client.get_parameters(device_id, module_ids)
-      for event in params:
-          param_store.upsert(event)
+      # On reconnect, the gateway performs modules.connect + subscribe + prime again.
+      # Make sure your ParamStore subscriber is active before starting the gateway.
 
 Entity Naming
 -------------

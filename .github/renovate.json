@@ -2,6 +2,9 @@
   "extends": [
     "config:recommended"
   ],
+  "timezone": "Europe/Warsaw",
+  "dependencyDashboard": true,
+  "prConcurrentLimit": 4,
   "enabledManagers": [
     "pep621"
   ],
@@ -17,8 +20,33 @@
       "matchManagers": [
         "pep621"
       ],
-      "groupName": "python deps (uv)",
-      "groupSlug": "python-uv-deps"
+      "matchDepTypes": [
+        "project.dependencies"
+      ],
+      "groupName": "python runtime deps",
+      "groupSlug": "python-runtime-deps"
+    },
+    {
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchDepTypes": [
+        "project.optional-dependencies",
+        "dependency-groups",
+        "build-system.requires"
+      ],
+      "groupName": "python dev/test/docs deps",
+      "groupSlug": "python-dev-deps"
+    },
+    {
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "automerge": true
     }
   ],
   "labels": [

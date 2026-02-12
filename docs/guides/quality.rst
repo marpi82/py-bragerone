@@ -22,28 +22,9 @@ Our utility functions include testable examples:
 Class Inheritance Diagrams
 ---------------------------
 
-*Note: Requires Graphviz to be installed for diagram generation.*
+This project intentionally avoids Graphviz-only documentation features so the docs build cleanly in minimal environments.
 
-ParamStore and Family Models
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you want to explore class relationships, the most reliable sources are:
 
-.. inheritance-diagram:: pybragerone.models.param.ParamStore pybragerone.models.param.ParamFamilyModel
-   :parts: 1
-
-Token Store Classes
-~~~~~~~~~~~~~~~~~~~
-
-.. inheritance-diagram:: pybragerone.models.token.TokenStore pybragerone.models.token.CLITokenStore pybragerone.models.token.HATokenStore
-   :parts: 1
-
-API Response Models
-~~~~~~~~~~~~~~~~~~~
-
-.. inheritance-diagram:: pybragerone.models.api.auth.AuthResponse pybragerone.models.api.common.ApiResponse
-   :parts: 1
-
-Menu Navigation Models
-~~~~~~~~~~~~~~~~~~~~~~
-
-.. inheritance-diagram:: pybragerone.models.menu.MenuRoute pybragerone.models.menu.MenuResult
-   :parts: 1
+- :doc:`../api/api_reference`
+- The module pages under ``pybragerone.models.*``

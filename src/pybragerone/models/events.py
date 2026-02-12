@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
@@ -80,7 +80,7 @@ class EventBus:
         for q in targets:
             await q.put(upd)
 
-    async def subscribe(self) -> AsyncIterator[ParamUpdate]:
+    async def subscribe(self) -> AsyncGenerator[ParamUpdate]:
         """Subscribe to events.
 
         Returns:

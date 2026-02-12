@@ -10,10 +10,10 @@ Core Principles
 
 - **Prime is mandatory** at startup and after reconnect. WebSocket does **not** provide a snapshot.
 - Runtime is **event-driven** with a **multicast EventBus** (per-subscriber queue, FIFO).
-- **ParamStore** provides two usage modes:
 
-  - **Lightweight mode** (runtime): Simple key→value store, minimal overhead, ignores meta-only events.
-  - **Asset-aware mode** (config): Integration with LiveAssetsCatalog for rich metadata (labels/units/enums).
+- **ParamStore** is runtime-light and stores raw parameter values only.
+- **ParamResolver** (config/CLI) uses LiveAssetsCatalog to resolve rich metadata (labels/units/enums/menu/computed STATUS)
+  without burdening HA runtime.
 
 - Consistent, explicit parameter addressing: ``P<n>.<chan><idx>`` (e.g. ``P4.v1``).
 - Minimal coupling between WS flow and HA entities; HA entities rely on immutable references.
@@ -21,70 +21,20 @@ Core Principles
 High-Level Architecture
 -----------------------
 
-.. graphviz::
+.. code-block:: text
 
-   digraph overview {
-       rankdir=TB;
-       node [shape=box, style=filled];
-
-       // External Services
-       subgraph cluster_external {
-           label="External Services";
-           style=filled;
-           fillcolor="#e1f5fe";
-
-           Backend [label="BragerOne Backend\n(io.brager.pl)", fillcolor="#e1f5fe"];
-       }
-
-       // pybragerone Core
-       subgraph cluster_core {
-           label="pybragerone Core";
-           style=filled;
-           fillcolor="#f3e5f5";
-
-           API [label="BragerOneApiClient\n(httpx)", fillcolor="#f3e5f5"];
-           Gateway [label="BragerOneGateway", fillcolor="#f3e5f5"];
-           Bus [label="EventBus\n(multicast; per-subscriber queues)", fillcolor="#f3e5f5"];
-       }
-
-       // Data Layer
-       subgraph cluster_store {
-           label="Data Layer";
-           style=filled;
-           fillcolor="#e8f5e8";
-
-           ParamStore [label="ParamStore\n(runtime lightweight)\nOR (config asset-aware)", fillcolor="#e8f5e8"];
-           Catalog [label="LiveAssetsCatalog\n(optional; for i18n/metadata)", fillcolor="#e8f5e8"];
-       }
-
-       // Consumers
-       subgraph cluster_consumer {
-           label="Consumers";
-           style=filled;
-           fillcolor="#fff3e0";
-
-           HA [label="Home Assistant Entities\n(binary_sensor, number, ...)", fillcolor="#fff3e0"];
-           Printer [label="Printer\n(optional debug/CLI)", fillcolor="#fff3e0"];
-       }
-
-       // Main data flow
-       API -> Backend [dir=both, label="REST\nprime parameters", color=blue];
-       API -> Gateway [label="WS (socket.io)\nsubscribe", color=darkgreen];
-       Backend -> Gateway [label="WS change events", color=red];
-       Gateway -> Bus [label="publish()", color=purple];
-
-       // Store connections
-       Bus -> ParamStore [color=orange];
-       Bus -> Printer [color=orange];
-
-       // Asset catalog (optional)
-       API -> Catalog [style=dashed, color=gray];
-       Catalog -> ParamStore [style=dashed, color=gray];
-
-       // HA integration
-       ParamStore -> HA [color=brown];
-       Catalog -> HA [style=dashed, color=gray, label="descriptors built\n(config only)"];
-   }
+  Backend platform (BragerOne or TiSConnect)
+    ^    \
+    |     \
+    REST     WS deltas
+    |        \
+   BragerOneApiClient  --->  BragerOneGateway  --->  EventBus  --->  ParamStore (runtime)
+      |                                  \                     \
+      |                                   \                     ---> Printer/CLI (optional)
+      |                                    \
+    +--> LiveAssetsCatalog (config only)  --->  ParamResolver (config/CLI) ---> ParamStore (runtime values)
+                             \
+                            ---> HA entity descriptors (config only)
 
 Data Model & Semantics
 ----------------------
@@ -119,5 +69,5 @@ Event Normalization
   - ``value`` – actual value or ``None`` if not present
   - ``meta`` – everything else (timestamps, ``storable``, averages, ...)
 
-- :class:`ParamStore` in **lightweight mode** ignores events with ``value is None``.
-- :class:`ParamStore` in **asset-aware mode** can process metadata when integrated with LiveAssetsCatalog.
+- :class:`ParamStore` ignores events with ``value is None`` (meta-only frames).
+- Asset-driven metadata and discovery are handled by :class:`ParamResolver` (LiveAssetsCatalog-backed).
