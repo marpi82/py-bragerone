@@ -69,7 +69,12 @@ pybragerone
 
 **Status:** Alpha | Python 3.13.2+ required
 
-Python library for integrating with **BragerOne** cloud and realtime API.
+Python library for integrating with **BragerOne-compatible** cloud and realtime APIs.
+
+Supported platforms:
+
+- **BragerOne** (default): ``one.brager.pl`` / ``io.brager.pl``
+- **TiSConnect**: ``www.tisconnect.info`` / ``io.tisconnect.info``
 
 Features:
 - Async REST client (httpx, not aiohttp)
@@ -115,6 +120,10 @@ CLI usage
 Run the CLI for guided login and WS session::
 
   pybragerone-cli --email YOU@example.com --password "***"
+
+Select platform (useful for TiSConnect installations)::
+
+   pybragerone-cli --platform tisconnect --email YOU@example.com --password "***"
 
 Examples
 --------

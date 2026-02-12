@@ -23,7 +23,7 @@ High-Level Architecture
 
 .. code-block:: text
 
-   BragerOne Backend (io.brager.pl)
+  Backend platform (BragerOne or TiSConnect)
     ^    \
     |     \
     REST     WS deltas

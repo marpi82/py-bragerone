@@ -75,6 +75,9 @@ Complete example: `examples/realtime_updates.py <https://github.com/marpi82/py-b
       export PYBO_OBJECT_ID="12345"
       export PYBO_MODULES="MODULE1,MODULE2"
 
+      # Optional: select backend platform (default: bragerone)
+      export PYBO_PLATFORM="tisconnect"
+
 Step 4: Using ParamStore
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -103,6 +106,9 @@ For quick testing and debugging, use the CLI tool:
 
    # Interactive mode with guided login
    pybragerone-cli --email user@example.com --password "***"
+
+   # Select backend platform (e.g. TiSConnect)
+   pybragerone-cli --platform tisconnect --email user@example.com --password "***"
 
    # Enable debug logging
    pybragerone-cli --email user@example.com --password "***" --debug
