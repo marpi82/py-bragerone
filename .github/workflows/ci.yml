@@ -47,13 +47,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
       - uses: astral-sh/setup-uv@v7
         with:
           version: "latest"
           enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13
 
       - name: Install dependencies
         run: uv sync --locked --group dev --group test --group docs
@@ -85,13 +87,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
       - uses: astral-sh/setup-uv@v7
         with:
           version: "latest"
           enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13
 
       - name: Install dependencies
         run: uv sync --locked --group dev --group test
@@ -117,13 +121,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+
       - uses: astral-sh/setup-uv@v7
         with:
           version: "latest"
           enable-cache: true
-
-      - name: Set up Python ${{ matrix.python }}
-        run: uv python install ${{ matrix.python }}
 
       - name: Install dependencies
         run: uv sync --locked --group test
@@ -139,13 +145,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
       - uses: astral-sh/setup-uv@v7
         with:
           version: "latest"
           enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13
 
       - name: Install dependencies
         run: uv sync --locked --group docs
@@ -170,13 +178,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
       - uses: astral-sh/setup-uv@v7
         with:
           version: "latest"
           enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13
 
       - name: Install dependencies
         run: uv sync --locked --group dev
