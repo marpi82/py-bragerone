@@ -183,3 +183,85 @@ async def test_resolve_value_direct_from_param_map_pool_chan_idx_shape() -> None
     assert value.kind == "direct"
     assert value.address == "P4.v1"
     assert value.value == 42
+
+
+@pytest.mark.asyncio
+async def test_resolve_value_direct_uses_unit_dict_for_value_label() -> None:
+    """Direct values map to labels when unit metadata is an enum dictionary."""
+    store = ParamStore()
+
+    raw = {
+        "group": "P4",
+        "use": {
+            "v": {"pool": "P4", "chan": "v", "idx": 1},
+        },
+    }
+
+    mapping = ParamMap(
+        key="PARAM_66",
+        group="P4",
+        paths={"value": [{"pool": "P4", "chan": "v", "idx": 1}]},
+        component_type=None,
+        units={"0": "Off", "1": "On"},
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping=mapping)), lang="en")
+
+    await store.upsert_async("P4.v1", 1)
+    value = await resolver.resolve_value("PARAM_66")
+
+    assert value.kind == "direct"
+    assert value.value == 1
+    assert value.value_label == "On"
+    assert value.unit == {"0": "Off", "1": "On"}
+
+
+@pytest.mark.asyncio
+async def test_resolve_value_computed_falls_back_to_unit_dict_for_label() -> None:
+    """Computed values use unit dict mapping when assets do not provide labels."""
+    store = ParamStore()
+
+    raw = {
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 1,
+                        "operation": "equalTo",
+                        "value": [{"group": "P5", "number": 0, "use": "s"}],
+                    }
+                ],
+                "then": {"value": 1},
+            }
+        ],
+    }
+
+    mapping = ParamMap(
+        key="STATUS_P5_0",
+        group=None,
+        paths={},
+        component_type=None,
+        units={"0": "Stopped", "1": "Running"},
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping=mapping)), lang="en")
+
+    await store.upsert_async("P5.s0", 1)
+    value = await resolver.resolve_value("STATUS_P5_0")
+
+    assert value.kind == "computed"
+    assert value.value == "1"
+    assert value.value_label == "Running"
+    assert value.unit == {"0": "Stopped", "1": "Running"}

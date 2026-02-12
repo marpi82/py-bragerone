@@ -691,6 +691,53 @@ class ParamResolver:
                     values.append(v)
         return values
 
+    @staticmethod
+    def _unit_mapping_value_label(unit: str | dict[str, str] | None, value: Any) -> str | None:
+        if not isinstance(unit, Mapping) or value is None:
+            return None
+
+        candidates: list[str] = []
+
+        def _add_candidate(candidate: Any) -> None:
+            if candidate is None:
+                return
+            text = str(candidate).strip()
+            if text and text not in candidates:
+                candidates.append(text)
+
+        if isinstance(value, str):
+            stripped = value.strip()
+            _add_candidate(stripped)
+            try:
+                as_int = int(stripped)
+            except (TypeError, ValueError):
+                as_int = None
+            if as_int is not None:
+                _add_candidate(as_int)
+            else:
+                try:
+                    as_float = float(stripped)
+                except (TypeError, ValueError):
+                    as_float = None
+                if as_float is not None and as_float.is_integer():
+                    _add_candidate(int(as_float))
+        elif isinstance(value, bool):
+            _add_candidate(int(value))
+        elif isinstance(value, int):
+            _add_candidate(value)
+        elif isinstance(value, float):
+            _add_candidate(value)
+            if value.is_integer():
+                _add_candidate(int(value))
+        else:
+            _add_candidate(value)
+
+        for key in candidates:
+            mapped = unit.get(key)
+            if isinstance(mapped, str) and mapped.strip():
+                return mapped.strip()
+        return None
+
     async def resolve_value(self, symbol: str) -> ResolvedValue:
         """Resolve a symbol to a unified display value (direct or computed)."""
         mapping = await self.get_param_mapping(symbol)
@@ -721,7 +768,7 @@ class ParamResolver:
                     kind="direct",
                     address=address_key,
                     value=raw_val,
-                    value_label=None,
+                    value_label=self._unit_mapping_value_label(unit, raw_val),
                     unit=unit,
                 )
 
@@ -785,6 +832,9 @@ class ParamResolver:
                             if computed_value_label is not None:
                                 break
 
+            if computed_value_label is None:
+                computed_value_label = self._unit_mapping_value_label(unit, computed_value)
+
             return ResolvedValue(
                 symbol=symbol,
                 kind="computed",
@@ -800,7 +850,14 @@ class ParamResolver:
             if fam is not None:
                 val = fam.get(addr_tuple[1])
 
-        return ResolvedValue(symbol=symbol, kind="direct", address=address_key, value=val, value_label=None, unit=unit)
+        return ResolvedValue(
+            symbol=symbol,
+            kind="direct",
+            address=address_key,
+            value=val,
+            value_label=self._unit_mapping_value_label(unit, val),
+            unit=unit,
+        )
 
     async def get_value(self, symbol: str) -> Any:
         """Convenience wrapper returning only the resolved display value."""
