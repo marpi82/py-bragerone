@@ -90,6 +90,110 @@ class ComputedValueEvaluator:
     def __init__(self, store: ParamStore) -> None:
         """Create an evaluator bound to a ParamStore instance."""
         self._store = store
+        self._context: dict[str, Any] = {}
+
+    def set_context(self, context: Mapping[str, Any] | None) -> None:
+        """Set optional runtime context used by storeGetter-based conditions."""
+        self._context = dict(context) if isinstance(context, Mapping) else {}
+
+    @staticmethod
+    def _coerce_expected(expected: Any) -> Any:
+        if isinstance(expected, str) and expected.strip() == "void 0":
+            return None
+        return expected
+
+    @staticmethod
+    def _regex_from_literal(value: Any) -> re.Pattern[str] | None:
+        if not isinstance(value, str):
+            return None
+        text = value.strip()
+        if len(text) < 2 or not text.startswith("/"):
+            return None
+        last = text.rfind("/")
+        if last <= 0:
+            return None
+        pattern = text[1:last]
+        flags_raw = text[last + 1 :]
+        flags = 0
+        if "i" in flags_raw:
+            flags |= re.IGNORECASE
+        try:
+            return re.compile(pattern, flags)
+        except re.error:
+            return None
+
+    @staticmethod
+    def _render_store_getter(template: str, context: Mapping[str, Any]) -> str:
+        def repl(match: re.Match[str]) -> str:
+            key = match.group(1)
+            value = context.get(key)
+            return "" if value is None else str(value)
+
+        return re.sub(r"\{([^}]+)\}", repl, template)
+
+    def _read_store_getter(self, getter: str) -> Any:
+        resolved = self._render_store_getter(getter, self._context)
+        parts = [part for part in resolved.split(".") if part]
+        if not parts:
+            return None
+
+        current: Any = self._context
+        for part in parts:
+            if isinstance(current, Mapping):
+                if part in current:
+                    current = current[part]
+                    continue
+                try:
+                    int_key = int(part)
+                except ValueError:
+                    int_key = None
+                if int_key is not None and int_key in current:
+                    current = current[int_key]
+                    continue
+                return None
+
+            if isinstance(current, list):
+                try:
+                    idx = int(part)
+                except ValueError:
+                    return None
+                if 0 <= idx < len(current):
+                    current = current[idx]
+                    continue
+                return None
+
+            return None
+
+        return current
+
+    @classmethod
+    def _compare_condition(cls, *, op: str | None, actual: Any, expected: Any) -> bool:
+        if op is None:
+            return False
+
+        expected_norm = cls._coerce_expected(expected)
+
+        if op == "equalTo":
+            return bool(actual == expected_norm)
+        if op == "notEqualTo":
+            return bool(actual != expected_norm)
+        if op == "greaterThan":
+            return actual is not None and expected_norm is not None and actual > expected_norm
+        if op == "greaterThanOrEqualTo":
+            return actual is not None and expected_norm is not None and actual >= expected_norm
+        if op == "lessThan":
+            return actual is not None and expected_norm is not None and actual < expected_norm
+        if op == "lessThanOrEqualTo":
+            return actual is not None and expected_norm is not None and actual <= expected_norm
+
+        if op in {"matches", "notMatches"}:
+            pattern = cls._regex_from_literal(expected_norm)
+            if pattern is None or actual is None:
+                return False
+            matched = bool(pattern.search(str(actual)))
+            return matched if op == "matches" else not matched
+
+        return False
 
     def _read_address_value(self, address: str) -> Any:
         try:
@@ -141,22 +245,17 @@ class ComputedValueEvaluator:
         expected = cond.get("expected")
         op = self._operation_name(cond.get("operation"))
         values = cond.get("value")
-        if not isinstance(values, list) or not values or op is None:
+        if op is None:
             return False
 
-        def _compare(actual: Any) -> bool:
-            if op == "equalTo":
-                return bool(actual == expected)
-            if op == "notEqualTo":
-                return bool(actual != expected)
-            if op == "greaterThan":
-                return actual is not None and expected is not None and actual > expected
-            if op == "greaterThanOrEqualTo":
-                return actual is not None and expected is not None and actual >= expected
-            if op == "lessThan":
-                return actual is not None and expected is not None and actual < expected
-            if op == "lessThanOrEqualTo":
-                return actual is not None and expected is not None and actual <= expected
+        if isinstance(values, Mapping):
+            getter = values.get("storeGetter")
+            if isinstance(getter, str) and getter.strip():
+                actual = self._read_store_getter(getter)
+                return self._compare_condition(op=op, actual=actual, expected=expected)
+            return False
+
+        if not isinstance(values, list) or not values:
             return False
 
         for sel in values:
@@ -186,7 +285,7 @@ class ComputedValueEvaluator:
             else:
                 actual = raw_val
 
-            if _compare(actual):
+            if self._compare_condition(op=op, actual=actual, expected=expected):
                 return True
 
         return False
@@ -254,6 +353,10 @@ class ParamResolver:
         self._cache_mapping: dict[str, ParamMap | None] = {}
         self._cache_menu: dict[MenuCacheKey, MenuResult] = {}
 
+    def set_runtime_context(self, context: Mapping[str, Any] | None) -> None:
+        """Provide optional runtime context for computed symbol evaluation."""
+        self._evaluator.set_context(context)
+
     @classmethod
     def from_api(
         cls,
@@ -302,6 +405,200 @@ class ParamResolver:
         self._cache_menu[cache_key] = result
         return result
 
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        return "".join(ch for ch in value.casefold() if ch.isalnum() or ch.isspace()).strip()
+
+    @staticmethod
+    def _route_title(route: Any) -> str:
+        meta = getattr(route, "meta", None)
+        dn = getattr(meta, "display_name", None) if meta is not None else None
+        if isinstance(dn, str) and dn.strip():
+            return dn.strip()
+        name = getattr(route, "name", None)
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+        path = getattr(route, "path", None)
+        return str(path or "-")
+
+    @classmethod
+    def _route_allowed_in_module_item(cls, route: Any) -> bool:
+        """Return whether route name matches module-item menu namespaces.
+
+        Frontend `moduleItem` builds panel containers from route names under
+        `modules.menu.*` / `companies.modules.menu.*`. Routes prefixed with
+        `routes.` are not rendered as module-item panels.
+        """
+        raw_name = getattr(route, "name", None)
+        if not isinstance(raw_name, str):
+            return False
+
+        name = raw_name.strip().casefold()
+        if not name or ".menu." not in name:
+            return False
+        if name.startswith("routes."):
+            return False
+        return name.startswith("modules.menu.") or name.startswith("companies.modules.menu.")
+
+    @staticmethod
+    def _iter_routes(routes: Iterable[Any]) -> Iterable[Any]:
+        stack = list(routes)[::-1]
+        while stack:
+            cur = stack.pop()
+            yield cur
+            children = getattr(cur, "children", None)
+            if isinstance(children, list):
+                for child in reversed(children):
+                    stack.append(child)
+
+    @staticmethod
+    def _collect_route_symbols(route: Any) -> set[str]:
+        symbols: set[str] = set()
+
+        def add_from_container(container: Any) -> None:
+            if container is None:
+                return
+            for kind in ("read", "write", "status", "special"):
+                items = getattr(container, kind, None)
+                if not isinstance(items, list):
+                    continue
+                for item in items:
+                    tok = getattr(item, "token", None)
+                    if isinstance(tok, str) and tok:
+                        symbols.add(tok)
+
+        meta = getattr(route, "meta", None)
+        if meta is not None:
+            add_from_container(getattr(meta, "parameters", None))
+        add_from_container(getattr(route, "parameters", None))
+        return symbols
+
+    @classmethod
+    def build_panel_groups_from_menu(cls, menu: MenuResult, *, all_panels: bool = False) -> dict[str, list[str]]:
+        """Build route-driven panel groups from a menu tree.
+
+        When ``all_panels`` is enabled, every non-empty route becomes a panel.
+        Otherwise, only the canonical Boiler/DHW/Valve1 groups are returned.
+        """
+        routes_meta: list[tuple[str, str, str, set[str]]] = []
+        for route in cls._iter_routes(menu.routes):
+            if all_panels and not cls._route_allowed_in_module_item(route):
+                continue
+            symbols = cls._collect_route_symbols(route)
+            if symbols:
+                title = cls._route_title(route)
+                name = str(getattr(route, "name", "") or "")
+                path = str(getattr(route, "path", "") or "")
+                routes_meta.append((title, name, path, symbols))
+
+        if all_panels:
+            groups: dict[str, list[str]] = {}
+            taken: set[str] = set()
+            for title, name, path, symbols in routes_meta:
+                base = title or name or path or "Panel"
+                panel_name = base
+                idx = 2
+                while panel_name in taken:
+                    panel_name = f"{base} ({idx})"
+                    idx += 1
+                taken.add(panel_name)
+                groups[panel_name] = sorted(symbols)
+            return groups
+
+        def pick_by_route(route_markers: list[str], *, fallback_title_keywords: list[str]) -> set[str]:
+            markers = {cls._normalize_text(m) for m in route_markers if m}
+            out: set[str] = set()
+            for _title, name, path, symbols in routes_meta:
+                name_norm = cls._normalize_text(name)
+                path_norm = cls._normalize_text(path)
+                if any(marker and marker in (name_norm, path_norm) for marker in markers):
+                    out |= symbols
+
+            if out:
+                return out
+
+            want = [cls._normalize_text(k) for k in fallback_title_keywords]
+            for title, _name, _path, symbols in routes_meta:
+                t = cls._normalize_text(title)
+                if any(w and w in t for w in want):
+                    out |= symbols
+            return out
+
+        boiler = pick_by_route(["modules.menu.boiler", "boiler"], fallback_title_keywords=["boiler"])
+        dhw = pick_by_route(["modules.menu.dhw", "dhw"], fallback_title_keywords=["dhw"])
+        valve = pick_by_route(
+            ["modules.menu.valve1", "valve/1", "valve1"],
+            fallback_title_keywords=["valve_1", "valve1"],
+        )
+        return {
+            "Boiler": sorted(boiler),
+            "DHW": sorted(dhw),
+            "Valve 1": sorted(valve),
+        }
+
+    @classmethod
+    def panel_route_diagnostics_from_menu(cls, menu: MenuResult, *, all_panels: bool = False) -> list[dict[str, Any]]:
+        """Return per-route panel inclusion diagnostics.
+
+        This helper is intended for CLI debugging to explain why specific
+        routes are included/excluded from panel rendering.
+        """
+        diagnostics: list[dict[str, Any]] = []
+        for route in cls._iter_routes(menu.routes):
+            title = cls._route_title(route)
+            name = str(getattr(route, "name", "") or "")
+            path = str(getattr(route, "path", "") or "")
+            symbols = cls._collect_route_symbols(route)
+
+            accepted = True
+            reason = "accepted"
+
+            if all_panels:
+                if not cls._route_allowed_in_module_item(route):
+                    accepted = False
+                    reason = "rejected:not-module-item"
+                elif not symbols:
+                    accepted = False
+                    reason = "rejected:no-symbols"
+            else:
+                if not symbols:
+                    accepted = False
+                    reason = "rejected:no-symbols"
+
+            diagnostics.append(
+                {
+                    "title": title,
+                    "name": name,
+                    "path": path,
+                    "symbol_count": len(symbols),
+                    "accepted": accepted,
+                    "reason": reason,
+                }
+            )
+        return diagnostics
+
+    async def build_panel_groups(
+        self,
+        *,
+        device_menu: int,
+        permissions: Iterable[str] | None = None,
+        all_panels: bool = False,
+    ) -> dict[str, list[str]]:
+        """Build panel groups from module menu for selected permissions."""
+        menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
+        return self.build_panel_groups_from_menu(menu, all_panels=all_panels)
+
+    async def panel_route_diagnostics(
+        self,
+        *,
+        device_menu: int,
+        permissions: Iterable[str] | None = None,
+        all_panels: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Return route diagnostics for panel inclusion filtering."""
+        menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
+        return self.panel_route_diagnostics_from_menu(menu, all_panels=all_panels)
+
     async def resolve_label(self, symbol: str) -> str | None:
         """Resolve a symbol to a human-readable label via i18n assets."""
         return await self._i18n.resolve_param_label(symbol)
@@ -329,7 +626,22 @@ class ParamResolver:
         paths = mapping.paths
         if isinstance(paths, Mapping):
             v = paths.get("value")
-            if isinstance(v, list) and v:
+            if isinstance(v, list) and any(
+                isinstance(entry, Mapping) and any(key in entry for key in ("if", "elseif", "then", "else")) for entry in v
+            ):
+                return True
+        return False
+
+    @staticmethod
+    def _mapping_has_simple_direct_value_path(mapping: ParamMap | None) -> bool:
+        if mapping is None or not isinstance(mapping.paths, Mapping):
+            return False
+        values = mapping.paths.get("value")
+        if not isinstance(values, list) or not values:
+            return False
+
+        for entry in values:
+            if isinstance(entry.get("group"), str) and isinstance(entry.get("number"), int) and isinstance(entry.get("use"), str):
                 return True
         return False
 
@@ -738,6 +1050,230 @@ class ParamResolver:
                 return mapped.strip()
         return None
 
+    @staticmethod
+    def _to_bool_value(value: Any) -> bool | None:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(int(value))
+        if isinstance(value, str):
+            norm = value.strip().casefold()
+            if norm in {"!0", "true", "1"}:
+                return True
+            if norm in {"!1", "false", "0"}:
+                return False
+        return None
+
+    @staticmethod
+    def _eval_status_rule(rule: dict[str, Any], flat_values: Mapping[str, Any]) -> bool:
+        expected = rule.get("expected")
+        operation = str(rule.get("operation") or "")
+        refs = rule.get("value")
+        if not isinstance(refs, list) or not refs:
+            return False
+
+        ref = refs[0]
+        if not isinstance(ref, dict):
+            return False
+
+        group = ref.get("group")
+        use = ref.get("use")
+        number = ref.get("number")
+        if not isinstance(group, str) or not isinstance(use, str) or not isinstance(number, int):
+            return False
+
+        key = f"{group}.{use}{number}"
+        current = flat_values.get(key)
+        expected_norm = None if isinstance(expected, str) and expected.strip() == "void 0" else expected
+
+        if operation == "e.equalTo":
+            return bool(current == expected_norm)
+        if operation == "e.notEqualTo":
+            return bool(current != expected_norm)
+
+        if current is None:
+            return False
+
+        if operation in {"e.matches", "e.notMatches"} and isinstance(expected_norm, str):
+            pattern = ComputedValueEvaluator._regex_from_literal(expected_norm)
+            if pattern is None:
+                return False
+            matched = bool(pattern.search(str(current)))
+            return matched if operation == "e.matches" else not matched
+
+        return False
+
+    @staticmethod
+    def _status_paths_from_raw_status(raw_status: Any) -> list[dict[str, Any]]:
+        status_paths: list[dict[str, Any]] = []
+        if not isinstance(raw_status, Mapping):
+            return status_paths
+
+        for condition, entries in raw_status.items():
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, Mapping):
+                    continue
+                row = dict(entry)
+                row.setdefault("condition", condition)
+                status_paths.append(row)
+        return status_paths
+
+    @classmethod
+    def _select_raw_any_branch(cls, any_rules: Any, flat_values: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        if not isinstance(any_rules, list):
+            return None
+
+        explicit_else: Mapping[str, Any] | None = None
+        for rule in any_rules:
+            if not isinstance(rule, Mapping):
+                continue
+
+            conds = rule.get("if")
+            if conds is None:
+                conds = rule.get("elseif")
+
+            if isinstance(conds, list) and conds:
+                ok = all(isinstance(c, dict) and cls._eval_status_rule(c, flat_values) for c in conds)
+                if ok:
+                    then_val = rule.get("then")
+                    return then_val if isinstance(then_val, Mapping) else None
+
+            if explicit_else is None:
+                else_val = rule.get("else")
+                if isinstance(else_val, Mapping):
+                    explicit_else = else_val
+
+        return explicit_else
+
+    @classmethod
+    def _status_paths_for_visibility(cls, mapping: Mapping[str, Any], flat_values: Mapping[str, Any]) -> list[dict[str, Any]]:
+        paths = mapping.get("paths")
+        if isinstance(paths, Mapping):
+            status_paths_any = paths.get("status")
+            if isinstance(status_paths_any, list):
+                status_paths = [entry for entry in status_paths_any if isinstance(entry, dict)]
+                if status_paths:
+                    return status_paths
+
+        raw = mapping.get("raw")
+        if not isinstance(raw, Mapping):
+            return []
+
+        root_status = cls._status_paths_from_raw_status(raw.get("status"))
+        if root_status:
+            return root_status
+
+        active = cls._select_raw_any_branch(raw.get("any"), flat_values)
+        if isinstance(active, Mapping):
+            branch_status = cls._status_paths_from_raw_status(active.get("status"))
+            if branch_status:
+                return branch_status
+
+        return []
+
+    @classmethod
+    def _status_flag_value(
+        cls,
+        *,
+        status_paths: list[dict[str, Any]],
+        flag_condition: str,
+        flat_values: Mapping[str, Any],
+    ) -> bool | None:
+        explicit_else: bool | None = None
+
+        for status in status_paths:
+            condition = str(status.get("condition") or "")
+            if condition != flag_condition:
+                continue
+
+            group = status.get("group")
+            use = status.get("use")
+            number = status.get("number")
+            bit = status.get("bit")
+            if isinstance(group, str) and isinstance(use, str) and isinstance(number, int) and isinstance(bit, int):
+                key = f"{group}.{use}{number}"
+                raw = flat_values.get(key)
+                if isinstance(raw, int):
+                    return bool((raw >> bit) & 1)
+                return None
+
+            ifs = status.get("if")
+            then_val = cls._to_bool_value(status.get("then"))
+            if (
+                isinstance(ifs, list)
+                and then_val is not None
+                and all(isinstance(rule, dict) and cls._eval_status_rule(rule, flat_values) for rule in ifs)
+            ):
+                return then_val
+
+            if "else" in status:
+                explicit_else = cls._to_bool_value(status.get("else"))
+
+        return explicit_else
+
+    def is_parameter_visible_like_app(
+        self,
+        *,
+        desc: Mapping[str, Any],
+        resolved: Any,
+        flat_values: Mapping[str, Any] | None = None,
+    ) -> bool:
+        """Return bool visibility based on app-like status semantics."""
+        visible, _ = self.parameter_visibility_diagnostics(desc=desc, resolved=resolved, flat_values=flat_values)
+        return visible
+
+    def parameter_visibility_diagnostics(
+        self,
+        *,
+        desc: Mapping[str, Any],
+        resolved: Any,
+        flat_values: Mapping[str, Any] | None = None,
+    ) -> tuple[bool, str]:
+        """Return visibility using the same status semantics as the official app.
+
+        Rules mirrored from frontend filtering:
+        - `status.invisible` / `t.INVISIBLE` must not be true,
+        - when present, `status.device_available` must not be false.
+
+        Notes:
+        - Missing current value does not automatically hide a parameter. Some
+          write/control entries (e.g. command-like params) are visible in UI
+          even without a direct live value.
+        """
+        values = flat_values if flat_values is not None else self._store.flatten()
+
+        mapping = desc.get("mapping")
+        if not isinstance(mapping, Mapping):
+            return True, "visible:no-mapping"
+
+        raw_mapping = mapping.get("raw")
+        if isinstance(raw_mapping, Mapping) and any(key in raw_mapping for key in ("value2", "value3", "value4")):
+            return False, "hidden:composite-component"
+
+        status_paths = self._status_paths_for_visibility(mapping, values)
+        if not status_paths:
+            return True, "visible:no-paths"
+
+        invisible = self._status_flag_value(status_paths=status_paths, flag_condition="[u.INVISIBLE]", flat_values=values)
+        if invisible is None:
+            invisible = self._status_flag_value(status_paths=status_paths, flag_condition="[t.INVISIBLE]", flat_values=values)
+        if invisible is None:
+            invisible = self._status_flag_value(status_paths=status_paths, flag_condition="[r.INVISIBLE]", flat_values=values)
+        if invisible is True:
+            return False, "hidden:invisible"
+
+        device_available = self._status_flag_value(
+            status_paths=status_paths,
+            flag_condition="[o.DEVICE_AVAILABLE]",
+            flat_values=values,
+        )
+        if device_available is False:
+            return False, "hidden:device-unavailable"
+
+        return True, "visible:default"
+
     async def resolve_value(self, symbol: str) -> ResolvedValue:
         """Resolve a symbol to a unified display value (direct or computed)."""
         mapping = await self.get_param_mapping(symbol)
@@ -758,7 +1294,7 @@ class ParamResolver:
             if computed_value is None and isinstance(mapping.paths, Mapping) and mapping.paths:
                 computed_value = self._evaluator.evaluate({"paths": mapping.paths})
 
-            if computed_value is None and addr_tuple is not None:
+            if computed_value is None and addr_tuple is not None and self._mapping_has_simple_direct_value_path(mapping):
                 raw_val = None
                 fam = self._store.get_family(addr_tuple[0], addr_tuple[2])
                 if fam is not None:
@@ -835,10 +1371,12 @@ class ParamResolver:
             if computed_value_label is None:
                 computed_value_label = self._unit_mapping_value_label(unit, computed_value)
 
+            computed_address = address_key if self._mapping_has_simple_direct_value_path(mapping) else None
+
             return ResolvedValue(
                 symbol=symbol,
                 kind="computed",
-                address=address_key,
+                address=computed_address,
                 value=computed_value,
                 value_label=computed_value_label,
                 unit=unit,

@@ -587,10 +587,13 @@ class LiveAssetsCatalog:
 
         try:
             # Look for deviceMenu patterns in Object.assign calls
-            # Pattern: "../../config/router/deviceMenu/N/module.menu.ts":()=>d(()=>import("./module.menu-HASH.js")
+            # Pattern examples:
+            # "../config/router/deviceMenu/N/module.menu.ts":()=>d(()=>import("./module.menu-HASH.js"))
+            # "../../config/router/deviceMenu/N/module.menu.ts":()=>d(()=>import('./module.menu-HASH.js'))
             device_menu_pattern = (
-                r'"\.\.\/\.\.\/config\/router\/deviceMenu\/(\d+)\/module\.menu\.ts":\(\)\=\>d'
-                r'\(\(\)\=\>import\("\./(module\.menu-[A-Za-z0-9_]+)\.js"\)'
+                r"['\"](?:\.\./)+config/router/deviceMenu/(\d+)/module\.menu\.ts['\"]"
+                r"\s*:\s*\(\)\s*=>\s*d\s*\(\s*\(\)\s*=>\s*import\s*\(\s*"
+                r"['\"]\./(module\.menu-[A-Za-z0-9_-]+)\.js['\"]\s*\)"
             )
 
             # Code is bytes (from function parameter), decode to string for regex

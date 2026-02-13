@@ -265,3 +265,123 @@ async def test_resolve_value_computed_falls_back_to_unit_dict_for_label() -> Non
     assert value.value == "1"
     assert value.value_label == "Running"
     assert value.unit == {"0": "Stopped", "1": "Running"}
+
+
+@pytest.mark.asyncio
+async def test_is_parameter_visible_like_app_hides_t_invisible() -> None:
+    """Visibility helper hides params when [t.INVISIBLE] resolves to true."""
+    store = ParamStore()
+
+    mapping = ParamMap(
+        key="PARAM_66",
+        group="P6",
+        paths={
+            "value": [{"group": "P6", "number": 66, "use": "v"}],
+            "status": [
+                {
+                    "if": [
+                        {
+                            "expected": 1,
+                            "operation": "e.equalTo",
+                            "value": [{"group": "P6", "number": 34, "use": "v"}],
+                        }
+                    ],
+                    "then": "!1",
+                    "condition": "[t.INVISIBLE]",
+                },
+                {"else": "!0", "condition": "[t.INVISIBLE]"},
+            ],
+        },
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={
+            "group": "P6",
+            "use": {
+                "v": {"group": "P6", "number": 66, "use": "v"},
+            },
+        },
+    )
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping=mapping)), lang="en")
+
+    await store.upsert_async("P6.v66", 12)
+    await store.upsert_async("P6.v34", 1)
+
+    desc = await resolver.describe_symbol("PARAM_66")
+    resolved = await resolver.resolve_value("PARAM_66")
+    assert resolver.is_parameter_visible_like_app(desc=desc, resolved=resolved, flat_values=store.flatten()) is True
+
+    await store.upsert_async("P6.v34", 0)
+    assert resolver.is_parameter_visible_like_app(desc=desc, resolved=resolved, flat_values=store.flatten()) is False
+
+
+@pytest.mark.asyncio
+async def test_is_parameter_visible_like_app_hides_device_unavailable_status() -> None:
+    """Visibility helper hides status params when [o.DEVICE_AVAILABLE] bit is false."""
+    store = ParamStore()
+
+    mapping = ParamMap(
+        key="STATUS_P5_19",
+        group="P5",
+        paths={
+            "value": [{"group": "P5", "number": 19, "use": "s"}],
+            "status": [{"group": "P5", "number": 19, "use": "s", "bit": 0, "condition": "[o.DEVICE_AVAILABLE]"}],
+        },
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={},
+    )
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping=mapping)), lang="en")
+
+    await store.upsert_async("P5.s19", 1)
+    desc = await resolver.describe_symbol("STATUS_P5_19")
+    resolved = await resolver.resolve_value("STATUS_P5_19")
+    assert resolver.is_parameter_visible_like_app(desc=desc, resolved=resolved, flat_values=store.flatten()) is True
+
+    await store.upsert_async("P5.s19", 0)
+    assert resolver.is_parameter_visible_like_app(desc=desc, resolved=resolved, flat_values=store.flatten()) is False
+
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=desc, resolved=resolved, flat_values=store.flatten())
+    assert visible is False
+    assert reason == "hidden:device-unavailable"
+
+
+@pytest.mark.asyncio
+async def test_is_parameter_visible_like_app_keeps_write_like_without_value() -> None:
+    """Visibility helper keeps command-like params visible even without current value."""
+    store = ParamStore()
+
+    mapping = ParamMap(
+        key="URUCHOMIENIE_KOTLA",
+        group=None,
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={},
+    )
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping=mapping)), lang="en")
+
+    desc = await resolver.describe_symbol("URUCHOMIENIE_KOTLA")
+    resolved = await resolver.resolve_value("URUCHOMIENIE_KOTLA")
+    assert resolved.value is None
+    assert resolver.is_parameter_visible_like_app(desc=desc, resolved=resolved, flat_values=store.flatten()) is True
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=desc, resolved=resolved, flat_values=store.flatten())
+    assert visible is True
+    assert reason.startswith("visible:")
