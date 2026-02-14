@@ -410,16 +410,46 @@ class ParamResolver:
         return "".join(ch for ch in value.casefold() if ch.isalnum() or ch.isspace()).strip()
 
     @staticmethod
-    def _route_title(route: Any) -> str:
+    def _lookup_dotted_path(data: Mapping[str, Any], path: str) -> str | None:
+        if not path:
+            return None
+        cur: Any = data
+        parts = [part for part in path.split(".") if part]
+        if not parts:
+            return None
+        for part in parts:
+            if not isinstance(cur, Mapping):
+                return None
+            cur = cur.get(part)
+        return cur if isinstance(cur, str) and cur.strip() else None
+
+    @classmethod
+    def _route_title(cls, route: Any, *, routes_i18n: Mapping[str, Any] | None = None) -> str:
         meta = getattr(route, "meta", None)
         dn = getattr(meta, "display_name", None) if meta is not None else None
+
+        if isinstance(dn, str) and dn.strip() and isinstance(routes_i18n, Mapping):
+            dn_norm = dn.strip()
+            if dn_norm.startswith("routes."):
+                translation_path = dn_norm[7:]
+                translated = cls._lookup_dotted_path(routes_i18n, translation_path)
+                if translated is not None:
+                    return translated
+
+        if isinstance(routes_i18n, Mapping):
+            route_name = getattr(route, "name", None)
+            if isinstance(route_name, str) and route_name.strip():
+                translated = cls._lookup_dotted_path(routes_i18n, route_name.strip())
+                if translated is not None:
+                    return translated
+
         if isinstance(dn, str) and dn.strip():
             return dn.strip()
-        name = getattr(route, "name", None)
-        if isinstance(name, str) and name.strip():
-            return name.strip()
-        path = getattr(route, "path", None)
-        return str(path or "-")
+        route_name = getattr(route, "name", None)
+        if isinstance(route_name, str) and route_name.strip():
+            return route_name.strip()
+        route_path = getattr(route, "path", None)
+        return str(route_path or "-")
 
     @classmethod
     def _route_allowed_in_module_item(cls, route: Any) -> bool:
@@ -452,6 +482,41 @@ class ParamResolver:
                     stack.append(child)
 
     @staticmethod
+    def _iter_routes_with_ancestors(routes: Iterable[Any]) -> Iterable[tuple[Any, tuple[Any, ...]]]:
+        stack: list[tuple[Any, tuple[Any, ...]]] = [(route, ()) for route in list(routes)[::-1]]
+        while stack:
+            cur, ancestors = stack.pop()
+            yield cur, ancestors
+            children = getattr(cur, "children", None)
+            if isinstance(children, list):
+                next_ancestors = (*ancestors, cur)
+                for child in reversed(children):
+                    stack.append((child, next_ancestors))
+
+    @classmethod
+    def _panel_title_hierarchical(
+        cls,
+        *,
+        route: Any,
+        ancestors: tuple[Any, ...],
+        routes_i18n: Mapping[str, Any] | None,
+    ) -> str:
+        base = cls._route_title(route, routes_i18n=routes_i18n)
+        if not ancestors:
+            return base
+
+        prefix_parts: list[str] = []
+        for parent in ancestors:
+            parent_title = cls._route_title(parent, routes_i18n=routes_i18n).strip()
+            if not parent_title or parent_title == "-":
+                continue
+            prefix_parts.append(parent_title)
+
+        if not prefix_parts:
+            return base
+        return "/".join([*prefix_parts, base])
+
+    @staticmethod
     def _collect_route_symbols(route: Any) -> set[str]:
         symbols: set[str] = set()
 
@@ -474,32 +539,41 @@ class ParamResolver:
         return symbols
 
     @classmethod
-    def build_panel_groups_from_menu(cls, menu: MenuResult, *, all_panels: bool = False) -> dict[str, list[str]]:
+    def build_panel_groups_from_menu(
+        cls,
+        menu: MenuResult,
+        *,
+        all_panels: bool = False,
+        routes_i18n: Mapping[str, Any] | None = None,
+    ) -> dict[str, list[str]]:
         """Build route-driven panel groups from a menu tree.
 
         When ``all_panels`` is enabled, every non-empty route becomes a panel.
         Otherwise, only the canonical Boiler/DHW/Valve1 groups are returned.
         """
-        routes_meta: list[tuple[str, str, str, set[str]]] = []
-        for route in cls._iter_routes(menu.routes):
+        routes_meta: list[tuple[str, str, str, set[str], tuple[Any, ...], Any]] = []
+        for route, ancestors in cls._iter_routes_with_ancestors(menu.routes):
             if all_panels and not cls._route_allowed_in_module_item(route):
                 continue
             symbols = cls._collect_route_symbols(route)
             if symbols:
-                title = cls._route_title(route)
+                title = cls._route_title(route, routes_i18n=routes_i18n)
                 name = str(getattr(route, "name", "") or "")
                 path = str(getattr(route, "path", "") or "")
-                routes_meta.append((title, name, path, symbols))
+                routes_meta.append((title, name, path, symbols, ancestors, route))
 
         if all_panels:
             groups: dict[str, list[str]] = {}
             taken: set[str] = set()
-            for title, name, path, symbols in routes_meta:
-                base = title or name or path or "Panel"
-                panel_name = base
+            for _title, name, path, symbols, ancestors, route in routes_meta:
+                panel_name = cls._panel_title_hierarchical(route=route, ancestors=ancestors, routes_i18n=routes_i18n)
+                if panel_name in taken:
+                    detail_parts = [part for part in (path, name) if part]
+                    if detail_parts:
+                        panel_name = f"{panel_name} [{' | '.join(detail_parts)}]"
                 idx = 2
                 while panel_name in taken:
-                    panel_name = f"{base} ({idx})"
+                    panel_name = f"{panel_name}#{idx}"
                     idx += 1
                 taken.add(panel_name)
                 groups[panel_name] = sorted(symbols)
@@ -508,7 +582,7 @@ class ParamResolver:
         def pick_by_route(route_markers: list[str], *, fallback_title_keywords: list[str]) -> set[str]:
             markers = {cls._normalize_text(m) for m in route_markers if m}
             out: set[str] = set()
-            for _title, name, path, symbols in routes_meta:
+            for _title, name, path, symbols, _ancestors, _route in routes_meta:
                 name_norm = cls._normalize_text(name)
                 path_norm = cls._normalize_text(path)
                 if any(marker and marker in (name_norm, path_norm) for marker in markers):
@@ -518,7 +592,7 @@ class ParamResolver:
                 return out
 
             want = [cls._normalize_text(k) for k in fallback_title_keywords]
-            for title, _name, _path, symbols in routes_meta:
+            for title, _name, _path, symbols, _ancestors, _route in routes_meta:
                 t = cls._normalize_text(title)
                 if any(w and w in t for w in want):
                     out |= symbols
@@ -537,15 +611,22 @@ class ParamResolver:
         }
 
     @classmethod
-    def panel_route_diagnostics_from_menu(cls, menu: MenuResult, *, all_panels: bool = False) -> list[dict[str, Any]]:
+    def panel_route_diagnostics_from_menu(
+        cls,
+        menu: MenuResult,
+        *,
+        all_panels: bool = False,
+        routes_i18n: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """Return per-route panel inclusion diagnostics.
 
         This helper is intended for CLI debugging to explain why specific
         routes are included/excluded from panel rendering.
         """
         diagnostics: list[dict[str, Any]] = []
-        for route in cls._iter_routes(menu.routes):
-            title = cls._route_title(route)
+        for route, ancestors in cls._iter_routes_with_ancestors(menu.routes):
+            title = cls._route_title(route, routes_i18n=routes_i18n)
+            panel_title = cls._panel_title_hierarchical(route=route, ancestors=ancestors, routes_i18n=routes_i18n)
             name = str(getattr(route, "name", "") or "")
             path = str(getattr(route, "path", "") or "")
             symbols = cls._collect_route_symbols(route)
@@ -568,6 +649,7 @@ class ParamResolver:
             diagnostics.append(
                 {
                     "title": title,
+                    "panel_title": panel_title,
                     "name": name,
                     "path": path,
                     "symbol_count": len(symbols),
@@ -586,7 +668,8 @@ class ParamResolver:
     ) -> dict[str, list[str]]:
         """Build panel groups from module menu for selected permissions."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
-        return self.build_panel_groups_from_menu(menu, all_panels=all_panels)
+        routes_i18n = await self._i18n.get_namespace("routes")
+        return self.build_panel_groups_from_menu(menu, all_panels=all_panels, routes_i18n=routes_i18n)
 
     async def panel_route_diagnostics(
         self,
@@ -597,7 +680,8 @@ class ParamResolver:
     ) -> list[dict[str, Any]]:
         """Return route diagnostics for panel inclusion filtering."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
-        return self.panel_route_diagnostics_from_menu(menu, all_panels=all_panels)
+        routes_i18n = await self._i18n.get_namespace("routes")
+        return self.panel_route_diagnostics_from_menu(menu, all_panels=all_panels, routes_i18n=routes_i18n)
 
     async def resolve_label(self, symbol: str) -> str | None:
         """Resolve a symbol to a human-readable label via i18n assets."""
