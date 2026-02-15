@@ -1069,6 +1069,24 @@ class LiveAssetsCatalog:
         if unresolved_now and self._idx.index_bytes:
             t_fallback = time.perf_counter()
             token_raw_maps = await self._get_index_token_raw_maps(self._idx.index_bytes)
+            chunk_token_maps: list[tuple[int, dict[str, dict[str, Any]]]] = []
+            chunk_root_objects: list[tuple[int, dict[str, Any]]] = []
+
+            for idx, (start, end) in enumerate(self._idx.inline_param_candidates):
+                if start < 0 or end <= start:
+                    continue
+                chunk = self._idx.index_bytes[start:end]
+                try:
+                    parsed_chunk = self._parse_index_token_raw_maps(chunk)
+                except Exception:
+                    parsed_chunk = {}
+                if parsed_chunk:
+                    chunk_token_maps.append((idx, parsed_chunk))
+
+                root_obj = self._extract_root_object_from_js(chunk)
+                if isinstance(root_obj, dict):
+                    chunk_root_objects.append((idx, root_obj))
+
             for tok in unresolved_now:
                 resolved_pm: ParamMap | None = None
 
@@ -1081,14 +1099,24 @@ class LiveAssetsCatalog:
                         telemetry["index_token_map_hits"] += 1
 
                 if resolved_pm is None:
-                    for idx, (start, end) in enumerate(self._idx.inline_param_candidates):
-                        if start < 0 or end <= start:
+                    for idx, token_map in chunk_token_maps:
+                        raw_map_chunk = token_map.get(tok)
+                        if not isinstance(raw_map_chunk, Mapping):
                             continue
-                        chunk = self._idx.index_bytes[start:end]
                         origin = "inline:index" if idx == 0 else f"inline:index[{idx}]"
-                        pm = self._parse_param_map_from_js(chunk, tok, origin=origin)
-                        if _looks_like_param_map(pm, tok):
-                            resolved_pm = pm
+                        pm_chunk = self._build_param_map_from_obj(dict(raw_map_chunk), tok, origin=origin)
+                        if _looks_like_param_map(pm_chunk, tok):
+                            resolved_pm = pm_chunk
+                            source_by_token[tok] = "index-inline-chunk"
+                            telemetry["index_chunk_hits"] += 1
+                            break
+
+                if resolved_pm is None:
+                    for idx, root_obj in chunk_root_objects:
+                        origin = "inline:index" if idx == 0 else f"inline:index[{idx}]"
+                        pm_chunk_obj = self._build_param_map_from_obj(dict(root_obj), tok, origin=origin)
+                        if _looks_like_param_map(pm_chunk_obj, tok):
+                            resolved_pm = pm_chunk_obj
                             source_by_token[tok] = "index-inline-chunk"
                             telemetry["index_chunk_hits"] += 1
                             break
@@ -1432,17 +1460,26 @@ class LiveAssetsCatalog:
             names (e.g., 'group' or 'pool', 'use' fields or direct 'value'/'unit'/'status').
             The raw parsed object is preserved in the ParamMap's 'raw' attribute.
         """
-        tree = self._ts.parse(code)
-        bindings = _collect_bindings(code, tree.root_node)
-        root = _find_export_root(code, tree.root_node)
-        node = root
-        if node is None:
-            return None
-        obj = _object_to_python(code, node, bindings=bindings)
+        obj = self._extract_root_object_from_js(code)
         if not isinstance(obj, dict):
             return None
 
         return self._build_param_map_from_obj(obj, key, origin)
+
+    def _extract_root_object_from_js(self, code: bytes) -> dict[str, Any] | None:
+        """Extract root exported object from JavaScript bytes.
+
+        Returns a plain Python dictionary when extraction succeeds, otherwise ``None``.
+        """
+        tree = self._ts.parse(code)
+        bindings = _collect_bindings(code, tree.root_node)
+        root = _find_export_root(code, tree.root_node)
+        if root is None:
+            return None
+        obj = _object_to_python(code, root, bindings=bindings)
+        if isinstance(obj, dict):
+            return obj
+        return None
 
     # ---------- Permissions helper ----------
 
