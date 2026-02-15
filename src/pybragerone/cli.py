@@ -13,9 +13,9 @@ import signal
 import threading
 import time
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -38,6 +38,278 @@ class _WatchItem:
     value: Any
     value_label: str | None
     kind: str
+
+
+def _format_event_key_from_parts(pool_raw: Any, chan: Any, idx: Any) -> str:
+    pool = str(pool_raw or "")
+    if pool.isdigit() or (pool and not pool.startswith("P")):
+        pool = f"P{pool}"
+    return f"{pool}.{chan}{idx}"
+
+
+def _format_event_key(upd: Any) -> str:
+    return _format_event_key_from_parts(getattr(upd, "pool", None), getattr(upd, "chan", None), getattr(upd, "idx", None))
+
+
+def _parse_cli_value(raw: str) -> Any:
+    text = raw.strip()
+    if not text:
+        return ""
+
+    lowered = text.lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    if lowered in {"null", "none"}:
+        return None
+
+    try:
+        return int(text)
+    except ValueError:
+        pass
+
+    try:
+        return float(text)
+    except ValueError:
+        pass
+
+    if (text.startswith("{") and text.endswith("}")) or (text.startswith("[") and text.endswith("]")):
+        with contextlib.suppress(Exception):
+            return json.loads(text)
+
+    return text
+
+
+def _invert_value(current: Any) -> Any:
+    if isinstance(current, bool):
+        return not current
+    if isinstance(current, (int, float)):
+        return 0 if int(current) != 0 else 1
+    if isinstance(current, str):
+        val = current.strip().lower()
+        if val in {"on", "true", "1"}:
+            return "OFF"
+        if val in {"off", "false", "0"}:
+            return "ON"
+    return 1
+
+
+def _normalize_expected(value: Any) -> Any:
+    if isinstance(value, str) and value.strip() == "void 0":
+        return None
+    return value
+
+
+def _read_target_actual(target: Mapping[str, Any], flat_values: Mapping[str, Any]) -> Any:
+    address = target.get("address")
+    if not isinstance(address, str) or not address:
+        return None
+    raw_value = flat_values.get(address)
+
+    bit = target.get("bit")
+    if isinstance(bit, int) and isinstance(raw_value, int):
+        return 1 if ((raw_value >> bit) & 1) else 0
+
+    mask = target.get("mask")
+    if isinstance(mask, int) and isinstance(raw_value, int):
+        return raw_value & mask
+
+    return raw_value
+
+
+def _compare_condition(*, operation: str, actual: Any, expected: Any) -> bool:
+    expected_norm = _normalize_expected(expected)
+
+    if operation == "equalTo":
+        return bool(actual == expected_norm)
+    if operation == "notEqualTo":
+        return bool(actual != expected_norm)
+    if operation == "greaterThan":
+        return bool(actual is not None and expected_norm is not None and actual > expected_norm)
+    if operation == "greaterThanOrEqualTo":
+        return bool(actual is not None and expected_norm is not None and actual >= expected_norm)
+    if operation == "lessThan":
+        return bool(actual is not None and expected_norm is not None and actual < expected_norm)
+    if operation == "lessThanOrEqualTo":
+        return bool(actual is not None and expected_norm is not None and actual <= expected_norm)
+    return False
+
+
+def _command_rule_matches(rule: Mapping[str, Any], flat_values: Mapping[str, Any]) -> bool:
+    conditions = rule.get("conditions")
+    if not isinstance(conditions, list) or not conditions:
+        return True
+
+    for cond in conditions:
+        if not isinstance(cond, Mapping):
+            return False
+
+        operation = cond.get("operation")
+        expected = cond.get("expected")
+        targets = cond.get("targets")
+        if not isinstance(operation, str) or not isinstance(targets, list) or not targets:
+            return False
+
+        if not all(
+            _compare_condition(
+                operation=operation,
+                actual=_read_target_actual(target, flat_values),
+                expected=expected,
+            )
+            for target in targets
+            if isinstance(target, Mapping)
+        ):
+            return False
+
+    return True
+
+
+def _select_command_rule(desc: Mapping[str, Any], flat_values: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    mapping = desc.get("mapping")
+    if not isinstance(mapping, Mapping):
+        return None
+    command_rules = mapping.get("command_rules")
+    if not isinstance(command_rules, list):
+        return None
+
+    for rule in command_rules:
+        if isinstance(rule, Mapping) and _command_rule_matches(rule, flat_values):
+            return rule
+    return None
+
+
+async def _store_ingest_loop(gw: BragerOneGateway, store: ParamStore) -> None:
+    async for upd in gw.bus.subscribe():
+        if getattr(upd, "value", None) is None:
+            continue
+        await store.upsert_async(_format_event_key(upd), upd.value)
+
+
+def _mapping_parameter_name(desc: Mapping[str, Any]) -> str | None:
+    mapping = desc.get("mapping")
+    if not isinstance(mapping, Mapping):
+        return None
+    raw = mapping.get("raw")
+    if not isinstance(raw, Mapping):
+        return None
+    name = raw.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return None
+
+
+async def _execute_symbol_write(
+    *,
+    api: BragerOneApiClient,
+    resolver: ParamResolver,
+    store: ParamStore,
+    devid: str,
+    symbol: str,
+    value: Any,
+) -> tuple[bool, str]:
+    desc = await resolver.describe_symbol(symbol)
+
+    pool = desc.get("pool")
+    chan = desc.get("chan")
+    idx = desc.get("idx")
+    if isinstance(pool, str) and isinstance(chan, str) and isinstance(idx, int):
+        parameter = f"{chan}{idx}"
+        result = await api.module_command(
+            devid=devid,
+            pool=pool,
+            parameter=parameter,
+            value=value,
+            parameter_name=_mapping_parameter_name(desc),
+            return_data=True,
+        )
+        status, data = cast(tuple[int, Any], result)
+        return status in (200, 201, 202, 204), f"{symbol} -> command {pool}.{parameter}={value} status={status} data={data}"
+
+    flat_values = store.flatten()
+    rule = _select_command_rule(desc, flat_values)
+    if isinstance(rule, Mapping):
+        command = rule.get("command")
+        if isinstance(command, str) and command.strip():
+            send_value = value if value is not None else rule.get("value")
+            result = await api.module_command_raw(devid=devid, command=command.strip(), value=send_value, return_data=True)
+            status, data = cast(tuple[int, Any], result)
+            return status in (200, 201, 202, 204), f"{symbol} -> raw {command} value={send_value} status={status} data={data}"
+
+    return False, f"{symbol}: unable to determine command route (no address and no command rule match)"
+
+
+async def _run_send_only_actions(
+    *,
+    api: BragerOneApiClient,
+    gw: BragerOneGateway,
+    store: ParamStore,
+    resolver: ParamResolver,
+    module_ids: list[str],
+    set_values: list[str],
+    toggles: list[str],
+) -> int:
+    ingest_task = asyncio.create_task(_store_ingest_loop(gw, store), name="store-ingest")
+    try:
+        await gw.start()
+        await gw.wait_for_prime(timeout=30.0)
+        await asyncio.sleep(0.2)
+
+        devid = module_ids[0]
+        exit_code = 0
+
+        for raw_entry in set_values:
+            if "=" not in raw_entry:
+                print(f"✖ Invalid --set value '{raw_entry}'. Expected SYMBOL=VALUE")
+                exit_code = 2
+                continue
+            symbol, raw_value = raw_entry.split("=", 1)
+            symbol_norm = symbol.strip()
+            if not symbol_norm:
+                print(f"✖ Invalid --set value '{raw_entry}'. Missing symbol")
+                exit_code = 2
+                continue
+
+            ok, message = await _execute_symbol_write(
+                api=api,
+                resolver=resolver,
+                store=store,
+                devid=devid,
+                symbol=symbol_norm,
+                value=_parse_cli_value(raw_value),
+            )
+            print(("✔ " if ok else "✖ ") + message)
+            if not ok:
+                exit_code = 1
+
+        for symbol in toggles:
+            symbol_norm = symbol.strip()
+            if not symbol_norm:
+                continue
+
+            desc = await resolver.describe_symbol(symbol_norm)
+            current_value = desc.get("computed_value")
+            if current_value is None:
+                current_value = desc.get("value")
+            toggle_value = _invert_value(current_value)
+
+            ok, message = await _execute_symbol_write(
+                api=api,
+                resolver=resolver,
+                store=store,
+                devid=devid,
+                symbol=symbol_norm,
+                value=toggle_value,
+            )
+            print(("✔ " if ok else "✖ ") + message)
+            if not ok:
+                exit_code = 1
+
+        return exit_code
+    finally:
+        ingest_task.cancel()
+        with contextlib.suppress(Exception):
+            await ingest_task
 
 
 def _maybe_load_dotenv() -> None:
@@ -169,6 +441,19 @@ async def run(args: argparse.Namespace) -> int:
 
         # Keep a single authenticated ApiClient instance and inject it into the Gateway.
         gw = BragerOneGateway(api=api, object_id=object_id, modules=modules)
+
+        set_values = list(args.set_values or [])
+        toggles = list(args.toggles or [])
+        if set_values or toggles:
+            return await _run_send_only_actions(
+                api=api,
+                gw=gw,
+                store=param_store,
+                resolver=resolver,
+                module_ids=modules,
+                set_values=set_values,
+                toggles=toggles,
+            )
 
         # Start TUI subscriber BEFORE gateway prime so we don't miss the initial snapshot.
         spawn(
@@ -508,16 +793,6 @@ async def _run_tui(
             msg = self.format(record)
             loop.call_soon_threadsafe(_append_log_line, msg)
 
-    def _format_event_key(upd: Any) -> str:
-        pool_raw = getattr(upd, "pool", None)
-        pool = str(pool_raw)
-        if pool.isdigit():
-            pool = f"P{pool}"
-        elif not pool.startswith("P") and pool:
-            # Best-effort: if upstream provides pool without 'P' but not purely numeric.
-            pool = f"P{pool}"
-        return f"{pool}.{upd.chan}{upd.idx}"
-
     async def bus_ingest() -> None:
         async for upd in gw.bus.subscribe():
             if getattr(upd, "value", None) is None:
@@ -811,6 +1086,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--token-labels",
         action="store_true",
         help="Display raw symbol tokens as names in TUI instead of localized labels",
+    )
+    p.add_argument(
+        "--set",
+        dest="set_values",
+        action="append",
+        default=[],
+        help="Send SYMBOL=VALUE update (repeatable). Example: --set PARAM_0=76",
+    )
+    p.add_argument(
+        "--toggle",
+        dest="toggles",
+        action="append",
+        default=[],
+        help="Toggle a symbol using current state/rules (repeatable). Example: --toggle URUCHOMIENIE_KOTLA",
     )
     return p
 
