@@ -169,3 +169,21 @@ def module_card_url(module_id: str, *, api_base: str = API_BASE) -> str:
         URL for GET requests to fetch module card/dashboard data.
     """
     return f"{_base(api_base)}/modules/{quote(module_id)}/card"
+
+
+def module_command_raw_url(*, api_base: str = API_BASE) -> str:
+    """Get URL for raw module command endpoint.
+
+    Returns:
+        URL for POST requests to dispatch symbolic commands to module firmware.
+    """
+    return f"{_base(api_base)}/module/command/raw"
+
+
+def module_command_url(*, api_base: str = API_BASE) -> str:
+    """Get URL for module command endpoint.
+
+    Returns:
+        URL for POST requests to write parameter-like command payloads.
+    """
+    return f"{_base(api_base)}/module/command"

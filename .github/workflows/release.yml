@@ -17,7 +17,6 @@ jobs:
       github.event.workflow_run.head_repository.fork == false &&
       github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
       id-token: write
@@ -52,9 +51,6 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
-
-      - name: Set up Python environment
-        run: uv python install 3.13
 
       - name: Install dependencies
         run: uv sync --locked --group dev

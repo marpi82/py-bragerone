@@ -278,6 +278,26 @@ class BragerOneGateway:
         okp, oka = await self._prime_with_retry()
         LOG.debug("prime after resubscribe: parameters=%s activity=%s", okp, oka)
 
+    async def wait_for_prime(self, timeout: float | None = None) -> bool:
+        """Wait until the latest prime pass is finished.
+
+        Args:
+            timeout: Optional timeout in seconds. When ``None``, waits indefinitely.
+
+        Returns:
+            ``True`` if prime completion event was observed, ``False`` on timeout.
+        """
+        if self._prime_done.is_set():
+            return True
+        try:
+            if timeout is None:
+                await self._prime_done.wait()
+            else:
+                await asyncio.wait_for(self._prime_done.wait(), timeout=timeout)
+            return True
+        except TimeoutError:
+            return False
+
     # ------------------------- PRIME & ingest -------------------------
 
     async def _prime(self) -> tuple[bool, bool]:
@@ -327,7 +347,7 @@ class BragerOneGateway:
 
     async def ingest_prime_parameters(self, data: dict[str, Any]) -> None:
         """Treat /modules/parameters prime as "cold snapshot" and publish all pairs."""
-        pairs = list(self.flatten_parameters(data))
+        pairs = list(self.flatten_parameters(data, source="prime"))
 
         async def _pub_all() -> None:
             for upd in pairs:
@@ -361,7 +381,7 @@ class BragerOneGateway:
 
         # snapshot
         if event_name == "snapshot" and isinstance(payload, dict):
-            pairs = list(self.flatten_parameters(payload))
+            pairs = list(self.flatten_parameters(payload, source="snapshot"))
 
             async def _pub_all() -> None:
                 for upd in pairs:
@@ -378,7 +398,7 @@ class BragerOneGateway:
 
         # parameters:change
         if event_name.endswith("parameters:change") and isinstance(payload, dict):
-            pairs = list(self.flatten_parameters(payload))
+            pairs = list(self.flatten_parameters(payload, source="ws"))
 
             async def _pub_all() -> None:
                 for upd in pairs:
@@ -394,7 +414,7 @@ class BragerOneGateway:
 
     # ------------------------- Helpers -------------------------
 
-    def flatten_parameters(self, payload: dict[str, Any]) -> list[ParamUpdate]:
+    def flatten_parameters(self, payload: dict[str, Any], *, source: str = "unknown") -> list[ParamUpdate]:
         """Convert WS/REST parameter payload into ParamUpdate events."""
         out: list[ParamUpdate] = []
         for devid, pools in payload.items():
@@ -419,6 +439,7 @@ class BragerOneGateway:
                         meta = {k: v for k, v in body.items() if k != "value"}
                     else:
                         val = body
+                    meta["_source"] = source
                     out.append(
                         ParamUpdate(
                             devid=str(devid),

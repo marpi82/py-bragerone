@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .api.common import Permission
 
@@ -31,6 +31,8 @@ class MenuParameter(BaseModel):
     permission: Permission | None = Field(None, description="Required permission (prefix-normalized)")
     raw_parameter: str = Field(..., alias="parameter", description="Original parameter expression")
     raw_permission: str | None = Field(None, alias="permissionModule", description="Original permission with prefix")
+
+    model_config = ConfigDict(extra="allow")
 
     # Regex to extract token from parameter expressions.
     # Build output may rename helper functions; do not rely on single-letter identifiers.
@@ -139,6 +141,7 @@ class MenuMeta(BaseModel):
     display_name: str = Field(..., alias="displayName")
     icon: str | None = None
     permission: Permission | None = None
+    is_visible_on_side_menu: bool | None = Field(None, alias="isVisibleOnSideMenu")
     parameters: MenuParameters = Field(default_factory=MenuParameters)
     display_dropdown: str | None = Field(None, alias="displayDropdown")
 

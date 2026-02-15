@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -240,6 +241,90 @@ def _string_value(text: str) -> str:
     return text
 
 
+def _split_top_level_csv(raw: str) -> list[str]:
+    parts: list[str] = []
+    cur: list[str] = []
+    depth = 0
+    for ch in raw:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(0, depth - 1)
+        if ch == "," and depth == 0:
+            part = "".join(cur).strip()
+            if part:
+                parts.append(part)
+            cur = []
+            continue
+        cur.append(ch)
+    tail = "".join(cur).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _build_factory_callable(source: str, bindings: dict[str, Any] | None = None) -> Any:
+    text = source.strip()
+    match = re.match(
+        r"^\(\s*\{(?P<params>.*)\}\s*\)\s*=>\s*\((?P<body>\{.*\})\)\s*$",
+        text,
+        flags=re.DOTALL,
+    )
+    if match is None:
+        return source
+
+    params_text = match.group("params")
+    body_text = match.group("body")
+
+    param_specs: list[tuple[str, str, str | None]] = []
+    for item in _split_top_level_csv(params_text):
+        if ":" not in item:
+            continue
+        key_part, var_part = item.split(":", 1)
+        src_key = key_part.strip()
+        var_spec = var_part.strip()
+        default_expr: str | None = None
+        if "=" in var_spec:
+            var_name, default_expr_raw = var_spec.split("=", 1)
+            var_spec = var_name.strip()
+            default_expr = default_expr_raw.strip() or None
+        if src_key and var_spec:
+            param_specs.append((src_key, var_spec, default_expr))
+
+    base_bindings = dict(bindings or {})
+
+    def _factory(arg: Any) -> Any:
+        arg_map = arg if isinstance(arg, Mapping) else {}
+        local_bindings = dict(base_bindings)
+        for src_key, var_name, default_expr in param_specs:
+            if src_key in arg_map:
+                local_bindings[var_name] = arg_map.get(src_key)
+                continue
+            if isinstance(default_expr, str) and default_expr:
+                local_bindings[var_name] = local_bindings.get(default_expr, default_expr)
+            else:
+                local_bindings[var_name] = None
+
+        body_src = f"const __factory_obj = {body_text};"
+        tree = _TS().parse(body_src.encode("utf-8"))
+        for statement in tree.root_node.named_children:
+            if statement.type not in {"lexical_declaration", "variable_declaration"}:
+                continue
+            for declarator in statement.named_children:
+                if declarator.type != "variable_declarator":
+                    continue
+                name_node = declarator.child_by_field_name("name")
+                value_node = declarator.child_by_field_name("value")
+                if name_node is None or value_node is None:
+                    continue
+                if _node_text(body_src.encode("utf-8"), name_node).strip() != "__factory_obj":
+                    continue
+                return _node_to_python(body_src.encode("utf-8"), value_node, local_bindings)
+        return None
+
+    return _factory
+
+
 def _walk(node: Node) -> Iterable[Node]:
     """Depth-first traversal of tree-sitter Node tree.
 
@@ -318,6 +403,19 @@ def _node_to_python(code: bytes, node: Node, bindings: dict[str, Any] | None = N
     if t == "array":
         return [_node_to_python(code, child, bindings) for child in node.named_children]
 
+    if t == "parenthesized_expression" and node.named_children:
+        return _node_to_python(code, node.named_children[0], bindings)
+
+    if node.type == "template_string":
+        template = _node_text(code, node)
+        if bindings:
+            template = re.sub(
+                r"\$\{([A-Za-z_$][\w$]*)\}",
+                lambda m: str(bindings.get(m.group(1), m.group(0))),
+                template,
+            )
+        return _string_value(template)
+
     if _is_string(node):
         return _string_value(_node_text(code, node))
 
@@ -339,6 +437,20 @@ def _node_to_python(code: bytes, node: Node, bindings: dict[str, Any] | None = N
         if bindings and name in bindings:
             return bindings[name]
         return name
+
+    if t == "arrow_function":
+        raw_function = _node_text(code, node)
+        return _build_factory_callable(raw_function, bindings)
+
+    if t == "call_expression":
+        func_node = node.child_by_field_name("function")
+        args_node = node.child_by_field_name("arguments")
+        callee = _node_to_python(code, func_node, bindings) if func_node is not None else None
+        if callable(callee) and args_node is not None:
+            args = [_node_to_python(code, child, bindings) for child in args_node.named_children]
+            if len(args) == 1:
+                return callee(args[0])
+            return callee(args)
 
     return _node_text(code, node)
 
@@ -433,6 +545,11 @@ class LiveAssetsCatalog:
         # Cache for language-scoped i18n namespaces (from index-driven mapping)
         self._cache_i18n: dict[tuple[str, str], dict[str, Any]] = {}
         self._i18n_lock = asyncio.Lock()
+        self._units_descriptor_table: dict[str, dict[str, Any]] | None = None
+        self._units_descriptor_lock = asyncio.Lock()
+        self._index_token_raw_maps: dict[str, dict[str, Any]] | None = None
+        self._index_token_raw_maps_sig: tuple[int, bytes, bytes] | None = None
+        self._index_token_raw_maps_lock = asyncio.Lock()
 
         # New menu management system
         self._menu_manager = MenuManager(self._log)
@@ -482,6 +599,9 @@ class LiveAssetsCatalog:
         code = await self._api.get_bytes(index_url)
         self._last_index_url = index_url  # Store for i18n URL construction
         self._idx = self._build_asset_index_from_index_js(index_url, code)
+        self._units_descriptor_table = None
+        self._index_token_raw_maps = None
+        self._index_token_raw_maps_sig = None
         self._log.info(
             "INDEX: assets=%d basenames=%d menus=%d inline_param_candidates=%d",
             sum(len(v) for v in self._idx.assets_by_basename.values()),
@@ -587,10 +707,13 @@ class LiveAssetsCatalog:
 
         try:
             # Look for deviceMenu patterns in Object.assign calls
-            # Pattern: "../../config/router/deviceMenu/N/module.menu.ts":()=>d(()=>import("./module.menu-HASH.js")
+            # Pattern examples:
+            # "../config/router/deviceMenu/N/module.menu.ts":()=>d(()=>import("./module.menu-HASH.js"))
+            # "../../config/router/deviceMenu/N/module.menu.ts":()=>d(()=>import('./module.menu-HASH.js'))
             device_menu_pattern = (
-                r'"\.\.\/\.\.\/config\/router\/deviceMenu\/(\d+)\/module\.menu\.ts":\(\)\=\>d'
-                r'\(\(\)\=\>import\("\./(module\.menu-[A-Za-z0-9_]+)\.js"\)'
+                r"['\"](?:\.\./)+config/router/deviceMenu/(\d+)/module\.menu\.ts['\"]"
+                r"\s*:\s*\(\)\s*=>\s*d\s*\(\s*\(\)\s*=>\s*import\s*\(\s*"
+                r"['\"]\./(module\.menu-[A-Za-z0-9_-]+)\.js['\"]\s*\)"
             )
 
             # Code is bytes (from function parameter), decode to string for regex
@@ -864,6 +987,7 @@ class LiveAssetsCatalog:
              The method performs asset fetching concurrently using asyncio.gather for
              improved performance. Failed fetches are logged but do not raise exceptions.
         """
+        t0_total = time.perf_counter()
         uniq_tokens = list(dict.fromkeys(str(t) for t in tokens if t))
 
         if not self._idx.assets_by_basename:
@@ -880,66 +1004,282 @@ class LiveAssetsCatalog:
                 unresolved.append(tok)
 
         results: dict[str, ParamMap] = {}
+        source_by_token: dict[str, str] = {}
+        telemetry = {
+            "token_count": len(uniq_tokens),
+            "assets_queued": len(file_jobs),
+            "assets_ok": 0,
+            "assets_missing_parse": 0,
+            "assets_failed": 0,
+            "index_token_map_hits": 0,
+            "index_chunk_hits": 0,
+            "index_full_hits": 0,
+            "index_ast_token_hits": 0,
+            "unresolved": 0,
+            "ms_assets": 0.0,
+            "ms_index_fallback": 0.0,
+        }
 
-        async def fetch_and_parse(tok: str, a: AssetRef) -> None:
+        async def fetch_and_parse(tok: str, a: AssetRef) -> tuple[str, ParamMap | None, str | None]:
             try:
                 code = await self._api.get_bytes(a.url)
                 pm = self._parse_param_map_from_js(code, tok, origin=f"asset:{a.url}")
                 if pm:
-                    results[tok] = pm
-                else:
-                    self._log.debug("PARAM MAP not found in asset (export not object?): %s", a.url)
+                    return tok, pm, None
+                self._log.debug("PARAM MAP not found in asset (export not object?): %s", a.url)
+                return tok, None, None
             except Exception as e:
                 self._log.warning("Param asset fetch failed %s: %s", a.url, e)
+                return tok, None, str(e)
 
-        await asyncio.gather(*(fetch_and_parse(tok, a) for tok, a in file_jobs), return_exceptions=False)
+        t_assets = time.perf_counter()
+        asset_rows = await asyncio.gather(*(fetch_and_parse(tok, a) for tok, a in file_jobs), return_exceptions=False)
+        telemetry["ms_assets"] = (time.perf_counter() - t_assets) * 1000.0
 
-        # 2) inline fallback — only if index has exactly 1 candidate and 1 unresolved token
-        if unresolved and len(unresolved) == 1 and len(self._idx.inline_param_candidates) == 1:
-            tok = unresolved[0]
-            start, end = self._idx.inline_param_candidates[0]
-            chunk = self._idx.index_bytes[start:end]
-            pm = self._parse_param_map_from_js(chunk, tok, origin="inline:index")
-            if pm:
+        for tok, pm, err in asset_rows:
+            if pm is not None:
                 results[tok] = pm
+                source_by_token[tok] = "asset"
+                telemetry["assets_ok"] += 1
+            elif err is not None:
+                telemetry["assets_failed"] += 1
             else:
-                self._log.debug("Inline param candidate didn't parse as expected for %s", tok)
+                telemetry["assets_missing_parse"] += 1
+
+        # 2) inline/index fallback for unresolved tokens
+        def _looks_like_param_map(pm: ParamMap | None, token: str) -> bool:
+            if pm is None:
+                return False
+            if pm.group is not None:
+                return True
+            if pm.units is not None:
+                return True
+            if any(pm.paths.get(name) for name in ("value", "unit", "status", "command", "min", "max")):
+                return True
+            raw = pm.raw
+            if isinstance(raw, Mapping):
+                if any(name in raw for name in ("name", "group", "pool", "use", "value", "unit", "units", "componentType")):
+                    return True
+                nested = raw.get(token)
+                if isinstance(nested, Mapping):
+                    return True
+            return False
+
+        unresolved_now = [tok for tok in unresolved if tok not in results]
+        if unresolved_now and self._idx.index_bytes:
+            t_fallback = time.perf_counter()
+            token_raw_maps = await self._get_index_token_raw_maps(self._idx.index_bytes)
+            chunk_token_maps: list[tuple[int, dict[str, dict[str, Any]]]] = []
+            chunk_root_objects: list[tuple[int, dict[str, Any]]] = []
+            full_root_obj = self._extract_root_object_from_js(self._idx.index_bytes)
+            standard_token_name_re = re.compile(r"^[A-Z][A-Z0-9_]+$")
+
+            for idx, (start, end) in enumerate(self._idx.inline_param_candidates):
+                if start < 0 or end <= start:
+                    continue
+                chunk = self._idx.index_bytes[start:end]
+                try:
+                    parsed_chunk = self._parse_index_token_raw_maps(chunk)
+                except Exception:
+                    parsed_chunk = {}
+                if parsed_chunk:
+                    chunk_token_maps.append((idx, parsed_chunk))
+
+                root_obj = self._extract_root_object_from_js(chunk)
+                if isinstance(root_obj, dict):
+                    chunk_root_objects.append((idx, root_obj))
+
+            for tok in unresolved_now:
+                resolved_pm: ParamMap | None = None
+
+                raw_map = token_raw_maps.get(tok)
+                if isinstance(raw_map, Mapping):
+                    pm_cached = self._build_param_map_from_obj(dict(raw_map), tok, origin="inline:index-token")
+                    if _looks_like_param_map(pm_cached, tok):
+                        resolved_pm = pm_cached
+                        source_by_token[tok] = "index-token-map"
+                        telemetry["index_token_map_hits"] += 1
+
+                if resolved_pm is None:
+                    for idx, token_map in chunk_token_maps:
+                        raw_map_chunk = token_map.get(tok)
+                        if not isinstance(raw_map_chunk, Mapping):
+                            continue
+                        origin = "inline:index" if idx == 0 else f"inline:index[{idx}]"
+                        pm_chunk = self._build_param_map_from_obj(dict(raw_map_chunk), tok, origin=origin)
+                        if _looks_like_param_map(pm_chunk, tok):
+                            resolved_pm = pm_chunk
+                            source_by_token[tok] = "index-inline-chunk"
+                            telemetry["index_chunk_hits"] += 1
+                            break
+
+                if resolved_pm is None:
+                    for idx, root_obj in chunk_root_objects:
+                        origin = "inline:index" if idx == 0 else f"inline:index[{idx}]"
+                        pm_chunk_obj = self._build_param_map_from_obj(dict(root_obj), tok, origin=origin)
+                        if _looks_like_param_map(pm_chunk_obj, tok):
+                            resolved_pm = pm_chunk_obj
+                            source_by_token[tok] = "index-inline-chunk"
+                            telemetry["index_chunk_hits"] += 1
+                            break
+
+                if resolved_pm is None:
+                    pm_full = None
+                    if isinstance(full_root_obj, dict):
+                        pm_full = self._build_param_map_from_obj(dict(full_root_obj), tok, origin="inline:index-full")
+                    if _looks_like_param_map(pm_full, tok):
+                        resolved_pm = pm_full
+                        source_by_token[tok] = "index-full"
+                        telemetry["index_full_hits"] += 1
+
+                # token_raw_maps already covers the common token namespace; keep this expensive
+                # fallback only for non-standard keys to preserve compatibility.
+                if resolved_pm is None and not standard_token_name_re.match(tok):
+                    pm_token = self._parse_param_map_from_index_token(
+                        self._idx.index_bytes,
+                        tok,
+                        origin="inline:index-token",
+                    )
+                    if _looks_like_param_map(pm_token, tok):
+                        resolved_pm = pm_token
+                        source_by_token[tok] = "index-token-ast"
+                        telemetry["index_ast_token_hits"] += 1
+
+                if resolved_pm is not None:
+                    results[tok] = resolved_pm
+                else:
+                    self._log.debug("Index fallback didn't parse expected param map for %s", tok)
+                    source_by_token[tok] = "unresolved"
+                    telemetry["unresolved"] += 1
+
+            telemetry["ms_index_fallback"] = (time.perf_counter() - t_fallback) * 1000.0
+
+        for tok in uniq_tokens:
+            source_by_token.setdefault(tok, "unresolved")
+        telemetry["unresolved"] = sum(1 for src in source_by_token.values() if src == "unresolved")
+
+        total_ms = (time.perf_counter() - t0_total) * 1000.0
 
         self._log.info(
-            "PARAM MAPS: tokens=%d resolved=%d unresolved=%d", len(uniq_tokens), len(results), len(uniq_tokens) - len(results)
+            "PARAM MAPS: tokens=%d resolved=%d unresolved=%d total_ms=%.2f assets_ms=%.2f index_ms=%.2f "
+            "src(asset=%d idx-map=%d idx-chunk=%d idx-full=%d idx-ast=%d)",
+            len(uniq_tokens),
+            len(results),
+            telemetry["unresolved"],
+            total_ms,
+            telemetry["ms_assets"],
+            telemetry["ms_index_fallback"],
+            telemetry["assets_ok"],
+            telemetry["index_token_map_hits"],
+            telemetry["index_chunk_hits"],
+            telemetry["index_full_hits"],
+            telemetry["index_ast_token_hits"],
         )
+
+        self._log.debug(
+            "PARAM MAPS detail: assets_queued=%d assets_failed=%d assets_missing_parse=%d",
+            telemetry["assets_queued"],
+            telemetry["assets_failed"],
+            telemetry["assets_missing_parse"],
+        )
+
+        unresolved_preview = [tok for tok, src in source_by_token.items() if src == "unresolved"][:20]
+        if unresolved_preview:
+            self._log.debug("PARAM MAPS unresolved preview(%d): %s", len(unresolved_preview), unresolved_preview)
+
         return results
 
-    def _parse_param_map_from_js(self, code: bytes, key: str, origin: str) -> ParamMap | None:
-        """Parse a JavaScript file (or index fragment) and extract a parameter map object.
+    @staticmethod
+    def _index_signature(code: bytes) -> tuple[int, bytes, bytes]:
+        head = code[:64]
+        tail = code[-64:] if len(code) > 64 else code
+        return (len(code), head, tail)
 
-        This method analyzes JavaScript code to find and parse an exported object that
-        appears to be a parameter map. It extracts various fields like group, paths,
-        component type, units, limits, and status flags, performing minimal normalization
-        on the data structure.
+    async def _get_index_token_raw_maps(self, code: bytes) -> dict[str, dict[str, Any]]:
+        sig = self._index_signature(code)
 
-        Args:
-            code: The JavaScript source code as bytes to parse.
-            key: A string identifier for this parameter map.
-            origin: A string indicating the source/origin of this parameter map.
+        cached = self._index_token_raw_maps
+        cached_sig = self._index_token_raw_maps_sig
+        if isinstance(cached, dict) and cached_sig == sig:
+            return cached
 
-        Returns:
-            A ParamMap object containing the parsed and normalized parameter data,
-            or None if no valid parameter map could be extracted from the code.
+        async with self._index_token_raw_maps_lock:
+            cached2 = self._index_token_raw_maps
+            cached_sig2 = self._index_token_raw_maps_sig
+            if isinstance(cached2, dict) and cached_sig2 == sig:
+                return cached2
 
-        Note:
-            The method performs minimal normalization by checking for alternative field
-            names (e.g., 'group' or 'pool', 'use' fields or direct 'value'/'unit'/'status').
-            The raw parsed object is preserved in the ParamMap's 'raw' attribute.
+            parsed = self._parse_index_token_raw_maps(code)
+            self._index_token_raw_maps = parsed
+            self._index_token_raw_maps_sig = sig
+            return parsed
+
+    def _parse_index_token_raw_maps(self, code: bytes) -> dict[str, dict[str, Any]]:
+        try:
+            tree = self._ts.parse(code)
+            bindings = _collect_bindings(code, tree.root_node)
+        except Exception:
+            return {}
+
+        out: dict[str, dict[str, Any]] = {}
+        token_name_re = re.compile(r"^[A-Z][A-Z0-9_]+$")
+
+        for node in _walk(tree.root_node):
+            if node.type != "pair":
+                continue
+            key_node = node.child_by_field_name("key")
+            value_node = node.child_by_field_name("value")
+            if key_node is None or value_node is None:
+                continue
+
+            raw_key = _node_text(code, key_node)
+            key_text = _string_value(raw_key) if _is_string(key_node) else raw_key
+            if not token_name_re.match(key_text):
+                continue
+
+            value = _node_to_python(code, value_node, bindings)
+            if isinstance(value, Mapping):
+                out[key_text] = dict(value)
+
+        return out
+
+    def _parse_param_map_from_index_token(self, code: bytes, key: str, origin: str) -> ParamMap | None:
+        """Parse a single token mapping directly from index AST by key lookup.
+
+        This handles bundles where token definitions are nested in large objects and
+        may use shorthand factory calls (e.g. ``STATUS_P5_10: eE({...})``).
         """
-        tree = self._ts.parse(code)
-        root = _find_export_root(code, tree.root_node)
-        node = root
-        if node is None:
+        try:
+            tree = self._ts.parse(code)
+            bindings = _collect_bindings(code, tree.root_node)
+        except Exception:
             return None
-        obj = _object_to_python(code, node)
-        if not isinstance(obj, dict):
-            return None
+
+        for node in _walk(tree.root_node):
+            if node.type != "pair":
+                continue
+            key_node = node.child_by_field_name("key")
+            value_node = node.child_by_field_name("value")
+            if key_node is None or value_node is None:
+                continue
+
+            raw_key = _node_text(code, key_node)
+            key_text = _string_value(raw_key) if _is_string(key_node) else raw_key
+            if key_text != key:
+                continue
+
+            resolved_value = _node_to_python(code, value_node, bindings)
+            if isinstance(resolved_value, Mapping):
+                parsed = self._build_param_map_from_obj(dict(resolved_value), key, origin=origin)
+                if parsed is not None:
+                    return parsed
+
+        return None
+
+    def _build_param_map_from_obj(self, obj: dict[str, Any], key: str, origin: str) -> ParamMap | None:
+        candidate_for_key = obj.get(key)
+        if isinstance(candidate_for_key, Mapping):
+            obj = dict(candidate_for_key)
 
         group = obj.get("group") or obj.get("pool")
 
@@ -1053,7 +1393,8 @@ class LiveAssetsCatalog:
             return normalized
 
         value_paths = _ensure_mapping_list(obj.get("value"))
-        unit_paths = _ensure_mapping_list(obj.get("unit"))
+        unit_field = obj.get("unit")
+        unit_paths = _ensure_mapping_list(unit_field)
         command_paths = _ensure_mapping_list(obj.get("command"))
         min_paths = _ensure_mapping_list(obj.get("minValue") or obj.get("min"))
         max_paths = _ensure_mapping_list(obj.get("maxValue") or obj.get("max"))
@@ -1081,7 +1422,11 @@ class LiveAssetsCatalog:
             "max": max_paths,
         }
         component = obj.get("componentType")
-        units_raw = obj.get("units") or obj.get("unit_name") or None
+        units_raw: Any = obj.get("units")
+        if units_raw is None:
+            units_raw = obj.get("unit_name")
+        if units_raw is None and isinstance(unit_field, (str, int, float)):
+            units_raw = unit_field
         limits = None
         for cand in ("limits", "range", "minmax"):
             if cand in obj and isinstance(obj[cand], dict):
@@ -1102,6 +1447,49 @@ class LiveAssetsCatalog:
             origin=origin,
             raw=obj,
         )
+
+    def _parse_param_map_from_js(self, code: bytes, key: str, origin: str) -> ParamMap | None:
+        """Parse a JavaScript file (or index fragment) and extract a parameter map object.
+
+        This method analyzes JavaScript code to find and parse an exported object that
+        appears to be a parameter map. It extracts various fields like group, paths,
+        component type, units, limits, and status flags, performing minimal normalization
+        on the data structure.
+
+        Args:
+            code: The JavaScript source code as bytes to parse.
+            key: A string identifier for this parameter map.
+            origin: A string indicating the source/origin of this parameter map.
+
+        Returns:
+            A ParamMap object containing the parsed and normalized parameter data,
+            or None if no valid parameter map could be extracted from the code.
+
+        Note:
+            The method performs minimal normalization by checking for alternative field
+            names (e.g., 'group' or 'pool', 'use' fields or direct 'value'/'unit'/'status').
+            The raw parsed object is preserved in the ParamMap's 'raw' attribute.
+        """
+        obj = self._extract_root_object_from_js(code)
+        if not isinstance(obj, dict):
+            return None
+
+        return self._build_param_map_from_obj(obj, key, origin)
+
+    def _extract_root_object_from_js(self, code: bytes) -> dict[str, Any] | None:
+        """Extract root exported object from JavaScript bytes.
+
+        Returns a plain Python dictionary when extraction succeeds, otherwise ``None``.
+        """
+        tree = self._ts.parse(code)
+        bindings = _collect_bindings(code, tree.root_node)
+        root = _find_export_root(code, tree.root_node)
+        if root is None:
+            return None
+        obj = _object_to_python(code, root, bindings=bindings)
+        if isinstance(obj, dict):
+            return obj
+        return None
 
     # ---------- Permissions helper ----------
 
@@ -1201,107 +1589,100 @@ class LiveAssetsCatalog:
                 self._cache_i18n[cache_key] = {}
                 return {}
 
-    # ---------- app namespace helpers (index-driven, language-scoped) ----------
-
-    async def _get_app_i18n(self, lang: str) -> dict[str, Any]:
-        """Get `app` translations for a language.
-
-        The language->asset mapping is defined in `index-*.js` as imports of:
-            ../../resources/languages/<lang>/app.json
-        """
-        return await self.get_i18n(lang, "app")
+    @staticmethod
+    def _normalize_unit_key(raw_key: Any) -> str | None:
+        if isinstance(raw_key, int):
+            return str(raw_key)
+        if isinstance(raw_key, float):
+            if raw_key.is_integer():
+                return str(int(raw_key))
+            return None
+        if isinstance(raw_key, str):
+            key = raw_key.strip()
+            if not key:
+                return None
+            if key.isdigit():
+                return key
+            try:
+                as_float = float(key)
+            except ValueError:
+                return None
+            return str(int(as_float)) if as_float.is_integer() else None
+        return None
 
     @staticmethod
-    def _lookup_path(obj: Any, path: str) -> Any:
-        """Lookup a dotted path in a nested dict structure.
+    def _is_unit_descriptor_entry(value: Any) -> bool:
+        if not isinstance(value, Mapping):
+            return False
+        return any(k in value for k in ("text", "options", "value", "valuePrepare"))
 
-        Accepts keys like `app.one.devicePumpStatus` and will also work if the
-        translation dict does not include the leading `app.`.
-        """
-        if not isinstance(path, str) or not path:
-            return None
-        p = path.strip()
-        if p.startswith("app."):
-            p = p[4:]
-        cur: Any = obj
-        for part in p.split("."):
-            if not isinstance(cur, Mapping):
-                return None
-            cur = cur.get(part)
-        return cur
+    def _parse_units_descriptor_table_from_index(self, code: bytes) -> dict[str, dict[str, Any]]:
+        try:
+            tree = self._ts.parse(code)
+            bindings = _collect_bindings(code, tree.root_node)
+        except Exception as exc:
+            self._log.debug("Failed to parse units descriptor table from index: %s", exc)
+            return {}
 
-    async def resolve_app_one_field_label(self, *, name_key: str, lang: str) -> str | None:
-        """Resolve field label for keys embedded in STATUS assets (e.g. app.one.devicePumpStatus)."""
-        data = await self._get_app_i18n(lang)
-        val = self._lookup_path(data, name_key)
-        return val if isinstance(val, str) else None
+        best: dict[str, dict[str, Any]] = {}
 
-    async def resolve_app_one_value_label(self, *, name_key: str, value: str, lang: str) -> str | None:
-        """Resolve a computed value label for a known app.one status domain.
+        for statement in tree.root_node.named_children:
+            if statement.type not in {"lexical_declaration", "variable_declaration"}:
+                continue
 
-        Example: name_key='app.one.boilerStatus.name' and value='14' -> 'Nadzór'
-        """
-        data = await self._get_app_i18n(lang)
-        table_key = name_key[:-5] if name_key.endswith(".name") else name_key
-        table = self._lookup_path(data, table_key)
-        if not isinstance(table, Mapping):
-            return None
+            for declarator in statement.named_children:
+                if declarator.type != "variable_declarator":
+                    continue
 
-        if isinstance(value, str) and value.startswith("e."):
-            enum_tail = value[2:]
-            if enum_tail:
-                parts = [p for p in enum_tail.split("_") if p]
-                snake_key = "_".join(p.lower() for p in parts)
-                camel_key = parts[0].lower() + "".join(p.lower().title() for p in parts[1:])
-                candidates = [camel_key, snake_key, enum_tail, enum_tail.lower()]
-                for cand in candidates:
-                    if not cand:
+                value_node = declarator.child_by_field_name("value")
+                if value_node is None or value_node.type != "object":
+                    continue
+
+                candidate = _node_to_python(code, value_node, bindings)
+                if not isinstance(candidate, Mapping):
+                    continue
+
+                parsed: dict[str, dict[str, Any]] = {}
+                for key_raw, value_raw in candidate.items():
+                    key = self._normalize_unit_key(key_raw)
+                    if key is None or not self._is_unit_descriptor_entry(value_raw):
                         continue
-                    cv = table.get(cand)
-                    if isinstance(cv, str):
-                        return cv
+                    parsed[key] = dict(value_raw)
 
-        if isinstance(value, str) and value.isdigit():
-            iv = table.get(int(value))
-            if isinstance(iv, str):
-                return iv
-        sv = table.get(value)
-        return sv if isinstance(sv, str) else None
+                if len(parsed) > len(best):
+                    best = parsed
 
-    async def resolve_app_enum_value_label(self, *, value: str, lang: str) -> str | None:
-        """Resolve enum-like UI values from the `app` translations.
+        return best
 
-        The BragerOne bundles often encode UI states as enum-like values such as:
-        - "e.ON", "e.OFF"
-        - "e.OPENING", "e.CLOSING_MANUAL"
+    async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+        """Return unit descriptor for raw unit code from index-defined transform table.
 
-        The translation source for these is the official `resources/languages/<lang>/app.json`.
-        This method performs a conservative lookup (no hardcoded strings).
+        The BragerOne frontend keeps canonical unit behavior in an index-scoped table
+        (text/options/value/valuePrepare). This helper exposes that table entry by raw
+        unit code so runtime consumers can apply the same mappings/transforms.
         """
-        v = value.strip()
-        if not v:
+        key = self._normalize_unit_key(unit_code)
+        if key is None:
             return None
 
-        data = await self._get_app_i18n(lang)
+        cached = self._units_descriptor_table
+        if isinstance(cached, dict):
+            entry = cached.get(key)
+            return dict(entry) if isinstance(entry, Mapping) else None
 
-        # Handle both structural and literal-dot keys.
-        direct = data.get(v)
-        if isinstance(direct, str):
-            return direct
+        async with self._units_descriptor_lock:
+            cached_inner = self._units_descriptor_table
+            if not isinstance(cached_inner, dict):
+                if not self._idx.index_bytes:
+                    await self._ensure_index_loaded()
+                if not self._idx.index_bytes:
+                    self._units_descriptor_table = {}
+                else:
+                    self._units_descriptor_table = self._parse_units_descriptor_table_from_index(self._idx.index_bytes)
+                cached_inner = self._units_descriptor_table
 
-        looked_up = self._lookup_path(data, v)
-        if isinstance(looked_up, str):
-            return looked_up
-
-        # Some bundles may store enums under common tables.
-        enum_name = v[2:] if v.startswith("e.") else v
-        for prefix in ("e.", "enums.", "enum."):
-            cand_path = f"{prefix}{enum_name}"
-            cand = self._lookup_path(data, cand_path)
-            if isinstance(cand, str):
-                return cand
-
-        return None
+        entry = cached_inner.get(key)
+        return dict(entry) if isinstance(entry, Mapping) else None
 
     def _find_i18n_asset(self, lang: str, namespace: str) -> AssetRef | None:
         """Find i18n asset for given language and namespace.

@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "profile": "micro-latest",
+    "recording": "sanitized",
+    "notes": "Stable repository sample without environment-specific metadata."
+  },
+  "results": [
+    {
+      "name": "module_command_auto_raw",
+      "loops": 200,
+      "total_seconds": 0.000144,
+      "mean_ms": 0.000718,
+      "median_ms": 0.00068,
+      "stdev_ms": 0.000351
+    },
+    {
+      "name": "module_command_auto_param",
+      "loops": 200,
+      "total_seconds": 0.000154,
+      "mean_ms": 0.000772,
+      "median_ms": 0.00074,
+      "stdev_ms": 0.000247
+    },
+    {
+      "name": "module_command_extra_payload",
+      "loops": 200,
+      "total_seconds": 0.000166,
+      "mean_ms": 0.000828,
+      "median_ms": 0.00079,
+      "stdev_ms": 0.000266
+    },
+    {
+      "name": "catalog_param_map_parsing",
+      "loops": 4,
+      "total_seconds": 0.005694,
+      "mean_ms": 1.423598,
+      "median_ms": 1.312883,
+      "stdev_ms": 0.254185
+    }
+  ]
+}

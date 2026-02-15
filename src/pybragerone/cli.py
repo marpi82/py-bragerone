@@ -11,6 +11,7 @@ import os
 import re
 import signal
 import threading
+import time
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -180,7 +181,10 @@ async def run(args: argparse.Namespace) -> int:
                 module_ids=modules,
                 json_events=bool(args.json),
                 suppress_log=bool(args.no_diff),
+                all_panels=bool(args.all_panels),
+                debug_panels=bool(args.debug_panels),
                 debug_logging=bool(args.debug),
+                token_labels=bool(args.token_labels),
             ),
             "tui",
             log,
@@ -260,24 +264,17 @@ def _collect_route_symbols(route: Any) -> set[str]:
     return symbols
 
 
-def _normalize(s: str) -> str:
-    return "".join(ch for ch in s.casefold() if ch.isalnum() or ch.isspace()).strip()
-
-
 async def _build_watch_groups(
     *,
     api: BragerOneApiClient,
     resolver: ParamResolver,
     object_id: int,
     module_ids: list[str],
+    all_panels: bool,
 ) -> dict[str, list[str]]:
-    """Build watch groups using module menu routes.
-
-    This aims to approximate the official UI sections without hardcoding tokens.
-    """
+    """Build watch groups from library adapter (core or all-panels mode)."""
     modules = await api.get_modules(object_id=object_id)
     selected = {m.devid: m for m in modules if m.devid is not None and str(m.devid) in set(module_ids)}
-    # Use the first module to derive the menu for grouping.
     first_id = module_ids[0]
     mod = selected.get(first_id)
     if mod is None:
@@ -285,33 +282,7 @@ async def _build_watch_groups(
 
     device_menu = int(mod.deviceMenu)
     perms = list(getattr(mod, "permissions", []) or [])
-    menu = await resolver.get_module_menu(device_menu=device_menu, permissions=perms)
-
-    routes_by_title: list[tuple[str, set[str]]] = []
-    for r in _iter_routes(menu.routes):
-        symbols = _collect_route_symbols(r)
-        if symbols:
-            routes_by_title.append((_route_title(r), symbols))
-
-    def pick(title_keywords: list[str]) -> set[str]:
-        want = [_normalize(k) for k in title_keywords]
-        out: set[str] = set()
-        for title, symbols in routes_by_title:
-            t = _normalize(title)
-            if any(w and w in t for w in want):
-                out |= symbols
-        return out
-
-    boiler = pick(["boiler"])
-    dhw = pick(["dhw"])
-    valve = pick(["valve_1"])
-
-    groups: dict[str, list[str]] = {
-        "Boiler": sorted(boiler),
-        "DHW": sorted(dhw),
-        "Valve 1": sorted(valve),
-    }
-    return groups
+    return await resolver.build_panel_groups(device_menu=device_menu, permissions=perms, all_panels=all_panels)
 
 
 async def _run_tui(
@@ -324,11 +295,14 @@ async def _run_tui(
     module_ids: list[str],
     json_events: bool,
     suppress_log: bool,
+    all_panels: bool,
+    debug_panels: bool,
     debug_logging: bool = False,
+    token_labels: bool = False,
 ) -> None:
     """Run a minimal Rich TUI with a live values area and a scrolling log."""
     try:
-        from rich.console import Console
+        from rich.console import Console, Group
         from rich.layout import Layout
         from rich.live import Live
         from rich.panel import Panel
@@ -347,26 +321,128 @@ async def _run_tui(
     log_lock = threading.Lock()
 
     watch: dict[str, _WatchItem] = {}
-    group_symbols: dict[str, list[str]] = {"Boiler": [], "DHW": [], "Valve 1": []}
+    group_symbols: dict[str, list[str]] = {}
+    visible_group_symbols: dict[str, list[str]] = {}
+    panel_order: list[str] = []
+    symbol_policy_visible: dict[str, bool] = {}
+    desc_cache: dict[str, dict[str, Any]] = {}
+    symbol_deps: dict[str, set[str]] = {}
+    symbol_groups: dict[str, set[str]] = {}
+    key_to_symbols: dict[str, set[str]] = {}
+    key_to_computed_symbols: dict[str, set[str]] = {}
+    computed_symbols: set[str] = set()
+    visible_computed_symbols: set[str] = set()
+    dirty_keys: set[str] = set()
+    initial_refresh = True
+    content_ready = False
+    render_rows_limit = 40
+    debug_lines_limit = 25
+    periodic_refresh_seconds = 1.0
+
+    def _collect_symbol_dependencies(desc: dict[str, Any], resolved: _WatchItem) -> set[str]:
+        deps: set[str] = set()
+        if isinstance(resolved.address, str) and resolved.address:
+            deps.add(resolved.address)
+
+        mapping = desc.get("mapping")
+        if not isinstance(mapping, dict):
+            return deps
+
+        inputs = mapping.get("inputs")
+        if isinstance(inputs, list):
+            for entry in inputs:
+                if isinstance(entry, dict):
+                    addr = entry.get("address")
+                    if isinstance(addr, str) and addr:
+                        deps.add(addr)
+
+        channels = mapping.get("channels")
+        if isinstance(channels, dict):
+            for entries in channels.values():
+                if not isinstance(entries, list):
+                    continue
+                for entry in entries:
+                    if isinstance(entry, dict):
+                        addr = entry.get("address")
+                        if isinstance(addr, str) and addr:
+                            deps.add(addr)
+
+        status_conditions = mapping.get("status_conditions")
+        if isinstance(status_conditions, dict):
+            for entries in status_conditions.values():
+                if not isinstance(entries, list):
+                    continue
+                for entry in entries:
+                    if isinstance(entry, dict):
+                        addr = entry.get("address")
+                        if isinstance(addr, str) and addr:
+                            deps.add(addr)
+
+        return deps
+
+    def _has_display_value(item: _WatchItem) -> bool:
+        if isinstance(item.value_label, str) and item.value_label.strip():
+            return True
+        if item.value is None:
+            return False
+        if isinstance(item.value, str):
+            return bool(item.value.strip())
+        return True
+
+    def _normalize_inline_unit_spacing(value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return value
+        return re.sub(r"^([+-]?\d+(?:[.,]\d+)?)(°\S+)$", r"\1 \2", text)
+
+    def _recompute_visible_groups() -> None:
+        visible_computed_symbols.clear()
+        visible_group_symbols.clear()
+        for group_name, symbols in group_symbols.items():
+            visible = [
+                sym
+                for sym in symbols
+                if symbol_policy_visible.get(sym, True) and (watch.get(sym) is not None and _has_display_value(watch[sym]))
+            ]
+
+            visible_group_symbols[group_name] = visible
+            for sym in visible:
+                if sym in computed_symbols:
+                    visible_computed_symbols.add(sym)
+
+        # Keep original group order but hide panels without visible rows.
+        panel_order[:] = [name for name in group_symbols if visible_group_symbols.get(name)]
 
     def render_group(name: str) -> Panel:
         table = Table.grid(expand=True, padding=(0, 1))
         table.add_column("Name", ratio=2, no_wrap=True, overflow="ellipsis")
         table.add_column("Value", ratio=1, no_wrap=True, overflow="ellipsis")
 
-        symbols = group_symbols.get(name, [])
-        if not symbols:
+        if name not in visible_group_symbols:
             table.add_row("Loading…", "")
             return Panel(table, title=name)
 
-        for sym in symbols[:30]:
+        symbols = visible_group_symbols.get(name, [])
+        if not symbols:
+            table.add_row("-", "-")
+            return Panel(table, title=name)
+
+        for sym in symbols[:render_rows_limit]:
             it = watch.get(sym)
             if it is None:
                 continue
             val = it.value_label if it.value_label is not None else it.value
-            if isinstance(it.unit, str):
+            if isinstance(it.unit, str) and it.unit.strip():
                 val = f"{val} {it.unit}" if val is not None else "-"
+            else:
+                val = _normalize_inline_unit_spacing(val)
             table.add_row(str(it.label), str(val) if val is not None else "-")
+
+        hidden_count = max(0, len(symbols) - render_rows_limit)
+        if hidden_count > 0:
+            table.add_row("…", f"+{hidden_count} more")
 
         return Panel(table, title=name)
 
@@ -374,29 +450,49 @@ async def _run_tui(
         text = Text("\n".join(log_lines))
         return Panel(text, title="Console")
 
+    def render_panels_grid() -> Any:
+        grid = Table.grid(expand=True, padding=(0, 0))
+        grid.add_column(ratio=1)
+        grid.add_column(ratio=1)
+        grid.add_column(ratio=1)
+
+        if not panel_order:
+            status_text = "Loading panels…" if not group_symbols else "No visible panels"
+            grid.add_row(Panel(status_text, title="Panels"), Group(), Group())
+            return grid
+
+        columns: list[list[Any]] = [[], [], []]
+        heights = [0, 0, 0]
+
+        for name in panel_order:
+            symbols = visible_group_symbols.get(name, [])
+            est_height = max(1, min(len(symbols), render_rows_limit)) + 3
+            col_idx = min(range(3), key=lambda idx: heights[idx])
+            columns[col_idx].append(render_group(name))
+            heights[col_idx] += est_height
+
+        renderables: list[Any] = []
+        for col in columns:
+            renderables.append(Group(*col) if col else Group())
+
+        grid.add_row(*renderables)
+        return grid
+
     def build_layout() -> Layout:
         root = Layout(name="root")
         root.split_column(Layout(name="top", ratio=3), Layout(name="bottom", ratio=1))
-        root["top"].split_row(
-            Layout(name="boiler"),
-            Layout(name="dhw"),
-            Layout(name="valve"),
-        )
         root["bottom"].update(render_log())
-        root["boiler"].update(render_group("Boiler"))
-        root["dhw"].update(render_group("DHW"))
-        root["valve"].update(render_group("Valve 1"))
+        root["top"].update(render_panels_grid())
         return root
 
     layout = build_layout()
 
     def refresh_panels() -> None:
         layout["bottom"].update(render_log())
-        layout["boiler"].update(render_group("Boiler"))
-        layout["dhw"].update(render_group("DHW"))
-        layout["valve"].update(render_group("Valve 1"))
+        layout["top"].update(render_panels_grid())
 
     dirty = asyncio.Event()
+    log_state: dict[str, Any] = {"pending": 0, "sample_key": None, "sample_value": None}
 
     def _append_log_line(line: str) -> None:
         with log_lock:
@@ -428,51 +524,187 @@ async def _run_tui(
                 continue
             key = _format_event_key(upd)
             await store.upsert_async(key, upd.value)
-            if not suppress_log:
+            dirty_keys.add(key)
+
+            src = ""
+            if isinstance(upd.meta, dict):
+                src_raw = upd.meta.get("_source")
+                src = str(src_raw) if src_raw is not None else ""
+            if not suppress_log and src == "ws":
                 if json_events:
                     log_lines.append(json.dumps({"key": key, "value": upd.value}, ensure_ascii=False))
                 else:
-                    log_lines.append(f"↺ {key} = {upd.value}")
+                    log_state["pending"] = int(log_state["pending"]) + 1
+                    log_state["sample_key"] = key
+                    log_state["sample_value"] = upd.value
+            dirty.set()
+
+    async def log_flush_loop() -> None:
+        while True:
+            await asyncio.sleep(0.5)
+            pending = int(log_state["pending"])
+            if pending <= 0:
+                continue
+            sample_key = log_state.get("sample_key")
+            sample_value = log_state.get("sample_value")
+            log_state["pending"] = 0
+
+            if isinstance(sample_key, str):
+                if pending == 1:
+                    log_lines.append(f"↺ {sample_key} = {sample_value}")
+                else:
+                    log_lines.append(f"↺ {sample_key} = {sample_value}  (+{pending - 1} more)")
+            else:
+                log_lines.append(f"↺ +{pending} ws updates")
             dirty.set()
 
     async def init_watch() -> None:
-        groups = await _build_watch_groups(api=api, resolver=resolver, object_id=object_id, module_ids=module_ids)
+        nonlocal content_ready
+        # Keep prime fast and avoid repeated expensive UI recomposition during bootstrap.
+        await gw.wait_for_prime(timeout=None)
+
+        modules = await api.get_modules(object_id=object_id)
+        selected = {m.devid: m for m in modules if m.devid is not None and str(m.devid) in set(module_ids)}
+        selected_module = selected.get(module_ids[0])
+        if selected_module is not None and selected_module.devid is not None:
+            devid_text = str(selected_module.devid)
+            resolver.set_runtime_context(
+                {
+                    "devid": devid_text,
+                    "modulesMap": {
+                        devid_text: {
+                            "connectedAt": selected_module.connectedAt,
+                        }
+                    },
+                }
+            )
+        else:
+            resolver.set_runtime_context(None)
+
+        groups = await _build_watch_groups(
+            api=api,
+            resolver=resolver,
+            object_id=object_id,
+            module_ids=module_ids,
+            all_panels=all_panels,
+        )
         group_symbols.clear()
         group_symbols.update(groups)
+        panel_order.clear()
+        panel_order.extend(list(groups.keys()))
+
+        if debug_panels:
+            mod = selected_module
+            if mod is not None:
+                perms = list(getattr(mod, "permissions", []) or [])
+                route_diag = await resolver.panel_route_diagnostics(
+                    device_menu=int(mod.deviceMenu),
+                    permissions=perms,
+                    all_panels=all_panels,
+                )
+                accepted = sum(1 for row in route_diag if bool(row.get("accepted")))
+                rejected = len(route_diag) - accepted
+                log_lines.append(f"INFO: Panel route diagnostics: accepted={accepted}, rejected={rejected}")
+                rejected_rows = [row for row in route_diag if not bool(row.get("accepted"))]
+                for row in rejected_rows[:debug_lines_limit]:
+                    if bool(row.get("accepted")):
+                        continue
+                    nm = str(row.get("name") or "-")
+                    rsn = str(row.get("reason") or "-")
+                    cnt = int(row.get("symbol_count") or 0)
+                    log_lines.append(f"✖ {nm} ({cnt}) -> {rsn}")
+                extra = max(0, len(rejected_rows) - debug_lines_limit)
+                if extra:
+                    log_lines.append(f"INFO: ... {extra} more rejected routes omitted")
 
         # Build watch items (labels + mapping) once; values will be refreshed from ParamStore on dirty ticks.
+        all_symbols = [sym for symbols in group_symbols.values() for sym in symbols]
+        desc_by_symbol = await resolver.describe_symbols(all_symbols)
+
         for _group_name, symbols in group_symbols.items():
-            for sym in symbols[:30]:
+            for sym in symbols:
+                symbol_groups.setdefault(sym, set()).add(_group_name)
                 if sym in watch:
                     continue
-                desc = await resolver.describe_symbol(sym)
+                desc = desc_by_symbol.get(sym) or await resolver.describe_symbol(sym)
+                desc_cache[sym] = desc
                 resolved = await resolver.resolve_value(sym)
+                display_label = sym if token_labels else str(desc.get("label") or sym)
                 watch[sym] = _WatchItem(
                     symbol=sym,
-                    label=str(desc.get("label") or sym),
+                    label=display_label,
                     unit=resolved.unit,
                     address=resolved.address,
                     value=resolved.value,
                     value_label=resolved.value_label,
                     kind=resolved.kind,
                 )
+                symbol_deps[sym] = _collect_symbol_dependencies(desc, watch[sym])
+                addr = watch[sym].address
+                if isinstance(addr, str) and addr:
+                    key_to_symbols.setdefault(addr, set()).add(sym)
+                if watch[sym].kind == "computed":
+                    computed_symbols.add(sym)
+                    for dep in symbol_deps[sym]:
+                        key_to_computed_symbols.setdefault(dep, set()).add(sym)
+
+        flat_values = store.flatten()
+        for sym, item in watch.items():
+            desc = desc_cache.get(sym, {})
+            visible, _reason = resolver.parameter_visibility_diagnostics(desc=desc, resolved=item, flat_values=flat_values)
+            symbol_policy_visible[sym] = visible
+
+        _recompute_visible_groups()
+
+        content_ready = True
 
         dirty.set()
 
     async def refresh_loop(*, live: Live) -> None:
         # Manual refresh to reduce blinking.
+        nonlocal initial_refresh
+        last_periodic_refresh = time.monotonic()
         while True:
             try:
                 await asyncio.wait_for(dirty.wait(), timeout=0.25)
             except TimeoutError:
                 continue
             dirty.clear()
+            await asyncio.sleep(0.05)
+
+            if not content_ready:
+                continue
+
+            updated_keys = set(dirty_keys)
+            dirty_keys.clear()
+
+            symbols_to_refresh: set[str] = set()
+
+            if initial_refresh:
+                symbols_to_refresh = set(visible_computed_symbols)
+                initial_refresh = False
+            elif updated_keys:
+                for key in updated_keys:
+                    symbols_to_refresh.update(key_to_symbols.get(key, set()))
+                    symbols_to_refresh.update(key_to_computed_symbols.get(key, set()))
+
+            now = time.monotonic()
+            if not symbols_to_refresh and now - last_periodic_refresh >= periodic_refresh_seconds:
+                symbols_to_refresh = set(visible_computed_symbols)
+                last_periodic_refresh = now
+            elif symbols_to_refresh:
+                last_periodic_refresh = now
 
             # Re-resolve values from ParamStore so we don't depend on matching raw update keys.
-            for sym, it in watch.items():
+            for sym in symbols_to_refresh:
+                it = watch.get(sym)
+                if it is None:
+                    continue
                 resolved = await resolver.resolve_value(sym)
                 it.value = resolved.value
                 it.value_label = resolved.value_label
+
+            _recompute_visible_groups()
 
             refresh_panels()
             live.refresh()
@@ -507,6 +739,7 @@ async def _run_tui(
                 tg.create_task(bus_ingest())
                 tg.create_task(init_watch())
                 tg.create_task(refresh_loop(live=live))
+                tg.create_task(log_flush_loop())
     finally:
         root_logger.handlers = prev_handlers
         root_logger.setLevel(prev_level)
@@ -564,6 +797,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-diff", action="store_true", help="Don't print changes (arrows) on STDOUT")
     p.add_argument("--debug", action="store_true", help="More logs")
     p.add_argument("--quiet", action="store_true", help="Fewer logs")
+    p.add_argument(
+        "--all-panels",
+        action="store_true",
+        help="Render all available menu panels (3-column grid) instead of Boiler/DHW/Valve 1 only",
+    )
+    p.add_argument(
+        "--debug-panels",
+        action="store_true",
+        help="Log panel route inclusion/exclusion reasons in TUI console",
+    )
+    p.add_argument(
+        "--token-labels",
+        action="store_true",
+        help="Display raw symbol tokens as names in TUI instead of localized labels",
+    )
     return p
 
 

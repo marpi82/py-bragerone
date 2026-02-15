@@ -28,6 +28,8 @@ from .endpoints import (
     auth_revoke_url,
     auth_user_url,
     module_card_url,
+    module_command_raw_url,
+    module_command_url,
     modules_activity_quantity_url,
     modules_connect_url,
     modules_parameters_url,
@@ -840,6 +842,153 @@ class BragerOneApiClient:
         status, data, _ = await self._req("POST", modules_activity_quantity_url(api_base=self._api_base), json=payload)
         # log_json_payload(LOG, "prime.modules.activity.quantity", summarize_top_level(data))
         return (status, data) if return_data else (status in (200, 204))
+
+    async def module_command(
+        self,
+        *,
+        devid: str,
+        pool: str,
+        parameter: str,
+        value: Any,
+        parameter_name: str | None = None,
+        unit: int | None = None,
+        extra_payload: Mapping[str, Any] | None = None,
+        return_data: bool = False,
+    ) -> tuple[int, Any] | bool:
+        """Dispatch a parameter-like command payload to a module.
+
+        This method posts to ``/v1/module/command`` and mirrors the web
+        application's payload shape for non-raw writes.
+
+        Args:
+            devid: Module device identifier.
+            pool: Parameter pool/group (for example ``"P4"``).
+            parameter: Parameter channel/index token (for example ``"v8"``).
+            value: Value to be written.
+            parameter_name: Optional display/name token.
+            unit: Optional unit identifier expected by backend for selected writes.
+            extra_payload: Optional additional keys to include in the request payload.
+            return_data: Whether to return ``(status, data)`` instead of only success.
+
+        Returns:
+            Tuple of ``(status, data)`` when ``return_data=True``; otherwise a
+            boolean indicating request success.
+        """
+        payload: dict[str, Any] = {
+            "devid": devid,
+            "pool": pool,
+            "parameter": parameter,
+            "value": value,
+        }
+        if parameter_name is not None:
+            payload["parameterName"] = parameter_name
+        if unit is not None:
+            payload["unit"] = unit
+        if extra_payload:
+            payload.update(dict(extra_payload))
+        status, data, _ = await self._req("POST", module_command_url(api_base=self._api_base), json=payload)
+        return (status, data) if return_data else (status in (200, 201, 202, 204))
+
+    async def module_command_raw(
+        self,
+        *,
+        devid: str,
+        command: str,
+        value: Any | None = None,
+        extra_payload: Mapping[str, Any] | None = None,
+        return_data: bool = False,
+    ) -> tuple[int, Any] | bool:
+        """Dispatch a symbolic command to a module.
+
+        This method matches the web application's command transport and posts
+        to ``/v1/module/command/raw``.
+
+        Args:
+            devid: Module device identifier.
+            command: Symbolic command name (for example ``"MODULE_RESTART"``).
+            value: Optional command value (for example ``"ONLINE"`` or ``"OFF"``).
+            extra_payload: Optional additional keys to include in the request payload.
+            return_data: Whether to return ``(status, data)`` instead of only success.
+
+        Returns:
+            Tuple of ``(status, data)`` when ``return_data=True``; otherwise a
+            boolean indicating request success.
+        """
+        payload: dict[str, Any] = {"devid": devid, "command": command}
+        if value is not None:
+            payload["value"] = value
+        if extra_payload:
+            payload.update(dict(extra_payload))
+        status, data, _ = await self._req("POST", module_command_raw_url(api_base=self._api_base), json=payload)
+        return (status, data) if return_data else (status in (200, 201, 202, 204))
+
+    async def module_command_auto(
+        self,
+        *,
+        devid: str,
+        value: Any | None = None,
+        command: str | None = None,
+        pool: str | None = None,
+        parameter: str | None = None,
+        parameter_name: str | None = None,
+        unit: int | None = None,
+        extra_payload: Mapping[str, Any] | None = None,
+        return_data: bool = False,
+    ) -> tuple[int, Any] | bool:
+        """Automatically dispatch via ``/module/command`` or ``/module/command/raw``.
+
+        Routing rules:
+            - If ``command`` is provided, dispatches through ``/module/command/raw``.
+            - If both ``pool`` and ``parameter`` are provided, dispatches through
+              ``/module/command``.
+            - If both route styles are provided at once, raises ``ValueError``.
+            - If no complete route style is provided, raises ``ValueError``.
+
+        Args:
+            devid: Module device identifier.
+            value: Command/write value. Optional for raw commands.
+            command: Symbolic command for ``/module/command/raw``.
+            pool: Parameter pool/group for ``/module/command``.
+            parameter: Parameter channel/index token for ``/module/command``.
+            parameter_name: Optional display/name token for ``/module/command``.
+            unit: Optional unit identifier for ``/module/command``.
+            extra_payload: Optional additional keys to include in request payload.
+            return_data: Whether to return ``(status, data)`` instead of only success.
+
+        Returns:
+            Tuple of ``(status, data)`` when ``return_data=True``; otherwise a
+            boolean indicating request success.
+        """
+        has_raw_route = command is not None
+        has_param_route = pool is not None or parameter is not None
+
+        if has_raw_route and has_param_route:
+            raise ValueError("Ambiguous command payload: provide either command or pool/parameter, not both")
+
+        if has_raw_route:
+            if command is None:
+                raise ValueError("Missing raw command name")
+            return await self.module_command_raw(
+                devid=devid,
+                command=command,
+                value=value,
+                extra_payload=extra_payload,
+                return_data=return_data,
+            )
+
+        if pool is None or parameter is None:
+            raise ValueError("Missing command route data: provide command or both pool and parameter")
+
+        return await self.module_command(
+            devid=devid,
+            pool=pool,
+            parameter=parameter,
+            value=value,
+            parameter_name=parameter_name,
+            unit=unit,
+            extra_payload=extra_payload,
+            return_data=return_data,
+        )
 
     # -------- ASSETS --------
 

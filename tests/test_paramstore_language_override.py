@@ -1,7 +1,7 @@
 """Regression tests for resolver language behavior.
 
-These tests ensure that `ParamResolver` resolves `app.one.*` labels via assets
-for any language, and never invents labels when assets cannot resolve them.
+These tests ensure that `ParamResolver` does not invent computed value labels
+outside the unit-descriptor driven flow.
 """
 
 from __future__ import annotations
@@ -27,9 +27,6 @@ class _StubAssets:
     async def get_param_mapping(self, symbols: Iterable[str]) -> dict[str, ParamMap | None]:
         return {s: (self.mapping if s == self.mapping.key else None) for s in symbols}
 
-    async def resolve_app_one_field_label(self, *, name_key: str, lang: str) -> str | None:
-        return f"FIELD[{lang}]:{name_key}"
-
     async def resolve_app_one_value_label(self, *, name_key: str, value: str, lang: str) -> str | None:
         return f"VALUE[{lang}]:{name_key}={value}"
 
@@ -39,7 +36,7 @@ class _StubAssets:
 
 @pytest.mark.asyncio
 async def test_status_label_and_value_use_assets_for_non_pl_languages() -> None:
-    """Resolve app.one.* labels via assets for non-Polish languages."""
+    """Status label may resolve from assets, but computed value label is unit-driven only."""
     store = ParamStore()
 
     raw = {
@@ -77,9 +74,9 @@ async def test_status_label_and_value_use_assets_for_non_pl_languages() -> None:
 
     desc = await resolver.describe_symbol("STATUS_P5_0")
 
-    assert desc["label"] == "FIELD[de]:app.one.boilerStatus.name"
+    assert desc["label"] is None
     assert desc["computed_value"] == "0"
-    assert desc["computed_value_label"] == "VALUE[de]:app.one.boilerStatus.name=0"
+    assert desc["computed_value_label"] is None
 
 
 @pytest.mark.asyncio
@@ -117,9 +114,6 @@ async def test_polish_fallback_only_when_assets_do_not_resolve() -> None:
     )
 
     class _NoopAssets(_StubAssets):
-        async def resolve_app_one_field_label(self, *, name_key: str, lang: str) -> str | None:
-            return None
-
         async def resolve_app_one_value_label(self, *, name_key: str, value: str, lang: str) -> str | None:
             return None
 
@@ -136,7 +130,7 @@ async def test_polish_fallback_only_when_assets_do_not_resolve() -> None:
 
 @pytest.mark.asyncio
 async def test_enum_computed_value_label_uses_app_enum_lookup() -> None:
-    """If app.one table lacks a value, fall back to app enum lookup."""
+    """Computed enum labels are not resolved via app enum fallback paths."""
     store = ParamStore()
 
     raw = {
@@ -181,12 +175,12 @@ async def test_enum_computed_value_label_uses_app_enum_lookup() -> None:
     desc = await resolver.describe_symbol("STATUS_P5_0")
 
     assert desc["computed_value"] == "e.ON"
-    assert desc["computed_value_label"] == "ENUM[en]:e.ON"
+    assert desc["computed_value_label"] is None
 
 
 @pytest.mark.asyncio
 async def test_enum_computed_value_can_be_evaluated_from_mapping_paths() -> None:
-    """Evaluate enum outputs from mapping `paths.value` rules."""
+    """Enum outputs from mapping `paths.value` rules remain label-less without unit descriptor options."""
     store = ParamStore()
 
     raw = {"name": "app.one.devicePumpStatus"}
@@ -240,12 +234,12 @@ async def test_enum_computed_value_can_be_evaluated_from_mapping_paths() -> None
 
     desc = await resolver.describe_symbol("STATUS_P5_13")
     assert desc["computed_value"] == "e.ON"
-    assert desc["computed_value_label"] == "ENUM[en]:e.ON"
+    assert desc["computed_value_label"] is None
 
 
 @pytest.mark.asyncio
 async def test_enum_computed_value_label_uses_component_i18n_table_when_app_has_no_value_table() -> None:
-    """Resolve enum labels from component i18n tables when needed."""
+    """Component-specific enum i18n fallback is not used for computed value labels."""
     store = ParamStore()
 
     raw = {
@@ -296,12 +290,12 @@ async def test_enum_computed_value_label_uses_component_i18n_table_when_app_has_
 
     desc = await resolver.describe_symbol("STATUS_P5_0")
     assert desc["computed_value"] == "e.OFF_MANUAL"
-    assert desc["computed_value_label"] == "Wyłączony (ręcznie)"
+    assert desc["computed_value_label"] is None
 
 
 @pytest.mark.asyncio
 async def test_enum_manual_labels_can_be_resolved_from_app_one_component_state_table() -> None:
-    """Resolve manual enum labels from app.one.<component>State tables."""
+    """App table fallback is not used for manual enum computed value labels."""
     store = ParamStore()
 
     raw = {
@@ -353,4 +347,4 @@ async def test_enum_manual_labels_can_be_resolved_from_app_one_component_state_t
 
     desc = await resolver.describe_symbol("STATUS_P5_0")
     assert desc["computed_value"] == "e.ON_MANUAL"
-    assert desc["computed_value_label"] == "Włączone (ręcznie)"
+    assert desc["computed_value_label"] is None

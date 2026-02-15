@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "profile": "micro-baseline",
+    "recording": "sanitized",
+    "notes": "Stable repository sample without environment-specific metadata."
+  },
+  "results": [
+    {
+      "name": "module_command_auto_raw",
+      "loops": 300,
+      "total_seconds": 0.000207,
+      "mean_ms": 0.000689,
+      "median_ms": 0.00066,
+      "stdev_ms": 0.000293
+    },
+    {
+      "name": "module_command_auto_param",
+      "loops": 300,
+      "total_seconds": 0.00023,
+      "mean_ms": 0.000768,
+      "median_ms": 0.00075,
+      "stdev_ms": 0.000189
+    },
+    {
+      "name": "module_command_extra_payload",
+      "loops": 300,
+      "total_seconds": 0.000252,
+      "mean_ms": 0.000839,
+      "median_ms": 0.00081,
+      "stdev_ms": 0.000198
+    }
+  ]
+}

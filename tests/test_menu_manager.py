@@ -262,3 +262,19 @@ async def test_catalog_integration_fallback_when_no_device_menu_mapping() -> Non
     assert len(menu.routes) == 1
     assert menu.routes[0].path == "/test"
     assert menu.asset_url == "https://test.com/menu.js"
+
+
+def test_device_menu_mapping_parsed_from_router_paths() -> None:
+    """Parse deviceMenu to module.menu mapping from index router path entries."""
+    mock_api = AsyncMock()
+    catalog = LiveAssetsCatalog(mock_api)
+
+    index_code = b"""
+    {"../config/router/deviceMenu/0/module.menu.ts":()=>d(()=>import("./module.menu-B60xPU0K.js"),__vite__mapDeps([0]))
+    ,"../config/router/deviceMenu/1/module.menu.ts":()=>d(()=>import("./module.menu-lSoMfgab.js"),__vite__mapDeps([1]))}
+    """
+
+    idx = catalog._build_asset_index_from_index_js("https://one.brager.pl/assets/index-main.js", index_code)
+
+    assert idx.menu_map[0] == "module.menu-B60xPU0K"
+    assert idx.menu_map[1] == "module.menu-lSoMfgab"

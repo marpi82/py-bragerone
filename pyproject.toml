@@ -195,6 +195,10 @@ validate = ["fmt", "lint", "typecheck", "security", "test"]
 # Tests
 test = { cmd = "pytest -q" }
 cov = { cmd = "pytest -q --cov=pybragerone --cov-report=term-missing" }
+perf = { cmd = "python scripts/perf_bench.py run --loops 2000 --output reports/perf/latest.json" }
+perf-compare = { cmd = "python scripts/perf_bench.py compare --baseline reports/perf/baseline.json --current reports/perf/latest.json --regression-threshold-percent 10" }
+perf-startup = { cmd = "python scripts/perf_bench.py startup --output reports/perf/startup_latest.json" }
+perf-startup-compare = { cmd = "python scripts/perf_bench.py compare --baseline reports/perf/startup_baseline.json --current reports/perf/startup_latest.json --regression-threshold-percent 10" }
 # Build
 build = { cmd = "hatch build" }
 # Docs

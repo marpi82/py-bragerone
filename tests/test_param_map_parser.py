@@ -120,3 +120,118 @@ async def test_param_map_inline_fallback_from_index_candidate() -> None:
     assert pm.units == 2
     assert pm.paths["value"][0]["pool"] == "P6"
     assert pm.paths["unit"][0]["idx"] == 2
+
+
+@pytest.mark.asyncio
+async def test_param_map_scalar_unit_field_is_parsed_as_units_code() -> None:
+    """When frontend uses `unit: <code>`, parser should expose it as ParamMap.units."""
+    token = "STATUS_P5_11"
+    asset_url = "https://example.com/assets/STATUS_P5_11-AAA111.js"
+
+    js = """
+    export default {
+      name: "app.one.boilerStatus.name",
+      unit: 9996,
+      value: [{ group: "P5", number: 11, use: "s" }],
+      status: [{ group: "P5", number: 11, use: "s" }]
+    };
+    """
+
+    mock_api = AsyncMock()
+
+    async def get_bytes(url: str) -> bytes:
+        if url == asset_url:
+            return js.encode("utf-8")
+        return b""
+
+    mock_api.get_bytes.side_effect = get_bytes
+
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.assets_by_basename[token] = [AssetRef(url=asset_url, base=token, hash="AAA111")]
+
+    result = await catalog.get_param_mapping([token])
+    assert token in result
+    assert result[token].units == 9996
+
+
+@pytest.mark.asyncio
+async def test_param_map_factory_call_is_expanded_for_requested_token() -> None:
+    """Expand shorthand factory-call entries like STATUS_P5_10: eE({...}) into full ParamMap data."""
+    token = "STATUS_P5_10"
+    asset_url = "https://example.com/assets/STATUS_TABLE-ABC999.js"
+
+    js = """
+        const eE = ({id:e, icon:t=Xe.INFO, number:n, useComponent:r=Lo.DIODE}) => ({
+            id: e,
+            icon: t,
+            name: `parameters.STATUS_P5_${n}`,
+            unit: 9994,
+            value: [{
+                if: [{ expected: 1, operation: ku.equalTo, value: [{ group: "P5", number: n, use: "s", bit: 1 }] }],
+                then: kn.ON
+            }],
+            useComponent: r
+        });
+        export default {
+            STATUS_P5_10: eE({ id: 20240408105000, number: 10 })
+        };
+        """
+
+    mock_api = AsyncMock()
+
+    async def get_bytes(url: str) -> bytes:
+        if url == asset_url:
+            return js.encode("utf-8")
+        return b""
+
+    mock_api.get_bytes.side_effect = get_bytes
+
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.assets_by_basename[token] = [AssetRef(url=asset_url, base=token, hash="ABC999")]
+
+    result = await catalog.get_param_mapping([token])
+    assert token in result
+
+    pm = result[token]
+    assert pm.units == 9994
+    assert isinstance(pm.raw, dict)
+    assert pm.raw.get("name") == "parameters.STATUS_P5_10"
+    assert isinstance(pm.raw.get("value"), list)
+
+
+@pytest.mark.asyncio
+async def test_param_map_index_full_fallback_resolves_without_asset_file() -> None:
+    """Resolve token mapping from full index fallback when no dedicated asset file exists."""
+    token = "STATUS_P5_10"
+    index_js = """
+        const eE = ({id:e, icon:t=Xe.INFO, number:n, useComponent:r=Lo.DIODE}) => ({
+            id: e,
+            icon: t,
+            name: `parameters.STATUS_P5_${n}`,
+            unit: 9994,
+            value: [{
+                if: [{ expected: 1, operation: ku.equalTo, value: [{ group: "P5", number: n, use: "s", bit: 1 }] }],
+                then: kn.ON
+            }],
+            useComponent: r
+        });
+        export default {
+            STATUS_P5_10: eE({ id: 20240408105000, number: 10 })
+        };
+        """
+
+    mock_api = AsyncMock()
+    catalog = LiveAssetsCatalog(mock_api)
+
+    # Prevent auto-discovery and force index fallback path.
+    catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/dummy.js", base="dummy", hash="x")]
+    catalog._idx.index_bytes = index_js.encode("utf-8")
+    catalog._idx.inline_param_candidates = []
+
+    result = await catalog.get_param_mapping([token])
+    assert token in result
+
+    pm = result[token]
+    assert pm.units == 9994
+    assert isinstance(pm.raw, dict)
+    assert pm.raw.get("name") == "parameters.STATUS_P5_10"
