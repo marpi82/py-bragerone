@@ -380,18 +380,6 @@ async def _run_tui(
 
         return deps
 
-    def _value_label_from_unit(unit: str | dict[str, str] | None, value: Any) -> str | None:
-        if not isinstance(unit, dict) or value is None:
-            return None
-        keys = [str(value)]
-        if isinstance(value, bool) or (isinstance(value, (int, float)) and float(value).is_integer()):
-            keys.append(str(int(value)))
-        for k in keys:
-            v = unit.get(k)
-            if isinstance(v, str) and v:
-                return v
-        return None
-
     def _has_display_value(item: _WatchItem) -> bool:
         if isinstance(item.value_label, str) and item.value_label.strip():
             return True
