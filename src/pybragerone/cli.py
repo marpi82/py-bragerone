@@ -184,6 +184,7 @@ async def run(args: argparse.Namespace) -> int:
                 all_panels=bool(args.all_panels),
                 debug_panels=bool(args.debug_panels),
                 debug_logging=bool(args.debug),
+                token_labels=bool(args.token_labels),
             ),
             "tui",
             log,
@@ -297,6 +298,7 @@ async def _run_tui(
     all_panels: bool,
     debug_panels: bool,
     debug_logging: bool = False,
+    token_labels: bool = False,
 ) -> None:
     """Run a minimal Rich TUI with a live values area and a scrolling log."""
     try:
@@ -397,6 +399,14 @@ async def _run_tui(
             return bool(item.value.strip())
         return True
 
+    def _normalize_inline_unit_spacing(value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return value
+        return re.sub(r"^([+-]?\d+(?:[.,]\d+)?)(°\S+)$", r"\1 \2", text)
+
     def _recompute_visible_groups() -> None:
         visible_group_symbols.clear()
         for group_name, symbols in group_symbols.items():
@@ -430,8 +440,10 @@ async def _run_tui(
             if it is None:
                 continue
             val = it.value_label if it.value_label is not None else it.value
-            if isinstance(it.unit, str):
+            if isinstance(it.unit, str) and it.unit.strip():
                 val = f"{val} {it.unit}" if val is not None else "-"
+            else:
+                val = _normalize_inline_unit_spacing(val)
             table.add_row(str(it.label), str(val) if val is not None else "-")
 
         hidden_count = max(0, len(symbols) - render_rows_limit)
@@ -519,14 +531,6 @@ async def _run_tui(
             key = _format_event_key(upd)
             await store.upsert_async(key, upd.value)
             dirty_keys.add(key)
-
-            # Fast-path: direct parameters can update value immediately from WS key.
-            for sym in key_to_symbols.get(key, set()):
-                it = watch.get(sym)
-                if it is None or it.kind != "direct":
-                    continue
-                it.value = upd.value
-                it.value_label = _value_label_from_unit(it.unit, upd.value)
 
             src = ""
             if isinstance(upd.meta, dict):
@@ -628,9 +632,10 @@ async def _run_tui(
                 desc = await resolver.describe_symbol(sym)
                 desc_cache[sym] = desc
                 resolved = await resolver.resolve_value(sym)
+                display_label = sym if token_labels else str(desc.get("label") or sym)
                 watch[sym] = _WatchItem(
                     symbol=sym,
-                    label=str(desc.get("label") or sym),
+                    label=display_label,
                     unit=resolved.unit,
                     address=resolved.address,
                     value=resolved.value,
@@ -682,6 +687,8 @@ async def _run_tui(
                 }
                 initial_refresh = False
             elif updated_keys:
+                for key in updated_keys:
+                    symbols_to_refresh.update(key_to_symbols.get(key, set()))
                 for sym, deps in symbol_deps.items():
                     if sym in computed_symbols and deps & updated_keys:
                         symbols_to_refresh.add(sym)
@@ -806,6 +813,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug-panels",
         action="store_true",
         help="Log panel route inclusion/exclusion reasons in TUI console",
+    )
+    p.add_argument(
+        "--token-labels",
+        action="store_true",
+        help="Display raw symbol tokens as names in TUI instead of localized labels",
     )
     return p
 

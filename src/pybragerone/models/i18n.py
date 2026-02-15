@@ -81,21 +81,6 @@ class I18nResolver:
             return normalized_resolved
         return None
 
-    async def resolve_app_one_field_label(self, *, name_key: str, lang: str | None = None) -> str | None:
-        """Resolve an app.json field label (asset-driven)."""
-        lang_eff = (lang.strip().lower() if isinstance(lang, str) and lang.strip() else None) or await self.ensure_lang()
-        return await self._assets.resolve_app_one_field_label(name_key=name_key, lang=lang_eff)
-
-    async def resolve_app_one_value_label(self, *, name_key: str, value: str, lang: str | None = None) -> str | None:
-        """Resolve an app.json value label (asset-driven)."""
-        lang_eff = (lang.strip().lower() if isinstance(lang, str) and lang.strip() else None) or await self.ensure_lang()
-        return await self._assets.resolve_app_one_value_label(name_key=name_key, value=value, lang=lang_eff)
-
-    async def resolve_app_enum_value_label(self, *, value: str, lang: str | None = None) -> str | None:
-        """Resolve `e.*` enum labels from official assets (asset-driven)."""
-        lang_eff = (lang.strip().lower() if isinstance(lang, str) and lang.strip() else None) or await self.ensure_lang()
-        return await self._assets.resolve_app_enum_value_label(value=value, lang=lang_eff)
-
     @staticmethod
     def normalize_unit_label(raw: str | None) -> str | None:
         """Normalize common unit spellings."""

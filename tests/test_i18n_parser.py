@@ -232,43 +232,28 @@ class TestI18nParser:
         assert "ąćę" in messages["polish_chars"]
         assert "测试" in messages["unicode_test"]
 
-    async def test_app_one_table_enum_value_labels(self) -> None:
-        """Test resolving enum-like computed values via `app.one.<table>` translations."""
+    async def test_index_units_descriptor_table_is_available_by_raw_code(self) -> None:
+        """Index-defined units descriptor table should be parsed and exposed by raw unit code."""
         index_content = """
-        var assets = {
-            "../../resources/languages/pl/app.json": () => d(() => import("./app-HASH_PL.js"), []).then(e => e.default)
+        const QO = {
+            2: { text: "units.2" },
+            3: { text: "units.3" },
+            49: { text: "units.31", value: e => Number((e * .1).toFixed(1)), valuePrepare: e => e / .1 },
+            8: { options: { 22: "units.8.22" } }
         };
+        export default {};
         """
 
-        i18n_files = {
-            "app-HASH_PL.js": """export default {
-                one: {
-                    threeWayValveStatus: {
-                        name: "Status zaworu",
-                        disabled: "Nieaktywny",
-                        closingManual: "Zamykanie (ręczne)"
-                    }
-                }
-            };""",
-        }
-
-        client = MockApiClient(index_content, i18n_files)
-        catalog = LiveAssetsCatalog(client)  # type: ignore
+        client = MockApiClient(index_content)
+        catalog = LiveAssetsCatalog(client)  # type: ignore[arg-type]
         await catalog.refresh_index("http://example.com/index-main.js")
 
-        assert (
-            await catalog.resolve_app_one_value_label(
-                name_key="app.one.threeWayValveStatus.name",
-                value="e.DISABLED",
-                lang="pl",
-            )
-            == "Nieaktywny"
-        )
-        assert (
-            await catalog.resolve_app_one_value_label(
-                name_key="app.one.threeWayValveStatus.name",
-                value="e.CLOSING_MANUAL",
-                lang="pl",
-            )
-            == "Zamykanie (ręczne)"
-        )
+        desc_49 = await catalog.get_unit_descriptor(49)
+        assert isinstance(desc_49, dict)
+        assert desc_49.get("text") == "units.31"
+        assert isinstance(desc_49.get("value"), str)
+
+        desc_8 = await catalog.get_unit_descriptor("8")
+        assert isinstance(desc_8, dict)
+        assert isinstance(desc_8.get("options"), dict)
+        assert desc_8["options"]["22"] == "units.8.22"

@@ -55,20 +55,12 @@ class AssetsProtocol(Protocol):
         """Return translations for a given language and namespace."""
         raise NotImplementedError
 
+    async def get_unit_descriptor(self, unit_code: Any) -> Mapping[str, Any] | None:
+        """Return index-defined unit descriptor metadata for a raw unit code."""
+        raise NotImplementedError
+
     async def list_language_config(self) -> Any:
         """Return upstream translation configuration (or None)."""
-        raise NotImplementedError
-
-    async def resolve_app_one_field_label(self, *, name_key: str, lang: str) -> str | None:
-        """Resolve app.json field label for a key."""
-        raise NotImplementedError
-
-    async def resolve_app_one_value_label(self, *, name_key: str, value: str, lang: str) -> str | None:
-        """Resolve app.json value label for a key/value pair."""
-        raise NotImplementedError
-
-    async def resolve_app_enum_value_label(self, *, value: str, lang: str) -> str | None:
-        """Resolve enum-like app values (e.g. e.ON) to human labels."""
         raise NotImplementedError
 
 
@@ -82,6 +74,15 @@ class ResolvedValue:
     value: Any
     value_label: str | None
     unit: str | dict[str, str] | None
+
+
+@dataclass(frozen=True)
+class _NumericTransform:
+    """Normalized numeric transform extracted from unit descriptor."""
+
+    shift: float
+    factor: float
+    precision: int | None
 
 
 class ComputedValueEvaluator:
@@ -423,6 +424,20 @@ class ParamResolver:
             cur = cur.get(part)
         return cur if isinstance(cur, str) and cur.strip() else None
 
+    @staticmethod
+    def _lookup_dotted_path_raw(data: Mapping[str, Any], path: str) -> str | None:
+        if not path:
+            return None
+        cur: Any = data
+        parts = [part for part in path.split(".") if part]
+        if not parts:
+            return None
+        for part in parts:
+            if not isinstance(cur, Mapping):
+                return None
+            cur = cur.get(part)
+        return cur if isinstance(cur, str) else None
+
     @classmethod
     def _route_title(cls, route: Any, *, routes_i18n: Mapping[str, Any] | None = None) -> str:
         meta = getattr(route, "meta", None)
@@ -684,12 +699,262 @@ class ParamResolver:
         return self.panel_route_diagnostics_from_menu(menu, all_panels=all_panels, routes_i18n=routes_i18n)
 
     async def resolve_label(self, symbol: str) -> str | None:
-        """Resolve a symbol to a human-readable label via i18n assets."""
-        return await self._i18n.resolve_param_label(symbol)
+        """Resolve label strictly from mapping `name` token."""
+        mapping = await self.get_param_mapping(symbol)
+        if mapping is not None and isinstance(mapping.raw, Mapping):
+            raw_name = mapping.raw.get("name")
+            if isinstance(raw_name, str) and raw_name.strip():
+                resolved_from_name = await self._resolve_i18n_token(raw_name.strip())
+                if isinstance(resolved_from_name, str) and resolved_from_name.strip():
+                    return resolved_from_name
+                return None
+        return None
 
     async def resolve_unit(self, unit_code: Any) -> str | dict[str, str] | None:
         """Resolve unit metadata to a human-readable label or enumeration mapping."""
         return await self._i18n.resolve_unit(unit_code)
+
+    @staticmethod
+    def _to_float_literal(raw: str) -> float | None:
+        text = raw.strip()
+        if not text:
+            return None
+        if text.startswith("."):
+            text = f"0{text}"
+        if text.startswith("-."):
+            text = text.replace("-.", "-0.", 1)
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+    @classmethod
+    def _parse_numeric_transform(cls, raw_expr: Any) -> _NumericTransform | None:
+        if not isinstance(raw_expr, str):
+            return None
+
+        text = raw_expr.strip()
+        if not text:
+            return None
+
+        arrow_match = re.search(r"=>\s*(.+)$", text)
+        if arrow_match is None:
+            return None
+
+        body = arrow_match.group(1).strip().rstrip(";")
+        if body.startswith("{"):
+            return None
+
+        body_norm = re.sub(r"\s+", "", body)
+
+        precision: int | None = None
+        rounded_match = re.match(r"^Number\(\((.+)\)\.toFixed\((\d+)\)\)$", body_norm)
+        if rounded_match is not None:
+            body_norm = rounded_match.group(1).strip()
+            precision = int(rounded_match.group(2))
+
+        var_name = r"[A-Za-z_$][\w$]*"
+
+        mul_match = re.match(rf"^({var_name})\*([+-]?(?:\d+\.\d+|\d+|\.\d+))$", body_norm)
+        if mul_match is not None:
+            factor = cls._to_float_literal(mul_match.group(2))
+            if factor is None:
+                return None
+            return _NumericTransform(shift=0.0, factor=factor, precision=precision)
+
+        div_match = re.match(rf"^({var_name})/([+-]?(?:\d+\.\d+|\d+|\.\d+))$", body_norm)
+        if div_match is not None:
+            divisor = cls._to_float_literal(div_match.group(2))
+            if divisor is None or divisor == 0.0:
+                return None
+            return _NumericTransform(shift=0.0, factor=1.0 / divisor, precision=precision)
+
+        affine_match = re.match(
+            rf"^\(({var_name})([+-])([+-]?(?:\d+\.\d+|\d+|\.\d+))\)\*([+-]?(?:\d+\.\d+|\d+|\.\d+))$",
+            body_norm,
+        )
+        if affine_match is not None:
+            offset = cls._to_float_literal(affine_match.group(3))
+            factor = cls._to_float_literal(affine_match.group(4))
+            if offset is None or factor is None:
+                return None
+            shift = -offset if affine_match.group(2) == "-" else offset
+            return _NumericTransform(shift=shift, factor=factor, precision=precision)
+
+        return None
+
+    @classmethod
+    def _apply_numeric_transform(cls, raw_value: Any, raw_expr: Any) -> Any:
+        if isinstance(raw_expr, str):
+            expr_norm = re.sub(r"\s+", "", raw_expr)
+            if 'if(e===0)return"units.202.0"' in expr_norm and "(e-1)*10" in expr_norm and 'padStart(2,"0")' in expr_norm:
+                if isinstance(raw_value, bool):
+                    return raw_value
+                try:
+                    numeric = int(float(raw_value))
+                except (TypeError, ValueError):
+                    return raw_value
+                if numeric == 0:
+                    return "units.202.0"
+                total_minutes = (numeric - 1) * 10
+                hours = total_minutes // 60
+                minutes = total_minutes % 60
+                return f"{hours:02d}:{minutes:02d}"
+
+        if isinstance(raw_value, bool):
+            return raw_value
+
+        numeric_value: float
+        if isinstance(raw_value, (int, float)):
+            numeric_value = float(raw_value)
+        elif isinstance(raw_value, str):
+            text = raw_value.strip()
+            if not text:
+                return raw_value
+            try:
+                numeric_value = float(text)
+            except ValueError:
+                return raw_value
+        else:
+            return raw_value
+
+        transform = cls._parse_numeric_transform(raw_expr)
+        if transform is None:
+            return raw_value
+
+        transformed = (numeric_value + transform.shift) * transform.factor
+        if transform.precision is not None:
+            return round(transformed, transform.precision)
+        if float(transformed).is_integer():
+            return int(transformed)
+        return transformed
+
+    @staticmethod
+    def _unit_options_map(unit: Any) -> dict[str, str] | None:
+        if not isinstance(unit, Mapping):
+            return None
+
+        options_any = unit.get("options")
+        if isinstance(options_any, Mapping):
+            return {str(key).strip(): str(val).strip() for key, val in options_any.items()}
+
+        special = {"text", "value", "valuePrepare", "colors"}
+        if any(key in unit for key in special):
+            return None
+
+        return {str(key).strip(): str(val).strip() for key, val in unit.items()}
+
+    async def _unit_display_value(self, unit: Any) -> str | dict[str, str] | None:
+        if not isinstance(unit, Mapping):
+            return unit if isinstance(unit, str) else None
+
+        text_raw = unit.get("text")
+        if not isinstance(text_raw, str) or not text_raw.strip():
+            options = self._unit_options_map(unit)
+            if options is not None:
+                return options
+            return {str(key).strip(): str(val).strip() for key, val in unit.items()}
+
+        text_token = text_raw.strip()
+        resolved_token = await self._resolve_i18n_token(text_token)
+        if resolved_token is not None:
+            return resolved_token
+
+        return text_token
+
+    @staticmethod
+    def _normalize_unit_code(raw_unit_code: Any) -> str | None:
+        if isinstance(raw_unit_code, int):
+            return str(raw_unit_code)
+        if isinstance(raw_unit_code, float):
+            return str(int(raw_unit_code)) if raw_unit_code.is_integer() else None
+        if isinstance(raw_unit_code, str):
+            text = raw_unit_code.strip()
+            if not text:
+                return None
+            if text.isdigit():
+                return text
+            try:
+                as_float = float(text)
+            except ValueError:
+                return None
+            return str(int(as_float)) if as_float.is_integer() else None
+        return None
+
+    async def _resolve_unit_meta(self, *, raw_unit_code: Any) -> Any:
+        """Resolve canonical unit metadata for a raw unit code.
+
+        Source of truth is the index-defined units descriptor table.
+        """
+        try:
+            descriptor = await self._assets.get_unit_descriptor(raw_unit_code)
+        except Exception:
+            descriptor = None
+        if isinstance(descriptor, Mapping) and descriptor:
+            return dict(descriptor)
+
+        normalized_code = self._normalize_unit_code(raw_unit_code)
+        if normalized_code is not None:
+            return {"text": f"units.{normalized_code}"}
+        return None
+
+    async def _resolve_units_value_token(self, label: str | None) -> str | None:
+        if not isinstance(label, str):
+            return None
+
+        current = label.strip()
+        if not current:
+            return None
+
+        resolved = await self._resolve_i18n_token(current)
+        return resolved if resolved is not None else current
+
+    async def _resolve_i18n_token(self, token: str | None) -> str | None:
+        if not isinstance(token, str):
+            return None
+
+        current = token.strip()
+        if not current:
+            return None
+
+        first_dot = current.find(".")
+        if first_dot <= 0:
+            return None
+        namespace = current[:first_dot]
+        path = current[first_dot + 1 :]
+
+        if not namespace or not path:
+            return None
+
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", namespace):
+            return None
+
+        table = await self._i18n.get_namespace(namespace)
+
+        resolved = self._lookup_dotted_path_raw(table, path)
+        depth = 0
+        while isinstance(resolved, str) and depth < 4:
+            next_dot = resolved.find(".")
+            if next_dot <= 0:
+                break
+
+            next_namespace = resolved[:next_dot]
+            next_path = resolved[next_dot + 1 :]
+            if not next_namespace or not next_path:
+                break
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", next_namespace):
+                break
+
+            next_table = await self._i18n.get_namespace(next_namespace)
+            next_value = self._lookup_dotted_path_raw(next_table, next_path)
+            if not isinstance(next_value, str):
+                break
+            resolved = next_value
+            depth += 1
+
+        if isinstance(resolved, str):
+            return resolved
+        return None
 
     @staticmethod
     def _addr_key(pool: str, chan: str, idx: int) -> str:
@@ -1132,6 +1397,27 @@ class ParamResolver:
             mapped = unit.get(key)
             if isinstance(mapped, str) and mapped.strip():
                 return mapped.strip()
+
+        def _normalize_symbolic(text: str) -> str:
+            normalized = text.strip()
+            if normalized.startswith("[") and normalized.endswith("]") and len(normalized) > 2:
+                normalized = normalized[1:-1].strip()
+            if "." in normalized:
+                normalized = normalized.split(".", 1)[1].strip()
+            return normalized
+
+        normalized_candidates = {
+            _normalize_symbolic(str(candidate))
+            for candidate in candidates
+            if isinstance(candidate, str) and _normalize_symbolic(str(candidate))
+        }
+        if normalized_candidates:
+            for raw_key, mapped in unit.items():
+                if not isinstance(mapped, str) or not mapped.strip():
+                    continue
+                key_norm = _normalize_symbolic(str(raw_key))
+                if key_norm and key_norm in normalized_candidates:
+                    return mapped.strip()
         return None
 
     @staticmethod
@@ -1365,13 +1651,26 @@ class ParamResolver:
 
         address_key: str | None = None
         unit: str | dict[str, str] | None = None
+        unit_meta: str | dict[str, str] | None = None
+        raw_unit_code: Any = None
+        mapping_unit_meta: Any = None
         if addr_tuple is not None:
             address_key = self._addr_key(addr_tuple[0], addr_tuple[1], addr_tuple[2])
             fam = self._store.get_family(addr_tuple[0], addr_tuple[2])
             if fam is not None:
-                unit = await self.resolve_unit(fam.unit_code)
-            if unit is None and mapping is not None and mapping.units is not None:
-                unit = await self.resolve_unit(mapping.units)
+                raw_unit_code = fam.unit_code
+            if mapping is not None and mapping.units is not None:
+                if raw_unit_code is None and isinstance(mapping.units, (str, int, float)):
+                    raw_unit_code = mapping.units
+                if isinstance(mapping.units, Mapping):
+                    mapping_unit_meta = dict(mapping.units)
+
+        unit_meta = await self._resolve_unit_meta(raw_unit_code=raw_unit_code)
+        if unit_meta is None and isinstance(mapping_unit_meta, Mapping):
+            unit_meta = dict(mapping_unit_meta)
+
+        unit = await self._unit_display_value(unit_meta)
+        unit_value_labels = self._unit_options_map(unit_meta)
 
         if mapping is not None and self._mapping_has_computed_rules(mapping):
             computed_value = self._evaluator.evaluate(mapping.raw)
@@ -1383,77 +1682,27 @@ class ParamResolver:
                 fam = self._store.get_family(addr_tuple[0], addr_tuple[2])
                 if fam is not None:
                     raw_val = fam.get(addr_tuple[1])
+                display_val = self._apply_numeric_transform(
+                    raw_val, unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
+                )
+                if isinstance(display_val, str):
+                    resolved_display = await self._resolve_units_value_token(display_val)
+                    if isinstance(resolved_display, str):
+                        display_val = resolved_display
                 return ResolvedValue(
                     symbol=symbol,
                     kind="direct",
                     address=address_key,
-                    value=raw_val,
-                    value_label=self._unit_mapping_value_label(unit, raw_val),
+                    value=display_val,
+                    value_label=await self._resolve_units_value_token(
+                        self._unit_mapping_value_label(unit_value_labels, display_val)
+                    ),
                     unit=unit,
                 )
 
-            computed_value_label: str | None = None
-            lang_eff = await self.ensure_lang()
-
-            mapping_name_key: str | None = None
-            if mapping is not None and isinstance(mapping.raw, Mapping):
-                raw_name = mapping.raw.get("name")
-                if isinstance(raw_name, str) and raw_name.strip():
-                    mapping_name_key = raw_name.strip()
-
-            if mapping_name_key is not None and computed_value is not None:
-                computed_value_label = await self._i18n.resolve_app_one_value_label(
-                    name_key=mapping_name_key,
-                    value=str(computed_value),
-                    lang=str(lang_eff),
-                )
-
-            if computed_value_label is None and isinstance(computed_value, str) and computed_value.startswith("e."):
-                computed_value_label = await self._i18n.resolve_app_enum_value_label(
-                    value=computed_value,
-                    lang=str(lang_eff),
-                )
-
-            if (
-                computed_value_label is None
-                and isinstance(computed_value, str)
-                and computed_value.startswith("e.")
-                and mapping is not None
-                and isinstance(mapping.raw, Mapping)
-            ):
-                raw_component = mapping.raw.get("useComponent")
-                component = raw_component if isinstance(raw_component, str) else None
-                if component:
-                    component_clean = self._clean_symbolic_tag(component) or component
-                    base_lower = component_clean.strip().lower()
-                    app_table_key = f"app.one.{base_lower}State"
-                    computed_value_label = await self._i18n.resolve_app_one_value_label(
-                        name_key=app_table_key,
-                        value=computed_value,
-                        lang=str(lang_eff),
-                    )
-
-                    enum_tail = computed_value[2:]
-                    parts = [p for p in enum_tail.split("_") if p]
-                    snake_key = "_".join(p.lower() for p in parts) if parts else enum_tail.lower()
-                    camel_key = parts[0].lower() + "".join(p.lower().title() for p in parts[1:]) if parts else enum_tail
-                    key_candidates = [camel_key, snake_key, enum_tail, enum_tail.lower()]
-
-                    if computed_value_label is None:
-                        for ns in (base_lower, f"{base_lower}state"):
-                            tbl = await self._assets.get_i18n(str(lang_eff), ns)
-                            if not isinstance(tbl, dict) or not tbl:
-                                continue
-                            for k in key_candidates:
-                                v = tbl.get(k)
-                                if isinstance(v, str):
-                                    computed_value_label = v
-                                    break
-                            if computed_value_label is not None:
-                                break
-
-            if computed_value_label is None:
-                computed_value_label = self._unit_mapping_value_label(unit, computed_value)
+            computed_value_label = await self._resolve_units_value_token(
+                self._unit_mapping_value_label(unit_value_labels, computed_value)
+            )
 
             computed_address = address_key if self._mapping_has_simple_direct_value_path(mapping) else None
 
@@ -1472,12 +1721,18 @@ class ParamResolver:
             if fam is not None:
                 val = fam.get(addr_tuple[1])
 
+        display_val = self._apply_numeric_transform(val, unit_meta.get("value") if isinstance(unit_meta, Mapping) else None)
+        if isinstance(display_val, str):
+            resolved_display = await self._resolve_units_value_token(display_val)
+            if isinstance(resolved_display, str):
+                display_val = resolved_display
+
         return ResolvedValue(
             symbol=symbol,
             kind="direct",
             address=address_key,
-            value=val,
-            value_label=self._unit_mapping_value_label(unit, val),
+            value=display_val,
+            value_label=await self._resolve_units_value_token(self._unit_mapping_value_label(unit_value_labels, display_val)),
             unit=unit,
         )
 
@@ -1527,8 +1782,7 @@ class ParamResolver:
 
         label = await self.resolve_label(symbol)
         if label is None and status_match and mapping_name_key is not None:
-            lang_eff = await self.ensure_lang()
-            label = await self._i18n.resolve_app_one_field_label(name_key=mapping_name_key, lang=str(lang_eff))
+            label = await self._resolve_i18n_token(mapping_name_key)
 
         pool = idx = chan = None
         unit = value = None
@@ -1585,57 +1839,15 @@ class ParamResolver:
                 computed_value = self._evaluator.evaluate({"paths": mapping.paths})
 
             if computed_value is not None:
-                lang_eff = await self.ensure_lang()
-                if mapping_name_key is not None:
-                    computed_value_label = await self._i18n.resolve_app_one_value_label(
-                        name_key=mapping_name_key,
-                        value=str(computed_value),
-                        lang=str(lang_eff),
-                    )
-                if computed_value_label is None and isinstance(computed_value, str) and computed_value.startswith("e."):
-                    computed_value_label = await self._i18n.resolve_app_enum_value_label(
-                        value=computed_value,
-                        lang=str(lang_eff),
-                    )
+                raw_unit_code_for_labels: Any = unit_code
+                if raw_unit_code_for_labels is None and isinstance(mapping.units, (str, int, float)):
+                    raw_unit_code_for_labels = mapping.units
 
-                if (
-                    computed_value_label is None
-                    and isinstance(computed_value, str)
-                    and computed_value.startswith("e.")
-                    and isinstance(mapping.raw, Mapping)
-                ):
-                    raw_component = mapping.raw.get("useComponent")
-                    component = raw_component if isinstance(raw_component, str) else None
-                    if component:
-                        component_clean = self._clean_symbolic_tag(component) or component
-                        base_lower = component_clean.strip().lower()
-                        ns_candidates = [base_lower, f"{base_lower}state"]
-
-                        app_table_key = f"app.one.{base_lower}State"
-                        computed_value_label = await self._i18n.resolve_app_one_value_label(
-                            name_key=app_table_key,
-                            value=computed_value,
-                            lang=str(lang_eff),
-                        )
-
-                        enum_tail = computed_value[2:]
-                        parts = [p for p in enum_tail.split("_") if p]
-                        snake_key = "_".join(p.lower() for p in parts) if parts else enum_tail.lower()
-                        camel_key = parts[0].lower() + "".join(p.lower().title() for p in parts[1:]) if parts else enum_tail
-                        key_candidates = [camel_key, snake_key, enum_tail, enum_tail.lower()]
-
-                        if computed_value_label is None:
-                            for ns in ns_candidates:
-                                tbl = await self._assets.get_i18n(str(lang_eff), ns)
-                                if not isinstance(tbl, dict) or not tbl:
-                                    continue
-                                for k in key_candidates:
-                                    v = tbl.get(k)
-                                    if isinstance(v, str):
-                                        computed_value_label = v
-                                        break
-                                if computed_value_label is not None:
-                                    break
+                unit_meta_for_labels = await self._resolve_unit_meta(raw_unit_code=raw_unit_code_for_labels)
+                unit_value_labels = self._unit_options_map(unit_meta_for_labels)
+                computed_value_label = await self._resolve_units_value_token(
+                    self._unit_mapping_value_label(unit_value_labels, computed_value)
+                )
 
         return {
             "symbol": symbol,
