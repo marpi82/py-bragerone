@@ -13,7 +13,10 @@
       "type": "shell",
       "command": "uv sync --locked --group dev --group test --group docs",
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "clear": true }
+      "presentation": {
+        "reveal": "always",
+        "clear": true
+      }
     },
     {
       "label": "Quality: format",
@@ -21,7 +24,10 @@
       "command": "uv run --group dev ruff format",
       "problemMatcher": [],
       "group": "build",
-      "presentation": { "reveal": "never", "clear": true }
+      "presentation": {
+        "reveal": "never",
+        "clear": true
+      }
     },
     {
       "label": "Quality: lint/fix",
@@ -30,7 +36,10 @@
       "problemMatcher": [
         {
           "owner": "ruff",
-          "fileLocation": ["relative", "${workspaceFolder}"],
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}"
+          ],
           // file.py:10:5: F401 message...
           "pattern": {
             "regexp": "^(.*?):(\\d+):(\\d+):\\s+([A-Z]\\d{3})\\s+(.*)$",
@@ -43,7 +52,10 @@
         }
       ],
       "group": "build",
-      "presentation": { "reveal": "never", "clear": true }
+      "presentation": {
+        "reveal": "never",
+        "clear": true
+      }
     },
     {
       "label": "Quality: typecheck",
@@ -52,7 +64,10 @@
       "problemMatcher": [
         {
           "owner": "mypy",
-          "fileLocation": ["relative", "${workspaceFolder}"],
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}"
+          ],
           // file:line:col: (error|warning|note): message
           "pattern": {
             "regexp": "^(.*?):(\\d+):(\\d+):\\s+(error|warning|note):\\s+(.*)$",
@@ -64,14 +79,24 @@
         }
       ],
       "group": "build",
-      "presentation": { "reveal": "never", "clear": true }
+      "presentation": {
+        "reveal": "never",
+        "clear": true
+      }
     },
     {
       "label": "Quality: All checks",
       "dependsOrder": "sequence",
-      "dependsOn": ["Quality: format", "Quality: lint/fix", "Quality: typecheck"],
+      "dependsOn": [
+        "Quality: format",
+        "Quality: lint/fix",
+        "Quality: typecheck"
+      ],
       "problemMatcher": [],
-      "presentation": { "reveal": "never", "clear": true }
+      "presentation": {
+        "reveal": "never",
+        "clear": true
+      }
     },
     {
       "label": "Security: Bandit (security linting)",
@@ -81,7 +106,10 @@
       "problemMatcher": [
         {
           "owner": "bandit",
-          "fileLocation": ["relative", "${workspaceFolder}"],
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}"
+          ],
           // file.py:12:0: Bxxx HIGH: message...
           "pattern": {
             "regexp": "^(.*?):(\\d+):(\\d+):\\s+([A-Z]\\d{3})\\s+(LOW|MEDIUM|HIGH|UNDEFINED):\\s+(.*)$",
@@ -94,7 +122,10 @@
           }
         }
       ],
-      "presentation": { "reveal": "never", "clear": true }
+      "presentation": {
+        "reveal": "never",
+        "clear": true
+      }
     },
     {
       "label": "Security: Semgrep (security checks)",
@@ -104,7 +135,10 @@
       "problemMatcher": [
         {
           "owner": "semgrep",
-          "fileLocation": ["relative", "${workspaceFolder}"],
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}"
+          ],
           // typical: file.py:12:3: WARNING rule.id: message
           "pattern": {
             "regexp": "^(.*?):(\\d+):(\\d+):\\s+(ERROR|WARNING|INFO)\\s+([^:]+):\\s+(.*)$",
@@ -117,45 +151,77 @@
           }
         }
       ],
-      "presentation": { "reveal": "never", "clear": true }
+      "presentation": {
+        "reveal": "never",
+        "clear": true
+      }
     },
     {
       "label": "Security: pip-audit (dependency audit)",
       "type": "shell",
-      "command": "uv run --group dev pip-audit --skip-editable --progress-spinner off --ignore-vuln GHSA-4xh5-x5gv-qwph",
+      "command": "uv run --group dev pip-audit --skip-editable --progress-spinner off",
       // pip-audit prints a table by default; parsing 'Problems' can be unreliable → leave the exit code
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "clear": true }
+      "presentation": {
+        "reveal": "always",
+        "clear": true
+      }
     },
     {
       "label": "Security: All checks",
       "dependsOrder": "sequence",
-      "dependsOn": ["Security: Bandit (security linting)", "Security: Semgrep (security checks)", "Security: pip-audit (dependency audit)"],
+      "dependsOn": [
+        "Security: Bandit (security linting)",
+        "Security: Semgrep (security checks)",
+        "Security: pip-audit (dependency audit)"
+      ],
       "problemMatcher": [],
-      "presentation": { "reveal": "never", "clear": true }
+      "presentation": {
+        "reveal": "never",
+        "clear": true
+      }
     },
     {
       "label": "Tests: run",
       "type": "shell",
       // JUnit → Problems via $junit; -q stays, but we add a report
       "command": "uv run --group test pytest -q --junitxml=reports/junit.xml",
-      "group": { "kind": "test", "isDefault": true },
-      "presentation": { "reveal": "never", "clear": true }
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "never",
+        "clear": true
+      }
     },
     {
       "label": "Tests: coverage",
       "type": "shell",
       "command": "uv run --group test pytest -q --cov=pybragerone --cov-report=term-missing --junitxml=reports/junit.xml",
       "group": "test",
-      "presentation": { "reveal": "never", "clear": true }
+      "presentation": {
+        "reveal": "never",
+        "clear": true
+      }
     },
     {
       "label": "Validate: Full validation",
       "dependsOrder": "sequence",
-      "dependsOn": ["Quality: All checks", "Security: All checks", "Tests: run"],
+      "dependsOn": [
+        "Quality: All checks",
+        "Security: All checks",
+        "Tests: run"
+      ],
       "problemMatcher": [],
-      "group": { "kind": "build", "isDefault": true },
-      "presentation": { "reveal": "never", "clear": true }
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "never",
+        "clear": true
+      }
     },
     {
       "label": "Build dist",
@@ -163,7 +229,10 @@
       "command": "uv run --group dev hatch build",
       "problemMatcher": [],
       "group": "build",
-      "presentation": { "reveal": "always", "clear": true }
+      "presentation": {
+        "reveal": "always",
+        "clear": true
+      }
     },
     {
       "label": "Docs: build (Sphinx)",
@@ -171,7 +240,10 @@
       "command": "bash -lc 'export LC_ALL=C.utf8 2>/dev/null || export LC_ALL=C.UTF-8 2>/dev/null || true; uv run --group docs sphinx-build -b html docs docs/_build/html'",
       "problemMatcher": [],
       "group": "build",
-      "presentation": { "reveal": "never", "clear": true }
+      "presentation": {
+        "reveal": "never",
+        "clear": true
+      }
     },
     {
       "label": "Docs: serve (local http.server)",
@@ -179,24 +251,33 @@
       "command": "python -m http.server --directory docs/_build/html 8000",
       "isBackground": true,
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "shared", "clear": false }
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
     },
     {
       "label": "Publish: PyPI",
       "type": "shell",
       "command": "uv run --group dev hatch publish",
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "clear": true }
+      "presentation": {
+        "reveal": "always",
+        "clear": true
+      }
     },
     {
       "label": "Publish: TestPyPI",
       "type": "shell",
       "command": "uv run --group dev hatch publish --repo testpypi",
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "clear": true }
+      "presentation": {
+        "reveal": "always",
+        "clear": true
+      }
     }
   ],
-
   "runOptions": {
     "reevaluateOnRerun": true
   }
