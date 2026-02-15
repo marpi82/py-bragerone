@@ -329,7 +329,9 @@ async def _run_tui(
     symbol_deps: dict[str, set[str]] = {}
     symbol_groups: dict[str, set[str]] = {}
     key_to_symbols: dict[str, set[str]] = {}
+    key_to_computed_symbols: dict[str, set[str]] = {}
     computed_symbols: set[str] = set()
+    visible_computed_symbols: set[str] = set()
     dirty_keys: set[str] = set()
     initial_refresh = True
     content_ready = False
@@ -408,6 +410,7 @@ async def _run_tui(
         return re.sub(r"^([+-]?\d+(?:[.,]\d+)?)(°\S+)$", r"\1 \2", text)
 
     def _recompute_visible_groups() -> None:
+        visible_computed_symbols.clear()
         visible_group_symbols.clear()
         for group_name, symbols in group_symbols.items():
             visible = [
@@ -417,6 +420,9 @@ async def _run_tui(
             ]
 
             visible_group_symbols[group_name] = visible
+            for sym in visible:
+                if sym in computed_symbols:
+                    visible_computed_symbols.add(sym)
 
         # Keep original group order but hide panels without visible rows.
         panel_order[:] = [name for name in group_symbols if visible_group_symbols.get(name)]
@@ -648,6 +654,8 @@ async def _run_tui(
                     key_to_symbols.setdefault(addr, set()).add(sym)
                 if watch[sym].kind == "computed":
                     computed_symbols.add(sym)
+                    for dep in symbol_deps[sym]:
+                        key_to_computed_symbols.setdefault(dep, set()).add(sym)
 
         flat_values = store.flatten()
         for sym, item in watch.items():
@@ -682,22 +690,16 @@ async def _run_tui(
             symbols_to_refresh: set[str] = set()
 
             if initial_refresh:
-                symbols_to_refresh = {
-                    sym for symbols in visible_group_symbols.values() for sym in symbols if sym in computed_symbols
-                }
+                symbols_to_refresh = set(visible_computed_symbols)
                 initial_refresh = False
             elif updated_keys:
                 for key in updated_keys:
                     symbols_to_refresh.update(key_to_symbols.get(key, set()))
-                for sym, deps in symbol_deps.items():
-                    if sym in computed_symbols and deps & updated_keys:
-                        symbols_to_refresh.add(sym)
+                    symbols_to_refresh.update(key_to_computed_symbols.get(key, set()))
 
             now = time.monotonic()
             if not symbols_to_refresh and now - last_periodic_refresh >= periodic_refresh_seconds:
-                symbols_to_refresh = {
-                    sym for symbols in visible_group_symbols.values() for sym in symbols if sym in computed_symbols
-                }
+                symbols_to_refresh = set(visible_computed_symbols)
                 last_periodic_refresh = now
             elif symbols_to_refresh:
                 last_periodic_refresh = now
