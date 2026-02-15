@@ -1,19 +1,11 @@
 {
   "meta": {
-    "timestamp": "2026-02-15T14:09:40Z",
-    "python": "3.13.12",
-    "platform": "Linux-6.12.69+deb13-amd64-x86_64-with-glibc2.41",
-    "hostname": "bc853bb97b13",
-    "loops": 1,
+    "profile": "startup-latest",
+    "recording": "sanitized",
     "startup": {
-      "repeats": 1,
       "all_panels": true,
       "lang": "pl",
-      "platform": "bragerone",
-      "object_id": 439,
-      "modules_requested": [
-        "FTTCTBSLCE"
-      ]
+      "platform": "bragerone"
     },
     "stats": {
       "modules_selected": 1,
@@ -21,7 +13,8 @@
       "panels_total": 39,
       "symbols_total": 466,
       "prime_upserts": 835
-    }
+    },
+    "notes": "Stable repository sample without host-specific metadata or runtime identifiers."
   },
   "results": [
     {

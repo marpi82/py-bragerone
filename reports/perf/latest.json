@@ -1,10 +1,8 @@
 {
   "meta": {
-    "timestamp": "2026-02-15T13:34:54Z",
-    "python": "3.13.12",
-    "platform": "Linux-6.12.69+deb13-amd64-x86_64-with-glibc2.41",
-    "hostname": "bc853bb97b13",
-    "loops": 200
+    "profile": "micro-latest",
+    "recording": "sanitized",
+    "notes": "Stable repository sample without environment-specific metadata."
   },
   "results": [
     {
