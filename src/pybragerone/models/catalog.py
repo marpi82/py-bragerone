@@ -1071,6 +1071,8 @@ class LiveAssetsCatalog:
             token_raw_maps = await self._get_index_token_raw_maps(self._idx.index_bytes)
             chunk_token_maps: list[tuple[int, dict[str, dict[str, Any]]]] = []
             chunk_root_objects: list[tuple[int, dict[str, Any]]] = []
+            full_root_obj = self._extract_root_object_from_js(self._idx.index_bytes)
+            standard_token_name_re = re.compile(r"^[A-Z][A-Z0-9_]+$")
 
             for idx, (start, end) in enumerate(self._idx.inline_param_candidates):
                 if start < 0 or end <= start:
@@ -1122,14 +1124,22 @@ class LiveAssetsCatalog:
                             break
 
                 if resolved_pm is None:
-                    pm_full = self._parse_param_map_from_js(self._idx.index_bytes, tok, origin="inline:index-full")
+                    pm_full = None
+                    if isinstance(full_root_obj, dict):
+                        pm_full = self._build_param_map_from_obj(dict(full_root_obj), tok, origin="inline:index-full")
                     if _looks_like_param_map(pm_full, tok):
                         resolved_pm = pm_full
                         source_by_token[tok] = "index-full"
                         telemetry["index_full_hits"] += 1
 
-                if resolved_pm is None:
-                    pm_token = self._parse_param_map_from_index_token(self._idx.index_bytes, tok, origin="inline:index-token")
+                # token_raw_maps already covers the common token namespace; keep this expensive
+                # fallback only for non-standard keys to preserve compatibility.
+                if resolved_pm is None and not standard_token_name_re.match(tok):
+                    pm_token = self._parse_param_map_from_index_token(
+                        self._idx.index_bytes,
+                        tok,
+                        origin="inline:index-token",
+                    )
                     if _looks_like_param_map(pm_token, tok):
                         resolved_pm = pm_token
                         source_by_token[tok] = "index-token-ast"
