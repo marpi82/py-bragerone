@@ -1005,7 +1005,13 @@ class ParamResolver:
             return False
 
         for entry in values:
-            if isinstance(entry.get("group"), str) and isinstance(entry.get("number"), int) and isinstance(entry.get("use"), str):
+            try:
+                group = entry.get("group")
+                number = entry.get("number")
+                use = entry.get("use")
+            except AttributeError:
+                continue
+            if isinstance(group, str) and isinstance(number, int) and isinstance(use, str):
                 return True
         return False
 
