@@ -630,12 +630,15 @@ async def _run_tui(
                     log_lines.append(f"INFO: ... {extra} more rejected routes omitted")
 
         # Build watch items (labels + mapping) once; values will be refreshed from ParamStore on dirty ticks.
+        all_symbols = [sym for symbols in group_symbols.values() for sym in symbols]
+        desc_by_symbol = await resolver.describe_symbols(all_symbols)
+
         for _group_name, symbols in group_symbols.items():
             for sym in symbols:
                 symbol_groups.setdefault(sym, set()).add(_group_name)
                 if sym in watch:
                     continue
-                desc = await resolver.describe_symbol(sym)
+                desc = desc_by_symbol.get(sym) or await resolver.describe_symbol(sym)
                 desc_cache[sym] = desc
                 resolved = await resolver.resolve_value(sym)
                 display_label = sym if token_labels else str(desc.get("label") or sym)

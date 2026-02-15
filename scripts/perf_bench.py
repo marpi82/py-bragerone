@@ -363,8 +363,7 @@ async def _single_startup_run(
         symbols: list[str] = sorted({sym for group in panel_groups.values() for sym in group})
 
         t9 = time.perf_counter()
-        for symbol in symbols:
-            await resolver.describe_symbol(symbol)
+        await resolver.describe_symbols(symbols)
         mark("symbols.describe_all", t9)
 
         t10 = time.perf_counter()

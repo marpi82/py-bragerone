@@ -384,6 +384,21 @@ class ParamResolver:
             self._cache_mapping[symbol] = result.get(symbol)
         return self._cache_mapping.get(symbol)
 
+    async def prefetch_param_mappings(self, symbols: Iterable[str]) -> None:
+        """Bulk-fetch and cache mappings for unresolved symbols.
+
+        Args:
+            symbols: Symbol names to prefetch.
+        """
+        uniq_symbols = list(dict.fromkeys(str(sym) for sym in symbols if sym))
+        missing = [sym for sym in uniq_symbols if sym not in self._cache_mapping]
+        if not missing:
+            return
+
+        result = await self._assets.get_param_mapping(missing)
+        for sym in missing:
+            self._cache_mapping[sym] = result.get(sym)
+
     async def get_module_menu(
         self,
         device_menu: int = 0,
@@ -1868,10 +1883,24 @@ class ParamResolver:
             "mapping": mapping_details,
         }
 
+    async def describe_symbols(self, symbols: Iterable[str]) -> dict[str, dict[str, Any]]:
+        """Describe multiple symbols with shared bulk-prefetched mapping cache.
+
+        Args:
+            symbols: Iterable of symbolic names.
+
+        Returns:
+            Mapping from symbol to the same payload returned by :meth:`describe_symbol`.
+        """
+        uniq_symbols = list(dict.fromkeys(str(sym) for sym in symbols if sym))
+        await self.prefetch_param_mappings(uniq_symbols)
+
+        out: dict[str, dict[str, Any]] = {}
+        for sym in uniq_symbols:
+            out[sym] = await self.describe_symbol(sym)
+        return out
+
     async def merge_assets_with_permissions(self, permissions: list[str], device_menu: int = 0) -> dict[str, dict[str, Any]]:
         """Merge menu-visible symbols with mappings and live values for a permission set."""
         symbols = await self._assets.list_symbols_for_permissions(device_menu, permissions)
-        out: dict[str, dict[str, Any]] = {}
-        for sym in sorted(symbols):
-            out[sym] = await self.describe_symbol(sym)
-        return out
+        return await self.describe_symbols(sorted(symbols))

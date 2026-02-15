@@ -1,6 +1,6 @@
 {
   "meta": {
-    "timestamp": "2026-02-15T13:44:33Z",
+    "timestamp": "2026-02-15T14:02:19Z",
     "python": "3.13.12",
     "platform": "Linux-6.12.69+deb13-amd64-x86_64-with-glibc2.41",
     "hostname": "bc853bb97b13",
@@ -27,89 +27,89 @@
     {
       "name": "startup.auth.ensure",
       "loops": 1,
-      "total_seconds": 0.120721,
-      "mean_ms": 120.720527,
-      "median_ms": 120.720527,
+      "total_seconds": 0.12231,
+      "mean_ms": 122.309641,
+      "median_ms": 122.309641,
       "stdev_ms": 0.0
     },
     {
       "name": "startup.menu.load_and_parse",
       "loops": 1,
-      "total_seconds": 1.247759,
-      "mean_ms": 1247.758586,
-      "median_ms": 1247.758586,
+      "total_seconds": 1.542213,
+      "mean_ms": 1542.212618,
+      "median_ms": 1542.212618,
       "stdev_ms": 0.0
     },
     {
       "name": "startup.modules.list",
       "loops": 1,
-      "total_seconds": 0.064534,
-      "mean_ms": 64.534028,
-      "median_ms": 64.534028,
+      "total_seconds": 0.056234,
+      "mean_ms": 56.234408,
+      "median_ms": 56.234408,
       "stdev_ms": 0.0
     },
     {
       "name": "startup.panels.build_groups",
       "loops": 1,
-      "total_seconds": 0.027904,
-      "mean_ms": 27.90364,
-      "median_ms": 27.90364,
+      "total_seconds": 0.028887,
+      "mean_ms": 28.886511,
+      "median_ms": 28.886511,
       "stdev_ms": 0.0
     },
     {
       "name": "startup.prime.activity",
       "loops": 1,
-      "total_seconds": 0.061631,
-      "mean_ms": 61.631447,
-      "median_ms": 61.631447,
+      "total_seconds": 0.080994,
+      "mean_ms": 80.99403,
+      "median_ms": 80.99403,
       "stdev_ms": 0.0
     },
     {
       "name": "startup.prime.parameters",
       "loops": 1,
-      "total_seconds": 0.079001,
-      "mean_ms": 79.001204,
-      "median_ms": 79.001204,
+      "total_seconds": 0.144337,
+      "mean_ms": 144.337298,
+      "median_ms": 144.337298,
       "stdev_ms": 0.0
     },
     {
       "name": "startup.resolver.init",
       "loops": 1,
-      "total_seconds": 4.5e-05,
-      "mean_ms": 0.044878,
-      "median_ms": 0.044878,
+      "total_seconds": 3.5e-05,
+      "mean_ms": 0.035119,
+      "median_ms": 0.035119,
       "stdev_ms": 0.0
     },
     {
       "name": "startup.store.prime_ingest",
       "loops": 1,
-      "total_seconds": 0.001297,
-      "mean_ms": 1.296989,
-      "median_ms": 1.296989,
+      "total_seconds": 0.00143,
+      "mean_ms": 1.430475,
+      "median_ms": 1.430475,
       "stdev_ms": 0.0
     },
     {
       "name": "startup.symbols.describe_all",
       "loops": 1,
-      "total_seconds": 18.413435,
-      "mean_ms": 18413.434988,
-      "median_ms": 18413.434988,
+      "total_seconds": 11.030897,
+      "mean_ms": 11030.897408,
+      "median_ms": 11030.897408,
       "stdev_ms": 0.0
     },
     {
       "name": "startup.symbols.resolve_all",
       "loops": 1,
-      "total_seconds": 0.026538,
-      "mean_ms": 26.537744,
-      "median_ms": 26.537744,
+      "total_seconds": 0.025888,
+      "mean_ms": 25.888023,
+      "median_ms": 25.888023,
       "stdev_ms": 0.0
     },
     {
       "name": "startup.ws.connect_bind_subscribe",
       "loops": 1,
-      "total_seconds": 0.252458,
-      "mean_ms": 252.458416,
-      "median_ms": 252.458416,
+      "total_seconds": 0.281681,
+      "mean_ms": 281.681279,
+      "median_ms": 281.681279,
       "stdev_ms": 0.0
     }
   ]
