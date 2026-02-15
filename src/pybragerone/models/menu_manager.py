@@ -244,11 +244,30 @@ class MenuProcessor:
 
     def _resolve_tokens(self, routes: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Normalize parameter entries to guarantee clean tokens before validation."""
+        detected_prefixes = self._detect_permission_prefixes(routes)
+
+        def normalize_permission(value: str | None) -> str | None:
+            if value is None:
+                return None
+            for prefix in detected_prefixes:
+                if value.startswith(prefix):
+                    return value[len(prefix) :]
+            return value
 
         def normalize_list(items: list[Any]) -> list[Any]:
             normalized: list[Any] = []
             for item in items:
                 if isinstance(item, dict):
+                    token = item.get("token")
+                    parameter = item.get("parameter")
+                    if isinstance(token, str) and token and isinstance(parameter, str) and parameter:
+                        fast_item = dict(item)
+                        permission_module = fast_item.get("permissionModule")
+                        if isinstance(permission_module, str) and permission_module:
+                            fast_item["permissionModule"] = normalize_permission(permission_module)
+                        normalized.append(fast_item)
+                        continue
+
                     try:
                         model = MenuParameter.model_validate(item)
                         normalized.append(model.model_dump(mode="json", by_alias=True))
