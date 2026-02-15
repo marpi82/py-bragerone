@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -986,6 +987,7 @@ class LiveAssetsCatalog:
              The method performs asset fetching concurrently using asyncio.gather for
              improved performance. Failed fetches are logged but do not raise exceptions.
         """
+        t0_total = time.perf_counter()
         uniq_tokens = list(dict.fromkeys(str(t) for t in tokens if t))
 
         if not self._idx.assets_by_basename:
@@ -1002,19 +1004,47 @@ class LiveAssetsCatalog:
                 unresolved.append(tok)
 
         results: dict[str, ParamMap] = {}
+        source_by_token: dict[str, str] = {}
+        telemetry = {
+            "token_count": len(uniq_tokens),
+            "assets_queued": len(file_jobs),
+            "assets_ok": 0,
+            "assets_missing_parse": 0,
+            "assets_failed": 0,
+            "index_token_map_hits": 0,
+            "index_chunk_hits": 0,
+            "index_full_hits": 0,
+            "index_ast_token_hits": 0,
+            "unresolved": 0,
+            "ms_assets": 0.0,
+            "ms_index_fallback": 0.0,
+        }
 
-        async def fetch_and_parse(tok: str, a: AssetRef) -> None:
+        async def fetch_and_parse(tok: str, a: AssetRef) -> tuple[str, ParamMap | None, str | None]:
             try:
                 code = await self._api.get_bytes(a.url)
                 pm = self._parse_param_map_from_js(code, tok, origin=f"asset:{a.url}")
                 if pm:
-                    results[tok] = pm
-                else:
-                    self._log.debug("PARAM MAP not found in asset (export not object?): %s", a.url)
+                    return tok, pm, None
+                self._log.debug("PARAM MAP not found in asset (export not object?): %s", a.url)
+                return tok, None, None
             except Exception as e:
                 self._log.warning("Param asset fetch failed %s: %s", a.url, e)
+                return tok, None, str(e)
 
-        await asyncio.gather(*(fetch_and_parse(tok, a) for tok, a in file_jobs), return_exceptions=False)
+        t_assets = time.perf_counter()
+        asset_rows = await asyncio.gather(*(fetch_and_parse(tok, a) for tok, a in file_jobs), return_exceptions=False)
+        telemetry["ms_assets"] = (time.perf_counter() - t_assets) * 1000.0
+
+        for tok, pm, err in asset_rows:
+            if pm is not None:
+                results[tok] = pm
+                source_by_token[tok] = "asset"
+                telemetry["assets_ok"] += 1
+            elif err is not None:
+                telemetry["assets_failed"] += 1
+            else:
+                telemetry["assets_missing_parse"] += 1
 
         # 2) inline/index fallback for unresolved tokens
         def _looks_like_param_map(pm: ParamMap | None, token: str) -> bool:
@@ -1037,6 +1067,7 @@ class LiveAssetsCatalog:
 
         unresolved_now = [tok for tok in unresolved if tok not in results]
         if unresolved_now and self._idx.index_bytes:
+            t_fallback = time.perf_counter()
             token_raw_maps = await self._get_index_token_raw_maps(self._idx.index_bytes)
             for tok in unresolved_now:
                 resolved_pm: ParamMap | None = None
@@ -1046,6 +1077,8 @@ class LiveAssetsCatalog:
                     pm_cached = self._build_param_map_from_obj(dict(raw_map), tok, origin="inline:index-token")
                     if _looks_like_param_map(pm_cached, tok):
                         resolved_pm = pm_cached
+                        source_by_token[tok] = "index-token-map"
+                        telemetry["index_token_map_hits"] += 1
 
                 if resolved_pm is None:
                     for idx, (start, end) in enumerate(self._idx.inline_param_candidates):
@@ -1056,26 +1089,66 @@ class LiveAssetsCatalog:
                         pm = self._parse_param_map_from_js(chunk, tok, origin=origin)
                         if _looks_like_param_map(pm, tok):
                             resolved_pm = pm
+                            source_by_token[tok] = "index-inline-chunk"
+                            telemetry["index_chunk_hits"] += 1
                             break
 
                 if resolved_pm is None:
                     pm_full = self._parse_param_map_from_js(self._idx.index_bytes, tok, origin="inline:index-full")
                     if _looks_like_param_map(pm_full, tok):
                         resolved_pm = pm_full
+                        source_by_token[tok] = "index-full"
+                        telemetry["index_full_hits"] += 1
 
                 if resolved_pm is None:
                     pm_token = self._parse_param_map_from_index_token(self._idx.index_bytes, tok, origin="inline:index-token")
                     if _looks_like_param_map(pm_token, tok):
                         resolved_pm = pm_token
+                        source_by_token[tok] = "index-token-ast"
+                        telemetry["index_ast_token_hits"] += 1
 
                 if resolved_pm is not None:
                     results[tok] = resolved_pm
                 else:
                     self._log.debug("Index fallback didn't parse expected param map for %s", tok)
+                    source_by_token[tok] = "unresolved"
+                    telemetry["unresolved"] += 1
+
+            telemetry["ms_index_fallback"] = (time.perf_counter() - t_fallback) * 1000.0
+
+        for tok in uniq_tokens:
+            source_by_token.setdefault(tok, "unresolved")
+        telemetry["unresolved"] = sum(1 for src in source_by_token.values() if src == "unresolved")
+
+        total_ms = (time.perf_counter() - t0_total) * 1000.0
 
         self._log.info(
-            "PARAM MAPS: tokens=%d resolved=%d unresolved=%d", len(uniq_tokens), len(results), len(uniq_tokens) - len(results)
+            "PARAM MAPS: tokens=%d resolved=%d unresolved=%d total_ms=%.2f assets_ms=%.2f index_ms=%.2f "
+            "src(asset=%d idx-map=%d idx-chunk=%d idx-full=%d idx-ast=%d)",
+            len(uniq_tokens),
+            len(results),
+            telemetry["unresolved"],
+            total_ms,
+            telemetry["ms_assets"],
+            telemetry["ms_index_fallback"],
+            telemetry["assets_ok"],
+            telemetry["index_token_map_hits"],
+            telemetry["index_chunk_hits"],
+            telemetry["index_full_hits"],
+            telemetry["index_ast_token_hits"],
         )
+
+        self._log.debug(
+            "PARAM MAPS detail: assets_queued=%d assets_failed=%d assets_missing_parse=%d",
+            telemetry["assets_queued"],
+            telemetry["assets_failed"],
+            telemetry["assets_missing_parse"],
+        )
+
+        unresolved_preview = [tok for tok, src in source_by_token.items() if src == "unresolved"][:20]
+        if unresolved_preview:
+            self._log.debug("PARAM MAPS unresolved preview(%d): %s", len(unresolved_preview), unresolved_preview)
+
         return results
 
     @staticmethod
