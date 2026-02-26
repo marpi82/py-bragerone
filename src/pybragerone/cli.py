@@ -436,8 +436,7 @@ async def _run_send_only_actions(
         return exit_code
     finally:
         ingest_task.cancel()
-        with contextlib.suppress(Exception):
-            await ingest_task
+        await asyncio.gather(ingest_task, return_exceptions=True)
 
 
 def _maybe_load_dotenv() -> None:
