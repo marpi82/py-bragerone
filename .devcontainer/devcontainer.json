@@ -31,7 +31,7 @@
       ]
     }
   },
-  "postStartCommand": "sudo chown -R vscode:vscode /home/vscode/.cache ${containerWorkspaceFolder}/.venv 2>/dev/null || true",
+  "postStartCommand": "sudo chown -R vscode:vscode /home/vscode/.cache ${containerWorkspaceFolder}/.venv /workspaces/ha-bragerone/.venv 2>/dev/null || true",
   "postCreateCommand": "bash .devcontainer/setup.sh",
   "remoteEnv": {
     "UV_PROJECT_ENVIRONMENT": ".venv",
@@ -42,7 +42,9 @@
   },
   "mounts": [
     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/../ha-bragerone,target=/workspaces/ha-bragerone,type=bind,consistency=cached",
     "source=py-bragerone-venv,target=${containerWorkspaceFolder}/.venv,type=volume",
+    "source=ha-bragerone-venv,target=/workspaces/ha-bragerone/.venv,type=volume",
     "source=py-bragerone-uv-cache,target=/home/vscode/.cache/uv,type=volume"
   ],
   "remoteUser": "vscode"

@@ -12,24 +12,16 @@ This project uses several security scanning tools to monitor dependencies:
 - **semgrep**: Static analysis for security patterns
 - **pip-audit**: Dependency vulnerability scanning
 
-### Known Security Exceptions
+### Resolved Security Exceptions
 
-The following vulnerabilities are currently accepted with documented justification:
+There are currently **no active dependency vulnerability exceptions** in this repository.
 
 #### GHSA-7gcm-g887-7qv7 (CVE-2026-0994) - protobuf JSON recursion depth bypass
 
-- **Severity**: High (CVSS 8.2)
-- **Affected Package**: `protobuf` (all versions <= 6.33.4)
-- **Status**: No patched version available as of 2026-01-26
-- **Upstream Fix**: [protocolbuffers/protobuf#25239](https://github.com/protocolbuffers/protobuf/pull/25239) (PR open but not merged)
-- **Dependency Chain**: `semgrep` (dev dependency) → `opentelemetry-*` → `protobuf@4.25.8`
-- **Risk Assessment**: Low
-  - Only affects development dependencies (not runtime)
-  - Requires attacker to control JSON input to semgrep's telemetry
-  - semgrep is not exposed in production environments
-- **Mitigation**: Temporary exception added to `pip-audit` configuration
-- **Action Required**: Remove exception from `pyproject.toml` once a patched protobuf version is released
-- **Monitoring**: Check [PR #25239](https://github.com/protocolbuffers/protobuf/pull/25239) status regularly
+- **Status**: ✅ Resolved - Exception removed as of 2026-02-15
+- **Affected Package**: `protobuf` (versions <= 6.33.4)
+- **Resolution**: Environment is now on `protobuf>=6.33.5` and `pip-audit` reports no known vulnerabilities.
+- **Action Taken**: Removed `--ignore-vuln GHSA-7gcm-g887-7qv7` from local tasks and CI workflow.
 
 #### GHSA-4xh5-x5gv-qwph (pip tar extraction vulnerability)
 
@@ -59,7 +51,7 @@ uv run --group dev poe security
 This runs:
 - `bandit -r src -q` - Python security linting
 - `semgrep --config p/ci --error .` - Static analysis
-- `pip-audit --skip-editable --progress-spinner off --ignore-vuln <exceptions>` - Dependency scanning
+- `pip-audit --skip-editable --progress-spinner off` - Dependency scanning
 
 ## Update Schedule
 
