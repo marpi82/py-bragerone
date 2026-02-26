@@ -12,7 +12,7 @@ This project uses several security scanning tools to monitor dependencies:
 - **semgrep**: Static analysis for security patterns
 - **pip-audit**: Dependency vulnerability scanning
 
-### Known Security Exceptions
+### Resolved Security Exceptions
 
 There are currently **no active dependency vulnerability exceptions** in this repository.
 

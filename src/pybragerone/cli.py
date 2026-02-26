@@ -151,14 +151,23 @@ def _command_rule_matches(rule: Mapping[str, Any], flat_values: Mapping[str, Any
         if not isinstance(operation, str) or not isinstance(targets, list) or not targets:
             return False
 
+        validated_targets: list[Mapping[str, Any]] = []
+        for target in targets:
+            if not isinstance(target, Mapping):
+                continue
+            if all(isinstance(key, str) for key in target):
+                validated_targets.append(cast(Mapping[str, Any], target))
+
+        if not validated_targets:
+            return False
+
         if not all(
             _compare_condition(
                 operation=operation,
                 actual=_read_target_actual(target, flat_values),
                 expected=expected,
             )
-            for target in targets
-            if isinstance(target, Mapping)
+            for target in validated_targets
         ):
             return False
 
@@ -175,7 +184,10 @@ def _select_command_rule(desc: Mapping[str, Any], flat_values: Mapping[str, Any]
 
     for rule in command_rules:
         if isinstance(rule, Mapping) and _command_rule_matches(rule, flat_values):
-            return rule
+            normalized_rule: dict[str, Any] = {}
+            for key, value in rule.items():
+                normalized_rule[str(key)] = value
+            return normalized_rule
     return None
 
 
@@ -717,7 +729,20 @@ async def _run_tui(
     console = Console()
     log_lines: deque[str] = deque(maxlen=200)
     log_lines.append("▶ Starting… waiting for prime and live updates. Ctrl+C to exit.")
-    log_lines.append("⌨ Keys: j/k or arrows = select, t = toggle, s = set value")
+
+    termios_mod: Any | None = None
+    tty_mod: Any | None = None
+    loop_supports_add_reader = hasattr(asyncio.get_running_loop(), "add_reader")
+    if loop_supports_add_reader:
+        with contextlib.suppress(Exception):
+            import termios as _termios
+            import tty as _tty
+
+            termios_mod = _termios
+            tty_mod = _tty
+    keyboard_control_enabled = termios_mod is not None and tty_mod is not None and loop_supports_add_reader
+    if keyboard_control_enabled:
+        log_lines.append("⌨ Keys: j/k or arrows = select, t = toggle, s = set value")
 
     loop = asyncio.get_running_loop()
     log_lock = threading.Lock()
@@ -1172,12 +1197,12 @@ async def _run_tui(
         dirty.set()
 
     async def keyboard_loop() -> None:
-        import termios
-        import tty
+        if not keyboard_control_enabled or termios_mod is None or tty_mod is None:
+            return
 
         loop = asyncio.get_running_loop()
         fd = 0
-        old_settings = termios.tcgetattr(fd)
+        old_settings = termios_mod.tcgetattr(fd)
 
         async def _read_key_async() -> str:
             fut: asyncio.Future[str] = loop.create_future()
@@ -1200,15 +1225,15 @@ async def _run_tui(
                     loop.remove_reader(fd)
 
         def _prompt_value(symbol: str) -> str:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            termios_mod.tcsetattr(fd, termios_mod.TCSADRAIN, old_settings)
             try:
                 console.print(f"\nSet value for {symbol}: ", end="")
                 return input().strip()
             finally:
-                tty.setcbreak(fd)
+                tty_mod.setcbreak(fd)
 
         try:
-            tty.setcbreak(fd)
+            tty_mod.setcbreak(fd)
             while True:
                 key = await _read_key_async()
                 if not key:
@@ -1236,7 +1261,7 @@ async def _run_tui(
                         log_lines.append("INFO: set cancelled (empty input)")
                         dirty.set()
         finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            termios_mod.tcsetattr(fd, termios_mod.TCSADRAIN, old_settings)
 
     live = Live(layout, console=console, screen=True, auto_refresh=False)
 
