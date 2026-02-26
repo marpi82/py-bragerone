@@ -179,6 +179,43 @@ def _select_command_rule(desc: Mapping[str, Any], flat_values: Mapping[str, Any]
     return None
 
 
+def _toggle_value_for_symbol(*, desc: Mapping[str, Any], store: ParamStore) -> Any:
+    pool = desc.get("pool")
+    chan = desc.get("chan")
+    idx = desc.get("idx")
+    has_direct_address = isinstance(pool, str) and isinstance(chan, str) and isinstance(idx, int)
+
+    mapping = desc.get("mapping")
+    command_rules: list[Any] | None = None
+    if isinstance(mapping, Mapping):
+        raw_rules = mapping.get("command_rules")
+        if isinstance(raw_rules, list) and raw_rules:
+            command_rules = raw_rules
+
+    current_value = desc.get("computed_value")
+    if current_value is None:
+        current_value = desc.get("value")
+
+    if not has_direct_address and command_rules:
+        flat_values = store.flatten()
+        active_rule = _select_command_rule(desc, flat_values)
+        if isinstance(active_rule, Mapping):
+            active_command = active_rule.get("command")
+            active_value = active_rule.get("value")
+            if isinstance(active_command, str):
+                for candidate in command_rules:
+                    if not isinstance(candidate, Mapping) or candidate is active_rule:
+                        continue
+                    if candidate.get("command") != active_command:
+                        continue
+                    candidate_value = candidate.get("value")
+                    if candidate_value != active_value:
+                        return candidate_value
+        return None
+
+    return _invert_value(current_value)
+
+
 async def _store_ingest_loop(gw: BragerOneGateway, store: ParamStore) -> None:
     async for upd in gw.bus.subscribe():
         if getattr(upd, "value", None) is None:
@@ -199,6 +236,75 @@ def _mapping_parameter_name(desc: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _as_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip().replace(",", ".")
+        if not text:
+            return None
+        with contextlib.suppress(ValueError):
+            return float(text)
+    return None
+
+
+async def _symbol_numeric_transform_expr(resolver: ParamResolver, desc: Mapping[str, Any]) -> Any:
+    unit_code = desc.get("unit_code")
+    if unit_code is not None:
+        unit_meta = await resolver._resolve_unit_meta(raw_unit_code=unit_code)
+        if isinstance(unit_meta, Mapping) and "value" in unit_meta:
+            return unit_meta.get("value")
+
+    mapping = desc.get("mapping")
+    if isinstance(mapping, Mapping):
+        unit_source = mapping.get("units_source")
+        if isinstance(unit_source, Mapping) and "value" in unit_source:
+            return unit_source.get("value")
+
+    return None
+
+
+async def _prepare_symbol_write_value(
+    *,
+    resolver: ParamResolver,
+    desc: Mapping[str, Any],
+    requested_value: Any,
+) -> tuple[bool, Any, str | None]:
+    min_raw = desc.get("min")
+    max_raw = desc.get("max")
+    min_raw_num = _as_float(min_raw)
+    max_raw_num = _as_float(max_raw)
+
+    transform_expr = await _symbol_numeric_transform_expr(resolver, desc)
+    transform = ParamResolver._parse_numeric_transform(transform_expr)
+
+    prepared_value: Any = requested_value
+    requested_num = _as_float(requested_value)
+
+    if requested_num is not None and transform is not None and transform.factor != 0.0:
+        raw_num = (requested_num / transform.factor) - transform.shift
+        prepared_value = round(raw_num) if abs(raw_num - round(raw_num)) < 1e-9 else raw_num
+
+    prepared_num = _as_float(prepared_value)
+    if prepared_num is not None:
+        out_of_bounds = (min_raw_num is not None and prepared_num < min_raw_num) or (
+            max_raw_num is not None and prepared_num > max_raw_num
+        )
+        if out_of_bounds:
+            display_min = ParamResolver._apply_numeric_transform(min_raw_num, transform_expr) if min_raw_num is not None else None
+            display_max = ParamResolver._apply_numeric_transform(max_raw_num, transform_expr) if max_raw_num is not None else None
+            return (
+                False,
+                prepared_value,
+                "value out of range: "
+                f"raw[{min_raw}..{max_raw}] display[{display_min}..{display_max}] requested={requested_value}",
+            )
+
+    return True, prepared_value, None
+
+
 async def _execute_symbol_write(
     *,
     api: BragerOneApiClient,
@@ -209,6 +315,13 @@ async def _execute_symbol_write(
     value: Any,
 ) -> tuple[bool, str]:
     desc = await resolver.describe_symbol(symbol)
+    value_ok, prepared_value, err = await _prepare_symbol_write_value(
+        resolver=resolver,
+        desc=desc,
+        requested_value=value,
+    )
+    if not value_ok:
+        return False, f"{symbol}: {err}"
 
     pool = desc.get("pool")
     chan = desc.get("chan")
@@ -219,22 +332,28 @@ async def _execute_symbol_write(
             devid=devid,
             pool=pool,
             parameter=parameter,
-            value=value,
+            value=prepared_value,
             parameter_name=_mapping_parameter_name(desc),
             return_data=True,
         )
         status, data = cast(tuple[int, Any], result)
-        return status in (200, 201, 202, 204), f"{symbol} -> command {pool}.{parameter}={value} status={status} data={data}"
+        return (
+            status in (200, 201, 202, 204),
+            f"{symbol} -> command {pool}.{parameter}={prepared_value} (input={value}) status={status} data={data}",
+        )
 
     flat_values = store.flatten()
     rule = _select_command_rule(desc, flat_values)
     if isinstance(rule, Mapping):
         command = rule.get("command")
         if isinstance(command, str) and command.strip():
-            send_value = value if value is not None else rule.get("value")
+            send_value = prepared_value if prepared_value is not None else rule.get("value")
             result = await api.module_command_raw(devid=devid, command=command.strip(), value=send_value, return_data=True)
             status, data = cast(tuple[int, Any], result)
-            return status in (200, 201, 202, 204), f"{symbol} -> raw {command} value={send_value} status={status} data={data}"
+            return (
+                status in (200, 201, 202, 204),
+                f"{symbol} -> raw {command} value={send_value} (input={value}) status={status} data={data}",
+            )
 
     return False, f"{symbol}: unable to determine command route (no address and no command rule match)"
 
@@ -288,10 +407,7 @@ async def _run_send_only_actions(
                 continue
 
             desc = await resolver.describe_symbol(symbol_norm)
-            current_value = desc.get("computed_value")
-            if current_value is None:
-                current_value = desc.get("value")
-            toggle_value = _invert_value(current_value)
+            toggle_value = _toggle_value_for_symbol(desc=desc, store=store)
 
             ok, message = await _execute_symbol_write(
                 api=api,
@@ -601,6 +717,7 @@ async def _run_tui(
     console = Console()
     log_lines: deque[str] = deque(maxlen=200)
     log_lines.append("▶ Starting… waiting for prime and live updates. Ctrl+C to exit.")
+    log_lines.append("⌨ Keys: j/k or arrows = select, t = toggle, s = set value")
 
     loop = asyncio.get_running_loop()
     log_lock = threading.Lock()
@@ -617,6 +734,7 @@ async def _run_tui(
     key_to_computed_symbols: dict[str, set[str]] = {}
     computed_symbols: set[str] = set()
     visible_computed_symbols: set[str] = set()
+    selected_symbol: str | None = None
     dirty_keys: set[str] = set()
     initial_refresh = True
     content_ready = False
@@ -700,6 +818,33 @@ async def _run_tui(
         # Keep original group order but hide panels without visible rows.
         panel_order[:] = [name for name in group_symbols if visible_group_symbols.get(name)]
 
+    def _visible_symbols_in_order() -> list[str]:
+        ordered: list[str] = []
+        for panel_name in panel_order:
+            ordered.extend(visible_group_symbols.get(panel_name, []))
+        return ordered
+
+    def _ensure_selected_symbol() -> None:
+        nonlocal selected_symbol
+        ordered = _visible_symbols_in_order()
+        if not ordered:
+            selected_symbol = None
+            return
+        if selected_symbol not in ordered:
+            selected_symbol = ordered[0]
+
+    def _move_selection(delta: int) -> None:
+        nonlocal selected_symbol
+        ordered = _visible_symbols_in_order()
+        if not ordered:
+            selected_symbol = None
+            return
+        if selected_symbol not in ordered:
+            selected_symbol = ordered[0]
+            return
+        idx = ordered.index(selected_symbol)
+        selected_symbol = ordered[(idx + delta) % len(ordered)]
+
     def render_group(name: str) -> Panel:
         table = Table.grid(expand=True, padding=(0, 1))
         table.add_column("Name", ratio=2, no_wrap=True, overflow="ellipsis")
@@ -723,7 +868,8 @@ async def _run_tui(
                 val = f"{val} {it.unit}" if val is not None else "-"
             else:
                 val = _normalize_inline_unit_spacing(val)
-            table.add_row(str(it.label), str(val) if val is not None else "-")
+            marker = "▶ " if sym == selected_symbol else "  "
+            table.add_row(f"{marker}{it.label}", str(val) if val is not None else "-")
 
         hidden_count = max(0, len(symbols) - render_rows_limit)
         if hidden_count > 0:
@@ -930,6 +1076,7 @@ async def _run_tui(
             symbol_policy_visible[sym] = visible
 
         _recompute_visible_groups()
+        _ensure_selected_symbol()
 
         content_ready = True
 
@@ -980,9 +1127,116 @@ async def _run_tui(
                 it.value_label = resolved.value_label
 
             _recompute_visible_groups()
+            _ensure_selected_symbol()
 
             refresh_panels()
             live.refresh()
+
+    async def _perform_toggle_selected() -> None:
+        if not module_ids:
+            return
+        _ensure_selected_symbol()
+        if not selected_symbol:
+            return
+
+        desc = await resolver.describe_symbol(selected_symbol)
+        toggle_value = _toggle_value_for_symbol(desc=desc, store=store)
+
+        ok, message = await _execute_symbol_write(
+            api=api,
+            resolver=resolver,
+            store=store,
+            devid=module_ids[0],
+            symbol=selected_symbol,
+            value=toggle_value,
+        )
+        log_lines.append(("✔ " if ok else "✖ ") + message)
+        dirty.set()
+
+    async def _perform_set_selected(raw_input: str) -> None:
+        if not module_ids:
+            return
+        _ensure_selected_symbol()
+        if not selected_symbol:
+            return
+        requested_value = _parse_cli_value(raw_input)
+        ok, message = await _execute_symbol_write(
+            api=api,
+            resolver=resolver,
+            store=store,
+            devid=module_ids[0],
+            symbol=selected_symbol,
+            value=requested_value,
+        )
+        log_lines.append(("✔ " if ok else "✖ ") + message)
+        dirty.set()
+
+    async def keyboard_loop() -> None:
+        import termios
+        import tty
+
+        loop = asyncio.get_running_loop()
+        fd = 0
+        old_settings = termios.tcgetattr(fd)
+
+        async def _read_key_async() -> str:
+            fut: asyncio.Future[str] = loop.create_future()
+
+            def _on_readable() -> None:
+                if fut.done():
+                    return
+                try:
+                    raw = os.read(fd, 3)
+                    key = raw.decode("utf-8", errors="ignore")
+                except Exception:
+                    key = ""
+                fut.set_result(key)
+
+            loop.add_reader(fd, _on_readable)
+            try:
+                return await fut
+            finally:
+                with contextlib.suppress(Exception):
+                    loop.remove_reader(fd)
+
+        def _prompt_value(symbol: str) -> str:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            try:
+                console.print(f"\nSet value for {symbol}: ", end="")
+                return input().strip()
+            finally:
+                tty.setcbreak(fd)
+
+        try:
+            tty.setcbreak(fd)
+            while True:
+                key = await _read_key_async()
+                if not key:
+                    continue
+
+                if key in ("\x1b[A", "k"):
+                    _move_selection(-1)
+                    dirty.set()
+                    continue
+                if key in ("\x1b[B", "j"):
+                    _move_selection(1)
+                    dirty.set()
+                    continue
+                if key == "t":
+                    await _perform_toggle_selected()
+                    continue
+                if key == "s":
+                    _ensure_selected_symbol()
+                    if selected_symbol is None:
+                        continue
+                    raw_value = _prompt_value(selected_symbol)
+                    if raw_value:
+                        await _perform_set_selected(raw_value)
+                    else:
+                        log_lines.append("INFO: set cancelled (empty input)")
+                        dirty.set()
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
     live = Live(layout, console=console, screen=True, auto_refresh=False)
 
@@ -1015,6 +1269,7 @@ async def _run_tui(
                 tg.create_task(init_watch())
                 tg.create_task(refresh_loop(live=live))
                 tg.create_task(log_flush_loop())
+                tg.create_task(keyboard_loop())
     finally:
         root_logger.handlers = prev_handlers
         root_logger.setLevel(prev_level)

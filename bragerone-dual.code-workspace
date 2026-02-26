@@ -1,0 +1,17 @@
+{
+  "folders": [
+    {
+      "name": "py-bragerone",
+      "path": "/workspaces/py-bragerone"
+    },
+    {
+      "name": "ha-bragerone",
+      "path": "/workspaces/ha-bragerone"
+    }
+  ],
+  "settings": {
+    "chat.tools.terminal.autoApprove": {
+      "uv": true
+    }
+  }
+}

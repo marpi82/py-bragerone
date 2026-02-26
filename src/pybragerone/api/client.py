@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import ssl
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -158,6 +159,7 @@ class BragerOneApiClient:
         refresh_leeway: int = 90,
         timeout: float = 8.0,
         concurrency: int = 4,
+        verify: bool | str | ssl.SSLContext = True,
     ):
         """Initialize the API client.
 
@@ -176,6 +178,7 @@ class BragerOneApiClient:
             refresh_leeway: Time in seconds before token expiry to refresh.
             timeout: Request timeout in seconds.
             concurrency: Maximum number of concurrent requests.
+            verify: SSL verification configuration for httpx.
         """
         self._session: httpx.AsyncClient | None = None
 
@@ -211,6 +214,7 @@ class BragerOneApiClient:
         self._cache = HttpCache()
         self._timeout = timeout
         self._sem = asyncio.Semaphore(concurrency)
+        self._verify = verify
 
     # ----------------- session helpers -----------------
 
@@ -249,6 +253,7 @@ class BragerOneApiClient:
             headers=headers,
             timeout=timeout,
             follow_redirects=True,
+            verify=self._verify,
         )
 
         # Add HTTP tracing event hooks if enabled

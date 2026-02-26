@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from asyncio import CancelledError, Event, Task, TaskGroup, create_task, gather, sleep
 from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from typing import Any, Protocol
@@ -188,6 +189,7 @@ class BragerOneGateway:
         if self._started:
             return
         self._started = True
+        started_at = time.monotonic()
 
         # 1) WS connect
         if self.ws is None:
@@ -206,6 +208,7 @@ class BragerOneGateway:
         ws.on_event(self._ws_dispatch)
         await ws.connect()
         ws.add_on_connected(self.resubscribe)  # in case of reconnect
+        ws_connected_at = time.monotonic()
 
         # 3) modules.connect binds the current WS session with modules
         sid_ns = ws.sid()
@@ -215,16 +218,27 @@ class BragerOneGateway:
 
         ok = await self.api.modules_connect(sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine)
         LOG.info("modules.connect: %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
+        modules_connected_at = time.monotonic()
 
         # 4) WS subscribe + PRIME via REST (in parallel)
         ws.group_id = self.object_id
         await ws.subscribe(self.modules)
+        subscribed_at = time.monotonic()
         ok_params, ok_act = await self._prime_with_retry()
+        primed_at = time.monotonic()
         LOG.debug("prime injected: parameters=%s activity=%s", ok_params, ok_act)
         LOG.info(
             "Gateway started: object_id=%s, modules=%s",
             self.object_id,
             ",".join(self.modules),
+        )
+        LOG.debug(
+            "Gateway startup timings: total=%.3fs ws_connect=%.3fs modules_connect=%.3fs subscribe=%.3fs prime=%.3fs",
+            primed_at - started_at,
+            ws_connected_at - started_at,
+            modules_connected_at - ws_connected_at,
+            subscribed_at - modules_connected_at,
+            primed_at - subscribed_at,
         )
 
     async def stop(self) -> None:
@@ -337,8 +351,17 @@ class BragerOneGateway:
     async def _prime_with_retry(self, tries: int = 3) -> tuple[bool, bool]:
         """Retry prime a few times with exponential backoff."""
         delay = 0.25
-        for _ in range(tries):
+        for attempt in range(tries):
+            attempt_started = time.monotonic()
             okp, oka = await self._prime()
+            LOG.debug(
+                "Prime attempt %s/%s finished in %.3fs (parameters=%s activity=%s)",
+                attempt + 1,
+                tries,
+                time.monotonic() - attempt_started,
+                okp,
+                oka,
+            )
             if okp:  # we care mainly about parameters
                 return okp, oka
             await sleep(delay)
