@@ -9,6 +9,7 @@ readme = "README.rst"
 authors = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
 maintainers = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
 license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.13.2,<4"
 keywords = [
   "home",
@@ -71,7 +72,6 @@ include = [
   "src/pybragerone",
   "README.rst",
   "docs/guides/getting_started.rst",
-  "LICENSE",
 ]
 
 [dependency-groups]
