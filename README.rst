@@ -5,12 +5,12 @@ pybragerone
    :target: https://github.com/marpi82/py-bragerone/tags
    :alt: Latest Tag
 
-.. image:: https://img.shields.io/pypi/v/pybragerone?color=blue
-   :target: https://pypi.org/project/pybragerone/
+.. image:: https://img.shields.io/pypi/v/py-bragerone?color=blue
+   :target: https://pypi.org/project/py-bragerone/
    :alt: PyPI Version
 
-.. image:: https://img.shields.io/pypi/pyversions/pybragerone
-   :target: https://pypi.org/project/pybragerone/
+.. image:: https://img.shields.io/pypi/pyversions/py-bragerone
+   :target: https://pypi.org/project/py-bragerone/
    :alt: Python Versions
 
 .. image:: https://img.shields.io/github/license/marpi82/py-bragerone?color=green
