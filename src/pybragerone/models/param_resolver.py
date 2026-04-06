@@ -593,21 +593,11 @@ class ParamResolver:
                 routes_meta.append((title, name, path, symbols, ancestors, route))
 
         if all_panels:
-            groups: dict[str, list[str]] = {}
-            taken: set[str] = set()
-            for _title, name, path, symbols, ancestors, route in routes_meta:
+            groups: dict[str, set[str]] = {}
+            for _title, _name, _path, symbols, ancestors, route in routes_meta:
                 panel_name = cls._panel_title_hierarchical(route=route, ancestors=ancestors, routes_i18n=routes_i18n)
-                if panel_name in taken:
-                    detail_parts = [part for part in (path, name) if part]
-                    if detail_parts:
-                        panel_name = f"{panel_name} [{' | '.join(detail_parts)}]"
-                idx = 2
-                while panel_name in taken:
-                    panel_name = f"{panel_name}#{idx}"
-                    idx += 1
-                taken.add(panel_name)
-                groups[panel_name] = sorted(symbols)
-            return groups
+                groups.setdefault(panel_name, set()).update(symbols)
+            return {panel: sorted(symbols) for panel, symbols in groups.items()}
 
         def pick_by_route(
             route_markers: list[str],
