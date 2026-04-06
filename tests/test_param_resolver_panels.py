@@ -129,6 +129,37 @@ def test_build_panel_groups_from_menu_all_panels_uses_routes_i18n_titles() -> No
     assert groups["Użytkownik"] == ["PARAM_66"]
 
 
+def test_build_panel_groups_from_menu_all_panels_merges_duplicate_panel_titles() -> None:
+    """Merge symbols when multiple routes resolve to the same panel title."""
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "dhw",
+                    "name": "modules.menu.dhw",
+                    "meta": {
+                        "displayName": "CWU",
+                        "parameters": {"read": [{"parameter": "E(A.READ,'PARAM_P4_2')"}]},
+                    },
+                },
+                {
+                    "path": "boiler/dhw",
+                    "name": "modules.menu.boilerDHW",
+                    "meta": {
+                        "displayName": "CWU",
+                        "parameters": {"write": [{"parameter": "E(A.WRITE,'PARAM_51')"}]},
+                    },
+                },
+            ]
+        }
+    )
+
+    groups = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True)
+
+    assert "CWU" in groups
+    assert groups["CWU"] == ["PARAM_51", "PARAM_P4_2"]
+
+
 def test_build_panel_groups_from_menu_all_panels_uses_parent_child_titles_for_duplicates() -> None:
     """Disambiguate duplicate child route titles via parent/child panel titles."""
     menu = MenuResult.model_validate(
