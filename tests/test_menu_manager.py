@@ -114,6 +114,36 @@ def test_hidden_children_removed_without_permission(nested_manager: tuple[MenuMa
     assert menu.routes[0].children == []
 
 
+def test_route_kept_when_parameter_permission_allows_access() -> None:
+    """Keep route visible when parameter-level permission grants access."""
+    manager = MenuManager()
+    device_menu = 2
+    manager.store_raw_menu(
+        device_menu=device_menu,
+        routes=[
+            {
+                "path": "/internet",
+                "name": "internet",
+                "meta": {"permissionModule": "DISPLAY_MENU_ADMIN", "displayName": "Internet"},
+                "parameters": {
+                    "write": [
+                        {
+                            "permissionModule": "DISPLAY_PARAMETER_LEVEL_1",
+                            "parameter": 'e(E.WRITE,"COMMAND_MODULE_RESTART")',
+                        }
+                    ]
+                },
+                "children": [],
+            }
+        ],
+    )
+
+    menu = manager.get_menu(device_menu, permissions={"DISPLAY_PARAMETER_LEVEL_1"})
+    assert len(menu.routes) == 1
+    assert menu.routes[0].name == "internet"
+    assert menu.routes[0].parameters.write[0].token == "COMMAND_MODULE_RESTART"
+
+
 def test_debug_mode_keeps_hidden_children(nested_manager: tuple[MenuManager, int]) -> None:
     """Debug mode should keep children even when inaccessible."""
     manager, device_menu = nested_manager
@@ -278,3 +308,19 @@ def test_device_menu_mapping_parsed_from_router_paths() -> None:
 
     assert idx.menu_map[0] == "module.menu-B60xPU0K"
     assert idx.menu_map[1] == "module.menu-lSoMfgab"
+
+
+def test_device_menu_mapping_parsed_from_src_router_paths() -> None:
+    """Parse deviceMenu mapping from /src router paths with arbitrary helper name."""
+    mock_api = AsyncMock()
+    catalog = LiveAssetsCatalog(mock_api)
+
+    index_code = b"""
+    {"/src/config/router/deviceMenu/0/module.menu.ts":()=>_(()=>import("./module.menu-DmY2Kb59.js"),__vite__mapDeps([0]))
+    ,"/src/config/router/deviceMenu/1/module.menu.ts":()=>_(()=>import("./module.menu-DCbbkfeq.js"),__vite__mapDeps([1]))}
+    """
+
+    idx = catalog._build_asset_index_from_index_js("https://one.brager.pl/assets/index-main.js", index_code)
+
+    assert idx.menu_map[0] == "module.menu-DmY2Kb59"
+    assert idx.menu_map[1] == "module.menu-DCbbkfeq"

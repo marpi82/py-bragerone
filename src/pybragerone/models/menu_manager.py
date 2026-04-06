@@ -67,7 +67,6 @@ class MenuProcessor:
             Processed MenuResult with clean Pydantic models
         """
         working_routes = self._deep_copy_routes(self.raw_menu.routes)
-
         # Step 1: Apply permission filtering if requested
         if filter_permissions is not None:
             working_routes = self._apply_permission_filter(working_routes, filter_permissions, include_invisible)
@@ -204,6 +203,20 @@ class MenuProcessor:
             children = node.get("children") or []
             node["children"] = [gate(child) for child in children if isinstance(child, dict)]
 
+            def has_any_parameters(container: dict[str, Any] | None) -> bool:
+                if not isinstance(container, dict):
+                    return False
+                for section in ("read", "write", "status", "special"):
+                    items = container.get(section)
+                    if isinstance(items, list) and len(items) > 0:
+                        return True
+                return False
+
+            # Keep route visible when it contains accessible params/children even if
+            # route-level permission is stricter than parameter-level permission.
+            if not visible and (node.get("children") or has_any_parameters(node.get("parameters"))):
+                visible = True
+
             node["_visible"] = visible
             return node
 
@@ -316,17 +329,19 @@ class MenuProcessor:
                 if m:
                     prefixes.add(m.group("prefix"))
 
-            # Check parameter permissions
-            params = meta.get("parameters", {})
-            for section in ("read", "write", "status", "special"):
-                items = params.get(section, [])
-                for item in items:
-                    if isinstance(item, dict):
-                        item_perm = item.get("permissionModule", "")
-                        if item_perm:
-                            m = prefix_re.match(str(item_perm))
-                            if m:
-                                prefixes.add(m.group("prefix"))
+            # Check parameter permissions from both meta.parameters and route.parameters.
+            for params in (meta.get("parameters", {}), route.get("parameters", {})):
+                if not isinstance(params, dict):
+                    continue
+                for section in ("read", "write", "status", "special"):
+                    items = params.get(section, [])
+                    for item in items:
+                        if isinstance(item, dict):
+                            item_perm = item.get("permissionModule", "")
+                            if item_perm:
+                                m = prefix_re.match(str(item_perm))
+                                if m:
+                                    prefixes.add(m.group("prefix"))
 
             # Scan children
             for child in route.get("children", []):

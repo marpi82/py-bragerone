@@ -609,35 +609,54 @@ class ParamResolver:
                 groups[panel_name] = sorted(symbols)
             return groups
 
-        def pick_by_route(route_markers: list[str], *, fallback_title_keywords: list[str]) -> set[str]:
+        def pick_by_route(
+            route_markers: list[str],
+            *,
+            fallback_title_keywords: list[str],
+            default_title: str,
+        ) -> tuple[str, set[str]]:
             markers = {cls._normalize_text(m) for m in route_markers if m}
             out: set[str] = set()
-            for _title, name, path, symbols, _ancestors, _route in routes_meta:
+            matched_title: str | None = None
+            for title, name, path, symbols, _ancestors, _route in routes_meta:
                 name_norm = cls._normalize_text(name)
                 path_norm = cls._normalize_text(path)
                 if any(marker and marker in (name_norm, path_norm) for marker in markers):
+                    if matched_title is None:
+                        matched_title = title
                     out |= symbols
 
             if out:
-                return out
+                return (matched_title or default_title), out
 
             want = [cls._normalize_text(k) for k in fallback_title_keywords]
             for title, _name, _path, symbols, _ancestors, _route in routes_meta:
                 t = cls._normalize_text(title)
                 if any(w and w in t for w in want):
+                    if matched_title is None:
+                        matched_title = title
                     out |= symbols
-            return out
+            return (matched_title or default_title), out
 
-        boiler = pick_by_route(["modules.menu.boiler", "boiler"], fallback_title_keywords=["boiler"])
-        dhw = pick_by_route(["modules.menu.dhw", "dhw"], fallback_title_keywords=["dhw"])
-        valve = pick_by_route(
+        boiler_title, boiler = pick_by_route(
+            ["modules.menu.boiler", "boiler"],
+            fallback_title_keywords=["boiler"],
+            default_title="Boiler",
+        )
+        dhw_title, dhw = pick_by_route(
+            ["modules.menu.dhw", "dhw"],
+            fallback_title_keywords=["dhw"],
+            default_title="DHW",
+        )
+        valve_title, valve = pick_by_route(
             ["modules.menu.valve1", "valve/1", "valve1"],
             fallback_title_keywords=["valve_1", "valve1"],
+            default_title="Valve 1",
         )
         return {
-            "Boiler": sorted(boiler),
-            "DHW": sorted(dhw),
-            "Valve 1": sorted(valve),
+            boiler_title: sorted(boiler),
+            dhw_title: sorted(dhw),
+            valve_title: sorted(valve),
         }
 
     @classmethod

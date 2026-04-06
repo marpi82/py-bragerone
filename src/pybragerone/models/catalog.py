@@ -710,9 +710,10 @@ class LiveAssetsCatalog:
             # Pattern examples:
             # "../config/router/deviceMenu/N/module.menu.ts":()=>d(()=>import("./module.menu-HASH.js"))
             # "../../config/router/deviceMenu/N/module.menu.ts":()=>d(()=>import('./module.menu-HASH.js'))
+            # "/src/config/router/deviceMenu/N/module.menu.ts":()=>_(()=>import("./module.menu-HASH.js"))
             device_menu_pattern = (
-                r"['\"](?:\.\./)+config/router/deviceMenu/(\d+)/module\.menu\.ts['\"]"
-                r"\s*:\s*\(\)\s*=>\s*d\s*\(\s*\(\)\s*=>\s*import\s*\(\s*"
+                r"['\"](?:(?:\.\./)+config/router|/src/config/router)/deviceMenu/(\d+)/module\.menu\.ts['\"]"
+                r"\s*:\s*\(\)\s*=>\s*[A-Za-z_$][\w$]*\s*\(\s*\(\)\s*=>\s*import\s*\(\s*"
                 r"['\"]\./(module\.menu-[A-Za-z0-9_-]+)\.js['\"]\s*\)"
             )
 
