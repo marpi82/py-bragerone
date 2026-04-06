@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class ModuleGateway(BaseModel):
@@ -14,6 +14,13 @@ class ModuleGateway(BaseModel):
     address: str
     interface: str
     version: str
+
+    @field_validator("interface", mode="before")
+    @classmethod
+    def _coerce_optional_interface(cls, value: Any) -> Any:
+        if value is None:
+            return ""
+        return value
 
 
 class ModuleParameterSchema(BaseModel):
@@ -47,6 +54,13 @@ class Module(BaseModel):
     moduleTitle: str
     isAcceptedAt: datetime
     isConnectedAt: datetime
+
+    @field_validator("moduleInterface", mode="before")
+    @classmethod
+    def _coerce_optional_module_interface(cls, value: Any) -> Any:
+        if value is None:
+            return ""
+        return value
 
 
 class ModuleCard(BaseModel):
