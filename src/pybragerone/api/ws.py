@@ -253,17 +253,29 @@ class RealtimeManager:
 
     async def connect(self) -> None:
         """Open a Socket.IO connection with appropriate headers and wait for join."""
-        self._start_supervisor()
         await self._ensure_connected(initial=True)
         # Short grace period to ensure the namespace is fully established
         await self._connected.wait()
         await asyncio.sleep(0.1)
+        self._start_supervisor()
 
     def _start_supervisor(self) -> None:
-        if self._supervisor_running and self._supervisor_task is not None and not self._supervisor_task.done():
+        if self._supervisor_task is not None and not self._supervisor_task.done():
             return
         self._supervisor_running = True
-        spawn(self._connection_supervisor(), "ws_connection_supervisor", log)
+        task = asyncio.create_task(
+            self._connection_supervisor(),
+            name="ws_connection_supervisor",
+        )
+        self._supervisor_task = task
+
+        def _supervisor_done(done_task: asyncio.Task[None]) -> None:
+            with suppress(asyncio.CancelledError):
+                done_task.result()
+            if self._supervisor_task is done_task:
+                self._supervisor_task = None
+
+        task.add_done_callback(_supervisor_done)
 
     async def _ensure_connected(self, *, initial: bool) -> None:
         if self._sio.connected and self._connected.is_set():
@@ -293,7 +305,6 @@ class RealtimeManager:
                 log.warning("WS supervisor reconnect failed", exc_info=True)
 
     async def _connection_supervisor(self) -> None:
-        self._supervisor_task = asyncio.current_task()
         try:
             while self._supervisor_running:
                 await asyncio.sleep(self._supervisor_interval_s)
@@ -303,8 +314,6 @@ class RealtimeManager:
                 await self._ensure_connected(initial=False)
         except asyncio.CancelledError:
             raise
-        finally:
-            self._supervisor_task = None
 
     def sid(self) -> str | None:
         """Return the namespace SID (``/ws``), if available."""
@@ -320,10 +329,12 @@ class RealtimeManager:
     async def disconnect(self) -> None:
         """Close the Socket.IO connection if open."""
         self._supervisor_running = False
-        if self._supervisor_task is not None:
-            self._supervisor_task.cancel()
+        task = self._supervisor_task
+        self._supervisor_task = None
+        if task is not None and not task.done():
+            task.cancel()
             with suppress(asyncio.CancelledError):
-                await self._supervisor_task
+                await task
         if self._sio.connected:
             await self._sio.disconnect()
 

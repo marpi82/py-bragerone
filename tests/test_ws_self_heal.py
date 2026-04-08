@@ -20,6 +20,7 @@ class FakeAsyncClient:
         self.sid: str | None = "ENG-SID"
         self._handlers: dict[tuple[str, str], Any] = {}
         self.connect_calls = 0
+        self.reconnect_event = asyncio.Event()
 
     def on(self, event: str, handler: Any, namespace: str) -> None:
         """Register an event handler under namespace/event key."""
@@ -28,6 +29,8 @@ class FakeAsyncClient:
     async def connect(self, *args: Any, **kwargs: Any) -> None:
         """Simulate a successful socket connect and emit connect callback."""
         self.connect_calls += 1
+        if self.connect_calls > 1:
+            self.reconnect_event.set()
         self.connected = True
         namespace = kwargs.get("namespaces", ["/ws"])[0]
         self.namespaces = [namespace]
@@ -63,7 +66,7 @@ async def test_realtime_manager_forces_reconnect_when_disconnected(monkeypatch: 
     fake.connected = False
     await manager._on_disconnect()
 
-    await asyncio.sleep(0.05)
+    await asyncio.wait_for(fake.reconnect_event.wait(), timeout=1.0)
     assert fake.connect_calls >= 2
 
     await manager.disconnect()
