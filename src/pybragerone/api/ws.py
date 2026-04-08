@@ -333,8 +333,7 @@ class RealtimeManager:
         self._supervisor_task = None
         if task is not None and not task.done():
             task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
+            await asyncio.gather(task, return_exceptions=True)
         if self._sio.connected:
             await self._sio.disconnect()
 
