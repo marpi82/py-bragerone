@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from typing import (
     Any,
     Protocol,
@@ -98,6 +99,10 @@ class RealtimeManager:
         self._on_event: EventDispatcher | None = None
         self._modules: list[str] = []
         self._group_id: int | None = None
+        self._connect_lock = asyncio.Lock()
+        self._supervisor_task: asyncio.Task[None] | None = None
+        self._supervisor_running = False
+        self._supervisor_interval_s = 15.0
 
         # Configure AsyncClient with reconnection enabled.
         self._sio: socketio.AsyncClient = socketio.AsyncClient(
@@ -183,6 +188,7 @@ class RealtimeManager:
 
     async def _on_connect_error(self, data: Any | None = None) -> None:
         log.warning("WS connect_error: %s", data)
+        self._connected.clear()
 
     async def _on_reconnect(self) -> None:
         log.info("WS reconnect OK")
@@ -247,23 +253,58 @@ class RealtimeManager:
 
     async def connect(self) -> None:
         """Open a Socket.IO connection with appropriate headers and wait for join."""
-        headers = {
-            "Authorization": f"Bearer {self._token}",
-            "Origin": self._origin,
-            "Referer": self._referer,
-            "Accept-Language": "pl-PL,pl;q=0.9",
-            "x-appversion": "1.1.78",
-        }
-        await self._sio.connect(
-            self._io_base,
-            headers=headers,
-            transports=["pooling", "websocket"],
-            socketio_path=self._socket_path,
-            namespaces=[self._namespace],
-        )
+        self._start_supervisor()
+        await self._ensure_connected(initial=True)
         # Short grace period to ensure the namespace is fully established
         await self._connected.wait()
         await asyncio.sleep(0.1)
+
+    def _start_supervisor(self) -> None:
+        if self._supervisor_running and self._supervisor_task is not None and not self._supervisor_task.done():
+            return
+        self._supervisor_running = True
+        spawn(self._connection_supervisor(), "ws_connection_supervisor", log)
+
+    async def _ensure_connected(self, *, initial: bool) -> None:
+        if self._sio.connected and self._connected.is_set():
+            return
+        async with self._connect_lock:
+            if self._sio.connected and self._connected.is_set():
+                return
+            headers = {
+                "Authorization": f"Bearer {self._token}",
+                "Origin": self._origin,
+                "Referer": self._referer,
+                "Accept-Language": "pl-PL,pl;q=0.9",
+                "x-appversion": "1.1.78",
+            }
+            try:
+                await self._sio.connect(
+                    self._io_base,
+                    headers=headers,
+                    transports=["pooling", "websocket"],
+                    socketio_path=self._socket_path,
+                    namespaces=[self._namespace],
+                )
+            except Exception:
+                self._connected.clear()
+                if initial:
+                    raise
+                log.warning("WS supervisor reconnect failed", exc_info=True)
+
+    async def _connection_supervisor(self) -> None:
+        self._supervisor_task = asyncio.current_task()
+        try:
+            while self._supervisor_running:
+                await asyncio.sleep(self._supervisor_interval_s)
+                if self._sio.connected and self._connected.is_set():
+                    continue
+                log.warning("WS disconnected state detected; forcing reconnect")
+                await self._ensure_connected(initial=False)
+        except asyncio.CancelledError:
+            raise
+        finally:
+            self._supervisor_task = None
 
     def sid(self) -> str | None:
         """Return the namespace SID (``/ws``), if available."""
@@ -278,6 +319,11 @@ class RealtimeManager:
 
     async def disconnect(self) -> None:
         """Close the Socket.IO connection if open."""
+        self._supervisor_running = False
+        if self._supervisor_task is not None:
+            self._supervisor_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._supervisor_task
         if self._sio.connected:
             await self._sio.disconnect()
 
