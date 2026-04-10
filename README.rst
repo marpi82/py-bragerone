@@ -61,13 +61,13 @@ pybragerone
    :target: https://github.com/marpi82/py-bragerone
    :alt: Repo Size
 
-.. image:: https://img.shields.io/pypi/dm/pybragerone?color=blue
-   :target: https://pypi.org/project/pybragerone/
+.. image:: https://img.shields.io/pypi/dm/py-bragerone?color=blue
+   :target: https://pypi.org/project/py-bragerone/
    :alt: PyPI Downloads
 
 ----
 
-**Status:** Alpha | Python 3.13.2+ required
+**Status:** Stable | Python 3.13.2+ required
 
 Python library for integrating with **BragerOne-compatible** cloud and realtime APIs.
 
