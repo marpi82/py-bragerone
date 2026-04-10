@@ -2,14 +2,14 @@
 Getting Started
 ===============
 
-.. image:: https://img.shields.io/badge/status-Alpha-yellow
-   :alt: Alpha status
+.. image:: https://img.shields.io/badge/status-Stable-brightgreen
+   :alt: Stable status
 .. image:: https://img.shields.io/badge/python-3.13.2+-blue
    :alt: Python 3.13.2+
 .. image:: https://img.shields.io/badge/license-MIT-green
    :alt: MIT License
 
-**pybragerone** is an alpha-stage Python library for integrating with **BragerOne**.
+**pybragerone** is a production-ready Python library for integrating with **BragerOne**.
 It provides an async REST client, a Socket.IO realtime client, an internal event bus,
 and a runtime-light **ParamStore** plus an optional asset-driven **ParamResolver**
 (via LiveAssetsCatalog) so you can build efficient automations and a clean Home

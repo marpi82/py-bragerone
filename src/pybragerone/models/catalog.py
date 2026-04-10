@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
 JS_LANGUAGE = Language(tree_sitter_javascript.language())
 LOG = logging.getLogger(__name__)
+INDEX_ASSET_RE = re.compile(r"/assets/(index-[A-Za-z0-9_-]+\.js)")
 
 
 # ----------------------------- Data types -----------------------------
@@ -589,14 +590,22 @@ class LiveAssetsCatalog:
 
     # ---------- INDEX ----------
 
-    async def refresh_index(self, index_url: str) -> None:
+    async def refresh_index(self, index_url: str, *, allow_recover: bool = True) -> None:
         """Fetches index-<hash>.js and builds full asset index.
 
         - assets_by_basename (exact BASENAME → [AssetRef])
         - menu_map: int -> BASENAME(module.menu-<hash>.js), if present in index
         - inline_param_candidates: list of (start,end) large objects in index that look like param-maps
         """
-        code = await self._api.get_bytes(index_url)
+        try:
+            code = await self._api.get_bytes(index_url)
+        except Exception as exc:
+            if allow_recover and "index-" in index_url:
+                self._log.warning("Index fetch failed for %s, attempting rediscovery: %s", index_url, exc)
+                await self._auto_discover_and_load_index()
+                if self._idx.index_bytes:
+                    return
+            raise
         self._last_index_url = index_url  # Store for i18n URL construction
         self._idx = self._build_asset_index_from_index_js(index_url, code)
         self._units_descriptor_table = None
@@ -612,30 +621,28 @@ class LiveAssetsCatalog:
 
     async def _auto_discover_and_load_index(self) -> None:
         """Auto-discover and load the index file."""
-        import re
-
-        import httpx
-
         self._log.info("Auto-discovering index file...")
 
         try:
-            # Try to discover index URL from assets page
             base = self._api.one_base.rstrip("/")
+            candidate_urls: list[str] = []
 
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(f"{base}/assets/")
-                resp.raise_for_status()
-                assets_html = resp.text
+            for page_url in (f"{base}/", f"{base}/assets/"):
+                try:
+                    html = (await self._api.get_bytes(page_url)).decode("utf-8", errors="replace")
+                except Exception as page_exc:
+                    self._log.debug("Index discovery page fetch failed (%s): %s", page_url, page_exc)
+                    continue
+                for match in INDEX_ASSET_RE.finditer(html):
+                    candidate_urls.append(f"{base}/assets/{match.group(1)}")
 
-            # Look for patterns like /assets/index-XXXXXXXX.js
-            m = re.search(r"/assets/(index-[A-Za-z0-9_-]+\.js)", assets_html)
-
-            if m:
-                index_filename = m.group(1)
-                discovered_url = f"{base}/assets/{index_filename}"
-                self._log.info("Discovered index: %s", discovered_url)
-                await self.refresh_index(discovered_url)
-                return
+            for discovered_url in list(dict.fromkeys(candidate_urls)):
+                try:
+                    self._log.info("Discovered index candidate: %s", discovered_url)
+                    await self.refresh_index(discovered_url, allow_recover=False)
+                    return
+                except Exception as discover_exc:
+                    self._log.debug("Discovered index failed (%s): %s", discovered_url, discover_exc)
 
             # Try alternative URLs if discovery failed
             alt_urls = [f"{base}/assets/index-main.js", f"{base}/assets/index.js"]
@@ -643,7 +650,7 @@ class LiveAssetsCatalog:
             for alt_url in alt_urls:
                 try:
                     self._log.debug("Trying alternative: %s", alt_url)
-                    await self.refresh_index(alt_url)
+                    await self.refresh_index(alt_url, allow_recover=False)
                     self._log.info("Success with alternative: %s", alt_url)
                     return
                 except Exception as e:

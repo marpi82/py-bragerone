@@ -1048,15 +1048,21 @@ class BragerOneApiClient:
         """
         sess = await self._ensure_session()
         headers = self._cache.headers_for(url)
-        async with self._sem:
-            LOG.debug("HTTP GET %s", url)
+        LOG.debug("HTTP GET %s", url)
+        delays = (0.2, 0.6)
+        last_error: Exception | None = None
+        for attempt, delay in enumerate((0.0, *delays), start=1):
+            if delay > 0:
+                await asyncio.sleep(delay)
             try:
-                r = await sess.get(url, headers=headers)
+                async with self._sem:
+                    r = await sess.get(url, headers=headers)
                 if r.status_code == 304:
                     body = self._cache.get_body(url)
                     if body is None:
                         # 304 without previous body - fetch full content
-                        r2 = await sess.get(url)
+                        async with self._sem:
+                            r2 = await sess.get(url)
                         r2.raise_for_status()
                         body = r2.content
                         self._cache.update(url, r2.headers, body)
@@ -1067,6 +1073,24 @@ class BragerOneApiClient:
                 body = r.content
                 self._cache.update(url, r.headers, body)
                 return body
+            except (httpx.TransportError, httpx.TimeoutException, httpx.HTTPStatusError) as e:
+                last_error = e
+                retriable_status = isinstance(e, httpx.HTTPStatusError) and e.response.status_code in {
+                    429,
+                    500,
+                    502,
+                    503,
+                    504,
+                }
+                retriable = not isinstance(e, httpx.HTTPStatusError) or retriable_status
+                if attempt >= 1 + len(delays) or not retriable:
+                    LOG.warning("HTTP error for %s: %s", url, e)
+                    raise
+                LOG.debug("Retrying HTTP GET %s after %s (attempt %d)", url, e, attempt + 1)
+                continue
             except Exception as e:
                 LOG.warning("HTTP error for %s: %s", url, e)
                 raise
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Unexpected get_bytes retry loop state")

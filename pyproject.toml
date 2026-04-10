@@ -31,7 +31,7 @@ dependencies = [
   "tree-sitter-javascript>=0.21.1",
 ]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3 :: Only",
   "Operating System :: OS Independent",
@@ -43,7 +43,7 @@ dynamic = ["version"]
 
 [project.urls]
 Homepage = "https://github.com/marpi82/py-bragerone"
-Documentation = "https://marpi82.github.io/py-bragerone/latest/"
+Documentation = "https://marpi82.github.io/py-bragerone/"
 Repository = "https://github.com/marpi82/py-bragerone"
 Issues = "https://github.com/marpi82/py-bragerone/issues"
 Changelog = "https://github.com/marpi82/py-bragerone/blob/master/CHANGELOG.md"
