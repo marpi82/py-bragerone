@@ -34,8 +34,15 @@ async def test_get_bytes_retries_transient_timeout(monkeypatch: pytest.MonkeyPat
         return fake
 
     monkeypatch.setattr(client, "_ensure_session", _fake_ensure_session)
+    sleep_calls: list[float] = []
+
+    async def _fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr("pybragerone.api.client.asyncio.sleep", _fake_sleep)
 
     body = await client.get_bytes("https://example.test/assets/index.js")
 
     assert body == b"ok"
     assert fake.calls == 2
+    assert sleep_calls == [0.2]

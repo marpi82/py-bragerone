@@ -31,7 +31,7 @@ dependencies = [
   "tree-sitter-javascript>=0.21.1",
 ]
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 5 - Production/Stable",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3 :: Only",
   "Operating System :: OS Independent",

@@ -3,7 +3,7 @@ Getting Started
 ===============
 
 .. image:: https://img.shields.io/badge/status-Stable-brightgreen
-   :alt: Alpha status
+   :alt: Stable status
 .. image:: https://img.shields.io/badge/python-3.13.2+-blue
    :alt: Python 3.13.2+
 .. image:: https://img.shields.io/badge/license-MIT-green
