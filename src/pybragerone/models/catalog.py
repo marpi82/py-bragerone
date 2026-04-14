@@ -724,8 +724,8 @@ class LiveAssetsCatalog:
             )
             menu_candidates: dict[int, list[tuple[str, str]]] = {}
 
-            # Code is bytes (from function parameter), decode to string for regex
-            code_str = code.decode("utf-8")
+            # Reuse resiliently decoded text prepared at function start.
+            code_str = text
 
             for match in device_menu_pattern.finditer(code_str):
                 device_menu_num = int(match.group(1))
@@ -819,7 +819,8 @@ class LiveAssetsCatalog:
             # Some accounts/modules report device_menu=0 or values not present in index mappings.
             # In such cases, the app often still has a generic `module.menu-<hash>.js`.
             self._log.debug(
-                "No menu mapping found for device_menu=%d; falling back to generic module.menu asset (if available)",
+                "No menu mapping found for device_menu=%d; falling back to generic menu assets "
+                "(module.menu, then basename 0) if available",
                 device_menu,
             )
 
