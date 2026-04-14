@@ -708,30 +708,43 @@ class LiveAssetsCatalog:
             self._log.debug("Scanning remaining index fragment for additional assets...")
             _register(simple_pattern.finditer(text[len(search_text) :]))
 
-        # 2) Try to find mapping from deviceMenu:int -> 'module.menu-<hash>.js' in index (Regex fallback)
-        # Use regex pattern matching since AST parsing fails on complex minified code in Object.assign
+        # 2) Try to find mapping from deviceMenu:int -> menu asset in index (Regex fallback)
+        # Use regex pattern matching since AST parsing can fail on complex minified Object.assign payloads.
         menu_map: dict[int, str] = {}
 
         try:
-            # Look for deviceMenu patterns in Object.assign calls
-            # Pattern examples:
-            # "../config/router/deviceMenu/N/module.menu.ts":()=>d(()=>import("./module.menu-HASH.js"))
-            # "../../config/router/deviceMenu/N/module.menu.ts":()=>d(()=>import('./module.menu-HASH.js'))
-            # "/src/config/router/deviceMenu/N/module.menu.ts":()=>_(()=>import("./module.menu-HASH.js"))
-            device_menu_pattern = (
-                r"['\"](?:(?:\.\./)+config/router|/src/config/router)/deviceMenu/(\d+)/module\.menu\.ts['\"]"
+            # Pattern examples (legacy + current):
+            #   "../config/router/deviceMenu/N/module.menu.ts":()=>...import("./module.menu-HASH.js")
+            #   "/src/config/router/deviceMenu/N/0.ts":()=>...import("./0-HASH.js")
+            #   "../../config/router/deviceMenu/N/101.ts":()=>...import("./101-HASH.js")
+            device_menu_pattern = re.compile(
+                r"['\"](?:(?:\.\./)+config/router|/src/config/router)/deviceMenu/(\d+)/([A-Za-z0-9_.-]+)\.ts['\"]"
                 r"\s*:\s*\(\)\s*=>\s*[A-Za-z_$][\w$]*\s*\(\s*\(\)\s*=>\s*import\s*\(\s*"
-                r"['\"]\./(module\.menu-[A-Za-z0-9_-]+)\.js['\"]\s*\)"
+                r"['\"]\./([A-Za-z0-9_.-]+-[A-Za-z0-9_-]+)\.js['\"]\s*\)"
             )
+            menu_candidates: dict[int, list[tuple[str, str]]] = {}
 
-            # Code is bytes (from function parameter), decode to string for regex
-            code_str = code.decode("utf-8")
+            # Reuse resiliently decoded text prepared at function start.
+            code_str = text
 
-            for match in re.finditer(device_menu_pattern, code_str):
+            for match in device_menu_pattern.finditer(code_str):
                 device_menu_num = int(match.group(1))
-                menu_file_name = match.group(2)
-                menu_map[device_menu_num] = menu_file_name
-                self._log.debug("Found deviceMenu mapping: %d -> %s", device_menu_num, menu_file_name)
+                variant_name = str(match.group(2))
+                menu_file_name = str(match.group(3))
+                menu_candidates.setdefault(device_menu_num, []).append((variant_name, menu_file_name))
+                self._log.debug(
+                    "Found deviceMenu mapping candidate: %d/%s -> %s",
+                    device_menu_num,
+                    variant_name,
+                    menu_file_name,
+                )
+
+            for device_menu_num, candidates in menu_candidates.items():
+                preferred = next((asset for variant, asset in candidates if variant == "0"), None)
+                if preferred is None:
+                    preferred = candidates[0][1]
+                menu_map[device_menu_num] = preferred
+                self._log.debug("Selected deviceMenu mapping: %d -> %s", device_menu_num, preferred)
 
         except Exception as regex_e:
             self._log.debug("Regex deviceMenu parsing failed: %s", regex_e)
@@ -806,11 +819,14 @@ class LiveAssetsCatalog:
             # Some accounts/modules report device_menu=0 or values not present in index mappings.
             # In such cases, the app often still has a generic `module.menu-<hash>.js`.
             self._log.debug(
-                "No menu mapping found for device_menu=%d; falling back to generic module.menu asset (if available)",
+                "No menu mapping found for device_menu=%d; falling back to generic menu assets "
+                "(module.menu, then basename 0) if available",
                 device_menu,
             )
 
             asset = self._idx.find_asset_for_basename("module.menu")
+            if not asset:
+                asset = self._idx.find_asset_for_basename("0")
             if not asset:
                 self._log.warning("No menu asset found for device_menu=%d", device_menu)
                 self._menu_manager.store_raw_menu(device_menu, [], None)
@@ -827,6 +843,8 @@ class LiveAssetsCatalog:
         asset = self._idx.find_asset_for_full_name(menu_name)
         if not asset:
             asset = self._idx.find_asset_for_basename("module.menu")
+        if not asset:
+            asset = self._idx.find_asset_for_basename("0")
 
         if not asset:
             self._log.warning("No menu asset found for device_menu=%d", device_menu)

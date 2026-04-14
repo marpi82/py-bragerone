@@ -64,3 +64,19 @@ async def test_refresh_index_recovers_after_hashed_index_failure() -> None:
     assert stale_index in api.requests
     assert fresh_index in api.requests
     assert catalog._idx.index_bytes != b""
+
+
+@pytest.mark.asyncio
+async def test_index_parser_supports_device_menu_numeric_route_chunks() -> None:
+    """Index parser should map deviceMenu routes using numeric ts/js chunk names."""
+    index_url = "https://one.brager.pl/assets/index-NEW123.js"
+    api = _FakeApi(
+        {
+            index_url: (b'Object.assign({"/src/config/router/deviceMenu/0/0.ts":()=>f(()=>import("./0-r9AwvEAY.js"),[])})'),
+        }
+    )
+    catalog = LiveAssetsCatalog(api)  # type: ignore[arg-type]
+
+    await catalog.refresh_index(index_url, allow_recover=False)
+
+    assert catalog._idx.menu_map.get(0) == "0-r9AwvEAY"
