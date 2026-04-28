@@ -76,7 +76,7 @@ include = [
 
 [dependency-groups]
 dev = [
-  "poethepoet>=0.44.0,<0.45.0",
+  "poethepoet>=0.45.0,<0.46.0",
   "ruff>=0.15.0,<0.16.0",
   "mypy[dmypy]>=1.18.1,<2.0.0",
   "pre-commit>=4.3.0,<5.0.0",
