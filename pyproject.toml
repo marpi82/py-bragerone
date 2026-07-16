@@ -61,15 +61,19 @@ keyring = ["keyring>=25.0.0"]
 # ---------------------------------------------------------------------------
 # uv overrides: force patched versions of transitive dependencies that have
 # known CVEs but cannot be updated by bumping a direct dependency yet.
-# mcp==1.23.3 is pinned by semgrep; override to >=1.28.1 which fixes:
+# All three packages are pinned by semgrep (transitive dep); overrides fix:
+# mcp==1.23.3 (semgrep>=1.149): override to >=1.28.1 which fixes:
 #   GHSA-hvrp-rf83-w775, GHSA-jpw9-pfvf-9f58, GHSA-vj7q-gjh5-988w
-# click~=8.1.8 is pinned by semgrep; override to >=8.3.3 which fixes:
+# click~=8.1.8: override to >=8.3.3 which fixes:
 #   GHSA-47fr-3ffg-hgmw (click.edit() command injection)
+# protobuf<5.29.6: override to >=5.29.6 which fixes:
+#   GHSA-7gcm-g887-7qv7, PYSEC-2026-1805 (JSON recursion DoS)
 # ---------------------------------------------------------------------------
 [tool.uv]
 override-dependencies = [
   "mcp>=1.28.1,<2",
   "click>=8.3.3,<9",
+  "protobuf>=5.29.6,<6",
 ]
 
 [tool.hatch.version]
