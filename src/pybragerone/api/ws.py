@@ -26,14 +26,14 @@ eio_log = logging.getLogger(__name__ + ".eio")
 # Signature for a generic event handler used by the gateway.
 EventHandler = Callable[[str, Any], None]
 # Signature for a callback invoked on connection establishment.
-ConnectedCb = Callable[[], None | Awaitable[None]]
+ConnectedCb = Callable[[], Awaitable[None] | None]
 
 
 @runtime_checkable
 class EventDispatcher(Protocol):
     """Protocol for an event dispatcher used by the realtime manager."""
 
-    def __call__(self, event_name: str, payload: Any) -> None | Awaitable[None]:
+    def __call__(self, event_name: str, payload: Any) -> Awaitable[None] | None:
         """Handle an event with the given name and payload.
 
         Args:
