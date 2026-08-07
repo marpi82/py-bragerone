@@ -73,7 +73,7 @@ class RealtimeManagerClient(Protocol):
     async def disconnect(self) -> None:  # noqa: D102
         raise NotImplementedError
 
-    def add_on_connected(self, cb: Callable[[], None | Awaitable[None]]) -> None:  # noqa: D102
+    def add_on_connected(self, cb: Callable[[], Awaitable[None] | None]) -> None:  # noqa: D102
         raise NotImplementedError
 
     def sid(self) -> str | None:  # noqa: D102

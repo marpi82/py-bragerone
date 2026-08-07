@@ -72,7 +72,7 @@ class FakeRealtimeManager:
         """Initialize the fake realtime manager."""
         self._sid = sid
         self._engine_sid = engine_sid
-        self._on_connected: list[Callable[[], None | Awaitable[None]]] = []
+        self._on_connected: list[Callable[[], Awaitable[None] | None]] = []
         self._on_event: Callable[[str, Any], Awaitable[None] | None] | None = None
 
         self.group_id: int | None = None
@@ -92,7 +92,7 @@ class FakeRealtimeManager:
         """Record a disconnect call."""
         self.disconnect_calls += 1
 
-    def add_on_connected(self, cb: Callable[[], None | Awaitable[None]]) -> None:
+    def add_on_connected(self, cb: Callable[[], Awaitable[None] | None]) -> None:
         """Register a callback invoked after a (re)connect."""
         self._on_connected.append(cb)
 
