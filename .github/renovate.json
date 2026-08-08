@@ -5,6 +5,7 @@
   "timezone": "Europe/Warsaw",
   "dependencyDashboard": true,
   "prConcurrentLimit": 4,
+  "minimumReleaseAge": "7 days",
   "enabledManagers": [
     "pep621"
   ],
@@ -24,7 +25,8 @@
         "project.dependencies"
       ],
       "groupName": "python runtime deps",
-      "groupSlug": "python-runtime-deps"
+      "groupSlug": "python-runtime-deps",
+      "minimumReleaseAge": "7 days"
     },
     {
       "matchManagers": [
@@ -36,7 +38,8 @@
         "build-system.requires"
       ],
       "groupName": "python dev/test/docs deps",
-      "groupSlug": "python-dev-deps"
+      "groupSlug": "python-dev-deps",
+      "minimumReleaseAge": "7 days"
     },
     {
       "matchManagers": [
@@ -46,7 +49,8 @@
         "minor",
         "patch"
       ],
-      "automerge": true
+      "automerge": true,
+      "minimumReleaseAge": "7 days"
     }
   ],
   "labels": [
