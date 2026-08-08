@@ -4,6 +4,10 @@ set -euo pipefail
 
 echo "🚀 Setting up py-bragerone devcontainer..."
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../scripts/lib/install_uv.sh
+source "${ROOT_DIR}/scripts/lib/install_uv.sh"
+
 # Install system dependencies (with sudo if running as non-root)
 echo "📦 Installing system dependencies..."
 if [ "$EUID" -ne 0 ]; then
@@ -11,21 +15,21 @@ if [ "$EUID" -ne 0 ]; then
     sudo apt-get install -y --no-install-recommends \
         build-essential \
         curl \
-        git \
-        ca-certificates
+        ca-certificates \
+        git
 else
     apt-get update
     apt-get install -y --no-install-recommends \
         build-essential \
         curl \
-        git \
-        ca-certificates
+        ca-certificates \
+        git
 fi
 
-# Install uv for current user
-echo "📦 Installing uv..."
-curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
+# Install uv from a version+SHA256-pinned GitHub release (no curl|sh).
+echo "📦 Installing uv (hash-pinned ${UV_VERSION})..."
+install_uv_pinned "${HOME}/.local/bin"
+export PATH="${HOME}/.local/bin:${PATH}"
 
 # Fix permissions for mounted volumes (they may be owned by root)
 echo "🔧 Fixing volume permissions..."
