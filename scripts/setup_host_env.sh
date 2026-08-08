@@ -13,8 +13,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=lib/install_uv.sh
-source "${ROOT_DIR}/scripts/lib/install_uv.sh"
+# shellcheck source=install_uv.sh
+source "${ROOT_DIR}/scripts/install_uv.sh"
 
 # Pinned digest of https://cli.github.com/packages/githubcli-archive-keyring.gpg
 # Bump when GitHub rotates the apt keyring.

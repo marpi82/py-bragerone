@@ -5,8 +5,8 @@ set -euo pipefail
 echo "🚀 Setting up py-bragerone devcontainer..."
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=../scripts/lib/install_uv.sh
-source "${ROOT_DIR}/scripts/lib/install_uv.sh"
+# shellcheck source=../scripts/install_uv.sh
+source "${ROOT_DIR}/scripts/install_uv.sh"
 
 # Install system dependencies (with sudo if running as non-root)
 echo "📦 Installing system dependencies..."
