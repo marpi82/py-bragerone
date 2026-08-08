@@ -25,6 +25,10 @@ pybragerone
    :target: https://github.com/marpi82/py-bragerone/security/code-scanning
    :alt: CodeQL Status
 
+.. image:: https://www.bestpractices.dev/projects/13994/badge
+   :target: https://www.bestpractices.dev/projects/13994
+   :alt: OpenSSF Best Practices
+
 .. image:: https://img.shields.io/github/actions/workflow/status/marpi82/py-bragerone/docs.yml?branch=main&label=docs
    :target: https://github.com/marpi82/py-bragerone/actions/workflows/docs.yml
    :alt: Docs Status
@@ -271,3 +275,5 @@ Security
 --------
 
 For information about security policies, vulnerability reporting, and known security exceptions, see `SECURITY.md <SECURITY.md>`_.
+
+This project uses property-based testing (Hypothesis) and an optional Atheris fuzz harness under ``fuzz/`` for parser resilience.

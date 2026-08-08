@@ -10,7 +10,7 @@ authors = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
 maintainers = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.13.2,<4"
+requires-python = ">=3.13.2,<3.15"
 keywords = [
   "home",
   "automation",
@@ -46,7 +46,7 @@ Homepage = "https://github.com/marpi82/py-bragerone"
 Documentation = "https://marpi82.github.io/py-bragerone/"
 Repository = "https://github.com/marpi82/py-bragerone"
 Issues = "https://github.com/marpi82/py-bragerone/issues"
-Changelog = "https://github.com/marpi82/py-bragerone/blob/master/CHANGELOG.md"
+Changelog = "https://github.com/marpi82/py-bragerone/blob/main/CHANGELOG.md"
 
 [project.scripts]
 pybragerone = "pybragerone.__main__:main"
@@ -111,6 +111,10 @@ test = [
   "pytest-cov>=7.0.0,<8.0.0",
   "pytest-httpx>=0.35.0,<0.37.0",
   "packaging>=24.1,<27.0.0",
+  "hypothesis>=6.112.0,<7.0.0",
+]
+fuzz = [
+  "atheris>=2.3.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 docs = [
   "sphinx>=8.0.2,<10.0.0",

@@ -1,53 +1,46 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
+  push:
+    tags:
+      - "20*"
+      - "v20*"
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   release:
-    if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository &&
-      github.event.workflow_run.head_repository.fork == false &&
-      github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
 
     steps:
-      - name: Checkout target SHA
+      - name: Checkout tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
-          persist-credentials: false
 
       - name: Detect tag and pre-release
         id: meta
         shell: bash
         run: |
-          TAG="$(git tag --points-at HEAD | head -n1 || true)"
+          TAG="${GITHUB_REF_NAME}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           if [[ "$TAG" =~ (a|b|rc)[0-9]+$ ]]; then
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "Detected tag: ${TAG:-<none>}"
+          echo "Detected tag: ${TAG}"
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.13"
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           version: "latest"
           enable-cache: true
@@ -64,24 +57,23 @@ jobs:
           uv tool run twine check dist/*
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dist
           path: dist/*
 
       - name: Publish to TestPyPI (pre-release tag)
-        if: ${{ steps.meta.outputs.tag != '' && steps.meta.outputs.prerelease == 'true' }}
-        uses: pypa/gh-action-pypi-publish@release/v1
+        if: ${{ steps.meta.outputs.prerelease == 'true' }}
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
 
       - name: Publish to PyPI (stable tag)
-        if: ${{ steps.meta.outputs.tag != '' && steps.meta.outputs.prerelease == 'false' }}
-        uses: pypa/gh-action-pypi-publish@release/v1
+        if: ${{ steps.meta.outputs.prerelease == 'false' }}
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
 
-      - name: Create GitHub Release (for any tag)
-        if: ${{ steps.meta.outputs.tag != '' }}
-        uses: softprops/action-gh-release@v3
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           files: |
