@@ -12,6 +12,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 - Harden GitHub Actions workflows (pin actions by SHA, least-privilege permissions).
 - Trigger releases from tag pushes instead of `workflow_run` checkout.
 - Add Hypothesis property-based tests and an Atheris fuzz harness for parsers.
+- Install `uv` in setup scripts from a version- and SHA256-pinned GitHub release
+  (no `curl | sh` / unpinned `pip install`); verify the GitHub CLI apt keyring digest.
 
 ### Changed
 
