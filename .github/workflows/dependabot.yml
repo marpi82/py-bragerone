@@ -7,7 +7,7 @@ on:
 
 permissions:
   pull-requests: write
-  contents: write
+  contents: read
 
 concurrency:
   group: dependabot-auto-${{ github.event.pull_request.number || github.ref }}
@@ -42,6 +42,9 @@ jobs:
     needs: label-and-assign
     if: ${{ github.actor == 'dependabot[bot]' }}
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
     steps:
       - name: Enable auto-merge (squash)
         uses: peter-evans/enable-pull-request-automerge@v3
