@@ -7,6 +7,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.8.1] - 2026-08-08
+
 ### Security
 
 - Harden GitHub Actions workflows (pin actions by SHA, least-privilege permissions).
@@ -14,10 +16,13 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 - Add Hypothesis property-based tests and an Atheris fuzz harness for parsers.
 - Install `uv` in setup scripts from a version- and SHA256-pinned GitHub release
   (no `curl | sh` / unpinned `pip install`); verify the GitHub CLI apt keyring digest.
+- Add OpenSSF Best Practices badge and supporting project docs (`CHANGELOG`,
+  `CONTRIBUTING`, `CODE_OF_CONDUCT`, `CODEOWNERS`).
 
 ### Changed
 
 - Normalize `asyncio` imports in the gateway module for CodeQL maintainability.
+- Tighten supported Python range to `>=3.13.2,<3.15`.
 
 ## [2026.4.5] - 2026-04-14
 
