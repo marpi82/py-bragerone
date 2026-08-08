@@ -1,0 +1,49 @@
+# Contributing to py-bragerone
+
+Thanks for helping improve py-bragerone.
+
+## How to contribute
+
+1. Open an issue describing the bug or enhancement (optional but appreciated).
+2. Fork the repository and create a feature branch from `main`.
+3. Make your changes with tests where practical.
+4. Open a pull request against `main`.
+
+The project uses GitHub Issues and Pull Requests for discussion and review.
+
+## Development setup
+
+```bash
+uv sync --locked --group dev --group test
+uv run pre-commit install
+```
+
+Useful commands:
+
+```bash
+uv run ruff check .
+uv run ruff format --check
+uv run mypy
+uv run pytest -q
+uv run --group dev poe security
+```
+
+## Coding standards
+
+- Target Python 3.13+.
+- Format and lint with **Ruff**; type-check with **mypy** (strict).
+- Prefer small, focused PRs with clear commit messages.
+- Add or update tests for new behavior (see `docs/guides/tests_guidelines.rst`).
+
+## Security reports
+
+Do **not** open a public issue for vulnerabilities. Follow [SECURITY.md](SECURITY.md)
+and email `marpi82.dev@google.com`.
+
+## License
+
+By contributing, you agree that your contributions are licensed under the MIT License.
+
+## Branch protection
+
+See [.github/branch-protection-checklist.md](.github/branch-protection-checklist.md) for recommended `main` protection settings.

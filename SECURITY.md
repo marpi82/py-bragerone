@@ -40,6 +40,11 @@ When using py-bragerone:
 3. **Secure Credentials**: Never commit credentials to the repository. Use environment variables or keyring.
 4. **Home Assistant Integration**: Follow Home Assistant's security guidelines for custom components
 
+## Fuzzing / property-based testing
+
+- Hypothesis property tests live in `tests/test_fuzz_models.py` (run with the normal pytest suite).
+- An optional Atheris harness is in `fuzz/fuzz_parsers.py` (`uv run --group fuzz python fuzz/fuzz_parsers.py`).
+
 ## Security Scanning
 
 To run all security checks:

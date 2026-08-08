@@ -45,9 +45,12 @@ jobs:
 
       - name: Detect version and check if stable
         id: version
+        env:
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            VERSION="${{ github.ref_name }}"
+          if [[ "$REF" == refs/tags/* ]]; then
+            VERSION="$REF_NAME"
             # Check if version contains pre-release markers (a, b, rc, dev)
             if [[ "$VERSION" =~ (a|b|rc|dev) ]]; then
               echo "is_stable=false" >> $GITHUB_OUTPUT
@@ -101,9 +104,9 @@ jobs:
           echo "Prepared versioned site: ${VERSION} (stable=${IS_STABLE}) with latest/ redirect."
 
       - name: Upload Pages Artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: site
 
       - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

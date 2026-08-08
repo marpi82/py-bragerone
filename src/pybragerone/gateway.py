@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from asyncio import CancelledError, Event, Task, TaskGroup, create_task, gather, sleep
 from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from typing import Any, Protocol
 
@@ -124,13 +123,13 @@ class BragerOneGateway:
 
         self._owns_api = owns_api
 
-        self._tasks: set[Task[Any]] = set()
+        self._tasks: set[asyncio.Task[Any]] = set()
         self._started = False
 
         # (optional) diagnostic signals
-        self._prime_done = Event()
+        self._prime_done = asyncio.Event()
         self._prime_seq: int | None = None
-        self._first_snapshot = Event()
+        self._first_snapshot = asyncio.Event()
 
         # callbacks (optional backward compatibility)
         self._on_parameters_change: list[ParametersCb] = []
@@ -319,7 +318,7 @@ class BragerOneGateway:
         ok_params = False
         ok_act = False
 
-        async with TaskGroup() as tg:
+        async with asyncio.TaskGroup() as tg:
             """Fetch parameters and activity quantities in parallel."""
             t_params = tg.create_task(
                 self.api.modules_parameters_prime(self.modules, return_data=True),
@@ -364,7 +363,7 @@ class BragerOneGateway:
             )
             if okp:  # we care mainly about parameters
                 return okp, oka
-            await sleep(delay)
+            await asyncio.sleep(delay)
             delay = min(delay * 2.0, 2.0)
         return False, False
 
@@ -475,15 +474,15 @@ class BragerOneGateway:
                     )
         return out
 
-    def _spawn(self, coro: Coroutine[Any, Any, Any], *, name: str | None = None) -> Task[Any]:
+    def _spawn(self, coro: Coroutine[Any, Any, Any], *, name: str | None = None) -> asyncio.Task[Any]:
         """Start a background task, keep reference, and log exceptions."""
-        t = create_task(coro, name=name)
+        t = asyncio.create_task(coro, name=name)
         self._tasks.add(t)
 
-        def _finalizer(task: Task[Any]) -> None:
+        def _finalizer(task: asyncio.Task[Any]) -> None:
             try:
                 _ = task.result()
-            except CancelledError:
+            except asyncio.CancelledError:
                 pass
             except Exception:
                 LOG.exception("Background task failed: %s", task.get_name() or "<unnamed>")
@@ -499,5 +498,5 @@ class BragerOneGateway:
             return
         for t in list(self._tasks):
             t.cancel()
-        await gather(*self._tasks, return_exceptions=True)
+        await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()

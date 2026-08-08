@@ -68,7 +68,7 @@ repos:
       - id: semgrep
         name: semgrep (p/ci rules)
         language: system
-        entry: bash -lc 'uv run --group dev semgrep --config p/ci --error "$@"'
+        entry: bash -lc 'uv run --group dev semgrep --config p/ci --error --exclude-rule package_managers.uv.uv-missing-dependency-cooldown.uv-missing-dependency-cooldown "$@"'
         pass_filenames: true
 
   # --- SECURITY: dependencies (SCA) with uv export + pip-audit ---

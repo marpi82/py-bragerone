@@ -1,0 +1,8 @@
+# Default owner for the whole repository
+*       @marpi82
+
+# Critical paths
+/.github/                 @marpi82
+/src/pybragerone/         @marpi82
+/SECURITY.md              @marpi82
+/pyproject.toml           @marpi82
