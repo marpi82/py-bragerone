@@ -255,8 +255,8 @@ class BragerOneGateway:
             if self.ws is not None:
                 await self.ws.disconnect()
         except asyncio.CancelledError:
-            # do not propagate CancelledError during shutdown
-            pass
+            # Shutdown must continue even if disconnect is cancelled mid-flight.
+            pass  # intentionally ignore: CancelledError is expected during stop()
         except Exception:
             LOG.exception("Error while disconnecting WS")
 
@@ -318,8 +318,8 @@ class BragerOneGateway:
         ok_params = False
         ok_act = False
 
+        # Fetch parameters and activity quantities in parallel.
         async with asyncio.TaskGroup() as tg:
-            """Fetch parameters and activity quantities in parallel."""
             t_params = tg.create_task(
                 self.api.modules_parameters_prime(self.modules, return_data=True),
                 name="gateway.api.modules_parameters_prime",
@@ -483,7 +483,7 @@ class BragerOneGateway:
             try:
                 _ = task.result()
             except asyncio.CancelledError:
-                pass
+                pass  # intentionally ignore: cancelled background tasks are expected
             except Exception:
                 LOG.exception("Background task failed: %s", task.get_name() or "<unnamed>")
             finally:

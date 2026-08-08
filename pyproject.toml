@@ -114,7 +114,7 @@ test = [
   "hypothesis>=6.112.0,<7.0.0",
 ]
 fuzz = [
-  "atheris>=2.3.0",
+  "atheris>=2.3.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 docs = [
   "sphinx>=8.0.2,<10.0.0",

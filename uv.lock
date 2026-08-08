@@ -2001,7 +2001,7 @@ docs = [
     { name = "sphinx-copybutton" },
 ]
 fuzz = [
-    { name = "atheris" },
+    { name = "atheris", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 test = [
     { name = "hypothesis" },
@@ -2047,7 +2047,7 @@ docs = [
     { name = "sphinx-autodoc-typehints", specifier = ">=3.2.0,<4.0.0" },
     { name = "sphinx-copybutton", specifier = ">=0.5.2,<0.6.0" },
 ]
-fuzz = [{ name = "atheris", specifier = ">=2.3.0" }]
+fuzz = [{ name = "atheris", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", specifier = ">=2.3.0" }]
 test = [
     { name = "hypothesis", specifier = ">=6.112.0,<7.0.0" },
     { name = "packaging", specifier = ">=24.1,<27.0.0" },

@@ -14,23 +14,27 @@ import contextlib
 import sys
 
 import atheris
+from pydantic import ValidationError
 
 with atheris.instrument_imports():
     from pybragerone.cli import _parse_cli_value
     from pybragerone.models.api.common import Permission
     from pybragerone.models.token import Token
 
+# Expected validation / typing failures only — unexpected errors must reach Atheris.
+_EXPECTED = (ValidationError, ValueError, TypeError)
+
 
 def TestOneInput(data: bytes) -> None:
     """Fuzz Permission / Token / CLI parsers with arbitrary bytes."""
     text = data.decode("utf-8", errors="ignore")
-    with contextlib.suppress(ValueError, TypeError):
+    with contextlib.suppress(*_EXPECTED):
         Permission.model_validate(text)
 
-    with contextlib.suppress(ValueError, TypeError):
+    with contextlib.suppress(*_EXPECTED):
         Permission.model_validate({"name": text[:64]})
 
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(*_EXPECTED):
         Token.from_login_payload(
             {
                 "accessToken": text[:128],
@@ -41,8 +45,8 @@ def TestOneInput(data: bytes) -> None:
             }
         )
 
-    with contextlib.suppress(Exception):
-        _parse_cli_value(text[:256])
+    # _parse_cli_value is intentionally total: it should not raise on any str.
+    _parse_cli_value(text[:256])
 
 
 def main() -> None:
