@@ -6,6 +6,8 @@ on:
   schedule:
     - cron: '0 3 * * 1'
 
+permissions: read-all
+
 jobs:
   scorecard:
     name: OpenSSF Scorecard
@@ -21,10 +23,10 @@ jobs:
       checks: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Run OpenSSF Scorecard
-        uses: ossf/scorecard-action@v2.4.4
+        uses: ossf/scorecard-action@55891bbd73f2425e97637d96e306fc9d491d0b21 # v2.4.4
         with:
           results_file: results.sarif
           results_format: sarif
