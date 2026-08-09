@@ -24,6 +24,8 @@ Example layout::
 conftest.py (live toggle + session)
 -----------------------------------
 
+Tests that need real network access are marked ``@pytest.mark.needs_internet`` and are skipped by default; opt in with ``pytest --run-live`` or ``RUN_LIVE_TESTS=1``.
+
 .. literalinclude:: ../../tests/conftest.py
    :language: python
    :caption: conftest.py
