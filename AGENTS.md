@@ -53,4 +53,4 @@ Sphinx + Furo; `uv run --group docs poe docs-build`. Sphinx runs with `-W` in CI
 
 ## CI gates (`.github/workflows/ci.yml`)
 
-gitleaks → dependency-review → ruff (check + format) → mypy → pytest (3.13) → Sphinx `-W` → hatch build. pip-audit runs as an artifact-producing advisory job (`continue-on-error: true`, not a blocking gate); CodeQL and OpenSSF Scorecard run separately.
+Independent jobs run in parallel: `secrets` (gitleaks), `dependency-review`, `security`, `quality` (ruff check + format, mypy), `tests` (pytest 3.13), `docs-verify` (Sphinx `-W`). `build` (hatch) gates on all of them except `dependency-review` (`needs: [secrets, security, quality, tests, docs-verify]`). pip-audit runs as an artifact-producing advisory job (`continue-on-error: true`, not a blocking gate); CodeQL and OpenSSF Scorecard run separately.
