@@ -165,7 +165,12 @@ class BragerOneGateway:
             An initialized gateway (not started).
         """
         owned_api = api is None
-        api_client = api or BragerOneApiClient(server=server)
+        api_client = api or BragerOneApiClient(
+            server=server,
+            # Retain credentials so ensure_auth() can re-login when the token
+            # expires mid-session (e.g. WS reconnect after a long outage).
+            creds_provider=lambda: (email, password),
+        )
         await api_client.ensure_auth(email, password)
         return cls(api=api_client, object_id=object_id, modules=modules, ws=ws, owns_api=owned_api)
 

@@ -115,12 +115,11 @@ class RealtimeManager:
         self._supervisor_running = False
         self._supervisor_interval_s = 15.0
 
-        # Configure AsyncClient with reconnection enabled.
+        # Reconnection is owned exclusively by our supervisor loop (with fresh-token
+        # resolution and a hard connect timeout); the built-in socket.io reconnect
+        # loop would bypass both and race with the supervisor, so it stays disabled.
         self._sio: socketio.AsyncClient = socketio.AsyncClient(
-            reconnection=True,
-            reconnection_attempts=0,  # infinite
-            reconnection_delay=1,
-            reconnection_delay_max=10,
+            reconnection=False,
             logger=sio_log,  # pyright: ignore[reportArgumentType] # route socket.io logs to a sub-logger
             engineio_logger=eio_log,  # route engine.io logs to a sub-logger
         )

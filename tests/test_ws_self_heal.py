@@ -175,29 +175,31 @@ async def test_token_provider_failure_falls_back_to_static_token(monkeypatch: py
 
 
 async def test_supervisor_survives_unexpected_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An unexpected exception in a reconnect attempt must not kill the supervisor task."""
+    """An exception escaping _ensure_connected must not kill the supervisor task."""
     fake = FakeAsyncClient()
-    second_attempt = asyncio.Event()
-
-    async def _boom(*args: Any, **kwargs: Any) -> None:
-        fake.connect_calls += 1
-        if fake.connect_calls >= 3:  # initial + one retry = supervisor alive
-            second_attempt.set()
-        raise RuntimeError("unexpected")
-
-    # method-assign: the fake must raise on every connect; FakeAsyncClient has no failure hook
-    fake.connect = _boom  # type: ignore[method-assign]
     monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
 
     manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
     manager._supervisor_interval_s = 0.01
 
-    # Initial connect raises; start the supervisor directly for this unit test.
-    with pytest.raises(RuntimeError, match="unexpected"):
-        await manager._ensure_connected(initial=True)
+    # Force the disconnected path, then make _ensure_connected itself blow up —
+    # this bypasses its internal except-Exception and hits the supervisor guard.
+    attempts = 0
+    survived = asyncio.Event()
+
+    async def _exploding(*args: Any, **kwargs: Any) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts >= 2:
+            survived.set()  # second iteration means the guard caught the first explosion
+        raise RuntimeError("guard me")
+
+    # method-assign: the guard is only exercised when _ensure_connected itself raises
+    manager._ensure_connected = _exploding  # type: ignore[method-assign]
+
     manager._start_supervisor()
 
-    await asyncio.wait_for(second_attempt.wait(), timeout=1.0)
+    await asyncio.wait_for(survived.wait(), timeout=1.0)
     assert manager._supervisor_task is not None and not manager._supervisor_task.done()
 
     await manager.disconnect()
