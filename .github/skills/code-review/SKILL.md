@@ -58,6 +58,6 @@ Review procedure for pull requests to this library. Work through every section; 
 
 ## How to report
 
-- One comment per issue; start the comment with the severity in plain text — blocker (contract break, data loss, crash), major (CI gate, typing, missing tests), or minor (style, docs, naming) — so impact is clear even though review comment formatting cannot be customized.
+- One comment per issue. Use severity to triage what you report — blocker (contract break, data loss, crash), major (CI gate, typing, missing tests), minor (style, docs, naming) — and report blockers/majors first. Treat this as prioritization guidance, not a required comment format.
 - Prefer suggesting the smallest change that fits existing patterns over proposing new abstractions.
 - If the PR mentions an issue, use the GitHub MCP server to read it and verify the change actually addresses it.
