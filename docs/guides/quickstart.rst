@@ -107,9 +107,10 @@ For quick testing and debugging, use the CLI tool:
    # Interactive mode; if --password is omitted you are prompted securely (getpass)
    pybragerone-cli --email user@example.com
 
-   # Credentials can also come from the environment (preferred over argv,
-   # which can persist in shell history and process listings)
-   export PYBO_EMAIL=user@example.com PYBO_PASSWORD="***"
+   # Credentials can also come from the environment — read the password
+   # without echo so the secret never lands in shell history or argv
+   export PYBO_EMAIL=user@example.com
+   read -s -r -p "BragerOne password: " PYBO_PASSWORD && export PYBO_PASSWORD
    pybragerone-cli
 
    # Select backend platform (e.g. TiSConnect)
