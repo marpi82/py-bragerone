@@ -76,6 +76,8 @@ class RealtimeManager:
         io_base: str = IO_BASE,
         socket_path: str = SOCK_PATH,
         namespace: str = WS_NAMESPACE,
+        token_provider: Callable[[], Awaitable[str]] | None = None,
+        connect_timeout_s: float = 20.0,
     ) -> None:
         """Initialize the realtime manager.
 
@@ -86,8 +88,15 @@ class RealtimeManager:
             io_base: Base URL of the Engine.IO/Socket.IO server (default: :data:`~.constants.IO_BASE`).
             socket_path: Socket.IO path on the server (default: :data:`~.constants.SOCK_PATH`).
             namespace: The namespace to join (default: :data:`~.constants.WS_NAMESPACE`).
+            token_provider: Optional async callable returning a fresh Bearer token. When set, every
+                (re)connect attempt resolves the token through it, so long outages that outlive the
+                token TTL can still recover. Falls back to the static ``token`` when unset or on error.
+            connect_timeout_s: Maximum seconds a single connect attempt may take before it is aborted
+                and retried by the supervisor (default: 20). Guards against hung TCP/DNS handshakes.
         """
         self._token = token
+        self._token_provider = token_provider
+        self._connect_timeout_s = connect_timeout_s
         self._origin = origin
         self._referer = referer
         self._io_base = io_base.rstrip("/")
@@ -277,26 +286,44 @@ class RealtimeManager:
 
         task.add_done_callback(_supervisor_done)
 
+    async def _resolve_token(self) -> str:
+        """Return a token for the next connect attempt, refreshing via the provider if set."""
+        if self._token_provider is None:
+            return self._token
+        try:
+            token = await self._token_provider()
+        except Exception:
+            # Auth backend unreachable (e.g. same outage as the WS) — retry with the last known token.
+            log.warning("WS token refresh failed; falling back to the previous token", exc_info=True)
+            return self._token
+        self._token = token
+        return token
+
     async def _ensure_connected(self, *, initial: bool) -> None:
         if self._sio.connected and self._connected.is_set():
             return
         async with self._connect_lock:
             if self._sio.connected and self._connected.is_set():
                 return
+            token = await self._resolve_token()
             headers = {
-                "Authorization": f"Bearer {self._token}",
+                "Authorization": f"Bearer {token}",
                 "Origin": self._origin,
                 "Referer": self._referer,
                 "Accept-Language": "pl-PL,pl;q=0.9",
                 "x-appversion": "1.1.78",
             }
             try:
-                await self._sio.connect(
-                    self._io_base,
-                    headers=headers,
-                    transports=["pooling", "websocket"],
-                    socketio_path=self._socket_path,
-                    namespaces=[self._namespace],
+                # Hard timeout: a hung TCP/DNS handshake must not wedge the supervisor forever.
+                await asyncio.wait_for(
+                    self._sio.connect(
+                        self._io_base,
+                        headers=headers,
+                        transports=["pooling", "websocket"],
+                        socketio_path=self._socket_path,
+                        namespaces=[self._namespace],
+                    ),
+                    timeout=self._connect_timeout_s,
                 )
             except Exception:
                 self._connected.clear()
@@ -311,7 +338,11 @@ class RealtimeManager:
                 if self._sio.connected and self._connected.is_set():
                     continue
                 log.warning("WS disconnected state detected; forcing reconnect")
-                await self._ensure_connected(initial=False)
+                try:
+                    await self._ensure_connected(initial=False)
+                except Exception:
+                    # Defensive: the supervisor must never die on an unexpected error.
+                    log.exception("WS supervisor iteration failed unexpectedly")
         except asyncio.CancelledError:
             raise
 
