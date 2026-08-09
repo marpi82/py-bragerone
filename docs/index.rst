@@ -85,6 +85,7 @@ Key Features
    guides/typing
    guides/tests_guidelines
    guides/quality
+   guides/roadmap
 
 .. toctree::
    :hidden:

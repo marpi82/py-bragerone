@@ -2,7 +2,23 @@
 
 ## Reporting Security Vulnerabilities
 
-If you discover a security vulnerability in py-bragerone, please report it by emailing marpi82.dev@google.com. Please do not create a public GitHub issue for security vulnerabilities.
+If you discover a security vulnerability in py-bragerone, please report it privately:
+
+- **Preferred**: [GitHub private vulnerability reporting](https://github.com/marpi82/py-bragerone/security/advisories/new)
+- **Alternative**: email marpi82.dev@google.com
+
+Please do not create a public GitHub issue for security vulnerabilities.
+
+## Coordinated Vulnerability Disclosure
+
+- **Acknowledgement**: within 3 business days.
+- **Initial assessment and severity triage**: within 14 days.
+- **Fix or mitigation**: targeted within 90 days of confirmation, depending on severity and complexity.
+- **Disclosure**: coordinated with the reporter; a GitHub Security Advisory is published once a fix is released (or when we mutually agree). Reporters are credited in the advisory unless they prefer otherwise.
+
+## Supported Versions
+
+Only the **latest release** receives security fixes; there are no backports to older versions. When a release line stops receiving security updates, it is simply superseded by the newest release — upgrade to stay supported.
 
 ## Dependency Security
 
@@ -67,4 +83,4 @@ Security exceptions should be reviewed:
 
 ## Contact
 
-For security concerns, contact: marpi82.dev@google.com
+For security concerns, use [GitHub private vulnerability reporting](https://github.com/marpi82/py-bragerone/security/advisories/new) or contact: marpi82.dev@google.com

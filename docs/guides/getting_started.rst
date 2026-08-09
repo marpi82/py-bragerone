@@ -265,10 +265,23 @@ Common tasks::
 
 Release flow (suggestion)::
 
-  1. Bump version in pyproject
-  2. Tag & GitHub release
-  3. Build:  python -m build
-  4. Publish: twine upload dist/*   (or TestPyPI first)
+  1. Tag with CalVer (``git tag 2026.8.1``) & push the tag
+  2. The release workflow builds, attests, and publishes to PyPI
+  3. GitHub Release is created with dists, ``SHA256SUMS`` and an SBOM
+
+Verifying releases
+------------------
+
+Each GitHub Release ships ``SHA256SUMS`` and a CycloneDX SBOM
+(``sbom.cyclonedx.json``), and the built distributions carry Sigstore
+build-provenance attestations. To verify integrity and authenticity::
+
+  gh release download <tag> -R marpi82/py-bragerone
+  sha256sum -c SHA256SUMS
+  gh attestation verify py_bragerone-<version>-py3-none-any.whl -R marpi82/py-bragerone
+
+The attestation proves the artifact was built by this repository's
+release workflow from the tagged commit.
 
 Contributing
 ------------
