@@ -108,6 +108,7 @@ Key Features
    api/pydantic_models
    architecture/overview
    architecture/operations
+   architecture/security
 
 .. toctree::
    :hidden:
