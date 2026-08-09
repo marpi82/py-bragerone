@@ -17,6 +17,14 @@ Only the maintainer has access to sensitive resources (repository settings, PyPI
 
 Escalated permissions (e.g. collaborator with write access) are granted only after a track record of reviewed contributions, and are reviewed when activity changes.
 
+## Continuity
+
+To keep the project viable if the maintainer becomes unavailable:
+
+- A GitHub account successor is designated (GitHub Settings → Succession), enabling ownership transfer of the account and repositories.
+- PyPI publishing uses trusted publishing (OIDC) from this repository's release workflow, so no long-lived PyPI token is tied to a personal machine.
+- All project state (code, issues, releases, this documentation) lives in this public repository and can be forked at any time under the MIT license.
+
 ## Decisions
 
 - Day-to-day: decided in GitHub issues/PR discussions.
