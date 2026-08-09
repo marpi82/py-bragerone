@@ -11,6 +11,12 @@ Thanks for helping improve py-bragerone.
 
 The project uses GitHub Issues and Pull Requests for discussion and review.
 
+## Requirements for acceptable contributions
+
+- **Tests**: major new functionality MUST come with tests; bug fixes should add a regression test where practical. All tests must pass offline (`pytest --run-live` is opt-in only).
+- **Style**: `ruff format` + `ruff check` clean, `mypy --strict` clean, English only in code and docs, Google-style docstrings. Run `uv run --group dev --group test poe validate` before pushing.
+- **DCO**: every commit MUST be signed off (`git commit -s`) to certify the [Developer Certificate of Origin](https://developercertificate.org/) — i.e. that you are legally authorized to contribute the change under the project's MIT license.
+
 ## Development setup
 
 ```bash
