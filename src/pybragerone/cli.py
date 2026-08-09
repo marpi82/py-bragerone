@@ -1399,7 +1399,8 @@ def _resolve_credentials(args: argparse.Namespace) -> None:
     if not args.email:
         raise SystemExit("Missing email: set PYBO_EMAIL or pass --email.")
     if not args.password and sys.stdin.isatty():
-        args.password = getpass.getpass("BragerOne password: ")
+        with contextlib.suppress(EOFError):
+            args.password = getpass.getpass("BragerOne password: ")
     if not args.password:
         raise SystemExit("Missing password: set PYBO_PASSWORD, pass --password, or run interactively to be prompted.")
 
@@ -1414,9 +1415,8 @@ def main() -> None:
     if isinstance(args.modules, str):
         args.modules = [m for m in args.modules.split(",") if m]
 
-    _resolve_credentials(args)
-
     try:
+        _resolve_credentials(args)
         code = asyncio.run(run(args))
     except ApiError as exc:
         payload = exc.data

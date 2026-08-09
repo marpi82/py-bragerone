@@ -316,3 +316,17 @@ class TestParserResilience:
 
         assert len(prod_langs) == 5  # PL, EN, DE, FR, CZ
         assert len(dev_langs) == 2  # NL, HU
+
+
+class TestDeepNestingResilience:
+    """Pathologically nested JS payloads must degrade gracefully, not crash."""
+
+    @pytest.mark.parametrize("depth", [1_000, 50_000])
+    def test_deeply_nested_arrays_do_not_raise(self, depth: int) -> None:
+        """Deeply nested arrays hit the recursion limit; the parse must not raise."""
+        catalog = LiveAssetsCatalog(MockApiClient(""))  # type: ignore[arg-type]
+        payload = b"export default " + b"[" * depth + b"]" * depth
+
+        assert catalog._parse_menu_routes(payload) == []
+        # Degraded to None or an empty/partial object — the contract is "never raises".
+        assert catalog._extract_root_object_from_js(payload) in (None, {})

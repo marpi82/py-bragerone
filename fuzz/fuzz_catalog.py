@@ -2,9 +2,9 @@
 
 Feeds arbitrary bytes into the JavaScript asset parsing paths (index,
 menu routes, embedded parameter maps) that normally process the vendor's
-web-app bundles. These paths are expected to degrade gracefully on
-malformed input — anything other than the expected exceptions below is
-reported by Atheris as a crash and considered a resilience finding.
+web-app bundles. These paths are expected to never raise on malformed
+input — any exception reaches Atheris and is reported as a crash, i.e. a
+resilience finding to fix in the parser (not to suppress here).
 
 Run (optional, requires the ``fuzz`` dependency group)::
 
@@ -13,7 +13,6 @@ Run (optional, requires the ``fuzz`` dependency group)::
 
 from __future__ import annotations
 
-import contextlib
 import sys
 from typing import cast
 
@@ -22,11 +21,6 @@ import atheris
 with atheris.instrument_imports():
     from pybragerone.api.client import BragerOneApiClient
     from pybragerone.models.catalog import LiveAssetsCatalog
-
-# Expected degradation only — unexpected errors must reach Atheris.
-# RecursionError: deeply nested payloads hit the interpreter recursion limit;
-# the parser's depth guards treat it as "unparseable", which is acceptable.
-_EXPECTED = (ValueError, TypeError, AttributeError, RecursionError)
 
 
 def _catalog() -> LiveAssetsCatalog:
@@ -37,18 +31,10 @@ def _catalog() -> LiveAssetsCatalog:
 def TestOneInput(data: bytes) -> None:
     """Fuzz the JS asset parsers with arbitrary bytes."""
     catalog = _catalog()
-
-    with contextlib.suppress(*_EXPECTED):
-        catalog._build_asset_index_from_index_js("https://example.invalid/index.js", data)
-
-    with contextlib.suppress(*_EXPECTED):
-        catalog._parse_menu_routes(data)
-
-    with contextlib.suppress(*_EXPECTED):
-        catalog._parse_index_token_raw_maps(data)
-
-    with contextlib.suppress(*_EXPECTED):
-        catalog._extract_root_object_from_js(data)
+    catalog._build_asset_index_from_index_js("https://example.invalid/index.js", data)
+    catalog._parse_menu_routes(data)
+    catalog._parse_index_token_raw_maps(data)
+    catalog._extract_root_object_from_js(data)
 
 
 def main() -> None:
