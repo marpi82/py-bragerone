@@ -115,4 +115,6 @@ Key Features
    :maxdepth: 1
    :caption: Project
 
+   Governance <https://github.com/marpi82/py-bragerone/blob/main/GOVERNANCE.md>
+   Security policy <https://github.com/marpi82/py-bragerone/blob/main/SECURITY.md>
    GitHub Releases <https://github.com/marpi82/py-bragerone/releases>

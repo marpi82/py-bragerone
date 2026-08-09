@@ -54,9 +54,11 @@ Secure design principles applied
   only weaken it explicitly via the public ``verify`` parameter, e.g. for
   local diagnostics. Tokens auto-refresh without caller involvement.
 - **Least privilege**: every CI workflow declares minimal ``permissions:``
-  (default ``contents: read``); PR-triggered jobs have no access to secrets;
-  package-publishing rights exist only in the tag-triggered release
-  workflow.
+  (default ``contents: read``). PR-triggered jobs have no access to
+  long-lived secrets (there are none stored for CI); they use only the
+  short-lived, workflow-scoped ``GITHUB_TOKEN`` — read-only in CI, and
+  write-scoped solely in the Dependabot auto-label job. Package-publishing
+  rights exist only in the tag-triggered release workflow.
 - **Fail-safe defaults**: parsers return partial results or ``None`` instead
   of raising on unexpected upstream shapes; a new upstream bundle must not
   crash the library or dependent HA setups.
@@ -90,8 +92,10 @@ Countering common implementation weaknesses
   security is delegated to Python's TLS stack (TLS 1.2+).
 - **Memory safety**: the library itself is pure Python, but it relies on the
   native ``tree-sitter``/``tree-sitter-javascript`` extensions for asset
-  parsing; that native boundary handles untrusted JS bytes and is exercised
-  by the fuzz harness and property tests.
+  parsing; that native boundary handles untrusted JS bytes and is covered
+  by the parser-resilience test suite (malformed-shape fixtures). The fuzz
+  harness and property tests currently exercise the other parsers (tokens,
+  permissions, CLI values), not the tree-sitter path — see Residual risk.
 - **Vulnerable dependencies**: dependencies are declared in
   ``pyproject.toml`` and pinned in ``uv.lock``; Dependabot and Renovate keep
   them current; pip-audit scans them in CI; security exceptions (if any) are
@@ -111,4 +115,6 @@ Residual risk
 The library depends on the undocumented, evolving BragerOne cloud API and
 web assets; upstream changes can break parsing (mitigated by defensive
 parsing and test coverage) and the service's own security is outside this
-project's control.
+project's control. The native tree-sitter parser boundary is tested with
+malformed-shape fixtures but is not yet covered by the fuzz harness;
+extending fuzzing to that path is tracked as future work.
