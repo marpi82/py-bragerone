@@ -53,6 +53,7 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
+          prune-cache: true
 
       - name: Install dependencies
         run: uv sync --locked --group dev --group test --group docs
@@ -92,6 +93,7 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
+          prune-cache: true
 
       - name: Install dependencies
         run: uv sync --locked --group dev --group test
@@ -126,6 +128,7 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
+          prune-cache: true
 
       - name: Install dependencies
         run: uv sync --locked --group test
@@ -150,6 +153,7 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
+          prune-cache: true
 
       - name: Install dependencies
         run: uv sync --locked --group docs
@@ -183,6 +187,7 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
+          prune-cache: true
 
       - name: Install dependencies
         run: uv sync --locked --group dev
