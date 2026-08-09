@@ -33,14 +33,18 @@ Trust boundaries
 ----------------
 
 1. **Library ↔ BragerOne cloud API** — all data crossing this boundary is
-   untrusted input: REST payloads are validated with pydantic models, and
-   live JS assets are parsed defensively (tree-sitter, no code execution,
-   soft-fail on unexpected shapes).
+   untrusted input: the primary REST DTOs (auth, objects, modules) are
+   validated with pydantic models, while some snapshot/prime endpoints
+   deliberately return raw data for flexibility; live JS assets are always
+   parsed defensively (tree-sitter, no code execution, soft-fail on
+   unexpected shapes).
 2. **Library ↔ host application** (e.g. Home Assistant integration) — the
    public API (``BragerOneApiClient``, ``BragerOneGateway``) is the only
    intended surface; internal modules are not re-exported.
-3. **Repository/CI ↔ PyPI and GitHub Releases** — only the tagged release
-   workflow may publish, via OIDC trusted publishing (no stored PyPI token).
+3. **Repository/CI ↔ package publishing** — PyPI publishes only from the
+   tag-triggered release workflow via OIDC trusted publishing (no stored
+   PyPI token); separately, the docs workflow may deploy GitHub Pages
+   (``pages: write`` scoped to documentation).
 
 Secure design principles applied
 --------------------------------
@@ -51,39 +55,52 @@ Secure design principles applied
   local diagnostics. Tokens auto-refresh without caller involvement.
 - **Least privilege**: every CI workflow declares minimal ``permissions:``
   (default ``contents: read``); PR-triggered jobs have no access to secrets;
-  publishing rights exist only in the tag-triggered release workflow.
+  package-publishing rights exist only in the tag-triggered release
+  workflow.
 - **Fail-safe defaults**: parsers return partial results or ``None`` instead
   of raising on unexpected upstream shapes; a new upstream bundle must not
   crash the library or dependent HA setups.
 - **Economy of mechanism**: the library is a thin async client; protocol
   complexity is isolated in ``api/`` and ``models/`` with a small public API.
-- **Mediation on writes**: the CLI validates every parameter write (enum
-  label→raw conversion, inverse numeric transform, min/max range checks)
-  before dispatch. The low-level ``BragerOneApiClient`` write methods are
-  intentionally a thin raw transport; callers building on them (e.g. the
-  Home Assistant integration) are expected to implement the equivalent
-  validation layer, and the integration does.
+- **Mediation on writes**: the CLI checks numeric writes against the
+  catalog's min/max range and applies the numeric transform before
+  dispatch; nonnumeric values are passed through without range checks, and
+  enum handling is left to callers. The low-level ``BragerOneApiClient``
+  write methods are intentionally a thin raw transport; callers building on
+  them (e.g. the Home Assistant integration) are expected to implement the
+  full validation layer (enum label→raw, inverse transform, range/route
+  checks), and the integration does.
 
 Countering common implementation weaknesses
 --------------------------------------------
 
-- **Injection**: no ``eval``/``exec``, no shell invocation with untrusted
-  data; JavaScript assets are parsed with tree-sitter, never executed.
+- **Injection**: no ``eval``/``exec`` and no shell invocation on untrusted
+  runtime data; JavaScript assets are parsed with tree-sitter, never
+  executed. (One deliberate exception: the Sphinx build ``exec``es a
+  trusted, repo-generated version file in ``docs/conf.py``.)
 - **Secrets exposure**: in-repo controls: gitleaks runs in CI and
-  pre-commit, credentials are sourced from environment/keyring and never
-  stored in the repository, and logs/diagnostics redact credentials. As a
-  hosting-layer control, the GitHub repository additionally has secret
-  scanning with push protection enabled.
+  pre-commit, and nothing sensitive is stored in the repository. The CLI
+  takes account credentials from ``--email``/``--password`` or
+  ``PYBO_EMAIL``/``PYBO_PASSWORD`` environment variables; its token store
+  keeps the resulting access/refresh tokens in the system keyring with a
+  file fallback. Log/diagnostic redaction is available and configurable.
+  As a hosting-layer control, the GitHub repository additionally has
+  secret scanning with push protection enabled.
 - **Broken crypto**: the library implements no cryptography itself; transport
   security is delegated to Python's TLS stack (TLS 1.2+).
-- **Memory safety**: pure Python — no native code is produced or shipped.
+- **Memory safety**: the library itself is pure Python, but it relies on the
+  native ``tree-sitter``/``tree-sitter-javascript`` extensions for asset
+  parsing; that native boundary handles untrusted JS bytes and is exercised
+  by the fuzz harness and property tests.
 - **Vulnerable dependencies**: dependencies are declared in
   ``pyproject.toml`` and pinned in ``uv.lock``; Dependabot and Renovate keep
   them current; pip-audit scans them in CI; security exceptions (if any) are
   documented and tracked in ``SECURITY.md``.
-- **Static/dynamic analysis**: bandit, semgrep and CodeQL run in CI;
-  ``mypy --strict`` and ruff enforce type and code discipline; a fuzz
-  harness (atheris) plus Hypothesis property tests exercise the parsers.
+- **Static/dynamic analysis**: CodeQL and pip-audit run in GitHub Actions;
+  bandit and semgrep run in pre-commit hooks and via the local
+  ``poe security`` task; ``mypy --strict`` and ruff enforce type and code
+  discipline; a fuzz harness (atheris) plus Hypothesis property tests
+  exercise the parsers.
 - **Release integrity**: releases are built in CI from the tagged commit and
   ship with SHA256 checksums, a CycloneDX SBOM, and Sigstore
   build-provenance attestations verifiable with ``gh attestation verify``.
