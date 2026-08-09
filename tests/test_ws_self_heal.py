@@ -51,7 +51,6 @@ class FakeAsyncClient:
         return f"NS-{namespace}"
 
 
-@pytest.mark.asyncio
 async def test_realtime_manager_forces_reconnect_when_disconnected(monkeypatch: pytest.MonkeyPatch) -> None:
     """Supervisor should reconnect if client remains disconnected."""
     fake = FakeAsyncClient()
@@ -76,20 +75,24 @@ class HangingAsyncClient(FakeAsyncClient):
     """Fake whose connect hangs forever once `hang` is set (simulates stuck DNS/TCP)."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initialize with a hang flag."""
+        """Initialize with a hang flag and an event to synchronize on hang attempts."""
         super().__init__(*args, **kwargs)
         self.hang = False
+        self.hang_calls = 0
+        self.third_hang = asyncio.Event()
 
     async def connect(self, *args: Any, **kwargs: Any) -> None:
         """Hang indefinitely when the hang flag is set."""
         if self.hang:
             self.connect_calls += 1
+            self.hang_calls += 1
+            if self.hang_calls >= 3:
+                self.third_hang.set()
             await asyncio.Event().wait()  # never returns
         else:
             await super().connect(*args, **kwargs)
 
 
-@pytest.mark.asyncio
 async def test_supervisor_survives_hung_connect(monkeypatch: pytest.MonkeyPatch) -> None:
     """A hung connect attempt must be aborted by the timeout and retried, not wedge the supervisor."""
     fake = HangingAsyncClient()
@@ -106,14 +109,12 @@ async def test_supervisor_survives_hung_connect(monkeypatch: pytest.MonkeyPatch)
     await manager._on_disconnect()
 
     # The supervisor must keep timing out and retrying instead of hanging inside connect().
-    await asyncio.sleep(0.5)
-    assert fake.connect_calls >= 3
+    await asyncio.wait_for(fake.third_hang.wait(), timeout=1.0)
     assert manager._supervisor_task is not None and not manager._supervisor_task.done()
 
     await manager.disconnect()
 
 
-@pytest.mark.asyncio
 async def test_reconnect_uses_fresh_token_from_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     """Each connect attempt resolves the token via the provider, so expired tokens recover."""
     fake = FakeAsyncClient()
@@ -123,6 +124,7 @@ async def test_reconnect_uses_fresh_token_from_provider(monkeypatch: pytest.Monk
         captured.append(kwargs["headers"]["Authorization"])
         await FakeAsyncClient.connect(fake, *args, **kwargs)
 
+    # method-assign: the fake instance needs per-call header capture; FakeAsyncClient has no hook for it
     fake.connect = _connect  # type: ignore[method-assign]
     monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
 
@@ -148,7 +150,6 @@ async def test_reconnect_uses_fresh_token_from_provider(monkeypatch: pytest.Monk
     await manager.disconnect()
 
 
-@pytest.mark.asyncio
 async def test_token_provider_failure_falls_back_to_static_token(monkeypatch: pytest.MonkeyPatch) -> None:
     """If the provider raises (auth backend down), the attempt still uses the last known token."""
     fake = FakeAsyncClient()
@@ -158,6 +159,7 @@ async def test_token_provider_failure_falls_back_to_static_token(monkeypatch: py
         captured.append(kwargs["headers"]["Authorization"])
         await FakeAsyncClient.connect(fake, *args, **kwargs)
 
+    # method-assign: the fake instance needs per-call header capture; FakeAsyncClient has no hook for it
     fake.connect = _connect  # type: ignore[method-assign]
     monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
 
@@ -172,15 +174,18 @@ async def test_token_provider_failure_falls_back_to_static_token(monkeypatch: py
     await manager.disconnect()
 
 
-@pytest.mark.asyncio
 async def test_supervisor_survives_unexpected_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     """An unexpected exception in a reconnect attempt must not kill the supervisor task."""
     fake = FakeAsyncClient()
+    second_attempt = asyncio.Event()
 
     async def _boom(*args: Any, **kwargs: Any) -> None:
         fake.connect_calls += 1
+        if fake.connect_calls >= 3:  # initial + one retry = supervisor alive
+            second_attempt.set()
         raise RuntimeError("unexpected")
 
+    # method-assign: the fake must raise on every connect; FakeAsyncClient has no failure hook
     fake.connect = _boom  # type: ignore[method-assign]
     monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
 
@@ -192,8 +197,7 @@ async def test_supervisor_survives_unexpected_errors(monkeypatch: pytest.MonkeyP
         await manager._ensure_connected(initial=True)
     manager._start_supervisor()
 
-    await asyncio.sleep(0.2)
-    assert fake.connect_calls >= 2
+    await asyncio.wait_for(second_attempt.wait(), timeout=1.0)
     assert manager._supervisor_task is not None and not manager._supervisor_task.done()
 
     await manager.disconnect()

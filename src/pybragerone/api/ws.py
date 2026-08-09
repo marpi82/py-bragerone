@@ -88,9 +88,11 @@ class RealtimeManager:
             io_base: Base URL of the Engine.IO/Socket.IO server (default: :data:`~.constants.IO_BASE`).
             socket_path: Socket.IO path on the server (default: :data:`~.constants.SOCK_PATH`).
             namespace: The namespace to join (default: :data:`~.constants.WS_NAMESPACE`).
-            token_provider: Optional async callable returning a fresh Bearer token. When set, every
-                (re)connect attempt resolves the token through it, so long outages that outlive the
-                token TTL can still recover. Falls back to the static ``token`` when unset or on error.
+            token_provider: Optional async callable returning a fresh access token (the
+                ``Bearer `` prefix is added by the manager). When set, every (re)connect
+                attempt resolves the token through it, so long outages that outlive the
+                token TTL can still recover. Falls back to the static ``token`` when unset
+                or on error.
             connect_timeout_s: Maximum seconds a single connect attempt may take before it is aborted
                 and retried by the supervisor (default: 20). Guards against hung TCP/DNS handshakes.
         """
