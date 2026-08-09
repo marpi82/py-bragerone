@@ -125,13 +125,13 @@ For building documentation with architectural diagrams::
 CLI usage
 ---------
 
-Run the CLI for guided login and WS session::
+Run the CLI for guided login and WS session (the password is prompted securely when omitted)::
 
-  pybragerone-cli --email YOU@example.com --password "***"
+  pybragerone-cli --email YOU@example.com
 
 Select platform (useful for TiSConnect installations)::
 
-   pybragerone-cli --platform tisconnect --email YOU@example.com --password "***"
+   pybragerone-cli --platform tisconnect --email YOU@example.com
 
 Examples
 --------

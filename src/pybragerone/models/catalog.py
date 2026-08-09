@@ -392,6 +392,7 @@ def _node_to_python(code: bytes, node: Node, bindings: dict[str, Any] | None = N
     try:
         return _node_to_python_inner(code, node, bindings)
     except RecursionError:
+        LOG.warning("JS asset too deeply nested to parse; degrading node type %r to None", node.type)
         return None
 
 
