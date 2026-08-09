@@ -85,9 +85,10 @@ Countering common implementation weaknesses
 - **Secrets exposure**: in-repo controls: gitleaks runs in CI and
   pre-commit, and nothing sensitive is stored in the repository. The CLI
   takes account credentials from ``--email``/``--password`` or the
-  ``PYBO_EMAIL``/``PYBO_PASSWORD`` environment variables (preferred — argv
-  can leak via shell history and process inspection; see Residual risk);
-  its token store
+  ``PYBO_EMAIL``/``PYBO_PASSWORD`` environment variables, and prompts
+  securely (hidden ``getpass`` input) when the password is omitted in an
+  interactive terminal — argv should be avoided, as it can leak via shell
+  history and process inspection. Its token store
   keeps the resulting access/refresh tokens in the system keyring with a
   file fallback. Log/diagnostic redaction is available and configurable.
   As a hosting-layer control, the GitHub repository additionally has
@@ -97,9 +98,8 @@ Countering common implementation weaknesses
 - **Memory safety**: the library itself is pure Python, but it relies on the
   native ``tree-sitter``/``tree-sitter-javascript`` extensions for asset
   parsing; that native boundary handles untrusted JS bytes and is covered
-  by the parser-resilience test suite (malformed-shape fixtures). The fuzz
-  harness and property tests currently exercise the other parsers (tokens,
-  permissions, CLI values), not the tree-sitter path — see Residual risk.
+  by the parser-resilience test suite (malformed-shape fixtures) and by the
+  catalog fuzz harness (``fuzz/fuzz_catalog.py``).
 - **Vulnerable dependencies**: dependencies are declared in
   ``pyproject.toml`` and pinned in ``uv.lock``; Dependabot and Renovate keep
   them current; pip-audit scans them in CI; security exceptions (if any) are
@@ -119,9 +119,6 @@ Residual risk
 The library depends on the undocumented, evolving BragerOne cloud API and
 web assets; upstream changes can break parsing (mitigated by defensive
 parsing and test coverage) and the service's own security is outside this
-project's control. The native tree-sitter parser boundary is tested with
-malformed-shape fixtures but is not yet covered by the fuzz harness;
-extending fuzzing to that path is tracked as future work. The CLI accepts
-a password via ``--password`` argv, which can persist in shell history and
-process listings; prefer the ``PYBO_PASSWORD`` environment variable, and a
-hidden interactive prompt is tracked as a hardening improvement.
+project's control. The CLI still accepts a password via ``--password``
+argv, which can persist in shell history and process listings; prefer the
+``PYBO_PASSWORD`` environment variable or the interactive prompt.

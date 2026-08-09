@@ -95,9 +95,9 @@ Optional extras::
 Quick Start (CLI)
 -----------------
 
-Run the CLI for a guided session (object & module selection, WS link, prime)::
+Run the CLI for a guided session (object & module selection, WS link, prime). The password is prompted securely when ``--password`` is omitted::
 
-  pybragerone-cli --email YOU@example.com --password "***" --debug
+  pybragerone-cli --email YOU@example.com --debug
 
 Press ``Ctrl+C`` to stop. Use ``--raw-ws`` for raw payload logging.
 
