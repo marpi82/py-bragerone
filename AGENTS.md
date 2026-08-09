@@ -16,8 +16,8 @@ uv sync --group dev --group test --group docs --locked   # full environment
 uv run --group dev poe fmt        # ruff format
 uv run --group dev poe lint       # ruff check --fix
 uv run --group dev poe typecheck  # mypy --strict
-uv run --group test poe test      # pytest
-uv run --group test poe cov       # pytest + coverage
+uv run --group dev --group test poe test      # pytest (poe lives in `dev`)
+uv run --group dev --group test poe cov       # pytest + coverage
 uv run --group dev --group test poe validate   # fmt + lint + typecheck + security + test (needs both groups: pytest lives in `test`)
 uv build                          # wheel + sdist
 ```
@@ -49,7 +49,7 @@ Parameter addressing: `P<n>.<chan><idx>` (channels: `v` value, `s` status bitmas
 
 ## Docs
 
-Sphinx + Furo; `uv run --group docs poe docs-build`. Sphinx runs with `-W` in CI — warnings are errors. Update `docs/` when changing public behavior.
+Sphinx + Furo; `uv run --group dev --group docs poe docs-build` (poe lives in `dev`). Sphinx runs with `-W` in CI — warnings are errors. Update `docs/` when changing public behavior.
 
 ## CI gates (`.github/workflows/ci.yml`)
 

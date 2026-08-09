@@ -121,11 +121,11 @@ uv run --group dev poe pip-audit # Audit dependencies for vulnerabilities
 uv run --group dev poe security  # Run all security checks
 
 # Testing
-uv run --group test poe test     # pytest
-uv run --group test poe cov      # pytest with coverage
+uv run --group dev --group test poe test     # pytest (poe lives in `dev`)
+uv run --group dev --group test poe cov      # pytest with coverage
 
 # Full Validation
-uv run --group dev poe validate  # Run fmt + lint + typecheck + security + test
+uv run --group dev --group test poe validate  # Run fmt + lint + typecheck + security + test (pytest lives in `test`)
 ```
 
 Or use VS Code tasks (defined in `.vscode/tasks.json`):
@@ -146,7 +146,7 @@ Or use VS Code tasks (defined in `.vscode/tasks.json`):
 - Mock HTTP via **pytest-httpx** (`httpx_mock` fixture); in catalog tests fake or mock the injected API client's `get_bytes()` method
 - Property-based tests with **Hypothesis** where input space is large
 - Live API tests marked with `@pytest.mark.needs_internet` (see `conftest.py`)
-- Coverage target: run `uv run --group test poe cov` for term-missing report
+- Coverage target: run `uv run --group dev --group test poe cov` for term-missing report (poe lives in `dev`)
 
 Key test patterns:
 - `tests/test_api.py`: REST client tests (mocked)
@@ -169,7 +169,7 @@ This launches an interactive gateway session showing live parameter updates. Use
 Built with Sphinx + Furo theme:
 
 ```bash
-uv run --group docs poe docs-build   # Build to docs/_build/html
+uv run --group dev --group docs poe docs-build   # Build to docs/_build/html (poe lives in `dev`)
 uv run --group docs poe docs-serve   # Serve on localhost:8000
 ```
 
