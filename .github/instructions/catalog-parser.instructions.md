@@ -1,5 +1,5 @@
 ---
-applyTo: "src/pybragerone/models/catalog*.py, src/pybragerone/models/menu*.py, src/pybragerone/models/i18n.py, tests/test_catalog_*.py, tests/test_*parser*.py"
+applyTo: "src/pybragerone/models/catalog*.py, src/pybragerone/models/menu*.py, src/pybragerone/models/i18n.py, tests/test_catalog_*.py, tests/test_*parser*.py, tests/test_menu*.py"
 ---
 
 # Asset catalog / tree-sitter parser rules

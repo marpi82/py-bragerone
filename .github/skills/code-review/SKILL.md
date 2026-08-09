@@ -10,7 +10,7 @@ Review procedure for pull requests to this library. Work through every section; 
 ## 1. Correctness — data-flow contract
 
 - [ ] REST **prime** still happens at startup and after every reconnect; WebSocket is deltas-only.
-- [ ] `EventBus` subscribers can't be killed by an unhandled exception (suppress + log).
+- [ ] `EventBus` subscribers can't be killed by an unhandled exception (catch and log; suppress only expected outcomes like cancellation).
 - [ ] Token refresh in `BragerOneApiClient` is transparent; no caller-side token management added.
 - [ ] Meta-only events (`value=None`) handling unchanged — `ParamStore` ignores them by design.
 
@@ -58,7 +58,7 @@ Review procedure for pull requests to this library. Work through every section; 
 
 ## Stack awareness
 
-- Before flagging stale references or inconsistencies, check whether the PR belongs to a stack (read the PR's `stack` object via the GitHub MCP server). If it does, fetch the stack's PR list and review the layer in the context of the whole stack — the fix may already exist in an upper layer.
+- Before flagging stale references or inconsistencies, check whether the PR belongs to a stack: look for "Stacked on #NNN" links or cross-referenced PRs in the PR body and timeline, and fetch those PRs via the GitHub MCP server. If the PR is part of a stack, review the layer in the context of the whole stack — the fix may already exist in a linked layer.
 
 ## How to report
 

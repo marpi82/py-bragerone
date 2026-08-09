@@ -35,7 +35,7 @@ Parameter addressing: `P<n>.<chan><idx>` (channels: `v` value, `s` status bitmas
 1. **English only** in code, comments, docstrings.
 2. **mypy --strict** must pass (pydantic plugin enabled). No `Any`, no `# type: ignore` without justification.
 3. **Ruff** (`line-length = 130`, rules `E,F,W,I,D,UP,RUF,SIM,B`, Google-style docstrings) must pass; run `poe fix` before committing.
-4. **Async-first**: never block the event loop; `asyncio.to_thread()` for sync work; `asyncio.TaskGroup` for structured concurrency; long-lived dispatch tasks must not die silently (suppress + log).
+4. **Async-first**: never block the event loop; `asyncio.to_thread()` for sync work; `asyncio.TaskGroup` for structured concurrency; long-lived dispatch tasks must not die silently (catch and log with `LOG.exception`; reserve `contextlib.suppress` for expected outcomes like cancellation).
 5. **Pydantic v2** for DTOs (`ConfigDict`, `Field(alias=...)`, generics like `ApiResponse[T]`).
 6. **Public API** is `pybragerone.__all__` = `["BragerOneApiClient", "BragerOneGateway"]` plus what `docs/reference/ha_integration.rst` documents. Breaking it breaks the HA integration — call it out explicitly in PRs.
 7. **Logging**: stdlib `logging.getLogger(__name__)`; the library root attaches a `NullHandler` — never configure logging in library code.
