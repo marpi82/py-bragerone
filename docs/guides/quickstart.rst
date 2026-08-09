@@ -104,20 +104,25 @@ For quick testing and debugging, use the CLI tool:
 
 .. code-block:: bash
 
-   # Interactive mode with guided login
-   pybragerone-cli --email user@example.com --password "***"
+   # Interactive mode; if --password is omitted you are prompted securely (getpass)
+   pybragerone-cli --email user@example.com
+
+   # Credentials can also come from the environment (preferred over argv,
+   # which can persist in shell history and process listings)
+   export PYBO_EMAIL=user@example.com PYBO_PASSWORD="***"
+   pybragerone-cli
 
    # Select backend platform (e.g. TiSConnect)
-   pybragerone-cli --platform tisconnect --email user@example.com --password "***"
+   pybragerone-cli --platform tisconnect --email user@example.com
 
    # Enable debug logging
-   pybragerone-cli --email user@example.com --password "***" --debug
+   pybragerone-cli --email user@example.com --debug
 
    # Show raw WebSocket messages
-   pybragerone-cli --email user@example.com --password "***" --raw-ws
+   pybragerone-cli --email user@example.com --raw-ws
 
    # Dump ParamStore to JSON files
-   pybragerone-cli --email user@example.com --password "***" --dump-store
+   pybragerone-cli --email user@example.com --dump-store
 
 Next Steps
 ----------

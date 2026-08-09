@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import getpass
 import json
 import logging
 import os
 import re
 import signal
+import sys
 import threading
 import time
 from collections import deque
@@ -1315,7 +1317,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--password",
         default=os.environ.get("PYBO_PASSWORD"),
-        help="Password (ENV: PYBO_PASSWORD)",
+        help="Password (ENV: PYBO_PASSWORD). If omitted in a terminal, you are prompted securely; "
+        "prefer the env var or prompt over argv, which can leak via shell history and process listing",
     )
     p.add_argument(
         "--platform",
@@ -1383,6 +1386,24 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _resolve_credentials(args: argparse.Namespace) -> None:
+    """Fill in missing credentials, prompting for the password when interactive.
+
+    Args:
+        args: Parsed CLI arguments (mutated in place).
+
+    Raises:
+        SystemExit: If the email is missing, or the password is missing and
+            cannot be obtained from a terminal prompt.
+    """
+    if not args.email:
+        raise SystemExit("Missing email: set PYBO_EMAIL or pass --email.")
+    if not args.password and sys.stdin.isatty():
+        args.password = getpass.getpass("BragerOne password: ")
+    if not args.password:
+        raise SystemExit("Missing password: set PYBO_PASSWORD, pass --password, or run interactively to be prompted.")
+
+
 def main() -> None:
     """Main entrypoint for CLI."""
     _maybe_load_dotenv()
@@ -1393,8 +1414,7 @@ def main() -> None:
     if isinstance(args.modules, str):
         args.modules = [m for m in args.modules.split(",") if m]
 
-    if not args.email or not args.password:
-        raise SystemExit("Missing credentials: set PYBO_EMAIL/PYBO_PASSWORD or pass --email/--password.")
+    _resolve_credentials(args)
 
     try:
         code = asyncio.run(run(args))
