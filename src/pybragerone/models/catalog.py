@@ -384,7 +384,20 @@ def _node_to_python(code: bytes, node: Node, bindings: dict[str, Any] | None = N
     already-converted values stored in the mapping. This allows handling of the
     common pattern where large dictionaries reuse previously declared constants
     (e.g. i18n bundles exporting `const foo = "label"; const map = {key: foo};`).
+
+    Pathologically nested payloads (e.g. ``[[[[...]]]]``) can exceed the
+    interpreter recursion limit; in that case the offending subtree degrades
+    to ``None`` instead of crashing the parse.
     """
+    try:
+        return _node_to_python_inner(code, node, bindings)
+    except RecursionError:
+        LOG.warning("JS asset too deeply nested to parse; degrading node type %r to None", node.type)
+        return None
+
+
+def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | None = None) -> Any:
+    """Recursive implementation of :func:`_node_to_python`."""
     t = node.type
 
     if t == "object":

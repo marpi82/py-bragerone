@@ -29,6 +29,10 @@ pybragerone
    :target: https://www.bestpractices.dev/projects/13994
    :alt: OpenSSF Best Practices
 
+.. image:: https://www.bestpractices.dev/projects/13994/baseline
+   :target: https://www.bestpractices.dev/projects/13994
+   :alt: OpenSSF Baseline
+
 .. image:: https://img.shields.io/github/actions/workflow/status/marpi82/py-bragerone/docs.yml?branch=main&label=docs
    :target: https://github.com/marpi82/py-bragerone/actions/workflows/docs.yml
    :alt: Docs Status
@@ -121,13 +125,13 @@ For building documentation with architectural diagrams::
 CLI usage
 ---------
 
-Run the CLI for guided login and WS session::
+Run the CLI for guided login and WS session (the password is prompted securely when omitted)::
 
-  pybragerone-cli --email YOU@example.com --password "***"
+  pybragerone-cli --email YOU@example.com
 
 Select platform (useful for TiSConnect installations)::
 
-   pybragerone-cli --platform tisconnect --email YOU@example.com --password "***"
+   pybragerone-cli --platform tisconnect --email YOU@example.com
 
 Examples
 --------

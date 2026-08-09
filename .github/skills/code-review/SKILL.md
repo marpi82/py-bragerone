@@ -55,6 +55,7 @@ Review procedure for pull requests to this library. Work through every section; 
 
 - [ ] Public behavior changes reflected in `docs/` (Sphinx builds with `-W` in CI).
 - [ ] README.rst examples still valid if touched surface is covered there.
+- [ ] **Code↔docs drift (both directions)**: if the PR changes CLI flags/env vars, public API, parameter addressing, or any documented behavior, verify that `docs/**/*.rst`, `README.rst`, and `examples/` still match the code — flag stale claims, commands, or examples. Conversely, for docs-only PRs, spot-check the documented behavior against the actual code in `src/pybragerone/` and flag mismatches.
 
 ## Stack awareness
 
