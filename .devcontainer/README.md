@@ -39,11 +39,11 @@ uv run --group dev poe fix
 uv run --group dev poe typecheck
 
 # Full validation (quality + security + tests)
-uv run --group dev poe validate
+uv run --group dev --group test poe validate
 
 # Build documentation
-uv run --group docs poe docs-build
-uv run --group docs poe docs-serve
+uv run --group dev --group docs poe docs-build
+uv run --group dev --group docs poe docs-serve
 
 # Run pre-commit hooks manually
 uv run --group dev pre-commit run --all-files

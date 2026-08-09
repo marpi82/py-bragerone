@@ -39,7 +39,7 @@
 
 ## Project Overview
 
-**py-bragerone** is an async Python library for the BragerOne cloud/realtime API, primarily designed for Home Assistant integration. It combines REST (aiohttp) with WebSocket (Socket.IO) for realtime updates using an event-driven architecture.
+**py-bragerone** is an async Python library for the BragerOne cloud/realtime API, primarily designed for Home Assistant integration. It combines REST (httpx) with WebSocket (Socket.IO) for realtime updates using an event-driven architecture.
 
 **Key principle**: REST provides snapshots ("prime"), WebSocket provides deltas. Prime is mandatory at startup and after reconnect—WebSocket never provides initial state.
 
@@ -49,10 +49,9 @@
 
 ```
 BragerOneApiClient (REST) ──┐
-                            ├──> BragerOneGateway ──> EventBus ──> ParamStore/StateStore
+                            ├──> BragerOneGateway ──> EventBus ──> ParamStore
 RealtimeManager (WS) ───────┘                                  └──> HA entities/CLI
-uv run --group docs poe docs-build   # Build to docs/_build/html
-uv run --group docs poe docs-serve   # Serve on localhost:8000
+```
 - **BragerOneApiClient** (`src/pybragerone/api/client.py`): Async REST client with token auto-refresh, HTTP cache (ETag/Last-Modified), and Pydantic models
 - **RealtimeManager** (`src/pybragerone/api/ws.py`): Socket.IO wrapper, handles reconnect, namespace `/ws`
 - **BragerOneGateway** (`src/pybragerone/gateway.py`): Orchestrates login → WS connect → modules.connect → subscribe → prime
@@ -122,11 +121,11 @@ uv run --group dev poe pip-audit # Audit dependencies for vulnerabilities
 uv run --group dev poe security  # Run all security checks
 
 # Testing
-uv run --group test poe test     # pytest
-uv run --group test poe cov      # pytest with coverage
+uv run --group dev --group test poe test     # pytest (poe lives in `dev`)
+uv run --group dev --group test poe cov      # pytest with coverage
 
 # Full Validation
-uv run --group dev poe validate  # Run fmt + lint + typecheck + security + test
+uv run --group dev --group test poe validate  # Run fmt + lint + typecheck + security + test (pytest lives in `test`)
 ```
 
 Or use VS Code tasks (defined in `.vscode/tasks.json`):
@@ -144,9 +143,10 @@ Or use VS Code tasks (defined in `.vscode/tasks.json`):
 ### Testing Conventions
 
 - **pytest-asyncio** with `asyncio_mode = "auto"` (see `pyproject.toml`)
-- Mock HTTP via `aioresponses` or monkeypatch `_fetch_text` in catalog tests
+- Mock HTTP via **pytest-httpx** (`httpx_mock` fixture); in catalog tests fake or mock the injected API client's `get_bytes()` method
+- Property-based tests with **Hypothesis** where input space is large
 - Live API tests marked with `@pytest.mark.needs_internet` (see `conftest.py`)
-- Coverage target: run `uv run --group test poe cov` for term-missing report
+- Coverage target: run `uv run --group dev --group test poe cov` for term-missing report (poe lives in `dev`)
 
 Key test patterns:
 - `tests/test_api.py`: REST client tests (mocked)
@@ -169,14 +169,15 @@ This launches an interactive gateway session showing live parameter updates. Use
 Built with Sphinx + Furo theme:
 
 ```bash
-uv run --group docs poe docs-build   # Build to docs/_build/html
-uv run --group docs poe docs-serve   # Serve on localhost:8000
+uv run --group dev --group docs poe docs-build   # Build to docs/_build/html (poe lives in `dev`)
+uv run --group dev --group docs poe docs-serve   # Serve on localhost:8000 (poe lives in `dev`)
 ```
 
 Documentation includes:
-- `docs/pybragerone_integration_cheatsheet.rst`: Quick reference for HA integration
-- `docs/pybragerone_integration_notes.rst`: Deep architecture guide with Mermaid diagrams
-- `docs/new_models.rst`: Pydantic model usage examples
+- `docs/architecture/overview.rst` / `docs/architecture/operations.rst`: Architecture and runtime operations
+- `docs/reference/ha_integration.rst`: HA integration contract (entity descriptors, ParamStore usage)
+- `docs/reference/parameter_format.rst`: Parameter addressing (`P<n>.<chan><idx>`) reference
+- `docs/guides/typing.rst` / `quality.rst` / `tests_guidelines.rst`: Contributor standards
 
 ## Project-Specific Conventions
 
@@ -197,12 +198,14 @@ All code must pass `mypy --strict`. Use explicit types, no `Any` without justifi
 - Never block event loop; use `asyncio.to_thread()` for sync operations
 - EventBus subscribers: always wrap in try/except to prevent task death
 
-Example from `gateway.py`:
+Pattern from `gateway.py`:
 ```python
-async def _ws_dispatch(self, event_name: str, payload: Any) -> None:
-    # Never let exceptions kill the dispatcher
-    with contextlib.suppress(Exception):
-        await self._process_event(event_name, payload)
+try:
+    res = cb(*args, **kwargs)
+    if asyncio.iscoroutine(res):
+        await res
+except Exception:
+    LOG.exception("Callback error")  # never let a callback kill the dispatcher
 ```
 
 ### 4. Error Handling
@@ -270,14 +273,18 @@ These files should be kept in sync and updated as the architecture evolves.
 
 ## Quick References
 
-- **Main docs**: `docs/pybragerone_integration_cheatsheet.rst`
-- **Architecture deep-dive**: `docs/pybragerone_integration_notes.rst`
+- **Architecture**: `docs/architecture/overview.rst`
+- **HA integration contract**: `docs/reference/ha_integration.rst`
 - **API models**: `src/pybragerone/models/api/`
 - **Key examples**: README.rst (ParamStore usage patterns)
 
-## Branch Context
+## Code Review Priorities
 
-**Current branch**: `feature/new-asset-parser`
-**Default branch**: `main`
+When reviewing pull requests, prioritize (details in `.github/skills/code-review/SKILL.md`):
 
-When working on parser features, focus on `src/pybragerone/models/catalog.py` and related tests in `tests/test_catalog_*.py`.
+1. **Prime/WS contract**: REST prime is mandatory at startup and after every reconnect; WebSocket must never be treated as a source of initial state.
+2. **Async safety**: no blocking calls in the event loop (`asyncio.to_thread` for sync I/O); dispatcher/subscriber tasks must never die silently (wrap in `try`/`except` and log with `LOG.exception`; reserve `contextlib.suppress` for expected outcomes like cancellation); structured concurrency via `asyncio.TaskGroup`.
+3. **mypy --strict compliance**: no new `Any` without justification, no `# type: ignore` without a comment explaining why.
+4. **Public API stability**: `pybragerone.__all__` (`BragerOneApiClient`, `BragerOneGateway`) and everything documented in `docs/reference/ha_integration.rst` is consumed by the ha-bragerone integration—flag breaking changes.
+5. **Pydantic v2 patterns**: `ConfigDict`, `Field(alias=...)`, `model_validate`; do not introduce v1 idioms.
+6. **Tests**: new behavior needs tests (pytest-httpx for HTTP, `asyncio_mode=auto`); live-API tests must be marked `@pytest.mark.needs_internet`.
