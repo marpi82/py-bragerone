@@ -292,9 +292,11 @@ class RealtimeManager:
         if self._token_provider is None:
             return self._token
         try:
-            token = await self._token_provider()
+            # Bound the provider too: re-authentication can stall during the same
+            # outage, and it must not wedge the supervisor before connect() even runs.
+            token = await asyncio.wait_for(self._token_provider(), timeout=self._connect_timeout_s)
         except Exception:
-            # Auth backend unreachable (e.g. same outage as the WS) — retry with the last known token.
+            # Auth backend unreachable or stalled — retry with the last known token.
             log.warning("WS token refresh failed; falling back to the previous token", exc_info=True)
             return self._token
         self._token = token

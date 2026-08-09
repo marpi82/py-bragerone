@@ -203,3 +203,28 @@ async def test_supervisor_survives_unexpected_errors(monkeypatch: pytest.MonkeyP
     assert manager._supervisor_task is not None and not manager._supervisor_task.done()
 
     await manager.disconnect()
+
+
+async def test_hanging_token_provider_falls_back_to_static_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stalled token provider must not wedge the supervisor — fall back to the last known token."""
+    fake = FakeAsyncClient()
+    captured: list[str] = []
+
+    async def _connect(*args: Any, **kwargs: Any) -> None:
+        captured.append(kwargs["headers"]["Authorization"])
+        await FakeAsyncClient.connect(fake, *args, **kwargs)
+
+    # method-assign: the fake instance needs per-call header capture; FakeAsyncClient has no hook for it
+    fake.connect = _connect  # type: ignore[method-assign]
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+
+    async def _hanging() -> str:
+        await asyncio.Event().wait()  # never returns
+        return "unreachable"
+
+    manager = RealtimeManager(token="last-known", token_provider=_hanging, connect_timeout_s=0.05)
+    await asyncio.wait_for(manager.connect(), timeout=1.0)
+
+    assert captured[0] == "Bearer last-known"
+
+    await manager.disconnect()

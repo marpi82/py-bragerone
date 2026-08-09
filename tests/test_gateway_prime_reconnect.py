@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Coroutine, Iterable
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 import pytest
+from pytest_httpx import HTTPXMock
 
+from pybragerone.api import BragerOneApiClient
 from pybragerone.gateway import BragerOneGateway
+from pybragerone.models import Token
 from pybragerone.models.events import ParamUpdate
+
+API = "https://io.brager.pl"
+TEST_EMAIL = "a@b"
+TEST_PASSWORD = "pw"
 
 
 class FakeApiClient:
@@ -171,3 +179,47 @@ async def test_gateway_resubscribe_on_connected_reprimes() -> None:
     assert api._prime_activity_calls == [["M1"], ["M1"]]
 
     await gw.stop()
+
+
+async def test_start_wires_self_healing_token_provider(monkeypatch: pytest.MonkeyPatch, httpx_mock: HTTPXMock) -> None:
+    """A gateway-created RealtimeManager gets a token provider that re-logins after token expiry."""
+    api = BragerOneApiClient(creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD))
+    # Simulate a long-running session whose token expired during an outage.
+    api._token = Token(access_token="EXPIRED", expires_at=datetime.now(UTC) - timedelta(hours=1))
+
+    captured: dict[str, Any] = {}
+
+    def _fake_rm(**kwargs: Any) -> FakeRealtimeManager:
+        captured.update(kwargs)
+        return FakeRealtimeManager()
+
+    monkeypatch.setattr("pybragerone.gateway.RealtimeManager", _fake_rm)
+    # The wiring under test is WS construction; stub the REST prime calls on the real client.
+    monkeypatch.setattr(api, "modules_connect", lambda *a, **k: _async_true())
+    monkeypatch.setattr(api, "modules_parameters_prime", lambda *a, **k: _async_true())
+    monkeypatch.setattr(api, "modules_activity_quantity_prime", lambda *a, **k: _async_true())
+
+    httpx_mock.add_response(
+        method="POST",
+        url=f"{API}/v1/auth/user",
+        json={
+            "accessToken": "FRESH",
+            "refreshToken": "R2",
+            "type": "bearer",
+            "expiresAt": (datetime.now(UTC) + timedelta(minutes=10)).isoformat(),
+        },
+    )
+
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"])
+    await gw.start()
+
+    provider = captured.get("token_provider")
+    assert provider is not None, "gateway must wire a token provider into RealtimeManager"
+    assert await provider() == "FRESH"
+    assert api.access_token == "FRESH"
+
+    await gw.stop()
+
+
+async def _async_true() -> bool:
+    return True
