@@ -25,6 +25,8 @@ with atheris.instrument_imports():
 
 def _catalog() -> LiveAssetsCatalog:
     """Build a catalog without a real API client (sync parse paths never touch it)."""
+    # cast: None stands in for the client because the fuzzed parse methods are
+    # synchronous and never dereference it.
     return LiveAssetsCatalog(cast(BragerOneApiClient, None))
 
 
