@@ -56,6 +56,10 @@ Review procedure for pull requests to this library. Work through every section; 
 - [ ] Public behavior changes reflected in `docs/` (Sphinx builds with `-W` in CI).
 - [ ] README.rst examples still valid if touched surface is covered there.
 
+## Stack awareness
+
+- Before flagging stale references or inconsistencies, check whether the PR belongs to a stack (read the PR's `stack` object via the GitHub MCP server). If it does, fetch the stack's PR list and review the layer in the context of the whole stack — the fix may already exist in an upper layer.
+
 ## How to report
 
 - One comment per issue. Use severity to triage what you report — blocker (contract break, data loss, crash), major (CI gate, typing, missing tests), minor (style, docs, naming) — and report blockers/majors first. Treat this as prioritization guidance, not a required comment format.
