@@ -21,7 +21,7 @@ Assets at risk:
 
 Threats considered:
 
-1. *Network attacker (MITM)*) reading or altering API traffic.
+1. *Network attacker (MITM)* reading or altering API traffic.
 2. *Malicious or compromised server responses* (REST snapshots, Socket.IO
    deltas, web-app JS assets) crashing or misleading the client.
 3. *Credential/token leakage* through logs, diagnostics, or the repository.
@@ -45,8 +45,10 @@ Trust boundaries
 Secure design principles applied
 --------------------------------
 
-- **Secure defaults**: TLS certificate verification is always on (httpx
-  defaults, never disabled); tokens auto-refresh without caller involvement.
+- **Secure defaults**: TLS certificate verification is on by default
+  (httpx ``verify=True``); it is never disabled internally — a caller may
+  only weaken it explicitly via the public ``verify`` parameter, e.g. for
+  local diagnostics. Tokens auto-refresh without caller involvement.
 - **Least privilege**: every CI workflow declares minimal ``permissions:``
   (default ``contents: read``); PR-triggered jobs have no access to secrets;
   publishing rights exist only in the tag-triggered release workflow.
