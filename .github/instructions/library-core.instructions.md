@@ -12,6 +12,6 @@ When reviewing or changing library code:
 4. **Typing**: mypy strict. New `Any`, `cast()`, or `# type: ignore` need an inline justification comment. Prefer `Protocol` for injectable dependencies.
 5. **Errors**: REST failures raise `ApiError(status, data, headers)` — don't swallow HTTP errors or return bare `None` from the client. ParamStore upserts intentionally soft-fail on malformed keys (`P<n>.<chan><idx>`).
 6. **Pydantic v2 only**: `ConfigDict`, `model_validate`, `Field(alias=...)`. Flag v1 idioms (`Config` class, `.dict()`, `.parse_obj()`).
-7. **Logging**: `logging.getLogger(__name__)`, no `print`, no logging configuration in library code.
+7. **Logging**: `logging.getLogger(__name__)`, no `print`, no logging configuration in library modules. Entry points are exempt: `cli.py` intentionally uses `print()` for user-facing output and sets up `logging.basicConfig`.
 8. **Public API**: changes to `__init__.py` exports or signatures used by ha-bragerone (see `docs/reference/ha_integration.rst`) are breaking — require explicit PR discussion.
 9. **Docstrings**: Google style, English, on all public objects (ruff `D` rules enforce this).
