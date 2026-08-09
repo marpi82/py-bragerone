@@ -538,7 +538,9 @@ async def run(args: argparse.Namespace) -> int:
 
     # Temporary REST client for object/modules selection
     server = server_for(args.platform)
-    api = BragerOneApiClient(server=server)
+    # creds_provider lets the client re-login when the token expires mid-session
+    # (e.g. WS reconnect after a long outage).
+    api = BragerOneApiClient(server=server, creds_provider=lambda: (args.email, args.password))
     api.set_token_store(store)
 
     gw: BragerOneGateway | None = None

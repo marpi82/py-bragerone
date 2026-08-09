@@ -165,7 +165,12 @@ class BragerOneGateway:
             An initialized gateway (not started).
         """
         owned_api = api is None
-        api_client = api or BragerOneApiClient(server=server)
+        api_client = api or BragerOneApiClient(
+            server=server,
+            # Retain credentials so ensure_auth() can re-login when the token
+            # expires mid-session (e.g. WS reconnect after a long outage).
+            creds_provider=lambda: (email, password),
+        )
         await api_client.ensure_auth(email, password)
         return cls(api=api_client, object_id=object_id, modules=modules, ws=ws, owns_api=owned_api)
 
@@ -195,6 +200,7 @@ class BragerOneGateway:
             if isinstance(self.api, BragerOneApiClient):
                 self.ws = RealtimeManager(
                     token=self.api.access_token,
+                    token_provider=self._fresh_ws_token,
                     origin=self.api.one_base,
                     referer=f"{self.api.one_base}/",
                     io_base=self.api.io_base,
@@ -275,6 +281,14 @@ class BragerOneGateway:
     async def __aexit__(self, *exc: Any) -> None:
         """Async context manager exit."""
         await self.stop()
+
+    async def _fresh_ws_token(self) -> str:
+        """Return a valid token for a WS (re)connect, re-authenticating if expired."""
+        api = self.api
+        if not isinstance(api, BragerOneApiClient):
+            return api.access_token
+        await api.ensure_auth()
+        return api.access_token
 
     async def resubscribe(self) -> None:
         """Call after WS reconnect to re-bind modules + prime again."""

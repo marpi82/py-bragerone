@@ -64,7 +64,7 @@ Key Features
    Built on ``httpx`` with automatic token refresh and HTTP caching
 
 ⚡ **Real-time WebSocket**
-   Socket.IO client with automatic reconnection and event streaming
+   Socket.IO client with supervised automatic reconnection and event streaming
 
 📊 **ParamStore**
    Runtime-light storage for live values (use **ParamResolver** for asset-driven discovery/metadata)
