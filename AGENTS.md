@@ -6,7 +6,7 @@ Async Python library for the BragerOne cloud/realtime API (REST + Socket.IO), de
 
 - **Layout**: src-layout, single package `src/pybragerone/`, tests in `tests/` (flat `test_*.py`).
 - **Python**: `>=3.13.2,<3.15` (CI tests on 3.13).
-- **Dependencies**: **uv** (`uv.lock` committed). Groups: `dev`, `test`, `docs`, `security`, `fuzz`.
+- **Dependencies**: **uv** (`uv.lock` committed). Groups: `dev` (includes security tools: bandit, semgrep, pip-audit), `test`, `docs`, `fuzz`.
 - **Build**: hatchling + **hatch-vcs** — version is CalVer derived from git tags; never hardcode a version in `pyproject.toml`.
 
 ## Common commands
@@ -18,7 +18,7 @@ uv run --group dev poe lint       # ruff check --fix
 uv run --group dev poe typecheck  # mypy --strict
 uv run --group test poe test      # pytest
 uv run --group test poe cov       # pytest + coverage
-uv run --group dev poe validate   # fmt + lint + typecheck + security + test
+uv run --group dev --group test poe validate   # fmt + lint + typecheck + security + test (needs both groups: pytest lives in `test`)
 uv build                          # wheel + sdist
 ```
 
