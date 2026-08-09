@@ -53,12 +53,14 @@ Secure design principles applied
   (httpx ``verify=True``); it is never disabled internally — a caller may
   only weaken it explicitly via the public ``verify`` parameter, e.g. for
   local diagnostics. Tokens auto-refresh without caller involvement.
-- **Least privilege**: every CI workflow declares minimal ``permissions:``
+- **Least privilege**: every workflow declares explicit ``permissions:``
   (default ``contents: read``). PR-triggered jobs have no access to
-  long-lived secrets (there are none stored for CI); they use only the
-  short-lived, workflow-scoped ``GITHUB_TOKEN`` — read-only in CI, and
-  write-scoped solely in the Dependabot auto-label job. Package-publishing
-  rights exist only in the tag-triggered release workflow.
+  long-lived secrets (none are stored for CI); they use only the
+  short-lived, per-run ``GITHUB_TOKEN``. Write scopes are granted narrowly:
+  ``pull-requests: write`` (+ ``contents: write`` only in the Dependabot
+  auto-merge job) and ``security-events: write`` in CodeQL for uploading
+  results. Package-publishing rights exist only in the tag-triggered
+  release workflow.
 - **Fail-safe defaults**: parsers return partial results or ``None`` instead
   of raising on unexpected upstream shapes; a new upstream bundle must not
   crash the library or dependent HA setups.
@@ -82,8 +84,10 @@ Countering common implementation weaknesses
   trusted, repo-generated version file in ``docs/conf.py``.)
 - **Secrets exposure**: in-repo controls: gitleaks runs in CI and
   pre-commit, and nothing sensitive is stored in the repository. The CLI
-  takes account credentials from ``--email``/``--password`` or
-  ``PYBO_EMAIL``/``PYBO_PASSWORD`` environment variables; its token store
+  takes account credentials from ``--email``/``--password`` or the
+  ``PYBO_EMAIL``/``PYBO_PASSWORD`` environment variables (preferred — argv
+  can leak via shell history and process inspection; see Residual risk);
+  its token store
   keeps the resulting access/refresh tokens in the system keyring with a
   file fallback. Log/diagnostic redaction is available and configurable.
   As a hosting-layer control, the GitHub repository additionally has
@@ -117,4 +121,7 @@ web assets; upstream changes can break parsing (mitigated by defensive
 parsing and test coverage) and the service's own security is outside this
 project's control. The native tree-sitter parser boundary is tested with
 malformed-shape fixtures but is not yet covered by the fuzz harness;
-extending fuzzing to that path is tracked as future work.
+extending fuzzing to that path is tracked as future work. The CLI accepts
+a password via ``--password`` argv, which can persist in shell history and
+process listings; prefer the ``PYBO_PASSWORD`` environment variable, and a
+hidden interactive prompt is tracked as a hardening improvement.
