@@ -29,13 +29,9 @@ pybragerone
    :target: https://www.bestpractices.dev/projects/13994
    :alt: OpenSSF Best Practices
 
-.. image:: https://img.shields.io/badge/OpenSSF%20silver-in%20progress-yellow
-   :target: https://www.bestpractices.dev/en/projects/13994/silver
-   :alt: OpenSSF Best Practices: silver (in progress)
-
-.. image:: https://img.shields.io/badge/OpenSSF%20baseline-in%20progress-yellow
-   :target: https://www.bestpractices.dev/en/projects/13994/baseline-1
-   :alt: OpenSSF Baseline (in progress)
+.. image:: https://www.bestpractices.dev/projects/13994/baseline
+   :target: https://www.bestpractices.dev/projects/13994
+   :alt: OpenSSF Baseline
 
 .. image:: https://img.shields.io/github/actions/workflow/status/marpi82/py-bragerone/docs.yml?branch=main&label=docs
    :target: https://github.com/marpi82/py-bragerone/actions/workflows/docs.yml
