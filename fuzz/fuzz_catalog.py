@@ -28,13 +28,18 @@ def _catalog() -> LiveAssetsCatalog:
     return LiveAssetsCatalog(cast(BragerOneApiClient, None))
 
 
+# Reused across iterations: constructing a catalog rebuilds the tree-sitter
+# parser, which would dominate the hot path. The fuzzed methods only read
+# input bytes; the index-builder overwrites its state on every call.
+_CATALOG = _catalog()
+
+
 def TestOneInput(data: bytes) -> None:
     """Fuzz the JS asset parsers with arbitrary bytes."""
-    catalog = _catalog()
-    catalog._build_asset_index_from_index_js("https://example.invalid/index.js", data)
-    catalog._parse_menu_routes(data)
-    catalog._parse_index_token_raw_maps(data)
-    catalog._extract_root_object_from_js(data)
+    _CATALOG._build_asset_index_from_index_js("https://example.invalid/index.js", data)
+    _CATALOG._parse_menu_routes(data)
+    _CATALOG._parse_index_token_raw_maps(data)
+    _CATALOG._extract_root_object_from_js(data)
 
 
 def main() -> None:

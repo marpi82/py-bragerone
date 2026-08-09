@@ -324,6 +324,7 @@ class TestDeepNestingResilience:
     @pytest.mark.parametrize("depth", [1_000, 50_000])
     def test_deeply_nested_arrays_do_not_raise(self, depth: int) -> None:
         """Deeply nested arrays hit the recursion limit; the parse must not raise."""
+        # The sync parse paths under test never touch the injected client, so the mock is safe.
         catalog = LiveAssetsCatalog(MockApiClient(""))  # type: ignore[arg-type]
         payload = b"export default " + b"[" * depth + b"]" * depth
 

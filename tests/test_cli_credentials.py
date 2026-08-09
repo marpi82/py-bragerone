@@ -56,6 +56,18 @@ def test_empty_prompt_response_exits(monkeypatch: pytest.MonkeyPatch) -> None:
         _resolve_credentials(_args())
 
 
+def test_eof_at_prompt_exits_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ctrl-D (EOF) at the prompt falls through to the controlled error, not a traceback."""
+
+    def _eof(_prompt: str) -> str:
+        raise EOFError
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("getpass.getpass", _eof)
+    with pytest.raises(SystemExit, match="Missing password"):
+        _resolve_credentials(_args())
+
+
 def test_missing_email_exits() -> None:
     """Email is never prompted for; it must come from flag or env."""
     with pytest.raises(SystemExit, match="Missing email"):
