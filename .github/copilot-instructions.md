@@ -143,7 +143,7 @@ Or use VS Code tasks (defined in `.vscode/tasks.json`):
 ### Testing Conventions
 
 - **pytest-asyncio** with `asyncio_mode = "auto"` (see `pyproject.toml`)
-- Mock HTTP via **pytest-httpx** (`httpx_mock` fixture); monkeypatch `_fetch_text` in catalog tests
+- Mock HTTP via **pytest-httpx** (`httpx_mock` fixture); in catalog tests fake or mock the injected API client's `get_bytes()` method
 - Property-based tests with **Hypothesis** where input space is large
 - Live API tests marked with `@pytest.mark.needs_internet` (see `conftest.py`)
 - Coverage target: run `uv run --group test poe cov` for term-missing report

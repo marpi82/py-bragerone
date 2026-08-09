@@ -17,7 +17,7 @@ Review procedure for pull requests to this library. Work through every section; 
 ## 2. Async & concurrency
 
 - [ ] No blocking calls in the event loop (sync httpx/requests, `time.sleep`, file I/O in coroutines).
-- [ ] New background tasks use `utils.spawn()` or `asyncio.TaskGroup`.
+- [ ] New background tasks: gateway-owned work uses `BragerOneGateway._spawn()` (tracked, cancelled on shutdown); other fire-and-forget tasks use `utils.spawn()` or `asyncio.TaskGroup`.
 - [ ] Mutable shared state is protected (locks/immutable/actor-style) — do not rely on the GIL.
 
 ## 3. Typing & style gates (CI runs these — flag what it can't catch)
