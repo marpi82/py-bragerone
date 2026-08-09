@@ -198,12 +198,14 @@ All code must pass `mypy --strict`. Use explicit types, no `Any` without justifi
 - Never block event loop; use `asyncio.to_thread()` for sync operations
 - EventBus subscribers: always wrap in try/except to prevent task death
 
-Example from `gateway.py`:
+Pattern from `gateway.py`:
 ```python
-async def _ws_dispatch(self, event_name: str, payload: Any) -> None:
-    # Never let exceptions kill the dispatcher
-    with contextlib.suppress(Exception):
-        await self._process_event(event_name, payload)
+try:
+    res = cb(*args, **kwargs)
+    if asyncio.iscoroutine(res):
+        await res
+except Exception:
+    LOG.exception("Callback error")  # never let a callback kill the dispatcher
 ```
 
 ### 4. Error Handling
@@ -281,7 +283,7 @@ These files should be kept in sync and updated as the architecture evolves.
 When reviewing pull requests, prioritize (details in `.github/skills/code-review/SKILL.md`):
 
 1. **Prime/WS contract**: REST prime is mandatory at startup and after every reconnect; WebSocket must never be treated as a source of initial state.
-2. **Async safety**: no blocking calls in the event loop (`asyncio.to_thread` for sync I/O); dispatcher/subscriber tasks must never die silently (`contextlib.suppress` + log); structured concurrency via `asyncio.TaskGroup`.
+2. **Async safety**: no blocking calls in the event loop (`asyncio.to_thread` for sync I/O); dispatcher/subscriber tasks must never die silently (wrap in `try`/`except` and log with `LOG.exception`; reserve `contextlib.suppress` for expected outcomes like cancellation); structured concurrency via `asyncio.TaskGroup`.
 3. **mypy --strict compliance**: no new `Any` without justification, no `# type: ignore` without a comment explaining why.
 4. **Public API stability**: `pybragerone.__all__` (`BragerOneApiClient`, `BragerOneGateway`) and everything documented in `docs/reference/ha_integration.rst` is consumed by the ha-bragerone integration—flag breaking changes.
 5. **Pydantic v2 patterns**: `ConfigDict`, `Field(alias=...)`, `model_validate`; do not introduce v1 idioms.

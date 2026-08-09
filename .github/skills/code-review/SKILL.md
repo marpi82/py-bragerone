@@ -36,7 +36,7 @@ Review procedure for pull requests to this library. Work through every section; 
 ## 5. Error handling
 
 - [ ] REST errors surface as `ApiError` with status/data/headers.
-- [ ] No broad `except Exception` without logging; no silent `pass`.
+- [ ] No broad `except Exception` without logging; no silent `pass` — except explicitly documented soft-fail contracts (e.g. `ParamStore.upsert()` returns `None` on malformed keys by design).
 
 ## 6. Tests
 
