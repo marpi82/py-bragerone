@@ -170,7 +170,7 @@ Built with Sphinx + Furo theme:
 
 ```bash
 uv run --group dev --group docs poe docs-build   # Build to docs/_build/html (poe lives in `dev`)
-uv run --group docs poe docs-serve   # Serve on localhost:8000
+uv run --group dev --group docs poe docs-serve   # Serve on localhost:8000 (poe lives in `dev`)
 ```
 
 Documentation includes:
