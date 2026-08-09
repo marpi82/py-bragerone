@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 import pytest
 
@@ -15,7 +16,7 @@ def _args(email: str | None = "u@example.com", password: str | None = None) -> a
 
 def test_existing_password_kept(monkeypatch: pytest.MonkeyPatch) -> None:
     """An explicitly provided password is used without prompting."""
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
     def _boom(_prompt: str) -> str:
         raise AssertionError("getpass must not be called")
@@ -28,7 +29,7 @@ def test_existing_password_kept(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_password_prompted_when_tty(monkeypatch: pytest.MonkeyPatch) -> None:
     """A missing password triggers a hidden prompt on a terminal."""
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr("getpass.getpass", lambda _prompt: "typed-secret")
     args = _args()
     _resolve_credentials(args)
@@ -37,7 +38,7 @@ def test_password_prompted_when_tty(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_password_missing_non_tty_exits(monkeypatch: pytest.MonkeyPatch) -> None:
     """Without a terminal, a missing password exits instead of prompting."""
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
 
     def _boom(_prompt: str) -> str:
         raise AssertionError("getpass must not be called")
@@ -49,7 +50,7 @@ def test_password_missing_non_tty_exits(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_empty_prompt_response_exits(monkeypatch: pytest.MonkeyPatch) -> None:
     """An empty password entered at the prompt is rejected."""
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr("getpass.getpass", lambda _prompt: "")
     with pytest.raises(SystemExit, match="Missing password"):
         _resolve_credentials(_args())
