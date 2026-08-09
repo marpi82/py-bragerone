@@ -1,3 +1,8 @@
+---
+name: code-review
+description: Review checklist for py-bragerone pull requests. Use when reviewing PRs to verify the REST prime / WebSocket delta contract, async safety, mypy strict compliance, public API stability, tests, and security.
+---
+
 # Code Review — py-bragerone
 
 Review procedure for pull requests to this library. Work through every section; only comment on real issues, with file/line references and a concrete suggested fix.

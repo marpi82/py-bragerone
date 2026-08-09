@@ -26,7 +26,7 @@ Pre-commit hooks exist; a coverage gate (`--cov-fail-under=80`) runs on pre-push
 
 ## Architecture in one paragraph
 
-REST **primes** the state (snapshots); WebSocket delivers **deltas only** and never replays state — after every reconnect you must re-subscribe and re-prime. `BragerOneApiClient` (`api/client.py`, httpx, token auto-refresh, ETag cache) and `RealtimeManager` (`api/ws.py`, python-socketio `/ws` namespace) feed `BragerOneGateway` (`gateway.py`), which publishes `ParamUpdate` events on the `EventBus` (`models/events.py`) into `ParamStore` (`models/param.py`). `LiveAssetsCatalog` (`models/catalog.py`) parses live JS web-app assets with tree-sitter for menus/i18n/permissions — used at config time, not hot runtime.
+REST **primes** the state (snapshots); WebSocket delivers **deltas only** and never replays state — after every reconnect you must re-subscribe and re-prime. `BragerOneApiClient` (`src/pybragerone/api/client.py`, httpx, token auto-refresh, ETag cache) and `RealtimeManager` (`src/pybragerone/api/ws.py`, python-socketio `/ws` namespace) feed `BragerOneGateway` (`src/pybragerone/gateway.py`), which publishes `ParamUpdate` events on the `EventBus` (`src/pybragerone/models/events.py`) into `ParamStore` (`src/pybragerone/models/param.py`). `LiveAssetsCatalog` (`src/pybragerone/models/catalog.py`) parses live JS web-app assets with tree-sitter for menus/i18n/permissions — used at config time, not hot runtime.
 
 Parameter addressing: `P<n>.<chan><idx>` (channels: `v` value, `s` status bitmask, `u` unit/enum, `n`/`x` min/max, `t` type).
 

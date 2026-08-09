@@ -174,7 +174,7 @@ uv run --group docs poe docs-serve   # Serve on localhost:8000
 ```
 
 Documentation includes:
-- `docs/architecture/overview.rst` / `operations.rst`: Architecture and runtime operations
+- `docs/architecture/overview.rst` / `docs/architecture/operations.rst`: Architecture and runtime operations
 - `docs/reference/ha_integration.rst`: HA integration contract (entity descriptors, ParamStore usage)
 - `docs/reference/parameter_format.rst`: Parameter addressing (`P<n>.<chan><idx>`) reference
 - `docs/guides/typing.rst` / `quality.rst` / `tests_guidelines.rst`: Contributor standards
