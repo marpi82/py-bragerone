@@ -57,19 +57,23 @@ Secure design principles applied
   crash the library or dependent HA setups.
 - **Economy of mechanism**: the library is a thin async client; protocol
   complexity is isolated in ``api/`` and ``models/`` with a small public API.
-- **Complete mediation on writes**: every parameter write goes through one
-  validated path (enum label→raw conversion, inverse numeric transform,
-  min/max range checks) before dispatch.
+- **Mediation on writes**: the CLI validates every parameter write (enum
+  label→raw conversion, inverse numeric transform, min/max range checks)
+  before dispatch. The low-level ``BragerOneApiClient`` write methods are
+  intentionally a thin raw transport; callers building on them (e.g. the
+  Home Assistant integration) are expected to implement the equivalent
+  validation layer, and the integration does.
 
 Countering common implementation weaknesses
 --------------------------------------------
 
 - **Injection**: no ``eval``/``exec``, no shell invocation with untrusted
   data; JavaScript assets are parsed with tree-sitter, never executed.
-- **Secrets exposure**: gitleaks runs in CI and pre-commit; GitHub secret
-  scanning with push protection is enabled; credentials are sourced from
-  environment/keyring, never stored in the repository; logs and diagnostics
-  redact credentials.
+- **Secrets exposure**: in-repo controls: gitleaks runs in CI and
+  pre-commit, credentials are sourced from environment/keyring and never
+  stored in the repository, and logs/diagnostics redact credentials. As a
+  hosting-layer control, the GitHub repository additionally has secret
+  scanning with push protection enabled.
 - **Broken crypto**: the library implements no cryptography itself; transport
   security is delegated to Python's TLS stack (TLS 1.2+).
 - **Memory safety**: pure Python — no native code is produced or shipped.
