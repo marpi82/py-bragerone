@@ -1,5 +1,5 @@
 ---
-applyTo: "docs/**,README.rst,examples/**,AGENTS.md"
+applyTo: "docs/**, README.rst, examples/**, AGENTS.md"
 ---
 
 # Documentation rules
