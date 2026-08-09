@@ -288,3 +288,4 @@ When reviewing pull requests, prioritize (details in `.github/skills/code-review
 4. **Public API stability**: `pybragerone.__all__` (`BragerOneApiClient`, `BragerOneGateway`) and everything documented in `docs/reference/ha_integration.rst` is consumed by the ha-bragerone integration—flag breaking changes.
 5. **Pydantic v2 patterns**: `ConfigDict`, `Field(alias=...)`, `model_validate`; do not introduce v1 idioms.
 6. **Tests**: new behavior needs tests (pytest-httpx for HTTP, `asyncio_mode=auto`); live-API tests must be marked `@pytest.mark.needs_internet`.
+7. **Docs consistency (code↔docs)**: changes to CLI flags/env vars, public API, or any documented behavior must be reflected in `docs/`, `README.rst`, and `examples/`; docs-only changes must match the actual code — flag drift in either direction.

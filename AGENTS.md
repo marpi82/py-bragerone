@@ -49,7 +49,7 @@ Parameter addressing: `P<n>.<chan><idx>` (channels: `v` value, `s` status bitmas
 
 ## Docs
 
-Sphinx + Furo; `uv run --group dev --group docs poe docs-build` (poe lives in `dev`). Sphinx runs with `-W` in CI — warnings are errors. Update `docs/` when changing public behavior.
+Sphinx + Furo; `uv run --group dev --group docs poe docs-build` (poe lives in `dev`). Sphinx runs with `-W` in CI — warnings are errors. Update `docs/` when changing public behavior, and treat docs↔code drift in either direction as a defect: docs must describe the code as it is.
 
 ## CI gates (`.github/workflows/ci.yml`)
 
