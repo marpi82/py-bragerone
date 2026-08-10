@@ -24,9 +24,10 @@ Only the **latest release** receives security fixes; there are no backports to o
 
 This project uses several security scanning tools to monitor dependencies:
 
-- **bandit**: Security linting for Python code
-- **semgrep**: Static analysis for security patterns
+- **bandit**: Security linting for Python code (pre-commit + `poe security`)
+- **ruff** (`S` / flake8-bandit): Fast security lint rules in the same pass as style checks
 - **pip-audit**: Dependency vulnerability scanning
+- **CodeQL**: Deeper static analysis in GitHub Actions
 
 ### Resolved Security Exceptions
 
@@ -70,9 +71,10 @@ uv run --group dev poe security
 ```
 
 This runs:
-- `bandit -r src -q` - Python security linting
-- `semgrep --config p/ci --error .` - Static analysis
+- `bandit -r src -q -ll` - Python security linting (medium+ severity)
 - `pip-audit --skip-editable --progress-spinner off` - Dependency scanning
+
+Ruff `S` rules run as part of `poe lint` / pre-commit (same pass as style checks). CodeQL runs in GitHub Actions.
 
 ## Update Schedule
 

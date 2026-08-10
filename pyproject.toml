@@ -58,24 +58,6 @@ cli = ["typer>=0.16.0", "rich>=12.6.0", "aiofiles>=24.1"]
 keyring = ["keyring>=25.0.0"]
 
 
-# ---------------------------------------------------------------------------
-# uv overrides: force patched versions of transitive dependencies that have
-# known CVEs but cannot be updated by bumping a direct dependency yet.
-# All three packages are pinned by semgrep (transitive dep); overrides fix:
-# mcp==1.23.3 (semgrep>=1.149): override to >=1.28.1 which fixes:
-#   GHSA-hvrp-rf83-w775, GHSA-jpw9-pfvf-9f58, GHSA-vj7q-gjh5-988w
-# click~=8.1.8: override to >=8.3.3 which fixes:
-#   GHSA-47fr-3ffg-hgmw (click.edit() command injection)
-# protobuf<5.29.6: override to >=5.29.6 which fixes:
-#   GHSA-7gcm-g887-7qv7, PYSEC-2026-1805 (JSON recursion DoS)
-# ---------------------------------------------------------------------------
-[tool.uv]
-override-dependencies = [
-  "mcp>=1.28.1,<2",
-  "click>=8.3.3,<9",
-  "protobuf>=5.29.6,<6",
-]
-
 [tool.hatch.version]
 source = "vcs"
 tag-pattern = '^(?:v)?(?P<version>\d{4}(?:\.\d{1,2}(?:\.\d{1,2})?)?(?:(?:a|b|rc)\d+)?)$'
@@ -101,7 +83,6 @@ dev = [
   "python-dotenv>=1.1.1,<2.0.0",
   "pip-audit>=2.4.0,<3.0.0",
   "bandit>=1.8.4,<2.0.0",
-  "semgrep>=1.89",
   "keyring>=25.0.0,<26.0.0",
   "hatch>=1.12.0,<2.0.0",
 ]
@@ -131,18 +112,14 @@ line-length = 130
 indent-width = 4
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "D", "UP", "RUF", "SIM", "B"] #, "ANN",]
-#ignore = [
-#  "D100", # Missing docstring in public module
-#  "D104", # Missing docstring in public package
-#  "D107", # Missing docstring in __init__
-#]
+select = ["E", "F", "W", "I", "D", "UP", "RUF", "SIM", "B", "S"]
 fixable = ["ALL"]
 unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
-#"__init__.py" = ["E402"]
-#"**/{tests,docs,tools}/*" = ["ALL"]
+"tests/**" = ["S101", "S105", "S106", "S107"]
+"fuzz/**" = ["S101", "S311"]
+"scripts/**" = ["S101", "S603", "S607"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -202,10 +179,9 @@ fix = ["lint", "fmt"]
 typecheck = "mypy"
 all = ["fmt", "lint", "typecheck"]
 # Security
-bandit = { cmd = "bandit -r src -q" }
-semgrep = { cmd = "semgrep --config p/ci --error ." }
+bandit = { cmd = "bandit -r src -q -ll" }
 pip-audit = { cmd = "pip-audit --skip-editable --progress-spinner off" }
-security = ["bandit", "semgrep", "pip-audit"]
+security = ["bandit", "pip-audit"]
 # Full validation (quality + security + tests)
 validate = ["fmt", "lint", "typecheck", "security", "test"]
 # Tests

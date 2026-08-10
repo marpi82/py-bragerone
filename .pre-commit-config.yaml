@@ -10,9 +10,9 @@ exclude: |
   )
 
 repos:
-  # Ruff → linter + formatter
+  # Ruff → linter + formatter (includes flake8-bandit / S rules from pyproject)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.1
+    rev: v0.16.2
     hooks:
       - id: ruff
         args: ["--fix"]
@@ -20,7 +20,7 @@ repos:
 
   # Mypy → type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.18.2
+    rev: v2.3.0
     hooks:
       - id: mypy
         name: mypy
@@ -32,7 +32,7 @@ repos:
 
   # Secrets scanning with Gitleaks
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.28.0
+    rev: v8.30.1
     hooks:
       - id: gitleaks
         name: gitleaks (protect staged)
@@ -53,51 +53,12 @@ repos:
 
   # --- SECURITY: code (SAST) ---
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.8.6
+    rev: 1.9.4
     hooks:
       - id: bandit
         name: bandit (scan src/)
-        args: ["-r", "src", "-q"]
+        args: ["-r", "src", "-q", "-ll"]
         pass_filenames: false
-
-  # --- SECURITY: Semgrep ---
-  # NOTE: Use the uv-managed dev environment instead of pre-commit's isolated venv.
-  # This avoids Python 3.13 compatibility issues (e.g. missing pkg_resources).
-  - repo: local
-    hooks:
-      - id: semgrep
-        name: semgrep (p/ci rules)
-        language: system
-        entry: bash -lc 'uv run --group dev semgrep --config p/ci --error --exclude-rule package_managers.uv.uv-missing-dependency-cooldown.uv-missing-dependency-cooldown "$@"'
-        pass_filenames: true
-
-  # --- SECURITY: dependencies (SCA) with uv export + pip-audit ---
-  # NOTE: Disabled for faster commits. Runs automatically in CI with GitHub Code Scanning
-  # Strategy: Generate requirements snapshot on-the-fly during pre-commit, then audit it
-  # - repo: local
-  #   hooks:
-  #     - id: uv-export
-  #       name: uv pip freeze requirements snapshot
-  #       language: system
-  #       entry: bash -c 'uv pip freeze --exclude-editable > requirements-pip-audit.txt'
-  #       pass_filenames: false
-  #       stages: [pre-commit]
-  #       always_run: true # Run even if uv.lock unchanged
-
-  # - repo: https://github.com/pypa/pip-audit
-  #   rev: v2.9.0
-  #   hooks:
-  #     - id: pip-audit
-  #       name: pip-audit (scan requirements snapshot)
-  #       args:
-  #         [
-  #           "--requirement",
-  #           "requirements-pip-audit.txt",
-  #           "--progress-spinner",
-  #           "off",
-  #         ]
-  #       stages: [pre-commit]
-  #       always_run: true # Run even if requirements.txt not staged
 
   # --- Tests on pre-push with coverage gate ---
   - repo: local

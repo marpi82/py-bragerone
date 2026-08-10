@@ -511,7 +511,7 @@ class BragerOneApiClient:
             except ApiError as e:
                 # only retry 500/duplicate errors
                 if e.status == 500 and self._is_duplicate_token_error(e.data) and d is not None:
-                    jitter = random.uniform(0.0, 0.15)  # nosec B311 - non-cryptographic jitter for retry backoff
+                    jitter = random.uniform(0.0, 0.15)  # noqa: S311  # nosec B311
                     await asyncio.sleep(d + jitter)
                     continue
                 raise
