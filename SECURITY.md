@@ -20,9 +20,9 @@ Please do not create a public GitHub issue for security vulnerabilities.
 
 Only the **latest release** receives security fixes; there are no backports to older versions. When a release line stops receiving security updates, it is simply superseded by the newest release — upgrade to stay supported.
 
-## Dependency Security
+## Security tooling
 
-This project uses several security scanning tools to monitor dependencies:
+This project uses several tools for code and dependency security scanning:
 
 - **bandit**: Security linting for Python code (pre-commit + `poe security`)
 - **ruff** (`S` / flake8-bandit): Fast security lint rules in the same pass as style checks
@@ -37,7 +37,7 @@ There are currently **no active dependency vulnerability exceptions** in this re
 
 - **Status**: ✅ Resolved - Exception removed as of 2026-02-15
 - **Affected Package**: `protobuf` (versions <= 6.33.4)
-- **Resolution**: Environment is now on `protobuf>=6.33.5` and `pip-audit` reports no known vulnerabilities.
+- **Resolution**: `protobuf` was only a transitive dependency of Semgrep/OpenTelemetry. After Semgrep was removed from the developer toolchain, `protobuf` is no longer in the lockfile, so this advisory no longer applies.
 - **Action Taken**: Removed `--ignore-vuln GHSA-7gcm-g887-7qv7` from local tasks and CI workflow.
 
 #### GHSA-4xh5-x5gv-qwph (pip tar extraction vulnerability)
