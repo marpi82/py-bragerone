@@ -77,7 +77,7 @@ class Token(BaseModel):
 
     access_token: str | None
     refresh_token: str | None = None
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105 - OAuth token_type, not a secret
     expires_at: datetime | None = None
     user_id: int | None = None
     objects: list[dict[str, Any]] = Field(default_factory=list)

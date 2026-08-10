@@ -105,10 +105,10 @@ Countering common implementation weaknesses
   them current; pip-audit scans them in CI; security exceptions (if any) are
   documented and tracked in ``SECURITY.md``.
 - **Static/dynamic analysis**: CodeQL and pip-audit run in GitHub Actions;
-  bandit and semgrep run in pre-commit hooks and via the local
-  ``poe security`` task; ``mypy --strict`` and ruff enforce type and code
-  discipline; a fuzz harness (atheris) plus Hypothesis property tests
-  exercise the parsers.
+  bandit and Ruff flake8-bandit (``S``) rules run in pre-commit hooks and via
+  the local ``poe security`` / ``poe lint`` tasks; ``mypy --strict`` and ruff
+  enforce type and code discipline; a fuzz harness (atheris) plus Hypothesis
+  property tests exercise the parsers.
 - **Release integrity**: releases are built in CI from the tagged commit and
   ship with SHA256 checksums, a CycloneDX SBOM, and Sigstore
   build-provenance attestations verifiable with ``gh attestation verify``.

@@ -2,11 +2,11 @@
   "folders": [
     {
       "name": "py-bragerone",
-      "path": "/workspaces/py-bragerone"
+      "path": "."
     },
     {
       "name": "ha-bragerone",
-      "path": "/workspaces/ha-bragerone"
+      "path": "../ha-bragerone"
     }
   ],
   "settings": {

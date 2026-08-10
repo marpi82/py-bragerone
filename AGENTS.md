@@ -6,7 +6,7 @@ Async Python library for the BragerOne cloud/realtime API (REST + Socket.IO), de
 
 - **Layout**: src-layout, single package `src/pybragerone/`, tests in `tests/` (flat `test_*.py`).
 - **Python**: `>=3.13.2,<3.15` (CI tests on 3.13).
-- **Dependencies**: **uv** (`uv.lock` committed). Groups: `dev` (includes security tools: bandit, semgrep, pip-audit), `test`, `docs`, `fuzz`.
+- **Dependencies**: **uv** (`uv.lock` committed). Groups: `dev` (includes security tools: bandit, pip-audit), `test`, `docs`, `fuzz`.
 - **Build**: hatchling + **hatch-vcs** — version is CalVer derived from git tags; never hardcode a version in `pyproject.toml`.
 
 ## Common commands
@@ -34,7 +34,7 @@ Parameter addressing: `P<n>.<chan><idx>` (channels: `v` value, `s` status bitmas
 
 1. **English only** in code, comments, docstrings.
 2. **mypy --strict** must pass (pydantic plugin enabled). No `Any`, no `# type: ignore` without justification.
-3. **Ruff** (`line-length = 130`, rules `E,F,W,I,D,UP,RUF,SIM,B`, Google-style docstrings) must pass; run `poe fix` before committing.
+3. **Ruff** (`line-length = 130`, rules `E,F,W,I,D,UP,RUF,SIM,B,S`, Google-style docstrings) must pass; run `poe fix` before committing.
 4. **Async-first**: never block the event loop; `asyncio.to_thread()` for sync work; `asyncio.TaskGroup` for structured concurrency; long-lived dispatch tasks must not die silently (catch and log with `LOG.exception`; reserve `contextlib.suppress` for expected outcomes like cancellation).
 5. **Pydantic v2** for DTOs (`ConfigDict`, `Field(alias=...)`, generics like `ApiResponse[T]`).
 6. **Public API** is `pybragerone.__all__` = `["BragerOneApiClient", "BragerOneGateway"]` plus what `docs/reference/ha_integration.rst` documents. Breaking it breaks the HA integration — call it out explicitly in PRs.

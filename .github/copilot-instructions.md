@@ -116,7 +116,6 @@ uv run --group dev poe all       # Run fmt + lint + typecheck
 
 # Security
 uv run --group dev poe bandit    # Security linting with bandit
-uv run --group dev poe semgrep   # Semgrep security checks
 uv run --group dev poe pip-audit # Audit dependencies for vulnerabilities
 uv run --group dev poe security  # Run all security checks
 
@@ -131,7 +130,7 @@ uv run --group dev --group test poe validate  # Run fmt + lint + typecheck + sec
 Or use VS Code tasks (defined in `.vscode/tasks.json`):
 - **uv: sync dev+test+docs** - Initial environment sync
 - **Quality: format / lint / typecheck** - Code quality automation
-- **Security: Bandit/Semgrep/pip-audit** - Individual security checks
+- **Security: Bandit/pip-audit** - Individual security checks (Ruff ``S`` runs with lint)
 - **Security: All security checks** - Run all security tools
 - **Tests: run / coverage** - Run pytest (with optional coverage)
 - **Validate: Full validation** ⭐ **(default build task)** - Complete validation (quality + security + tests)
@@ -190,7 +189,7 @@ All code must pass `mypy --strict`. Use explicit types, no `Any` without justifi
 - Line length: 130 chars
 - Docstrings: Google style (enforced by ruff's `pydocstyle`)
 - Import sorting: automatic via ruff (no isort needed separately)
-- Selected rules: E, F, W, I, D, UP, RUF, SIM, B
+- Selected rules: E, F, W, I, D, UP, RUF, SIM, B, S
 
 ### 3. Async Patterns
 
