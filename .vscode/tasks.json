@@ -128,35 +128,6 @@
       }
     },
     {
-      "label": "Security: Semgrep (security checks)",
-      "type": "shell",
-      // --error => exit!=0 when there are findings of appropriate severity
-      "command": "uv run --group dev semgrep --config p/ci --error .",
-      "problemMatcher": [
-        {
-          "owner": "semgrep",
-          "fileLocation": [
-            "relative",
-            "${workspaceFolder}"
-          ],
-          // typical: file.py:12:3: WARNING rule.id: message
-          "pattern": {
-            "regexp": "^(.*?):(\\d+):(\\d+):\\s+(ERROR|WARNING|INFO)\\s+([^:]+):\\s+(.*)$",
-            "file": 1,
-            "line": 2,
-            "column": 3,
-            "severity": 4,
-            "code": 5,
-            "message": 6
-          }
-        }
-      ],
-      "presentation": {
-        "reveal": "never",
-        "clear": true
-      }
-    },
-    {
       "label": "Security: pip-audit (dependency audit)",
       "type": "shell",
       "command": "uv run --group dev pip-audit --skip-editable --progress-spinner off",
@@ -172,7 +143,6 @@
       "dependsOrder": "sequence",
       "dependsOn": [
         "Security: Bandit (security linting)",
-        "Security: Semgrep (security checks)",
         "Security: pip-audit (dependency audit)"
       ],
       "problemMatcher": [],

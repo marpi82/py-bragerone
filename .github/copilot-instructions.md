@@ -189,7 +189,7 @@ All code must pass `mypy --strict`. Use explicit types, no `Any` without justifi
 - Line length: 130 chars
 - Docstrings: Google style (enforced by ruff's `pydocstyle`)
 - Import sorting: automatic via ruff (no isort needed separately)
-- Selected rules: E, F, W, I, D, UP, RUF, SIM, B
+- Selected rules: E, F, W, I, D, UP, RUF, SIM, B, S
 
 ### 3. Async Patterns
 

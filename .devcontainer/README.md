@@ -7,7 +7,7 @@ This devcontainer provides a fully configured development environment for py-bra
 - **Base image**: `python:3.13-slim-trixie`
 - **Dependency management**: uv
 - **Build system**: Hatch with hatch-vcs (CalVer from git tags)
-- **Pre-configured tools**: Ruff, mypy, pytest, Bandit, Semgrep, pip-audit
+- **Pre-configured tools**: Ruff, mypy, pytest, Bandit, pip-audit
 - **VS Code extensions**: Python, Pylance, Ruff, mypy-type-checker, GitLens, Copilot
 - **NFS-optimized**: `.venv` and uv cache stored in Docker volumes (not on NFS mount)
 
