@@ -120,6 +120,8 @@ unfixable = []
 "tests/**" = ["S101", "S105", "S106", "S107"]
 "fuzz/**" = ["S101", "S311"]
 "scripts/**" = ["S101", "S603", "S607"]
+"docs/**" = ["S102"]
+"examples/**" = ["S101"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
