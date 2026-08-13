@@ -69,6 +69,8 @@ def _param_map(
     status_conditions: dict[str, list[dict[str, Any]]] | None = None,
     origin: str = "inline:test",
 ) -> ParamMap:
+    # Upstream assets emit string flags; ParamMap's field is typed more narrowly.
+    status_flags: list[Any] = ["t.INVISIBLE"]
     return ParamMap(
         key=key,
         group=group,
@@ -76,7 +78,7 @@ def _param_map(
         component_type=component_type,
         units=units,
         limits={"min": 0, "max": 100},
-        status_flags=cast(list[dict[str, Any]], ["t.INVISIBLE"]),
+        status_flags=cast(list[dict[str, Any]], status_flags),
         status_conditions=status_conditions,
         command_rules=command_rules or [],
         origin=origin,
