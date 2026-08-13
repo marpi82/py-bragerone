@@ -58,7 +58,7 @@ Independent jobs run in parallel: `secrets` (gitleaks), `dependency-review`, `se
 
 ## Cursor Cloud specific instructions
 
-The startup update script runs `uv sync --group dev --group test --group docs --locked --python 3.13`; `uv` (pinned) is preinstalled on `PATH`. After that the environment is ready — use the `uv run ... poe <task>` commands documented above (no extra install steps).
+The Cloud Agent environment is provisioned by the committed `.cursor/environment.json` in this repo (the environment's primary repo). Its `install` script installs a pinned `uv` (0.12.3) to `~/.local/bin` — already on `PATH` via the base image's shell profile — when it is absent, then runs `uv sync --locked` for both checked-out repos: `py-bragerone` pinned to `--python 3.13`, and the sibling `ha-bragerone` (Python 3.14, resolved from its own lockfile). After that the environment is ready — use the `uv run ... poe <task>` commands documented above (no extra install steps).
 
 - **Pin Python 3.13 to match CI.** `requires-python` also allows 3.14, so a bare `uv sync` picks the newest interpreter (3.14) and diverges from the CI matrix (3.13). Always pass `--python 3.13` (the update script already does). To rebuild from scratch: `rm -rf .venv && uv sync --group dev --group test --group docs --locked --python 3.13`.
 - **This is a library, not a long-running service.** There is no dev server. "Running the app" means the diagnostic CLI (`uv run pybragerone-cli`) or the example scripts in `examples/`.

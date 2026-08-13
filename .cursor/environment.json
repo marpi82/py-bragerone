@@ -1,0 +1,5 @@
+{
+  "name": "py/ha-bragerone",
+  "user": "ubuntu",
+  "install": "export PATH=\"$HOME/.local/bin:$PATH\"\nif ! command -v uv >/dev/null 2>&1; then curl -LsSf https://astral.sh/uv/0.12.3/install.sh | sh; fi\nexport PATH=\"$HOME/.local/bin:$PATH\"\nuv sync --locked --group dev --group test --group docs --python 3.13 --directory /agent/repos/py-bragerone\nuv sync --locked --group dev --group test --directory /agent/repos/ha-bragerone"
+}
