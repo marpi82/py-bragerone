@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
 from tree_sitter import Node
 
+from pybragerone.api.client import BragerOneApiClient
 from pybragerone.models.catalog import AssetRef, LiveAssetsCatalog, _walk
 
 
 def _catalog() -> LiveAssetsCatalog:
-    catalog = LiveAssetsCatalog(AsyncMock())
+    api = cast(BragerOneApiClient, AsyncMock(spec=BragerOneApiClient))
+    catalog = LiveAssetsCatalog(api)
     catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/dummy.js", base="dummy", hash="x")]
     return catalog
 
@@ -69,7 +71,7 @@ def test_attach_parameters_tokens_normalizes_calls_dicts_and_children() -> None:
     assert read[1]["token"] == "PLAIN_TOKEN"
     assert read[2]["token"] == "PARAM_2"
     assert read[3]["parameter"] == "PARAM_3"
-    assert "token" not in read[4] or read[4].get("name") == "no-token"
+    assert read[4] == {"name": "no-token"}
     assert read[5]["token"] == "7"
     assert attached["parameters"]["write"] == []
     assert attached["children"][0]["parameters"]["status"][0]["token"] == "STATUS_P5_1"
