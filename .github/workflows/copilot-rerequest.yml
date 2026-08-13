@@ -1,0 +1,127 @@
+# Re-request GitHub Copilot code review after PR updates.
+#
+# Why a PAT: the default GITHUB_TOKEN (and the Cursor GitHub App) cannot request
+# the Copilot reviewer bot. This workflow uses secrets.COPILOT_REVIEW_TOKEN and
+# GraphQL `requestReviews(botIds: …)` — the reliable path for Copilot.
+#
+# Setup (one-time, as a repo admin with write access — typically @marpi82):
+#   1. GitHub → Settings → Developer settings → Personal access tokens
+#      → Fine-grained tokens → Generate new token
+#   2. Resource owner: your user/org that owns this repo
+#   3. Repository access: Only select repositories → py-bragerone
+#   4. Permissions → Repository permissions:
+#        - Pull requests: Read and write
+#        - Metadata: Read-only (auto)
+#   5. Generate, copy the token once
+#   6. Repo → Settings → Secrets and variables → Actions
+#      → New repository secret → Name: COPILOT_REVIEW_TOKEN → paste token
+#
+# Classic PATs with the `repo` scope also work, but fine-grained is preferred.
+# Rotate before expiry; without the secret this job no-ops with a notice.
+
+name: Re-request Copilot review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: copilot-rerequest-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  rerequest:
+    name: Re-request Copilot
+    runs-on: ubuntu-latest
+    # Same-repo PRs only (forks cannot use this secret). Skip bot dependency PRs
+    # by author (not github.actor — a human reopen/ready_for_review would otherwise
+    # bypass the skip and expose COPILOT_REVIEW_TOKEN on Dependabot/Renovate PRs).
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.user.login != 'dependabot[bot]'
+      && github.event.pull_request.user.login != 'renovate[bot]'
+    steps:
+      - name: Check COPILOT_REVIEW_TOKEN
+        id: token
+        env:
+          COPILOT_REVIEW_TOKEN: ${{ secrets.COPILOT_REVIEW_TOKEN }}
+        run: |
+          if [ -z "${COPILOT_REVIEW_TOKEN}" ]; then
+            echo "present=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::COPILOT_REVIEW_TOKEN is not set; skipping Copilot re-request. See the header comment in this workflow for setup."
+          else
+            echo "present=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Request Copilot via GraphQL botIds
+        if: steps.token.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_REVIEW_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          PR_ID="$(
+            gh api graphql \
+              -f query='query($owner:String!,$repo:String!,$n:Int!) {
+                repository(owner:$owner, name:$repo) {
+                  pullRequest(number:$n) { id }
+                }
+              }' \
+              -F owner="${OWNER}" \
+              -F repo="${REPO}" \
+              -F n="${PR_NUMBER}" \
+              --jq '.data.repository.pullRequest.id'
+          )"
+
+          BOT_ID="$(
+            gh api "users/copilot-pull-request-reviewer%5Bbot%5D" --jq '.node_id'
+          )"
+
+          echo "Requesting Copilot review on PR #${PR_NUMBER} (bot=${BOT_ID})"
+
+          RESULT="$(
+            gh api graphql \
+              -f query='mutation($pr:ID!,$botIds:[ID!]!) {
+                requestReviews(input: {pullRequestId: $pr, botIds: $botIds, union: true}) {
+                  pullRequest {
+                    reviewRequests(first: 20) {
+                      nodes {
+                        requestedReviewer {
+                          __typename
+                          ... on Bot { login }
+                          ... on User { login }
+                        }
+                      }
+                    }
+                  }
+                }
+              }' \
+              -F pr="${PR_ID}" \
+              -f "botIds[]=${BOT_ID}"
+          )"
+
+          # Fail loudly if GraphQL returned errors (gh may still exit 0).
+          if echo "${RESULT}" | jq -e '(.errors // []) | length > 0' >/dev/null; then
+            echo "${RESULT}" | jq '.errors'
+            exit 1
+          fi
+
+          REQUESTS="$(
+            echo "${RESULT}" | jq -c '
+              .data.requestReviews.pullRequest.reviewRequests.nodes
+              | map(.requestedReviewer.login // .requestedReviewer.__typename)
+            '
+          )"
+          echo "reviewRequests after mutation: ${REQUESTS}"
+          # Copilot may consume the request almost immediately; an empty list is not
+          # always a failure. Treat GraphQL errors (above) as the hard signal.
+          if [ "${REQUESTS}" = "[]" ]; then
+            echo "::notice::reviewRequests is empty after requestReviews — Copilot may already be reviewing, or code review may be disabled for this repo."
+          fi
