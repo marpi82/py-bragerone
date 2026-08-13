@@ -470,3 +470,52 @@ def test_panel_route_diagnostics_from_menu_explains_accept_and_reject() -> None:
     assert all_by_path["modules"]["accepted"] is False
     assert all_by_path["modules"]["reason"] == "rejected:not-module-item"
     assert all_by_path["empty-child"]["reason"] == "rejected:no-symbols"
+
+
+def test_lookup_route_title_and_unit_label_fallbacks() -> None:
+    """Cover dotted i18n lookup, route-title fallbacks, and unit value labels."""
+    from types import SimpleNamespace
+
+    evaluator = _evaluator()
+    assert evaluator._read_address_value("not-an-address") is None
+    assert evaluator.evaluate({"value": [{"if": [{"operation": "equalTo", "expected": 1, "value": []}], "then": "x"}]}) is None
+
+    assert ParamResolver._lookup_dotted_path({}, "") is None
+    assert ParamResolver._lookup_dotted_path({"a": {"b": "  "}}, "a.b") is None
+    assert ParamResolver._lookup_dotted_path({"a": "leaf"}, "a.b") is None
+    assert ParamResolver._lookup_dotted_path_raw({"a": {"b": "  "}}, "a.b") == "  "
+    assert ParamResolver._lookup_dotted_path_raw({}, "") is None
+    assert ParamResolver._lookup_dotted_path_raw({"a": 1}, "a.b") is None
+
+    named = SimpleNamespace(
+        name="modules.menu.boiler",
+        path="boiler",
+        meta=SimpleNamespace(display_name="routes.modules.menu.boiler"),
+    )
+    assert ParamResolver._route_title(named, routes_i18n={"modules": {"menu": {"boiler": "Kocioł"}}}) == "Kocioł"
+    assert ParamResolver._route_title(SimpleNamespace(name="modules.menu.x", path="x", meta=None)) == "modules.menu.x"
+    assert ParamResolver._route_title(SimpleNamespace(name="", path="fallback", meta=None)) == "fallback"
+    assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name=None)) is False
+    assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="other.item")) is False
+    assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="companies.modules.menu.x")) is True
+
+    assert ParamResolver._to_float_literal("") is None
+    assert ParamResolver._to_float_literal(".5") == 0.5
+    assert ParamResolver._to_float_literal("-.5") == -0.5
+    assert ParamResolver._to_float_literal("nope") is None
+    assert ParamResolver._apply_numeric_transform(3, "e => e * 0.5") == 1.5
+
+    assert ParamResolver._clean_symbolic_tag(1) is None
+    assert ParamResolver._clean_symbolic_tag("   ") is None
+    assert ParamResolver._clean_symbolic_tag("[t.INVISIBLE]") == "INVISIBLE"
+
+    assert ParamResolver._unit_mapping_value_label("C", 1) is None
+    assert ParamResolver._unit_mapping_value_label({"1": "On", "e.OFF": "Off"}, "1") == "On"
+    assert ParamResolver._unit_mapping_value_label({"1": "On"}, True) == "On"
+    assert ParamResolver._unit_mapping_value_label({"2.0": "Two"}, 2.0) == "Two"
+    assert ParamResolver._unit_mapping_value_label({"e.AUTO": "Auto"}, "[e.AUTO]") == "Auto"
+    assert ParamResolver._unit_mapping_value_label({"x": "  "}, "missing") is None
+    assert ParamResolver._unit_options_map("C") is None
+    assert ParamResolver._unit_options_map({"options": {"0": "Off"}}) == {"0": "Off"}
+    assert ParamResolver._unit_options_map({"text": "x", "0": "Off"}) is None
+    assert ParamResolver._unit_options_map({"0": "Off"}) == {"0": "Off"}
