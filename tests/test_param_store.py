@@ -18,6 +18,14 @@ async def _wait_until(predicate: Callable[[], bool], *, spins: int = 50) -> None
     assert predicate()
 
 
+async def _consume_bus(store: ParamStore, bus: EventBus) -> asyncio.Task[None]:
+    """Start ``run_with_bus`` and wait until the EventBus subscriber is registered."""
+    consumer = asyncio.create_task(store.run_with_bus(bus))
+    await asyncio.sleep(0)
+    await _wait_until(lambda: bool(bus._subs))
+    return consumer
+
+
 def test_upsert_builds_family_and_exposes_channels() -> None:
     """Valid keys create a family; channel helpers and flatten match the store."""
     store = ParamStore()
@@ -127,10 +135,8 @@ async def test_run_with_bus_upserts_values_and_skips_none() -> None:
     """Bus consumer writes non-None values and ignores meta-only updates."""
     store = ParamStore()
     bus = EventBus()
-    consumer = asyncio.create_task(store.run_with_bus(bus))
+    consumer = await _consume_bus(store, bus)
     try:
-        await asyncio.sleep(0)
-        await _wait_until(lambda: bool(bus._subs))
         await bus.publish(ParamUpdate(devid="M1", pool="P4", chan="v", idx=1, value=18.0))
         await bus.publish(ParamUpdate(devid="M1", pool="P4", chan="s", idx=1, value=None))
         await _wait_until(lambda: store.get_family("P4", 1) is not None)
