@@ -18,11 +18,12 @@ uv run --group dev poe lint       # ruff check --fix
 uv run --group dev poe typecheck  # mypy --strict
 uv run --group dev --group test poe test      # pytest (poe lives in `dev`)
 uv run --group dev --group test poe cov       # pytest + coverage
+uv run --group dev --group test poe bench     # micro-benchmarks (`pytest --codspeed`, no SaaS reporting locally)
 uv run --group dev --group test poe validate   # fmt + lint + typecheck + security + test (needs both groups: pytest lives in `test`)
 uv build                          # wheel + sdist
 ```
 
-Pre-commit hooks exist; a coverage gate (`--cov-fail-under=80`) runs on pre-push.
+Pre-commit hooks exist; a coverage gate (`--cov-fail-under=80`) runs on pre-push. CI uploads `coverage.xml` to Codecov (`codecov-commenter` on PRs). Patch coverage target is 100%; project coverage is informational — the 80% floor stays on pre-push.
 
 ## Architecture in one paragraph
 
