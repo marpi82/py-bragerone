@@ -37,11 +37,13 @@ jobs:
   rerequest:
     name: Re-request Copilot
     runs-on: ubuntu-latest
-    # Same-repo PRs only (forks cannot use this secret). Skip bot dependency noise.
+    # Same-repo PRs only (forks cannot use this secret). Skip bot dependency PRs
+    # by author (not github.actor — a human reopen/ready_for_review would otherwise
+    # bypass the skip and expose COPILOT_REVIEW_TOKEN on Dependabot/Renovate PRs).
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository
-      && github.actor != 'dependabot[bot]'
-      && github.actor != 'renovate[bot]'
+      && github.event.pull_request.user.login != 'dependabot[bot]'
+      && github.event.pull_request.user.login != 'renovate[bot]'
     steps:
       - name: Check COPILOT_REVIEW_TOKEN
         id: token
