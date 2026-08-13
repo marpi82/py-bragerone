@@ -69,7 +69,7 @@ def test_ingest_prime_payload_skips_invalid_shapes_and_keeps_meta() -> None:
                         "ignored": "nope",
                     },
                     "s1": 3,
-                    "u1": {"storable": False},
+                    "u1": {"expire": 5},
                 },
             },
         }
@@ -85,7 +85,7 @@ def test_ingest_prime_payload_skips_invalid_shapes_and_keeps_meta() -> None:
     assert fam.get("previousCreatedAt") == 9
     assert fam.get("updatedAt") == 11
     assert fam.get("updatedAtClient") == 12
-    assert fam.get("expire") == 0
+    assert fam.get("expire") == 5
     assert fam.get("average") == 21.0
     assert fam.get("ignored") is None
     assert store.flatten()["P4.s1"] == 3
@@ -103,12 +103,28 @@ def test_ingest_prime_payload_attaches_meta_to_existing_family() -> None:
     assert fam.get("updatedAt") == 99
 
 
+def test_ingest_prime_payload_creates_family_from_meta_only_body() -> None:
+    """A mapping without ``value`` still creates the family so meta can attach."""
+    store = ParamStore()
+    store.ingest_prime_payload({"DEV1": {"P4": {"u3": {"storable": True}}}})
+
+    fam = store.get_family("P4", 3)
+    assert fam is not None
+    assert fam.unit_code is None
+    assert fam.get("storable") is True
+
+
 async def test_run_with_bus_upserts_values_and_skips_none() -> None:
     """Bus consumer writes non-None values and ignores meta-only updates."""
     store = ParamStore()
     bus = EventBus()
     consumer = asyncio.create_task(store.run_with_bus(bus))
     try:
+        for _ in range(50):
+            if bus._subs:
+                break
+            await asyncio.sleep(0)
+        assert bus._subs, "EventBus subscriber was not registered"
         await bus.publish(ParamUpdate(devid="M1", pool="P4", chan="v", idx=1, value=18.0))
         await bus.publish(ParamUpdate(devid="M1", pool="P4", chan="s", idx=1, value=None))
         fam = None

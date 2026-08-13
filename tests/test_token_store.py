@@ -98,9 +98,7 @@ def test_cli_token_store_prefers_keyring(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert store.load() is None
 
 
-def test_cli_token_store_keyring_invalid_json_falls_back_to_file(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_cli_token_store_keyring_invalid_json_falls_back_to_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Corrupt keyring data is ignored; a valid fallback file still loads."""
     fake = _FakeKeyring()
     fake.payload = "not-json"
@@ -153,13 +151,16 @@ def test_ha_token_store_load_save_clear() -> None:
 def test_ha_token_store_swallows_callback_failures() -> None:
     """Loader/saver/clearer exceptions must not propagate."""
 
-    def boom() -> Token | None:
+    def boom_load() -> Token | None:
         raise RuntimeError("storage down")
 
     def boom_save(_token: Token) -> None:
         raise RuntimeError("cannot save")
 
-    store = HATokenStore(loader=boom, saver=boom_save, clearer=boom)
+    def boom_clear() -> None:
+        raise RuntimeError("cannot clear")
+
+    store = HATokenStore(loader=boom_load, saver=boom_save, clearer=boom_clear)
     assert store.load() is None
     store.save(Token(access_token="x"))
     store.clear()
