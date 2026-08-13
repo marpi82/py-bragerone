@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
+from collections.abc import Callable
 
 from pybragerone.models.events import EventBus, ParamUpdate
 from pybragerone.models.param import ParamStore
+
+
+async def _wait_until(predicate: Callable[[], bool], *, spins: int = 50) -> None:
+    """Yield to the event loop until ``predicate`` is true."""
+    for _ in range(spins):
+        if predicate():
+            return
+        await asyncio.sleep(0)
+    assert predicate()
 
 
 def test_upsert_builds_family_and_exposes_channels() -> None:
@@ -120,23 +129,15 @@ async def test_run_with_bus_upserts_values_and_skips_none() -> None:
     bus = EventBus()
     consumer = asyncio.create_task(store.run_with_bus(bus))
     try:
-        for _ in range(50):
-            if bus._subs:
-                break
-            await asyncio.sleep(0)
-        assert bus._subs, "EventBus subscriber was not registered"
+        await asyncio.sleep(0)
+        await _wait_until(lambda: bool(bus._subs))
         await bus.publish(ParamUpdate(devid="M1", pool="P4", chan="v", idx=1, value=18.0))
         await bus.publish(ParamUpdate(devid="M1", pool="P4", chan="s", idx=1, value=None))
-        fam = None
-        for _ in range(50):
-            fam = store.get_family("P4", 1)
-            if fam is not None:
-                break
-            await asyncio.sleep(0)
+        await _wait_until(lambda: store.get_family("P4", 1) is not None)
+        fam = store.get_family("P4", 1)
         assert fam is not None
         assert fam.value == 18.0
         assert fam.status_raw is None
     finally:
         consumer.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await consumer
+        await asyncio.wait({consumer})
