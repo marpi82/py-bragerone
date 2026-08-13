@@ -141,8 +141,12 @@ def test_ha_token_store_load_save_clear() -> None:
     assert loaded.access_token == "ha-tok"
     assert loaded.objects == [{"id": 9}]
 
-    store.save(Token(access_token="abc"))
-    assert saved
+    token = Token(access_token="abc", refresh_token="ref", objects=[{"id": 2}])
+    store.save(token)
+    assert saved == [token]
+    assert saved[0].access_token == "abc"
+    assert saved[0].refresh_token == "ref"
+    assert saved[0].objects == [{"id": 2}]
 
     store.clear()
     assert cleared is True

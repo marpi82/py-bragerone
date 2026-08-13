@@ -267,16 +267,15 @@ class HATokenStore(TokenStore):
         )
 
     def save(self, token: Token) -> None:
-        """Persist the Token atomically."""
-        payload: dict[str, Any] = {
-            "access_token": getattr(token, "access_token", None),
-            "token_type": getattr(token, "token_type", "bearer"),
-            "refresh_token": getattr(token, "refresh_token", None),
-            "expires_at": getattr(token, "expires_at", None),
-            "objects": getattr(token, "objects", []) or [],
-        }
+        """Persist the Token atomically.
+
+        The saver receives the ``Token`` as-is. Do not rebuild it through
+        :meth:`Token.from_login_payload` — that helper expects login JSON
+        keys (``accessToken`` / ``refreshToken``), not the snake_case fields
+        on ``Token``.
+        """
         with contextlib.suppress(Exception):
-            self._saver(Token.from_login_payload(payload))
+            self._saver(token)
 
     def clear(self) -> None:
         """Remove any persisted token."""
