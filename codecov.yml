@@ -1,0 +1,20 @@
+coverage:
+  status:
+    patch:
+      default:
+        target: 100%
+        threshold: 0%
+    project:
+      default:
+        informational: true
+
+ignore:
+  - "tests/**/*"
+  - "scripts/**/*"
+  - "docs/**/*"
+  - "fuzz/**/*"
+  - "examples/**/*"
+
+comment:
+  layout: "reach, diff, flags, files"
+  require_changes: true

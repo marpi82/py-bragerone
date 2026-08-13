@@ -93,6 +93,7 @@ test = [
   "pytest-httpx>=0.35.0,<0.37.0",
   "packaging>=24.1,<27.0.0",
   "hypothesis>=6.112.0,<7.0.0",
+  "pytest-codspeed>=4.0.0,<5.0.0",
 ]
 fuzz = [
   "atheris>=2.3.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
@@ -163,6 +164,7 @@ asyncio_mode = "auto"
 markers = [
   "slow: potentially slower tests (network)",
   "needs_internet: tests that require internet access",
+  "benchmark: CPU-bound micro-benchmarks (measure with --codspeed)",
 ]
 
 [tool.coverage.run]
@@ -189,6 +191,7 @@ validate = ["fmt", "lint", "typecheck", "security", "test"]
 # Tests
 test = { cmd = "pytest -q" }
 cov = { cmd = "pytest -q --cov=pybragerone --cov-report=term-missing" }
+bench = { cmd = "pytest tests/test_bench_micro.py --codspeed" }
 perf = { cmd = "python scripts/perf_bench.py run --loops 2000 --output reports/perf/latest.json" }
 perf-compare = { cmd = "python scripts/perf_bench.py compare --baseline reports/perf/baseline.json --current reports/perf/latest.json --regression-threshold-percent 10" }
 perf-startup = { cmd = "python scripts/perf_bench.py startup --output reports/perf/startup_latest.json" }

@@ -7,19 +7,21 @@ Utility scripts for development and system setup.
 ### Setup
 
 - `setup_host_env.sh` - Configure development environment (installs uv, sets up git hooks)
-- `perf_bench.py` - Run micro-benchmarks and compare timing reports
+- `perf_bench.py` - Local wall-time micro-benchmarks, baseline compare, and real startup timing
 
-	Includes:
-	- API command dispatch micro-benchmarks
-	- Asset parser benchmark (`catalog_param_map_parsing`) when fixture files are present in `.cache/`
-	- Real startup benchmark (`startup`) with CLI-like phases:
-		- auth
-		- WS connect/bind/subscribe
-		- prime (parameters/activity)
-		- store ingestion
-		- menu/route parsing
-		- panel group build
-		- describe/resolve all symbols
+CPU-bound dispatch/catalog cases also live as pytest tests in `tests/test_bench_micro.py`
+(`uv run --group dev --group test poe bench` / `pytest --codspeed`). This script remains the
+tool for:
+
+- API command dispatch wall-time loops (optional `.cache/` catalog fixtures)
+- Real startup benchmark (`startup`) with CLI-like phases:
+  - auth
+  - WS connect/bind/subscribe
+  - prime (parameters/activity)
+  - store ingestion
+  - menu/route parsing
+  - panel group build
+  - describe/resolve all symbols
 
 ## Usage
 
@@ -27,7 +29,10 @@ Utility scripts for development and system setup.
 # Run setup script
 ./scripts/setup_host_env.sh
 
-# Run micro-benchmarks and save latest report
+# Run pytest CPU micro-benchmarks (CodSpeed plugin; no SaaS reporting locally)
+uv run --group dev --group test poe bench
+
+# Run wall-time micro-benchmarks and save latest report
 uv run --group dev poe perf
 
 # Compare latest run with baseline report
