@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
 import pytest
+from pytest_httpx import HTTPXMock
 
 from pybragerone.gateway import BragerOneGateway
 from pybragerone.models.events import ParamUpdate
@@ -151,6 +152,15 @@ async def test_start_is_idempotent_and_wait_for_prime() -> None:
     await gw.start()
     assert ws.connect_calls == 1
     assert await gw.wait_for_prime(timeout=0.01) is True
+
+    async def _mark_prime() -> None:
+        await asyncio.sleep(0)
+        gw._prime_done.set()
+
+    gw._prime_done.clear()
+    marker = asyncio.create_task(_mark_prime())
+    assert await gw.wait_for_prime() is True
+    await marker
     await gw.stop()
 
 
@@ -270,3 +280,56 @@ async def test_background_task_failure_is_logged(caplog: pytest.LogCaptureFixtur
     assert isinstance(result[0], RuntimeError)
     assert any("Background task failed" in rec.message for rec in caplog.records)
     await gw.stop()
+
+
+async def test_from_credentials_owns_the_api_client(httpx_mock: HTTPXMock) -> None:
+    """from_credentials logs in and marks the constructed client as owned."""
+    httpx_mock.add_response(
+        method="POST",
+        url="https://io.brager.pl/v1/auth/user",
+        json={"accessToken": "T1", "type": "bearer"},
+    )
+    ws = FakeRealtimeManager()
+    gw = await BragerOneGateway.from_credentials(
+        email="a@b",
+        password="pw",
+        object_id=7,
+        modules=["M1"],
+        ws=ws,
+    )
+    assert gw._owns_api is True
+    assert gw.object_id == 7
+    assert gw.api.access_token == "T1"
+    await gw.stop()
+    assert ws.disconnect_calls == 1
+
+
+async def test_stop_continues_after_disconnect_and_close_errors(caplog: pytest.LogCaptureFixture) -> None:
+    """stop() logs WS/HTTP teardown errors and still finishes."""
+
+    class _BoomWs(FakeRealtimeManager):
+        async def disconnect(self) -> None:
+            raise RuntimeError("ws down")
+
+    class _BoomApi(FakeApiClient):
+        async def close(self) -> None:
+            raise RuntimeError("http down")
+
+    gw = BragerOneGateway(api=_BoomApi(), object_id=1, modules=["M1"], ws=_BoomWs(), owns_api=True)
+    with caplog.at_level("ERROR"):
+        await gw.stop()
+    assert "disconnecting WS" in caplog.text
+    assert "closing ApiClient" in caplog.text
+
+
+async def test_stop_swallows_cancelled_disconnect() -> None:
+    """CancelledError from WS disconnect must not abort stop()."""
+
+    class _CancelWs(FakeRealtimeManager):
+        async def disconnect(self) -> None:
+            raise asyncio.CancelledError
+
+    gw, api, _ = _gateway(owns_api=True)
+    gw.ws = _CancelWs()
+    await gw.stop()
+    assert api.closed is True

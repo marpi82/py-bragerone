@@ -272,8 +272,10 @@ class BragerOneApiClient:
             request: The httpx Request object.
         """
         safe_headers = dict(request.headers)
-        if self._redact_secrets and "Authorization" in safe_headers:
-            safe_headers["Authorization"] = "<redacted>"
+        if self._redact_secrets:
+            for key in list(safe_headers):
+                if key.lower() == "authorization":
+                    safe_headers[key] = "<redacted>"
         LOG_HTTP.debug("→ %s %s headers=%s", request.method, request.url, safe_headers)
 
     async def _log_response(self, response: httpx.Response) -> None:
