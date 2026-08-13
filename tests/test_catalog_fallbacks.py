@@ -257,7 +257,6 @@ def test_parse_menu_routes_extracts_nested_routes_and_attaches_tokens() -> None:
     assert catalog._parse_menu_routes(b"export default 1;") == []
 
 
-@pytest.mark.asyncio
 async def test_get_param_mapping_index_token_map_and_unresolved_fallbacks(monkeypatch: pytest.MonkeyPatch) -> None:
     """Hit index token-map, reject empty maps, and leave unreadable assets unresolved."""
     catalog = _catalog()
