@@ -56,11 +56,17 @@ class _FakeSio:
 
 
 async def _drain_spawned() -> None:
-    """Let ``spawn()`` callbacks finish."""
+    """Yield until ``spawn()`` callbacks finish; fail if tasks leak."""
     for _ in range(50):
         if not bg_tasks:
             return
         await asyncio.sleep(0)
+    remaining = list(bg_tasks)
+    for task in remaining:
+        task.cancel()
+    if remaining:
+        await asyncio.wait(set(remaining))
+    raise AssertionError(f"background tasks did not finish: {remaining!r}")
 
 
 def _manager(monkeypatch: pytest.MonkeyPatch) -> tuple[RealtimeManager, _FakeSio]:

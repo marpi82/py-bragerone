@@ -159,8 +159,9 @@ async def test_start_is_idempotent_and_wait_for_prime() -> None:
 
     gw._prime_done.clear()
     marker = asyncio.create_task(_mark_prime())
-    assert await gw.wait_for_prime() is True
-    await marker
+    primed = await gw.wait_for_prime()
+    await asyncio.wait({marker})
+    assert primed is True
     await gw.stop()
 
 

@@ -48,9 +48,8 @@ class _BoomLoader:
         """Raise to exercise ensure_auth's suppressed loader path."""
         raise RuntimeError("store unavailable")
 
-    def save(self, token: Token) -> None:
+    def save(self, _token: Token) -> None:
         """Ignore saves."""
-        del token
 
     def clear(self) -> None:
         """Ignore clears."""
@@ -248,6 +247,19 @@ async def test_http_trace_redacts_authorization(httpx_mock: HTTPXMock, caplog: p
         await client._req("GET", f"{API}/v1/user")
     assert "<redacted>" in caplog.text
     assert "secret-token" not in caplog.text
+    await client.close()
+
+
+async def test_http_trace_keeps_authorization_when_redact_disabled(
+    httpx_mock: HTTPXMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """With ``redact_secrets=False`` the bearer token stays in the trace."""
+    client = BragerOneApiClient(validate_on_start=False, enable_http_trace=True, redact_secrets=False)
+    client._token = Token(access_token="secret-token")
+    httpx_mock.add_response(method="GET", url=f"{API}/v1/user", json={"user": {"id": 1, "email": TEST_EMAIL}})
+    with caplog.at_level("DEBUG", logger="pybragerone.http"):
+        await client._req("GET", f"{API}/v1/user")
+    assert "secret-token" in caplog.text
     await client.close()
 
 
