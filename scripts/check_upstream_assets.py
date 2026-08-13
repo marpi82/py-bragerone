@@ -60,6 +60,7 @@ class UpstreamProbe:
     language_ok: bool
     sample_param_tokens: list[str]
     sample_param_resolved: list[str]
+    parse_error: str | None = None
 
 
 def build_fingerprint(*, api_version: str, index_asset: str) -> str:
@@ -121,10 +122,15 @@ async def probe_upstream(
             language_ok=False,
             sample_param_tokens=[],
             sample_param_resolved=[],
+            parse_error=None,
         )
         if probe.parse_skipped:
             return probe
-        return await _parse_live_catalog(api, probe, sample_limit=sample_limit)
+        try:
+            return await _parse_live_catalog(api, probe, sample_limit=sample_limit)
+        except Exception as exc:
+            probe.parse_error = str(exc)
+            return probe
     finally:
         if own_client:
             await api.close()
@@ -174,6 +180,8 @@ def assert_probe_ok(probe: UpstreamProbe) -> None:
         raise RuntimeError(f"upstream probe: unexpected index asset {probe.index_asset!r}")
     if probe.parse_skipped:
         return
+    if probe.parse_error:
+        raise RuntimeError(f"upstream probe: live catalog parse failed: {probe.parse_error}")
     if probe.basename_count < 1:
         raise RuntimeError("upstream probe: live index parsed to zero asset basenames")
     if probe.sample_param_tokens and not probe.sample_param_resolved:

@@ -27,6 +27,7 @@ class _UpstreamProbe(Protocol):
     fingerprint: str
     previous_fingerprint: str | None
     basename_count: int
+    parse_error: str | None
 
 
 class _UpstreamScript(Protocol):
@@ -192,3 +193,32 @@ async def test_probe_first_run_parses_without_previous() -> None:
     assert probe.changed is True
     assert probe.parse_skipped is False
     assert probe.basename_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_probe_keeps_fingerprint_when_index_parse_fails() -> None:
+    """Parse errors after fingerprinting still return outputs for the workflow."""
+    module = _load_upstream()
+    client = _FakePublicClient(
+        version="2.08",
+        pages={
+            "https://one.brager.pl/": _HOME_HTML,
+            "https://one.brager.pl/assets/": _HOME_HTML,
+        },
+        assets={},
+    )
+    probe = await module.probe_upstream(
+        previous_fingerprint="1.0|index-old.js",
+        client=client,
+    )
+    assert probe.changed is True
+    assert probe.parse_skipped is False
+    assert probe.fingerprint == f"2.08|{_INDEX_ASSET}"
+    assert probe.basename_count == 0
+    assert probe.parse_error
+    buf = io.StringIO()
+    module.write_github_output(probe, buf)
+    assert f"fingerprint=2.08|{_INDEX_ASSET}\n" in buf.getvalue()
+    assert "changed=true\n" in buf.getvalue()
+    with pytest.raises(RuntimeError, match="live catalog parse failed"):
+        module.assert_probe_ok(probe)
