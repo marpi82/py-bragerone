@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/marpi82/py-bragerone/security/advisories/new
+    about: Do not file a public issue. Use private vulnerability reporting (or email marpi82.dev@google.com). See SECURITY.md.
+  - name: Documentation
+    url: https://marpi82.github.io/py-bragerone/
+    about: Full Sphinx docs for py-bragerone (API reference, guides, HA integration notes).
