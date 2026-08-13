@@ -38,3 +38,38 @@ def test_module_model_tolerates_null_interfaces() -> None:
 
     assert module.gateway.interface == ""
     assert module.moduleInterface == ""
+
+
+def test_module_model_keeps_non_null_interfaces() -> None:
+    """Non-null interface strings are kept as-is."""
+    payload = {
+        "devid": "[REDACTED]",
+        "name": "Module name",
+        "gateway": {
+            "address": "gateway-addr",
+            "interface": "eth0",
+            "version": "1.0",
+        },
+        "deviceMenu": 0,
+        "deviceLanguageVariant": 0,
+        "devices": [],
+        "services": [],
+        "permissions": [],
+        "acceptedAt": 0,
+        "connectedAt": 0,
+        "moduleAlarms": 0,
+        "parameterSchemas": [],
+        "id": 1,
+        "moduleAddress": "module-addr",
+        "moduleInterface": "wifi",
+        "moduleVersion": "2.08",
+        "moduleServices": [],
+        "moduleTitle": "HT DasPell GL 37kW",
+        "isAcceptedAt": "2026-04-06T00:00:00Z",
+        "isConnectedAt": "2026-04-06T00:00:00Z",
+    }
+
+    module = Module.model_validate(payload)
+
+    assert module.gateway.interface == "eth0"
+    assert module.moduleInterface == "wifi"
