@@ -43,6 +43,7 @@ def test_permission_equality() -> None:
     assert perm1 != perm3
     assert perm1 == "DISPLAY_MENU_DHW"  # Can compare with string
     assert perm1 != "DISPLAY_MENU_CIRCUITS"
+    assert perm1 != 123
 
 
 def test_permission_hashable() -> None:
