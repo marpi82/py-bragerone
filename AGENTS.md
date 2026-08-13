@@ -55,3 +55,12 @@ Sphinx + Furo; `uv run --group dev --group docs poe docs-build` (poe lives in `d
 ## CI gates (`.github/workflows/ci.yml`)
 
 Independent jobs run in parallel: `secrets` (gitleaks), `dependency-review`, `security`, `quality` (ruff check + format, mypy), `tests` (pytest 3.13), `docs-verify` (Sphinx `-W`). `build` (hatch) gates on all of them except `dependency-review` (`needs: [secrets, security, quality, tests, docs-verify]`). pip-audit runs as an artifact-producing advisory job (`continue-on-error: true`, not a blocking gate); CodeQL and OpenSSF Scorecard run separately. A scheduled **Upstream assets** workflow (`.github/workflows/upstream-assets.yml`) probes public BragerOne JS without login; it does not block PRs.
+
+## Cursor Cloud specific instructions
+
+The startup update script runs `uv sync --group dev --group test --group docs --locked --python 3.13`; `uv` (pinned) is preinstalled on `PATH`. After that the environment is ready — use the `uv run ... poe <task>` commands documented above (no extra install steps).
+
+- **Pin Python 3.13 to match CI.** `requires-python` also allows 3.14, so a bare `uv sync` picks the newest interpreter (3.14) and diverges from the CI matrix (3.13). Always pass `--python 3.13` (the update script already does). To rebuild from scratch: `rm -rf .venv && uv sync --group dev --group test --group docs --locked --python 3.13`.
+- **This is a library, not a long-running service.** There is no dev server. "Running the app" means the diagnostic CLI (`uv run pybragerone-cli`) or the example scripts in `examples/`.
+- **CLI / examples need live credentials + internet.** They log into the BragerOne (or TiSConnect) cloud using `PYBO_EMAIL` / `PYBO_PASSWORD` (see `.env.example`); without them the CLI exits early with a "Missing email/password" message. All offline development — lint, mypy, pytest, build, docs — runs with no credentials. Live-API tests are marked `needs_internet` and skip automatically offline.
+- **Docs build doesn't need Graphviz** despite the README note; `docs/conf.py` doesn't load the graphviz extension. Match CI with `uv run --group dev --group docs sphinx-build -W -b html docs docs/_build/html`.
