@@ -4,12 +4,12 @@ Thanks for helping improve py-bragerone.
 
 ## How to contribute
 
-1. Open an issue describing the bug or enhancement (optional but appreciated).
+1. Open an issue describing the bug or enhancement (optional but appreciated) — use the [issue templates](https://github.com/marpi82/py-bragerone/issues/new/choose).
 2. Fork the repository and create a feature branch from `main`.
 3. Make your changes with tests where practical.
-4. Open a pull request against `main`.
+4. Open a pull request against `main` (the [PR template](.github/PULL_REQUEST_TEMPLATE.md) is applied automatically).
 
-The project uses GitHub Issues and Pull Requests for discussion and review.
+The project uses GitHub Issues and Pull Requests for discussion and review. Do **not** file security issues publicly — see [SECURITY.md](SECURITY.md).
 
 ## Requirements for acceptable contributions
 

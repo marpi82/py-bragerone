@@ -1,0 +1,37 @@
+name: Question
+description: Ask how something works, or whether observed behavior is intended.
+title: "question: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Prefer this when you are unsure whether something is a bug.
+
+        For setup help, see [CONTRIBUTING.md](https://github.com/marpi82/py-bragerone/blob/main/CONTRIBUTING.md) and [AGENTS.md](https://github.com/marpi82/py-bragerone/blob/main/AGENTS.md).
+        Full docs: https://marpi82.github.io/py-bragerone/
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to understand or achieve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Relevant code, versions, platform (bragerone / tisconnect), HA integration details.
+      render: markdown
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched issues and the docs before asking.
+          required: true
