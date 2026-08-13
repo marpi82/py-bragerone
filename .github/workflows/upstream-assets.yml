@@ -1,0 +1,131 @@
+name: Upstream assets
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: upstream-assets
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: watch public catalog
+    if: github.repository == 'marpi82/py-bragerone'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "latest"
+          enable-cache: true
+          prune-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --group test
+
+      - name: Restore last fingerprint
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: reports/upstream/fingerprint.txt
+          key: upstream-catalog-fingerprint-${{ github.run_id }}
+          restore-keys: |
+            upstream-catalog-fingerprint-
+
+      - name: Probe public catalog
+        id: probe
+        run: |
+          uv run python scripts/check_upstream_assets.py \
+            --previous reports/upstream/fingerprint.txt \
+            --write reports/upstream/fingerprint.txt \
+            --json-out reports/upstream/probe.json
+
+      - name: Summarize
+        if: always() && steps.probe.outputs.fingerprint != ''
+        run: |
+          {
+            echo "## Upstream catalog"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| fingerprint | \`${{ steps.probe.outputs.fingerprint }}\` |"
+            echo "| previous | \`${{ steps.probe.outputs.previous }}\` |"
+            echo "| changed | ${{ steps.probe.outputs.changed }} |"
+            echo "| parse skipped | ${{ steps.probe.outputs.parse_skipped }} |"
+            echo "| API version | \`${{ steps.probe.outputs.api_version }}\` |"
+            echo "| index asset | \`${{ steps.probe.outputs.index_asset }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.probe.outputs.changed }}" = "true" ] && [ -n "${{ steps.probe.outputs.previous }}" ]; then
+            echo "::warning::BragerOne public catalog fingerprint changed: ${{ steps.probe.outputs.previous }} -> ${{ steps.probe.outputs.fingerprint }}"
+          elif [ "${{ steps.probe.outputs.changed }}" = "true" ]; then
+            echo "::notice::Stored first BragerOne catalog fingerprint ${{ steps.probe.outputs.fingerprint }} (no issue yet)"
+          fi
+
+      - name: Signal catalog change
+        if: always() && steps.probe.outputs.changed == 'true' && steps.probe.outputs.previous != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FINGERPRINT: ${{ steps.probe.outputs.fingerprint }}
+          PREVIOUS: ${{ steps.probe.outputs.previous }}
+          API_VERSION: ${{ steps.probe.outputs.api_version }}
+          INDEX_ASSET: ${{ steps.probe.outputs.index_asset }}
+          PARSE_OK: ${{ steps.probe.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TITLE='[upstream-assets] BragerOne public catalog fingerprint'
+          if [ "$PARSE_OK" = "success" ]; then
+            STATUS_LINE='Public catalog fingerprint changed and the live index still parses.'
+          else
+            STATUS_LINE='Public catalog fingerprint changed but live parse failed. The watch job is red until the parser handles the new assets.'
+          fi
+          BODY=$(cat <<EOF
+          $STATUS_LINE
+
+          | Field | Value |
+          | --- | --- |
+          | previous | \`$PREVIOUS\` |
+          | current | \`$FINGERPRINT\` |
+          | API version | \`$API_VERSION\` |
+          | index asset | \`$INDEX_ASSET\` |
+
+          Run: $RUN_URL
+
+          Refresh local dumps under \`tests/assets/\` if captured-asset parser tests start failing. Dumps are gitignored; do not commit vendor JS.
+          EOF
+          )
+          gh label create upstream-assets --description "Rolling notice when one.brager.pl catalog fingerprint changes" --color 0E8A16 || true
+          NUMBER=$(gh issue list --state open --limit 50 --json number,title \
+            | jq -r --arg title "$TITLE" '.[] | select(.title == $title) | .number' \
+            | head -n 1)
+          if [ -z "$NUMBER" ]; then
+            gh issue create --title "$TITLE" --label upstream-assets --body "$BODY"
+          else
+            gh issue comment "$NUMBER" --body "$BODY"
+          fi
+
+      - name: Save fingerprint
+        if: success()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: reports/upstream/fingerprint.txt
+          key: upstream-catalog-fingerprint-${{ github.run_id }}
+
+      - name: Upload probe JSON
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: upstream-probe
+          path: reports/upstream/probe.json
+          if-no-files-found: ignore
+          retention-days: 30

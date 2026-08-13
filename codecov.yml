@@ -14,6 +14,8 @@ ignore:
   - "docs/**/*"
   - "fuzz/**/*"
   - "examples/**/*"
+  - "src/pybragerone/cli.py"
+  - "src/pybragerone/__main__.py"
 
 comment:
   layout: "reach, diff, flags, files"

@@ -7,7 +7,8 @@ paths = [
   '''^src/docs/_build/''',
   '''^dist/''',
   '''^build/''',
-  '''^tests/fixtures/'''
+  '''^tests/fixtures/''',
+  '''^tests/assets/''',
 ]
 
 # Regex allowlist: tokens that look like secrets but are safe

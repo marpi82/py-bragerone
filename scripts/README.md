@@ -8,6 +8,7 @@ Utility scripts for development and system setup.
 
 - `setup_host_env.sh` - Configure development environment (installs uv, sets up git hooks)
 - `perf_bench.py` - Local wall-time micro-benchmarks, baseline compare, and real startup timing
+- `check_upstream_assets.py` - Unauthenticated probe of BragerOne `/system/version` + live `index-*.js` (used by the scheduled Upstream assets workflow)
 
 CPU-bound dispatch/catalog cases also live as pytest tests in `tests/test_bench_micro.py`
 (`uv run --group dev --group test poe bench` / `pytest --codspeed`). This script remains the
@@ -68,6 +69,10 @@ uv run --group dev python scripts/perf_bench.py run \
 # .cache/PARAM_66-*.js
 # .cache/URUCHOMIENIE_KOTLA-*.js
 # .cache/COMMAND_MODULE_RESTART-*.js
+
+# Public catalog watch (no login). Parses the live index when the fingerprint is new.
+uv run python scripts/check_upstream_assets.py
+uv run python scripts/check_upstream_assets.py --always-parse
 ```
 
 ## Note
