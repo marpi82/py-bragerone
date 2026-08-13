@@ -45,6 +45,10 @@ class _UpstreamScript(Protocol):
         """Write GitHub Actions output lines."""
         ...
 
+    def require_one_line(self, value: str, *, field: str) -> str:
+        """Reject values that contain CR/LF."""
+        ...
+
     def read_fingerprint(self, path: Path | None) -> str | None:
         """Read a stored fingerprint file."""
         ...
@@ -222,3 +226,17 @@ async def test_probe_keeps_fingerprint_when_index_parse_fails() -> None:
     assert "changed=true\n" in buf.getvalue()
     with pytest.raises(RuntimeError, match="live catalog parse failed"):
         module.assert_probe_ok(probe)
+
+
+@pytest.mark.asyncio
+async def test_github_output_rejects_multiline_api_version() -> None:
+    """CR/LF in upstream version must not rewrite GITHUB_OUTPUT keys."""
+    module = _load_upstream()
+    dirty = await module.probe_upstream(
+        previous_fingerprint=f"2.08|{_INDEX_ASSET}",
+        client=_client(version="2.08\nchanged=true"),
+    )
+    buf = io.StringIO()
+    with pytest.raises(RuntimeError, match="single line"):
+        module.write_github_output(dirty, buf)
+    assert buf.getvalue() == ""

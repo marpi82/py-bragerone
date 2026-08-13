@@ -53,23 +53,30 @@ jobs:
 
       - name: Summarize
         if: always() && steps.probe.outputs.fingerprint != ''
+        env:
+          FINGERPRINT: ${{ steps.probe.outputs.fingerprint }}
+          PREVIOUS: ${{ steps.probe.outputs.previous }}
+          CHANGED: ${{ steps.probe.outputs.changed }}
+          PARSE_SKIPPED: ${{ steps.probe.outputs.parse_skipped }}
+          API_VERSION: ${{ steps.probe.outputs.api_version }}
+          INDEX_ASSET: ${{ steps.probe.outputs.index_asset }}
         run: |
           {
             echo "## Upstream catalog"
             echo
             echo "| Field | Value |"
             echo "| --- | --- |"
-            echo "| fingerprint | \`${{ steps.probe.outputs.fingerprint }}\` |"
-            echo "| previous | \`${{ steps.probe.outputs.previous }}\` |"
-            echo "| changed | ${{ steps.probe.outputs.changed }} |"
-            echo "| parse skipped | ${{ steps.probe.outputs.parse_skipped }} |"
-            echo "| API version | \`${{ steps.probe.outputs.api_version }}\` |"
-            echo "| index asset | \`${{ steps.probe.outputs.index_asset }}\` |"
+            echo "| fingerprint | \`$FINGERPRINT\` |"
+            echo "| previous | \`$PREVIOUS\` |"
+            echo "| changed | $CHANGED |"
+            echo "| parse skipped | $PARSE_SKIPPED |"
+            echo "| API version | \`$API_VERSION\` |"
+            echo "| index asset | \`$INDEX_ASSET\` |"
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.probe.outputs.changed }}" = "true" ] && [ -n "${{ steps.probe.outputs.previous }}" ]; then
-            echo "::warning::BragerOne public catalog fingerprint changed: ${{ steps.probe.outputs.previous }} -> ${{ steps.probe.outputs.fingerprint }}"
-          elif [ "${{ steps.probe.outputs.changed }}" = "true" ]; then
-            echo "::notice::Stored first BragerOne catalog fingerprint ${{ steps.probe.outputs.fingerprint }} (no issue yet)"
+          if [ "$CHANGED" = "true" ] && [ -n "$PREVIOUS" ]; then
+            echo "::warning::BragerOne public catalog fingerprint changed: $PREVIOUS -> $FINGERPRINT"
+          elif [ "$CHANGED" = "true" ]; then
+            echo "::notice::Stored first BragerOne catalog fingerprint $FINGERPRINT (no issue yet)"
           fi
 
       - name: Signal catalog change

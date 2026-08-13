@@ -159,17 +159,30 @@ def read_fingerprint(path: Path | None) -> str | None:
     if path is None or not path.is_file():
         return None
     text = path.read_text(encoding="utf-8").strip()
-    return text or None
+    if not text:
+        return None
+    return require_one_line(text, field="previous_fingerprint")
+
+
+def require_one_line(value: str, *, field: str) -> str:
+    """Reject CR/LF so GitHub Actions ``name=value`` output cannot be rewritten."""
+    if "\n" in value or "\r" in value:
+        raise RuntimeError(f"upstream probe: {field} must be a single line")
+    return value
 
 
 def write_github_output(probe: UpstreamProbe, stream: TextIO) -> None:
     """Append GitHub Actions outputs for the workflow notify step."""
+    fingerprint = require_one_line(probe.fingerprint, field="fingerprint")
+    previous = require_one_line(probe.previous_fingerprint or "", field="previous")
+    api_version = require_one_line(probe.api_version, field="api_version")
+    index_asset = require_one_line(probe.index_asset, field="index_asset")
     stream.write(f"changed={'true' if probe.changed else 'false'}\n")
     stream.write(f"parse_skipped={'true' if probe.parse_skipped else 'false'}\n")
-    stream.write(f"fingerprint={probe.fingerprint}\n")
-    stream.write(f"previous={probe.previous_fingerprint or ''}\n")
-    stream.write(f"api_version={probe.api_version}\n")
-    stream.write(f"index_asset={probe.index_asset}\n")
+    stream.write(f"fingerprint={fingerprint}\n")
+    stream.write(f"previous={previous}\n")
+    stream.write(f"api_version={api_version}\n")
+    stream.write(f"index_asset={index_asset}\n")
 
 
 def assert_probe_ok(probe: UpstreamProbe) -> None:
