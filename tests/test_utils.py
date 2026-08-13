@@ -28,6 +28,8 @@ async def _drain_bg_tasks() -> None:
     remaining = list(bg_tasks)
     for task in remaining:
         task.cancel()
+    if remaining:
+        await asyncio.wait(set(remaining))
     raise AssertionError(f"background tasks did not finish: {remaining!r}")
 
 

@@ -267,12 +267,13 @@ class HATokenStore(TokenStore):
         )
 
     def save(self, token: Token) -> None:
-        """Persist the Token atomically.
+        """Hand the Token to the injected saver.
 
         The saver receives the ``Token`` as-is. Do not rebuild it through
         :meth:`Token.from_login_payload` — that helper expects login JSON
         keys (``accessToken`` / ``refreshToken``), not the snake_case fields
-        on ``Token``.
+        on ``Token``. Persistence semantics (including atomicity) belong to
+        the saver implementation.
         """
         with contextlib.suppress(Exception):
             self._saver(token)
