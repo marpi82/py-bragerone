@@ -172,8 +172,8 @@ markers = [
 branch = true
 source = ["src/pybragerone"]
 omit = [
-  "src/pybragerone/cli.py",
-  "src/pybragerone/__main__.py",
+  "*/pybragerone/cli.py",
+  "*/pybragerone/__main__.py",
 ]
 
 
