@@ -15,6 +15,10 @@ from pybragerone.api.client import BragerOneApiClient
 from pybragerone.models.catalog import AssetRef, LiveAssetsCatalog
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures" / "bench"
+_PARAM_66_TOKEN = "PARAM_66"
+_PARAM_66_ASSET = _FIXTURES / "PARAM_66-fixture.js"
+_PARAM_66_URL = f"mem://{_PARAM_66_ASSET.name}"
+_PARAM_66_BYTES = _PARAM_66_ASSET.read_bytes()
 
 
 class _PerfClient(BragerOneApiClient):
@@ -97,15 +101,12 @@ async def test_bench_module_command_extra_payload() -> None:
 @pytest.mark.benchmark
 async def test_bench_catalog_param_map_parsing() -> None:
     """Benchmark ``LiveAssetsCatalog`` param-map parsing from a committed JS fixture."""
-    token = "PARAM_66"
-    asset_path = _FIXTURES / "PARAM_66-fixture.js"
-    url = f"mem://{asset_path.name}"
-    client = _PerfAssetClient({url: asset_path.read_bytes()})
+    client = _PerfAssetClient({_PARAM_66_URL: _PARAM_66_BYTES})
     try:
         catalog = LiveAssetsCatalog(api=client)
-        catalog._idx.assets_by_basename = {token: [AssetRef(url=url, base=token, hash="fixture")]}
-        mapping = await catalog.get_param_mapping([token])
-        assert token in mapping
-        assert mapping[token].group == "P4"
+        catalog._idx.assets_by_basename = {_PARAM_66_TOKEN: [AssetRef(url=_PARAM_66_URL, base=_PARAM_66_TOKEN, hash="fixture")]}
+        mapping = await catalog.get_param_mapping([_PARAM_66_TOKEN])
+        assert _PARAM_66_TOKEN in mapping
+        assert mapping[_PARAM_66_TOKEN].group == "P4"
     finally:
         await client.close()

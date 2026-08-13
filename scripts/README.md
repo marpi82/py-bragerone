@@ -9,19 +9,19 @@ Utility scripts for development and system setup.
 - `setup_host_env.sh` - Configure development environment (installs uv, sets up git hooks)
 - `perf_bench.py` - Local wall-time micro-benchmarks, baseline compare, and real startup timing
 
-	CPU-bound dispatch/catalog cases also live as pytest tests in `tests/test_bench_micro.py`
-	(`uv run --group dev --group test poe bench` / `pytest --codspeed`). This script remains the
-	tool for:
+CPU-bound dispatch/catalog cases also live as pytest tests in `tests/test_bench_micro.py`
+(`uv run --group dev --group test poe bench` / `pytest --codspeed`). This script remains the
+tool for:
 
-	- API command dispatch wall-time loops (optional `.cache/` catalog fixtures)
-	- Real startup benchmark (`startup`) with CLI-like phases:
-		- auth
-		- WS connect/bind/subscribe
-		- prime (parameters/activity)
-		- store ingestion
-		- menu/route parsing
-		- panel group build
-		- describe/resolve all symbols
+- API command dispatch wall-time loops (optional `.cache/` catalog fixtures)
+- Real startup benchmark (`startup`) with CLI-like phases:
+  - auth
+  - WS connect/bind/subscribe
+  - prime (parameters/activity)
+  - store ingestion
+  - menu/route parsing
+  - panel group build
+  - describe/resolve all symbols
 
 ## Usage
 
