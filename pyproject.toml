@@ -165,11 +165,16 @@ markers = [
   "slow: potentially slower tests (network)",
   "needs_internet: tests that require internet access",
   "benchmark: CPU-bound micro-benchmarks (measure with --codspeed)",
+  "captured_assets: parse dumped JS from tests/assets/ (skipped when the dump dirs are empty)",
 ]
 
 [tool.coverage.run]
 branch = true
 source = ["src/pybragerone"]
+omit = [
+  "*/pybragerone/cli.py",
+  "*/pybragerone/__main__.py",
+]
 
 
 # ---------------- POE tasks ----------------
@@ -192,6 +197,7 @@ validate = ["fmt", "lint", "typecheck", "security", "test"]
 test = { cmd = "pytest -q" }
 cov = { cmd = "pytest -q --cov=pybragerone --cov-report=term-missing" }
 bench = { cmd = "pytest tests/test_bench_micro.py --codspeed" }
+upstream-assets = { cmd = "python scripts/check_upstream_assets.py" }
 perf = { cmd = "python scripts/perf_bench.py run --loops 2000 --output reports/perf/latest.json" }
 perf-compare = { cmd = "python scripts/perf_bench.py compare --baseline reports/perf/baseline.json --current reports/perf/latest.json --regression-threshold-percent 10" }
 perf-startup = { cmd = "python scripts/perf_bench.py startup --output reports/perf/startup_latest.json" }

@@ -23,7 +23,7 @@ uv run --group dev --group test poe validate   # fmt + lint + typecheck + securi
 uv build                          # wheel + sdist
 ```
 
-Pre-commit hooks exist; a coverage gate (`--cov-fail-under=80`) runs on pre-push. CI uploads `coverage.xml` to Codecov (`codecov-commenter` on PRs). Patch coverage target is 100%; project coverage is informational — the 80% floor stays on pre-push.
+Pre-commit hooks exist; a coverage gate (`--cov-fail-under=80`) runs on pre-push. CI uploads `coverage.xml` to Codecov (`codecov-commenter` on PRs). Patch coverage target is 100%; project coverage is informational — the 80% floor stays on pre-push. Coverage omits CLI entrypoints (`cli.py`, `__main__.py`); those are not the library runtime used by Home Assistant.
 
 ## Architecture in one paragraph
 
@@ -46,7 +46,7 @@ Parameter addressing: `P<n>.<chan><idx>` (channels: `v` value, `s` status bitmas
 - pytest with `asyncio_mode = "auto"`; mock HTTP with **pytest-httpx** (`httpx_mock`).
 - Live-API tests must be marked `@pytest.mark.needs_internet`.
 - Hypothesis for property-based tests; fuzz harness lives in `fuzz/` (atheris).
-- Parser resilience (catalog/tree-sitter) is heavily tested in `tests/test_catalog_*.py` — keep it that way; upstream JS assets change without notice.
+- Parser resilience (catalog/tree-sitter) is heavily tested in `tests/test_catalog_*.py` — keep it that way; upstream JS assets change without notice. Optional captured dumps live in `tests/assets/{index,params,menus,i18n}/` (`*.js` gitignored) and are parsed by `tests/test_catalog_captured_assets.py` (skipped when empty). Scheduled watch: `.github/workflows/upstream-assets.yml` (unauthenticated `/system/version` + `index-*.js` fingerprint; not a `ci.yml` gate).
 
 ## Docs
 
@@ -54,4 +54,4 @@ Sphinx + Furo; `uv run --group dev --group docs poe docs-build` (poe lives in `d
 
 ## CI gates (`.github/workflows/ci.yml`)
 
-Independent jobs run in parallel: `secrets` (gitleaks), `dependency-review`, `security`, `quality` (ruff check + format, mypy), `tests` (pytest 3.13), `docs-verify` (Sphinx `-W`). `build` (hatch) gates on all of them except `dependency-review` (`needs: [secrets, security, quality, tests, docs-verify]`). pip-audit runs as an artifact-producing advisory job (`continue-on-error: true`, not a blocking gate); CodeQL and OpenSSF Scorecard run separately.
+Independent jobs run in parallel: `secrets` (gitleaks), `dependency-review`, `security`, `quality` (ruff check + format, mypy), `tests` (pytest 3.13), `docs-verify` (Sphinx `-W`). `build` (hatch) gates on all of them except `dependency-review` (`needs: [secrets, security, quality, tests, docs-verify]`). pip-audit runs as an artifact-producing advisory job (`continue-on-error: true`, not a blocking gate); CodeQL and OpenSSF Scorecard run separately. A scheduled **Upstream assets** workflow (`.github/workflows/upstream-assets.yml`) probes public BragerOne JS without login; it does not block PRs.

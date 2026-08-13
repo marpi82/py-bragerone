@@ -145,7 +145,8 @@ Or use VS Code tasks (defined in `.vscode/tasks.json`):
 - Mock HTTP via **pytest-httpx** (`httpx_mock` fixture); in catalog tests fake or mock the injected API client's `get_bytes()` method
 - Property-based tests with **Hypothesis** where input space is large
 - Live API tests marked with `@pytest.mark.needs_internet` (see `conftest.py`)
-- Coverage target: run `uv run --group dev --group test poe cov` for term-missing report (poe lives in `dev`)
+- Optional captured UI dumps in `tests/assets/{index,params,menus,i18n}/` — parsed by `tests/test_catalog_captured_assets.py` (skip when empty; `*.js` gitignored; no network)
+- Coverage target: run `uv run --group dev --group test poe cov` for term-missing report (poe lives in `dev`). CLI entrypoints (`cli.py`, `__main__.py`) are omitted.
 
 Key test patterns:
 - `tests/test_api.py`: REST client tests (mocked)
@@ -256,6 +257,7 @@ except Exception:
 The project uses GitHub Actions for automation (`.github/workflows/`):
 
 - **ci.yml**: Lint (ruff), typecheck (mypy), tests (pytest), secrets scan (gitleaks)
+- **upstream-assets.yml**: Scheduled public catalog watch (no login; not a PR gate)
 - **release.yml**: Automated releases with CalVer tags, PyPI/TestPyPI publishing
 - **docs.yml**: Sphinx documentation build and deployment to GitHub Pages
 

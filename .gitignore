@@ -93,6 +93,12 @@ pybragerone.*
 /src/bragerone/
 _archive/
 
+# Captured live JS dumps (parse locally; do not redistribute in git)
+tests/assets/**/*.js
+
+# Upstream catalog watch reports
+reports/upstream/
+
 # local scratch / dev verification artifacts
 /app_*.txt
 /scripts/dump_menu_sections.py

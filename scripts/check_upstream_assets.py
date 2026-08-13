@@ -1,0 +1,256 @@
+"""Probe BragerOne public catalog (no login) and parse the live index when it changes.
+
+Fetches unauthenticated ``GET /v1/system/version`` and the web-app homepage to
+read the current ``index-*.js`` filename. Heavy tree-sitter parsing runs only
+when that fingerprint is new or ``--always-parse`` is set.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import os
+import sys
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Protocol, TextIO
+
+from pybragerone import BragerOneApiClient
+from pybragerone.models.api import SystemVersion
+from pybragerone.models.catalog import INDEX_ASSET_RE, LiveAssetsCatalog
+
+_SAMPLE_LIMIT = 3
+_ISSUE_FINGERPRINT_SEP = "|"
+
+
+class _PublicCatalogClient(Protocol):
+    """Minimal client surface used by the upstream catalog probe."""
+
+    one_base: str
+
+    async def get_system_version(self) -> SystemVersion:
+        """Return the unauthenticated system version payload."""
+        ...
+
+    async def get_bytes(self, url: str) -> bytes:
+        """Return raw bytes for a public URL."""
+        ...
+
+    async def close(self) -> None:
+        """Close the HTTP session."""
+        ...
+
+
+@dataclass(slots=True)
+class UpstreamProbe:
+    """Public catalog fingerprint plus optional parse stats."""
+
+    api_version: str
+    dev_mode: bool
+    index_asset: str
+    index_url: str
+    fingerprint: str
+    previous_fingerprint: str | None
+    changed: bool
+    parse_skipped: bool
+    basename_count: int
+    menu_count: int
+    language_ok: bool
+    sample_param_tokens: list[str]
+    sample_param_resolved: list[str]
+    parse_error: str | None = None
+
+
+def build_fingerprint(*, api_version: str, index_asset: str) -> str:
+    """Return a stable fingerprint of API version plus frontend index asset."""
+    return f"{api_version.strip()}{_ISSUE_FINGERPRINT_SEP}{index_asset.strip()}"
+
+
+def pick_sample_tokens(assets_by_basename: Mapping[str, object], *, limit: int) -> list[str]:
+    """Prefer ``PARAM_66``, then other ``PARAM_*`` basenames, up to ``limit``."""
+    names = list(assets_by_basename)
+    preferred = [name for name in names if name == "PARAM_66"]
+    rest = sorted(name for name in names if name.startswith("PARAM_") and name != "PARAM_66")
+    return (preferred + rest)[:limit]
+
+
+async def discover_index_asset(client: _PublicCatalogClient) -> str:
+    """Read ``index-*.js`` from the public web-app homepage (no login)."""
+    base = client.one_base.rstrip("/")
+    last_error = "no pages fetched"
+    for page_url in (f"{base}/", f"{base}/assets/"):
+        try:
+            html = (await client.get_bytes(page_url)).decode("utf-8", errors="replace")
+        except Exception as exc:
+            last_error = str(exc)
+            continue
+        match = INDEX_ASSET_RE.search(html)
+        if match:
+            return match.group(1)
+    raise RuntimeError(f"could not discover index-*.js from {base} ({last_error})")
+
+
+async def probe_upstream(
+    *,
+    previous_fingerprint: str | None = None,
+    sample_limit: int = _SAMPLE_LIMIT,
+    always_parse: bool = False,
+    client: _PublicCatalogClient | None = None,
+) -> UpstreamProbe:
+    """Fetch public version + index name, and parse the catalog when it changed."""
+    own_client = client is None
+    api: _PublicCatalogClient = client or BragerOneApiClient(validate_on_start=False)
+    try:
+        version = await api.get_system_version()
+        index_asset = await discover_index_asset(api)
+        index_url = f"{api.one_base.rstrip('/')}/assets/{index_asset}"
+        fingerprint = build_fingerprint(api_version=version.version, index_asset=index_asset)
+        changed = previous_fingerprint is None or previous_fingerprint != fingerprint
+        probe = UpstreamProbe(
+            api_version=version.version,
+            dev_mode=bool(version.devMode),
+            index_asset=index_asset,
+            index_url=index_url,
+            fingerprint=fingerprint,
+            previous_fingerprint=previous_fingerprint,
+            changed=changed,
+            parse_skipped=not (changed or always_parse),
+            basename_count=0,
+            menu_count=0,
+            language_ok=False,
+            sample_param_tokens=[],
+            sample_param_resolved=[],
+            parse_error=None,
+        )
+        if probe.parse_skipped:
+            return probe
+        try:
+            return await _parse_live_catalog(api, probe, sample_limit=sample_limit)
+        except Exception as exc:
+            probe.parse_error = str(exc)
+            return probe
+    finally:
+        if own_client:
+            await api.close()
+
+
+async def _parse_live_catalog(api: _PublicCatalogClient, probe: UpstreamProbe, *, sample_limit: int) -> UpstreamProbe:
+    """Download and tree-sitter-parse the live index (and a few PARAM_* assets)."""
+    catalog = LiveAssetsCatalog(api)  # type: ignore[arg-type]
+    await catalog.refresh_index(probe.index_url, allow_recover=False)
+    language = await catalog.list_language_config()
+    sample_tokens = pick_sample_tokens(catalog._idx.assets_by_basename, limit=sample_limit)
+    resolved: list[str] = []
+    if sample_tokens:
+        mapping = await catalog.get_param_mapping(sample_tokens)
+        resolved = sorted(mapping)
+    probe.basename_count = len(catalog._idx.assets_by_basename)
+    probe.menu_count = len(catalog._idx.menu_map)
+    probe.language_ok = bool(language and language.translations)
+    probe.sample_param_tokens = sample_tokens
+    probe.sample_param_resolved = resolved
+    return probe
+
+
+def read_fingerprint(path: Path | None) -> str | None:
+    """Return the one-line fingerprint stored at ``path``, if any."""
+    if path is None or not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        return None
+    return require_one_line(text, field="previous_fingerprint")
+
+
+def require_one_line(value: str, *, field: str) -> str:
+    """Reject CR/LF so GitHub Actions ``name=value`` output cannot be rewritten."""
+    if "\n" in value or "\r" in value:
+        raise RuntimeError(f"upstream probe: {field} must be a single line")
+    return value
+
+
+def write_github_output(probe: UpstreamProbe, stream: TextIO) -> None:
+    """Append GitHub Actions outputs for the workflow notify step."""
+    fingerprint = require_one_line(probe.fingerprint, field="fingerprint")
+    previous = require_one_line(probe.previous_fingerprint or "", field="previous")
+    api_version = require_one_line(probe.api_version, field="api_version")
+    index_asset = require_one_line(probe.index_asset, field="index_asset")
+    stream.write(f"changed={'true' if probe.changed else 'false'}\n")
+    stream.write(f"parse_skipped={'true' if probe.parse_skipped else 'false'}\n")
+    stream.write(f"fingerprint={fingerprint}\n")
+    stream.write(f"previous={previous}\n")
+    stream.write(f"api_version={api_version}\n")
+    stream.write(f"index_asset={index_asset}\n")
+
+
+def assert_probe_ok(probe: UpstreamProbe) -> None:
+    """Raise if the fingerprint or (when parsed) the live catalog looks empty."""
+    if not probe.api_version:
+        raise RuntimeError("upstream probe: empty API version")
+    if INDEX_ASSET_RE.search(f"/assets/{probe.index_asset}") is None:
+        raise RuntimeError(f"upstream probe: unexpected index asset {probe.index_asset!r}")
+    if probe.parse_skipped:
+        return
+    if probe.parse_error:
+        raise RuntimeError(f"upstream probe: live catalog parse failed: {probe.parse_error}")
+    if probe.basename_count < 1:
+        raise RuntimeError("upstream probe: live index parsed to zero asset basenames")
+    if probe.sample_param_tokens and not probe.sample_param_resolved:
+        raise RuntimeError(f"upstream probe: failed to parse sample params {probe.sample_param_tokens}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry: probe public catalog and optionally persist the fingerprint."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--previous", type=Path, default=None, help="File with the last fingerprint (one line).")
+    parser.add_argument("--write", type=Path, default=None, help="Write the new fingerprint here after a successful probe.")
+    parser.add_argument("--json-out", type=Path, default=None, help="Write the full probe JSON here.")
+    parser.add_argument("--sample-limit", type=int, default=_SAMPLE_LIMIT, help="Max PARAM_* assets to fetch and parse.")
+    parser.add_argument(
+        "--always-parse",
+        action="store_true",
+        help="Parse the live index even when the fingerprint is unchanged.",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        previous = read_fingerprint(args.previous)
+        probe = asyncio.run(
+            probe_upstream(
+                previous_fingerprint=previous,
+                sample_limit=args.sample_limit,
+                always_parse=args.always_parse,
+            )
+        )
+    except Exception as exc:
+        print(f"upstream probe failed: {exc}", file=sys.stderr)
+        return 1
+
+    payload = asdict(probe)
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    if args.json_out is not None:
+        args.json_out.parent.mkdir(parents=True, exist_ok=True)
+        args.json_out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with Path(github_output).open("a", encoding="utf-8") as handle:
+            write_github_output(probe, handle)
+
+    try:
+        assert_probe_ok(probe)
+    except Exception as exc:
+        print(f"upstream probe failed: {exc}", file=sys.stderr)
+        return 1
+
+    if args.write is not None:
+        args.write.parent.mkdir(parents=True, exist_ok=True)
+        args.write.write_text(probe.fingerprint + "\n", encoding="utf-8")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

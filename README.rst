@@ -21,6 +21,10 @@ pybragerone
    :target: https://github.com/marpi82/py-bragerone/actions/workflows/ci.yml
    :alt: CI Status
 
+.. image:: https://codecov.io/gh/marpi82/py-bragerone/graph/badge.svg?token=HNQX2LWP3B
+   :target: https://codecov.io/gh/marpi82/py-bragerone
+   :alt: Codecov
+
 .. image:: https://img.shields.io/github/actions/workflow/status/marpi82/py-bragerone/codeql.yml?branch=main&label=CodeQL
    :target: https://github.com/marpi82/py-bragerone/security/code-scanning
    :alt: CodeQL Status
