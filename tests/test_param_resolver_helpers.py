@@ -555,6 +555,53 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
         == "Menu termostatów/Pompa CO"
     )
 
+    # Missed i18n lookups fall through to the raw display name / route name.
+    assert (
+        ParamResolver._route_title(
+            SimpleNamespace(
+                name="modules.menu.dhw",
+                path="dhw",
+                meta=SimpleNamespace(display_name="routes.modules.menu.missing"),
+            ),
+            routes_i18n={"modules": {"menu": {}}},
+        )
+        == "routes.modules.menu.missing"
+    )
+    assert (
+        ParamResolver._route_title(
+            SimpleNamespace(
+                name="modules.menu.dhw",
+                path="dhw",
+                meta=SimpleNamespace(display_name="UNKNOWN_TOKEN"),
+            ),
+            routes_i18n={"modules": {"menu": {}}},
+        )
+        == "UNKNOWN_TOKEN"
+    )
+    assert (
+        ParamResolver._route_title(
+            SimpleNamespace(name="modules.menu.missing", path="x", meta=None),
+            routes_i18n={"modules": {"menu": {}}},
+        )
+        == "modules.menu.missing"
+    )
+    assert (
+        ParamResolver._route_title(
+            SimpleNamespace(name="   ", path="fallback-path", meta=None),
+            routes_i18n={},
+        )
+        == "fallback-path"
+    )
+
+    # Non-string name/display candidates are skipped while collecting tokens.
+    junk_menu = SimpleNamespace(
+        routes=[
+            SimpleNamespace(name=123, meta=SimpleNamespace(display_name=None), children=[]),
+            SimpleNamespace(name="MAINMENU_OK", meta=SimpleNamespace(display_name=99), children=[]),
+        ]
+    )
+    assert ParamResolver._collect_menu_title_tokens(junk_menu) == {"MAINMENU_OK"}  # type: ignore[arg-type]
+
     assert ParamResolver._string_namespace_title("MAINMENU_X", {"MAINMENU_X": "Title"}) == "Title"
     assert ParamResolver._string_namespace_title("MAINMENU_X", {"__default__": "Title"}) == "Title"
     assert ParamResolver._string_namespace_title("MAINMENU_X", {"other": "Title"}) == "Title"

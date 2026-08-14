@@ -246,6 +246,28 @@ def test_parse_i18n_from_js_handles_export_styles_and_failures(monkeypatch: pyte
     assert catalog._parse_i18n_from_js(string_ns) == {"MAINMENU_MENU_TERMOSTATU": "Menu termostatów"}
     assert catalog._parse_i18n_from_js(b'export default "Bare title";') == {"__default__": "Bare title"}
     assert catalog._parse_i18n_from_js(b"export default '';") == {}
+    # ``export default IDENT`` keeps the binding name as the dict key.
+    ident_default = b"const MAINMENU_X='Title';\nexport default MAINMENU_X;\n"
+    assert catalog._parse_i18n_from_js(ident_default) == {"MAINMENU_X": "Title"}
+    assert catalog._parse_i18n_from_js(b"export default '   ';\n") == {}
+
+    import pybragerone.models.catalog as catalog_mod
+
+    real_node_text = catalog_mod._node_text
+    ident_hits = {"n": 0}
+
+    def _blank_later_ident(code: bytes, node: object, *_args: object, **_kwargs: object) -> str:
+        text = real_node_text(code, node)  # type: ignore[arg-type]
+        if text != "MAINMENU_X":
+            return text
+        # 1) const binding name, 2) export identifier resolution — keep real.
+        # 3) default_export_name capture — blank so ``if ident:`` is false.
+        ident_hits["n"] += 1
+        return "   " if ident_hits["n"] >= 3 else text
+
+    monkeypatch.setattr(catalog_mod, "_node_text", _blank_later_ident)
+    assert catalog._parse_i18n_from_js(ident_default) == {"__default__": "Title"}
+    monkeypatch.setattr(catalog_mod, "_node_text", real_node_text)
 
     class _BoomTS:
         def parse(self, _code: bytes) -> Any:

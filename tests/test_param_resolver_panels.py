@@ -268,14 +268,57 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
                         },
                     },
                 },
+                {
+                    "path": "preset",
+                    "name": "MAINMENU_PRESET",
+                    "meta": {
+                        "displayName": "MAINMENU_PRESET",
+                        "parameters": {
+                            "read": [{"parameter": "E(A.READ,'PARAM_4')"}],
+                        },
+                    },
+                },
+                {
+                    "path": "empty",
+                    "name": "MAINMENU_EMPTY",
+                    "meta": {
+                        "displayName": "MAINMENU_EMPTY",
+                        "parameters": {
+                            "read": [{"parameter": "E(A.READ,'PARAM_5')"}],
+                        },
+                    },
+                },
+                {
+                    "path": "spaces",
+                    "name": "MAINMENU_SPACES",
+                    "meta": {
+                        "displayName": "MAINMENU_SPACES",
+                        "parameters": {
+                            "read": [{"parameter": "E(A.READ,'PARAM_6')"}],
+                        },
+                    },
+                },
             ]
         }
     )
 
     namespaces: dict[str, dict[str, Any]] = {
-        "routes": {"modules": {"menu": {"thermostat": {"pump": "Pompa CO"}}}},
-        "menu": {"MAINMENU_MENU_BUFOR": "Menu bufor"},
+        "routes": {
+            "modules": {"menu": {"thermostat": {"pump": "Pompa CO"}}},
+            # Already-resolved overlay entry must not be replaced by a later fetch.
+            "MAINMENU_PRESET": "Preset title",
+            # Whitespace-only overlay must be treated as missing and re-fetched.
+            "MAINMENU_SPACES": "   ",
+        },
+        "menu": {
+            "MAINMENU_MENU_BUFOR": "Menu bufor",
+            "nested": {"ignored": True},
+            "bad-key": 12,
+        },
         "MAINMENU_MENU_TERMOSTATU": {"MAINMENU_MENU_TERMOSTATU": "Menu termostatów"},
+        "MAINMENU_PRESET": {"MAINMENU_PRESET": "Should not win"},
+        "MAINMENU_EMPTY": {},
+        "MAINMENU_SPACES": {"MAINMENU_SPACES": "Spaces title"},
     }
 
     class _StubI18n:
@@ -283,10 +326,14 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
             return dict(namespaces.get(namespace, {}))
 
     assets = AsyncMock()
+    assets.get_module_menu = AsyncMock(return_value=menu)
     resolver = ParamResolver(store=ParamStore(), assets=cast(AssetsProtocol, assets), lang="pl", i18n=_StubI18n())  # type: ignore[arg-type]
     title_i18n = await resolver._panel_title_i18n(menu)
     assert title_i18n["MAINMENU_MENU_TERMOSTATU"] == "Menu termostatów"
     assert title_i18n["MAINMENU_MENU_BUFOR"] == "Menu bufor"
+    assert title_i18n["MAINMENU_PRESET"] == "Preset title"
+    assert title_i18n["MAINMENU_SPACES"] == "Spaces title"
+    assert "MAINMENU_EMPTY" not in title_i18n or title_i18n.get("MAINMENU_EMPTY") != ""
 
     groups = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True, routes_i18n=title_i18n)
     assert "Menu termostatów/Pompa CO" in groups
@@ -297,4 +344,12 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
     assert ParamResolver._collect_menu_title_tokens(menu) == {
         "MAINMENU_MENU_TERMOSTATU",
         "MAINMENU_MENU_BUFOR",
+        "MAINMENU_PRESET",
+        "MAINMENU_EMPTY",
+        "MAINMENU_SPACES",
     }
+
+    groups_async = await resolver.build_panel_groups(device_menu=0, all_panels=True)
+    assert "Menu termostatów/Pompa CO" in groups_async
+    diagnostics = await resolver.panel_route_diagnostics(device_menu=0, all_panels=True)
+    assert any(row.get("panel_title") == "Menu termostatów/Pompa CO" for row in diagnostics)
