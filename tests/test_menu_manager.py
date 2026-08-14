@@ -180,7 +180,6 @@ def test_raw_menu_data_route_count() -> None:
     assert raw_nested.route_count() == 4
 
 
-@pytest.mark.asyncio()
 async def test_catalog_integration() -> None:
     """Validate catalog wiring into the menu manager end to end."""
     mock_api = AsyncMock()
@@ -221,7 +220,6 @@ async def test_catalog_integration() -> None:
     assert debug_info["raw_routes_count"] == 1
 
 
-@pytest.mark.asyncio()
 async def test_redirect_only_nodes_are_pruned() -> None:
     """Redirect-only nodes lacking name/path should not break menu parsing."""
     mock_api = AsyncMock()
@@ -259,7 +257,6 @@ async def test_redirect_only_nodes_are_pruned() -> None:
     assert menu.routes[0].children[0].name == "child"
 
 
-@pytest.mark.asyncio()
 async def test_catalog_integration_fallback_when_no_device_menu_mapping() -> None:
     """Use generic module.menu when deviceMenu mapping is missing (e.g. device_menu=0)."""
     mock_api = AsyncMock()
@@ -377,7 +374,6 @@ def test_menu_manager_gates_leftover_subscript_permission_strings() -> None:
     assert gated.all_tokens() == {"PARAM_P30_2"}
 
 
-@pytest.mark.asyncio()
 async def test_get_module_menu_gates_obfuscated_permission_subscripts() -> None:
     """API DISPLAY_* strings must match live ``_0x…['DISPLAY_*']`` menu fields."""
     mock_api = AsyncMock()
