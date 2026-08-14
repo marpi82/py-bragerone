@@ -299,6 +299,18 @@ def test_node_to_python_does_not_collapse_array_map_subscript() -> None:
     assert parsed == "['PARAM_1']['map']"
 
 
+def test_node_to_python_does_not_collapse_identifier_method_subscript() -> None:
+    """``arr['map']`` is a method lookup, not an obfuscated ``_0x…['ENUM']`` alias."""
+    code = b"const v=arr['map'];"
+    tree = _catalog()._ts.parse(code)
+    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(code, sub) == "arr['map']"
+    math_floor = b"const v=Math['floor'];"
+    math_tree = _catalog()._ts.parse(math_floor)
+    math_sub = next(node for node in _walk(math_tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(math_floor, math_sub) == "Math['floor']"
+
+
 def test_node_to_python_resolves_identifier_subscript_from_bindings() -> None:
     """``_0x['DISPLAY_FOO']`` looks up the bound object when the catalog collected it."""
     code = b"const _0x={'DISPLAY_FOO':'yes','OTHER':1}; const v=_0x['DISPLAY_FOO'];"

@@ -675,15 +675,16 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         index_node = node.child_by_field_name("index")
         if index_node is not None and _is_string(index_node):
             public = _string_value(_node_text(code, index_node))
-            # Import aliases: ``_0x521864['DISPLAY_MENU_DHW']``. Leave ``array['map']`` intact
-            # so call expressions can still see the receiver (issue #285).
+            # Import aliases: ``_0x521864['DISPLAY_MENU_DHW']``. Leave ``arr['map']`` and
+            # ``Math['floor']`` as leftover source so issue #285 can still see the receiver.
             if obj_node is not None and obj_node.type == "identifier":
                 obj_name = _node_text(code, obj_node)
                 if bindings and obj_name in bindings:
                     obj_val = bindings[obj_name]
                     if isinstance(obj_val, Mapping) and public in obj_val:
                         return obj_val[public]
-                return public
+                if obj_name.startswith("_0x"):
+                    return public
         leftover = _node_text(code, node)
         public_leftover = js_public_member_name(leftover)
         return public_leftover if public_leftover is not None else leftover
