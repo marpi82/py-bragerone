@@ -69,3 +69,14 @@ repos:
         entry: bash -lc 'uv run --group test pytest --maxfail=1 --disable-warnings -q --cov=src --cov-report=term-missing --cov-fail-under=80'
         pass_filenames: false
         stages: [pre-push]
+
+      # Soft reminder only: Cursor Bugbot has no CLI/hook yet ("coming soon").
+      # Local review is `/review-bugbot` or `/review` in the Cursor agent (3.7+).
+      - id: bugbot-pre-push-reminder
+        name: remind Cursor /review-bugbot before push
+        language: system
+        entry: bash scripts/bugbot-pre-push-reminder.sh
+        pass_filenames: false
+        always_run: true
+        verbose: true
+        stages: [pre-push]

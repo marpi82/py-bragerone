@@ -56,6 +56,13 @@ Sphinx + Furo; `uv run --group dev --group docs poe docs-build` (poe lives in `d
 
 Independent jobs run in parallel: `secrets` (gitleaks), `dependency-review`, `security`, `quality` (ruff check + format, mypy), `tests` (pytest 3.13), `docs-verify` (Sphinx `-W`). `build` (hatch) gates on all of them except `dependency-review` (`needs: [secrets, security, quality, tests, docs-verify]`). pip-audit runs as an artifact-producing advisory job (`continue-on-error: true`, not a blocking gate); CodeQL and OpenSSF Scorecard run separately. A scheduled **Upstream assets** workflow (`.github/workflows/upstream-assets.yml`) probes public BragerOne JS without login; it does not block PRs.
 
+## Cursor Bugbot (local + PR)
+
+- Rules: `.cursor/BUGBOT.md` (also applied on GitHub Bugbot reviews).
+- Before push (Cursor 3.7+ / [cursor.com/agents](https://cursor.com/agents)): `/review-bugbot` or `/review`. Docs: https://cursor.com/docs/bugbot
+- Pre-push prints a soft reminder only — Bugbot CLI/hook is not available yet; cannot hard-gate push.
+- Patch-ID dedup can skip a duplicate GitHub Bugbot review for an unchanged diff; Copilot re-request remains separate.
+
 ## Cursor Cloud specific instructions
 
 The Cloud Agent environment is provisioned by the committed `.cursor/environment.json` in this repo (the environment's primary repo). Its `install` script installs a pinned `uv` (0.12.3) to `~/.local/bin` — already on `PATH` via the base image's shell profile — when it is absent, then runs `uv sync --locked` for both checked-out repos: `py-bragerone` pinned to `--python 3.13`, and the sibling `ha-bragerone` (Python 3.14, resolved from its own lockfile). After that the environment is ready — use the `uv run ... poe <task>` commands documented above (no extra install steps).
@@ -64,3 +71,4 @@ The Cloud Agent environment is provisioned by the committed `.cursor/environment
 - **This is a library, not a long-running service.** There is no dev server. "Running the app" means the diagnostic CLI (`uv run pybragerone-cli`) or the example scripts in `examples/`.
 - **CLI / examples need live credentials + internet.** They log into the BragerOne (or TiSConnect) cloud using `PYBO_EMAIL` / `PYBO_PASSWORD` (see `.env.example`); without them the CLI exits early with either `Missing email: set PYBO_EMAIL or pass --email.` or `Missing password: set PYBO_PASSWORD, pass --password, or run interactively to be prompted.` All offline development — lint, mypy, pytest, build, docs — runs with no credentials. Live-API tests are marked `needs_internet` and skip automatically offline.
 - **Docs build doesn't need Graphviz** despite the README note; `docs/conf.py` doesn't load the graphviz extension. Match CI with `uv run --group dev --group docs sphinx-build -W -b html docs docs/_build/html`.
+- **Local HA smoke testing** (optional, not part of default install): Docker is not available in this Cloud Agent image. Prefer `uv run poe hass` from the sibling `ha-bragerone` checkout (`config/` + `custom_components/`) and open `http://localhost:8123` in Chrome / computer-use. Live Brager login still needs credentials.

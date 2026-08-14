@@ -22,7 +22,21 @@ The project uses GitHub Issues and Pull Requests for discussion and review. Do *
 ```bash
 uv sync --locked --group dev --group test
 uv run pre-commit install
+uv run pre-commit install --hook-type pre-push
 ```
+
+## Pre-push review (Cursor Bugbot)
+
+Before `git push`, run Cursor Bugbot locally so findings land while the change is still warm:
+
+1. In the Cursor agent input (Cursor **3.7+**, or [cursor.com/agents](https://cursor.com/agents)): `/review-bugbot` (or `/review` for Bugbot + Security Review).
+2. Fix findings, then push the same diff when possible.
+
+Official docs: [Bugbot](https://cursor.com/docs/bugbot) · June 2026 update: [blog](https://cursor.com/blog/bugbot-updates-june-2026).
+
+Project rules live in [`.cursor/BUGBOT.md`](.cursor/BUGBOT.md) (read by local `/review-bugbot` and by GitHub Bugbot). Enable the repo in [Bugbot Automations](https://cursor.com/automations/from-cursor/bugbot) if PR reviews are not already on.
+
+**Limits today:** there is no Bugbot CLI, so a git hook cannot *block* on review — the pre-push hook only prints a reminder. Local and PR Bugbot share a [patch ID](https://git-scm.com/docs/git-patch-id); an unchanged diff can skip a duplicate GitHub Bugbot run. That dedup is **Bugbot↔Bugbot**, not GitHub Copilot (`.github/workflows/copilot-rerequest.yml` is separate).
 
 Useful commands:
 

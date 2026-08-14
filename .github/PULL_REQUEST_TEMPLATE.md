@@ -20,6 +20,7 @@
 - [ ] Tests added / updated where practical (regression test for bug fixes; major features MUST have tests). Offline tests pass; live API remains `@pytest.mark.needs_internet`
 - [ ] Docs updated when public behavior changes (`docs/` + Sphinx `-W` clean)
 - [ ] No secrets / credentials / real device dumps committed
+- [ ] Ran Cursor `/review-bugbot` (or `/review`) on the final diff before push when using Cursor 3.7+ (see `.cursor/BUGBOT.md`)
 
 ## Test plan
 
