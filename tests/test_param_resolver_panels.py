@@ -290,7 +290,10 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
 
     groups = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True, routes_i18n=title_i18n)
     assert "Menu termostatów/Pompa CO" in groups
-    assert "Menu bufor" in groups
+    assert groups["Menu termostatów/Pompa CO"] == ["PARAM_2"]
+    # Bare MAINMENU routes are not module-item panels themselves, but their
+    # translated titles still prefix children under modules.menu.*.
+    assert "Menu bufor" not in groups
     assert ParamResolver._collect_menu_title_tokens(menu) == {
         "MAINMENU_MENU_TERMOSTATU",
         "MAINMENU_MENU_BUFOR",
