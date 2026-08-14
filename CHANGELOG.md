@@ -24,6 +24,9 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   ``_0xac50fa=>_0xac50fa-0x7f``).
 - Route the string-based catalog JS-value helpers through the bytes parsers so
   quoted keys and hex literals cannot drift between the two copies.
+- Collapse ``_0x…['DISPLAY_*']`` / ``_0x…['equalTo']`` to the public name, but keep
+  ``arr['map']`` and ``Math['floor']`` as leftover source for menu ``array['map']``
+  unwrapping.
 
 ## [2026.8.1] - 2026-08-08
 

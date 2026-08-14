@@ -3,6 +3,29 @@
 from pybragerone.models.menu import MenuMeta, MenuParameter, MenuParameters, MenuResult, MenuRoute
 
 
+def test_menu_parameter_obfuscated_subscript_permission() -> None:
+    """Recover DISPLAY_* from leftover ``_0x…['DISPLAY_*']`` permission fields."""
+    from pybragerone.models.menu import js_public_member_name
+
+    assert js_public_member_name("_0x521864['DISPLAY_PARAMETER_LEVEL_1']") == "DISPLAY_PARAMETER_LEVEL_1"
+    assert js_public_member_name("[_0x4d7e32['INVISIBLE']]") == "INVISIBLE"
+    assert js_public_member_name("A.DISPLAY_MENU_DHW") is None
+    assert js_public_member_name("arr['map']") is None
+    assert js_public_member_name("Math['floor']") is None
+    assert js_public_member_name("_0x4d7e32['INVISIBLE']]") is None
+    assert js_public_member_name("[_0x4d7e32['INVISIBLE']") is None
+
+    param = MenuParameter.model_validate(
+        {
+            "permissionModule": "_0x521864['DISPLAY_PARAMETER_LEVEL_1']",
+            "parameter": "_0x3e8c51(_0x1cc358['READ'],'PARAM_P30_2')",
+        }
+    )
+    assert param.token == "PARAM_P30_2"
+    assert param.permission is not None
+    assert param.permission.name == "DISPLAY_PARAMETER_LEVEL_1"
+
+
 def test_menu_parameter_extraction() -> None:
     """Test parameter token extraction from various formats."""
     # Test lowercase format

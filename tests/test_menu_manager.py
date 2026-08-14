@@ -180,7 +180,6 @@ def test_raw_menu_data_route_count() -> None:
     assert raw_nested.route_count() == 4
 
 
-@pytest.mark.asyncio()
 async def test_catalog_integration() -> None:
     """Validate catalog wiring into the menu manager end to end."""
     mock_api = AsyncMock()
@@ -221,7 +220,6 @@ async def test_catalog_integration() -> None:
     assert debug_info["raw_routes_count"] == 1
 
 
-@pytest.mark.asyncio()
 async def test_redirect_only_nodes_are_pruned() -> None:
     """Redirect-only nodes lacking name/path should not break menu parsing."""
     mock_api = AsyncMock()
@@ -259,7 +257,6 @@ async def test_redirect_only_nodes_are_pruned() -> None:
     assert menu.routes[0].children[0].name == "child"
 
 
-@pytest.mark.asyncio()
 async def test_catalog_integration_fallback_when_no_device_menu_mapping() -> None:
     """Use generic module.menu when deviceMenu mapping is missing (e.g. device_menu=0)."""
     mock_api = AsyncMock()
@@ -324,3 +321,116 @@ def test_device_menu_mapping_parsed_from_src_router_paths() -> None:
 
     assert idx.menu_map[0] == "module.menu-DmY2Kb59"
     assert idx.menu_map[1] == "module.menu-DCbbkfeq"
+
+
+_LIVE_MENU_ZERO = """
+export default [{
+  path:'dhw',
+  name:'modules.menu.dhw',
+  meta:{
+    displayName:'MAINMENU_USTAWIENIA_CWU',
+    permissionModule:_0x521864['DISPLAY_MENU_DHW'],
+    parameters:{
+      read:[{permissionModule:_0x521864['DISPLAY_PARAMETER_LEVEL_1'], parameter:_0x3e8c51(_0x1cc358['READ'],'PARAM_P30_2')}],
+      write:[{
+        permissionModule:_0x521864['DISPLAY_PARAMETER_LEVEL_MAX'],
+        parameter:_0x3e8c51(_0x1cc358['WRITE'],'PARAM_P32_184')
+      }],
+      status:[],
+      special:[]
+    }
+  },
+  children:[]
+}];
+"""
+
+
+def test_menu_manager_gates_leftover_subscript_permission_strings() -> None:
+    """Gating still matches when permissionModule was left as raw subscript text."""
+    manager = MenuManager()
+    manager.store_raw_menu(
+        0,
+        [
+            {
+                "path": "dhw",
+                "name": "dhw",
+                "meta": {
+                    "displayName": "DHW",
+                    "permissionModule": "_0x521864['DISPLAY_MENU_DHW']",
+                    "parameters": {
+                        "read": [
+                            {
+                                "permissionModule": "_0x521864['DISPLAY_PARAMETER_LEVEL_1']",
+                                "parameter": "_0x3e8c51(_0x1cc358['READ'],'PARAM_P30_2')",
+                            }
+                        ]
+                    },
+                },
+                "children": [],
+            }
+        ],
+    )
+    gated = manager.get_menu(0, permissions={"DISPLAY_MENU_DHW", "DISPLAY_PARAMETER_LEVEL_1"})
+    assert gated.all_tokens() == {"PARAM_P30_2"}
+
+
+async def test_get_module_menu_gates_obfuscated_permission_subscripts() -> None:
+    """API DISPLAY_* strings must match live ``_0x…['DISPLAY_*']`` menu fields."""
+    mock_api = AsyncMock()
+    mock_api.get_bytes.return_value = _LIVE_MENU_ZERO.encode()
+    catalog = LiveAssetsCatalog(mock_api)
+    from pybragerone.models.catalog import AssetRef
+
+    catalog._idx.menu_map[0] = "0-DRINFhbV"
+    catalog._idx.assets_by_basename["0"] = [AssetRef(url="https://one.brager.pl/assets/0-DRINFhbV.js", base="0", hash="DRINFhbV")]
+
+    gated = await catalog.get_module_menu(
+        0,
+        permissions=["DISPLAY_MENU_DHW", "DISPLAY_PARAMETER_LEVEL_1"],
+    )
+    assert gated.all_tokens() == {"PARAM_P30_2"}
+    assert gated.routes[0].meta is not None
+    assert gated.routes[0].meta.permission is not None
+    assert gated.routes[0].meta.permission.name == "DISPLAY_MENU_DHW"
+
+    ungated = await catalog.get_module_menu(0, permissions=None)
+    assert ungated.all_tokens() == {"PARAM_P30_2", "PARAM_P32_184"}
+
+
+def test_resolve_tokens_normalizes_leftover_permission_on_fast_path() -> None:
+    """Pre-extracted token+parameter entries still strip ``_0x…['DISPLAY_*']`` permissions."""
+    manager = MenuManager()
+    manager.store_raw_menu(
+        0,
+        [
+            {
+                "path": "dhw",
+                "name": "dhw",
+                "meta": {
+                    "displayName": "DHW",
+                    "permissionModule": "DISPLAY_MENU_DHW",
+                    "parameters": {
+                        "read": [
+                            {
+                                "permissionModule": "_0x521864['DISPLAY_PARAMETER_LEVEL_1']",
+                                "parameter": "E(A.READ,'PARAM_P30_2')",
+                                "token": "PARAM_P30_2",
+                            },
+                            {
+                                "permissionModule": "DISPLAY_PLAIN",
+                                "parameter": "E(A.READ,'PARAM_P30_3')",
+                                "token": "PARAM_P30_3",
+                            },
+                        ]
+                    },
+                },
+                "children": [],
+            }
+        ],
+    )
+    menu = manager.get_menu(0, permissions=None)
+    read = menu.routes[0].meta.parameters.read if menu.routes[0].meta is not None else []
+    assert read[0].permission is not None
+    assert read[0].permission.name == "DISPLAY_PARAMETER_LEVEL_1"
+    assert read[1].permission is not None
+    assert read[1].permission.name == "DISPLAY_PLAIN"

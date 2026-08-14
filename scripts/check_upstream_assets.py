@@ -20,9 +20,17 @@ from typing import Protocol, TextIO
 from pybragerone import BragerOneApiClient
 from pybragerone.models.api import SystemVersion
 from pybragerone.models.catalog import INDEX_ASSET_RE, LiveAssetsCatalog, _count_js_escape_leaks
+from pybragerone.models.menu import MenuResult
 
 _SAMPLE_LIMIT = 3
 _ISSUE_FINGERPRINT_SEP = "|"
+_WATCH_MENU_PERMISSIONS = frozenset(
+    {
+        "DISPLAY_PARAMETER_LEVEL_1",
+        "DISPLAY_PARAMETER_LEVEL_MAX",
+        "DISPLAY_MENU_DHW",
+    }
+)
 
 
 class _PublicCatalogClient(Protocol):
@@ -64,11 +72,23 @@ class UpstreamProbe:
     descriptor_table_count: int = 0
     units_count: int = 0
     escape_leaks: int = 0
+    menu_gated_tokens: int = -1
+    menu_permissions_ok: bool = True
 
 
 def build_fingerprint(*, api_version: str, index_asset: str) -> str:
     """Return a stable fingerprint of API version plus frontend index asset."""
     return f"{api_version.strip()}{_ISSUE_FINGERPRINT_SEP}{index_asset.strip()}"
+
+
+def _count_mangled_permission_names(menu: MenuResult) -> int:
+    """Count permission names that still look like leftover ``_0x…['NAME']`` text."""
+    count = 0
+    for permission in menu.all_permissions():
+        name = permission.name
+        if "_0x" in name or "['" in name or '["' in name:
+            count += 1
+    return count
 
 
 def pick_sample_tokens(assets_by_basename: Mapping[str, object], *, limit: int) -> list[str]:
@@ -160,6 +180,11 @@ async def _parse_live_catalog(api: _PublicCatalogClient, probe: UpstreamProbe, *
     probe.descriptor_table_count = len(table)
     probe.units_count = len(units_map)
     probe.escape_leaks = _count_js_escape_leaks(units_map)
+    if 0 in catalog._idx.menu_map:
+        ungated = await catalog.get_module_menu(0, permissions=None)
+        gated = await catalog.get_module_menu(0, permissions=_WATCH_MENU_PERMISSIONS)
+        probe.menu_gated_tokens = len(gated.all_tokens())
+        probe.menu_permissions_ok = _count_mangled_permission_names(ungated) == 0
     return probe
 
 
@@ -220,6 +245,11 @@ def assert_probe_ok(probe: UpstreamProbe) -> None:
         raise RuntimeError("upstream probe: units i18n namespace is empty")
     if probe.escape_leaks:
         raise RuntimeError(f"upstream probe: {probe.escape_leaks} JS escape leaks in units i18n")
+    if probe.menu_gated_tokens >= 0:
+        if not probe.menu_permissions_ok:
+            raise RuntimeError("upstream probe: menu 0 permissionModule still contains leftover _0x subscript text")
+        if probe.menu_gated_tokens < 1:
+            raise RuntimeError("upstream probe: menu 0 gated by DISPLAY_* permissions yielded zero tokens")
 
 
 def main(argv: list[str] | None = None) -> int:

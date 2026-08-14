@@ -17,6 +17,7 @@ from pybragerone.api.client import BragerOneApiClient
 from pybragerone.models.catalog import (
     AssetRef,
     LiveAssetsCatalog,
+    _collect_bindings,
     _count_js_escape_leaks,
     _i18n_import_base_and_hash,
     _node_to_python,
@@ -331,3 +332,58 @@ def test_extract_language_helpers_handle_quoted_keys() -> None:
     numeric = b"const c={'foo':1,'defaultTranslation':1};"
     num_obj = next(node for node in _walk(catalog._ts.parse(numeric).root_node) if node.type == "object")
     assert catalog._extract_default_translation_bytes(num_obj, numeric) is None
+
+
+def test_node_to_python_resolves_string_subscript_to_public_name() -> None:
+    """``_0xabc['DISPLAY_FOO']`` is the public enum name, not leftover source text."""
+    code = b"const o={'permissionModule':_0x521864['DISPLAY_PARAMETER_LEVEL_1'],'op':_0x4891b3['equalTo']};"
+    tree = _catalog()._ts.parse(code)
+    obj = next(node for node in _walk(tree.root_node) if node.type == "object")
+    parsed = _node_to_python(code, obj)
+    assert parsed == {"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "op": "equalTo"}
+
+
+def test_node_to_python_does_not_collapse_array_map_subscript() -> None:
+    """``['PARAM_1']['map']`` must keep the array so issue #285 can evaluate the call."""
+    code = b"const v=['PARAM_1']['map'];"
+    tree = _catalog()._ts.parse(code)
+    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
+    parsed = _node_to_python(code, sub)
+    assert parsed == "['PARAM_1']['map']"
+
+
+def test_node_to_python_does_not_collapse_identifier_method_subscript() -> None:
+    """``arr['map']`` is a method lookup, not an obfuscated ``_0x…['ENUM']`` alias."""
+    code = b"const v=arr['map'];"
+    tree = _catalog()._ts.parse(code)
+    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(code, sub) == "arr['map']"
+    math_floor = b"const v=Math['floor'];"
+    math_tree = _catalog()._ts.parse(math_floor)
+    math_sub = next(node for node in _walk(math_tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(math_floor, math_sub) == "Math['floor']"
+
+
+def test_node_to_python_resolves_identifier_subscript_from_bindings() -> None:
+    """``_0x['DISPLAY_FOO']`` looks up the bound object when the catalog collected it."""
+    code = b"const _0x={'DISPLAY_FOO':'yes','OTHER':1}; const v=_0x['DISPLAY_FOO'];"
+    tree = _catalog()._ts.parse(code)
+    bindings = _collect_bindings(code, tree.root_node)
+    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(code, sub, bindings) == "yes"
+    missing = b"const v=_0x['MISSING'];"
+    missing_tree = _catalog()._ts.parse(missing)
+    missing_sub = next(node for node in _walk(missing_tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(missing, missing_sub, bindings) == "MISSING"
+    not_map = b"const v=_0x['DISPLAY_FOO'];"
+    not_map_tree = _catalog()._ts.parse(not_map)
+    not_map_sub = next(node for node in _walk(not_map_tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(not_map, not_map_sub, {"_0x": "not-a-map"}) == "DISPLAY_FOO"
+
+
+def test_node_to_python_keeps_non_string_subscript() -> None:
+    """Computed numeric indexes are not public enum names."""
+    code = b"const v=arr[0];"
+    tree = _catalog()._ts.parse(code)
+    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(code, sub) == "arr[0]"

@@ -14,7 +14,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .menu import MenuParameter, MenuResult
+from .menu import MenuParameter, MenuResult, js_public_member_name
 
 
 @dataclass
@@ -149,10 +149,14 @@ class MenuProcessor:
         def normalize_permission(raw: str | None) -> str:
             if not raw:
                 return ""
+            text = str(raw)
+            public = js_public_member_name(text)
+            if public is not None:
+                return public
             for prefix in detected_prefixes:
-                if raw.startswith(prefix):
-                    return raw[len(prefix) :]
-            return raw
+                if text.startswith(prefix):
+                    return text[len(prefix) :]
+            return MenuParameter._strip_prefix(text)
 
         def has_permission(required: str | None) -> bool:
             if not required:
@@ -262,10 +266,13 @@ class MenuProcessor:
         def normalize_permission(value: str | None) -> str | None:
             if value is None:
                 return None
+            public = js_public_member_name(value)
+            if public is not None:
+                return public
             for prefix in detected_prefixes:
                 if value.startswith(prefix):
                     return value[len(prefix) :]
-            return value
+            return MenuParameter._strip_prefix(value)
 
         def normalize_list(items: list[Any]) -> list[Any]:
             normalized: list[Any] = []

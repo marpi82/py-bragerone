@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 import tree_sitter_javascript
 from tree_sitter import Language, Node, Parser, Tree
 
-from .menu import MenuResult
+from .menu import MenuResult, js_public_member_name
 from .menu_manager import MenuManager, RawMenuData
 
 if TYPE_CHECKING:
@@ -694,6 +694,25 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         if bindings and name in bindings:
             return bindings[name]
         return name
+
+    if t == "subscript_expression":
+        obj_node = node.child_by_field_name("object")
+        index_node = node.child_by_field_name("index")
+        if index_node is not None and _is_string(index_node):
+            public = _string_value(_node_text(code, index_node))
+            # Import aliases: ``_0x521864['DISPLAY_MENU_DHW']``. Leave ``arr['map']`` and
+            # ``Math['floor']`` as leftover source so issue #285 can still see the receiver.
+            if obj_node is not None and obj_node.type == "identifier":
+                obj_name = _node_text(code, obj_node)
+                if bindings and obj_name in bindings:
+                    obj_val = bindings[obj_name]
+                    if isinstance(obj_val, Mapping) and public in obj_val:
+                        return obj_val[public]
+                if obj_name.startswith("_0x"):
+                    return public
+        leftover = _node_text(code, node)
+        public_leftover = js_public_member_name(leftover)
+        return public_leftover if public_leftover is not None else leftover
 
     if t == "arrow_function":
         raw_function = _node_text(code, node)
@@ -1612,6 +1631,9 @@ class LiveAssetsCatalog:
             cleaned = value.strip()
             if not cleaned:
                 return None
+            public = js_public_member_name(cleaned)
+            if public is not None:
+                return public
             if cleaned.startswith("[") and cleaned.endswith("]") and len(cleaned) > 2:
                 cleaned = cleaned[1:-1]
             parts = cleaned.split(".", 1)

@@ -13,6 +13,31 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .api.common import Permission
 
+# Obfuscated bundles keep the public name as a string index: ``_0xabc['DISPLAY_MENU_DHW']``.
+# Require the ``_0x…`` receiver so ``arr['map']`` / ``Math['floor']`` stay leftover source.
+# The computed-key brackets must balance: ``(?(1)\])`` demands the closing one only when
+# the leading ``[`` matched, so ``_0xabc['NAME']]`` is not normalized.
+_JS_SUBSCRIPT_PUBLIC_RE = re.compile(r"^(\[)?_0x[0-9a-fA-F]*\[(['\"])(?P<name>[A-Za-z_]\w*)\2\](?(1)\])$")
+
+
+def js_public_member_name(value: str) -> str | None:
+    """Return the public identifier inside an obfuscated member/subscript leftover.
+
+    Live menu and PARAM chunks store enums as ``_0x521864['DISPLAY_PARAMETER_LEVEL_1']``
+    (sometimes wrapped in ``[…]`` for computed keys). The REST API still emits the
+    inner name as a plain string, so catalog matching has to recover it.
+
+    Args:
+        value: Raw leftover text from ``_node_to_python`` or a permission field.
+
+    Returns:
+        The public name, or ``None`` when ``value`` is not that leftover shape.
+    """
+    match = _JS_SUBSCRIPT_PUBLIC_RE.match(value.strip())
+    if match is None:
+        return None
+    return match.group("name")
+
 
 class MenuParameter(BaseModel):
     """Single parameter in a menu route with automatic cleanup.
@@ -43,6 +68,9 @@ class MenuParameter(BaseModel):
 
     @classmethod
     def _strip_prefix(cls, value: str) -> str:
+        public = js_public_member_name(value)
+        if public is not None:
+            return public
         m = cls.PREFIX_RE.match(value)
         return m.group("rest") if m else value
 
