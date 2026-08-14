@@ -80,6 +80,23 @@ def test_attach_parameters_tokens_normalizes_calls_dicts_and_children() -> None:
     converted = catalog._attach_parameters_tokens({"path": "x", "children": "wA"})
     assert converted["children"] == []
 
+    leftover = catalog._attach_parameters_tokens(
+        {
+            "path": "userMenu",
+            "meta": {
+                "parameters": {
+                    "write": (
+                        "['PARAM_45','PARAM_34']['map'](_0x46820c=>"
+                        "({'permissionModule':_0x58838d['DISPLAY_PARAMETER_LEVEL_1'],"
+                        "'parameter':_0x2d2290(_0x870f31['WRITE'],_0x46820c)}))"
+                    )
+                }
+            },
+        }
+    )
+    write_tokens = [item["token"] for item in leftover["meta"]["parameters"]["write"]]
+    assert write_tokens == ["PARAM_45", "PARAM_34"]
+
 
 def test_build_param_map_from_obj_normalizes_command_branches_and_status() -> None:
     """Normalize any/if/else command rules, status maps, use-aliases, and units."""

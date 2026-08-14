@@ -168,6 +168,22 @@ def test_node_to_python_resolves_string_subscript_to_public_name() -> None:
     assert parsed == {"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "op": "equalTo"}
 
 
+def test_node_to_python_evaluates_array_map_of_param_tokens() -> None:
+    """Live menus 153/2190 wrap write lists in ``array['map'](x => ({…, parameter: helper(WRITE, x)}))``."""
+    code = (
+        b"const v=['PARAM_45','PARAM_34']['map'](_0x46820c=>("
+        b"{'permissionModule':_0x58838d['DISPLAY_PARAMETER_LEVEL_1'],"
+        b"'parameter':_0x2d2290(_0x870f31['WRITE'],_0x46820c)}));"
+    )
+    tree = _catalog()._ts.parse(code)
+    call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
+    parsed = _node_to_python(code, call)
+    assert parsed == [
+        {"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "parameter": "PARAM_45"},
+        {"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "parameter": "PARAM_34"},
+    ]
+
+
 def test_node_to_python_does_not_collapse_array_map_subscript() -> None:
     """``['PARAM_1']['map']`` must keep the array so issue #285 can evaluate the call."""
     code = b"const v=['PARAM_1']['map'];"

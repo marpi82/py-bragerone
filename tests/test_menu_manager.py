@@ -399,3 +399,73 @@ async def test_get_module_menu_gates_obfuscated_permission_subscripts() -> None:
 
     ungated = await catalog.get_module_menu(0, permissions=None)
     assert ungated.all_tokens() == {"PARAM_P30_2", "PARAM_P32_184"}
+
+
+_LIVE_MENU_MAP = """
+const _201={'priority':0x64,'deviceMenu':[{
+  path:'userMenu',
+  name:'MAINMENU_MENU_UZYTKOWNIKA',
+  meta:{
+    displayName:'MAINMENU_MENU_UZYTKOWNIKA',
+    permissionModule:_0x58838d['DISPLAY_PARAMETER_LEVEL_1'],
+    parameters:{
+      read:[],
+      write:['PARAM_45','PARAM_34']['map'](_0x46820c=>({
+        permissionModule:_0x58838d['DISPLAY_PARAMETER_LEVEL_1'],
+        parameter:_0x2d2290(_0x870f31['WRITE'],_0x46820c)
+      })),
+      status:[],
+      special:[]
+    }
+  },
+  children:[]
+}]};
+export default _201;
+"""
+
+
+@pytest.mark.asyncio()
+async def test_get_module_menu_unwraps_array_map_write_lists() -> None:
+    """DeviceMenu 153/2190 write lists must become PARAM_* tokens, not ValidationError."""
+    mock_api = AsyncMock()
+    mock_api.get_bytes.return_value = _LIVE_MENU_MAP.encode()
+    catalog = LiveAssetsCatalog(mock_api)
+    from pybragerone.models.catalog import AssetRef
+
+    catalog._idx.menu_map[2190] = "201-DKEZsk-M"
+    catalog._idx.assets_by_basename["201"] = [
+        AssetRef(url="https://one.brager.pl/assets/201-DKEZsk-M.js", base="201", hash="DKEZsk-M")
+    ]
+
+    menu = await catalog.get_module_menu(2190, permissions=None)
+    assert menu.all_tokens() == {"PARAM_45", "PARAM_34"}
+    gated = await catalog.get_module_menu(2190, permissions=["DISPLAY_PARAMETER_LEVEL_1"])
+    assert gated.all_tokens() == {"PARAM_45", "PARAM_34"}
+
+
+def test_menu_manager_does_not_iterate_map_leftover_strings() -> None:
+    """A leftover map call must not explode MenuResult into per-character errors."""
+    leftover = (
+        "['PARAM_45','PARAM_34']['map'](_0x46820c=>"
+        "({'permissionModule':_0x58838d['DISPLAY_PARAMETER_LEVEL_1'],"
+        "'parameter':_0x2d2290(_0x870f31['WRITE'],_0x46820c)}))"
+    )
+    manager = MenuManager()
+    manager.store_raw_menu(
+        2190,
+        [
+            {
+                "path": "userMenu",
+                "name": "userMenu",
+                "meta": {
+                    "displayName": "User",
+                    "permissionModule": "DISPLAY_PARAMETER_LEVEL_1",
+                    "parameters": {"write": leftover},
+                },
+                "children": [],
+            }
+        ],
+    )
+    menu = manager.get_menu(2190, permissions=None, debug_mode=True)
+    assert menu.routes[0].meta is not None
+    assert menu.routes[0].meta.parameters.write == []
