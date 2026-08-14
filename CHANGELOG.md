@@ -7,6 +7,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.8.3] - 2026-08-14
+
 ### Fixed
 
 - Parse quoted object keys in the live (obfuscated) language-config object so
@@ -27,6 +29,21 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 - Collapse ``_0x…['DISPLAY_*']`` / ``_0x…['equalTo']`` to the public name, but keep
   ``arr['map']`` and ``Math['floor']`` as leftover source for menu ``array['map']``
   unwrapping.
+- Evaluate ``['PARAM_45', …]['map'](x => ({…}))`` in menu chunks instead of leaving
+  the call as source text. ``MenuProcessor`` used to iterate that string character by
+  character, so ``get_module_menu()`` raised thousands of validation errors for
+  ``deviceMenu`` 153 and 2190 even with ``permissions=None``.
+- Recover ``PARAM_*`` / ``STATUS_*`` tokens from leftover ``array['map']`` source in
+  either quote style, and never treat other quoted upper-case literals as parameters.
+- Collapse obfuscated helper calls only for ``_0x…(READ|WRITE|STATUS, PARAM_*)``, so a
+  readable ``foo('WRITE', 'PARAM_45')`` keeps its semantics.
+- Resolve computed property names (``{[_0x4d7e32['INVISIBLE']]: …}``) to the public
+  key, so ``PARAM_*`` status conditions are addressable.
+- Normalize the minified boolean spellings ``![]`` and ``!![]`` alongside ``!0`` /
+  ``!1``, and accept ``useComponent`` as an alias for ``componentType``.
+- Make the upstream-assets watch fail when a sampled ``PARAM_*`` map still carries
+  ``_0x…['…']`` text in its component type, status keys, or command operations —
+  previously any parsed object counted as success.
 
 ## [2026.8.1] - 2026-08-08
 
@@ -90,7 +107,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.4.5...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.3...HEAD
+[2026.8.3]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.3
 [2026.4.5]: https://github.com/marpi82/py-bragerone/releases/tag/2026.4.5
 [2026.4.4]: https://github.com/marpi82/py-bragerone/releases/tag/2026.4.4
 [2026.4.3]: https://github.com/marpi82/py-bragerone/releases/tag/2026.4.3
