@@ -564,22 +564,32 @@ class ParamResolver:
 
     @classmethod
     def _route_allowed_in_module_item(cls, route: Any) -> bool:
-        """Return whether route name matches module-item menu namespaces.
+        """Return whether a route may contribute symbols in all-panels mode.
 
-        Frontend `moduleItem` builds panel containers from route names under
-        `modules.menu.*` / `companies.modules.menu.*`. Routes prefixed with
-        `routes.` are not rendered as module-item panels.
+        Frontend ``moduleItem`` panels use ``modules.menu.*`` /
+        ``companies.modules.menu.*`` names. Live device menus also attach
+        parameters directly to bare title tokens (``MAINMENU_*``,
+        ``MENUSERWIS_*``, ``MENU_*``, …) — those must be included or HA bootstrap
+        drops whole settings panels (boiler, ignition, valves, …).
+
+        ``routes.*`` names are navigation chrome, not module-item panels.
         """
         raw_name = getattr(route, "name", None)
         if not isinstance(raw_name, str):
             return False
 
-        name = raw_name.strip().casefold()
-        if not name or ".menu." not in name:
+        name = raw_name.strip()
+        if not name:
             return False
-        if name.startswith("routes."):
+        if _MENU_TITLE_TOKEN_RE.fullmatch(name) is not None:
+            return True
+
+        name_cf = name.casefold()
+        if ".menu." not in name_cf:
             return False
-        return name.startswith("modules.menu.") or name.startswith("companies.modules.menu.")
+        if name_cf.startswith("routes."):
+            return False
+        return name_cf.startswith("modules.menu.") or name_cf.startswith("companies.modules.menu.")
 
     @staticmethod
     def _iter_routes(routes: Iterable[Any]) -> Iterable[Any]:

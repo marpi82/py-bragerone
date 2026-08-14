@@ -77,6 +77,64 @@ def _menu_fixture() -> MenuResult:
     )
 
 
+def test_build_panel_groups_all_panels_includes_mainmenu_parameter_routes() -> None:
+    """Bare MAINMENU_*/MENUSERWIS_* routes with parameters become panel candidates.
+
+    Live device menus attach classic PARAM_* tokens to these title-token routes.
+    Excluding them as non-module-item drops boiler/service settings from HA bootstrap.
+    """
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "boiler",
+                    "name": "MAINMENU_USTAWIENIA_KOTLA",
+                    "meta": {
+                        "displayName": "MAINMENU_USTAWIENIA_KOTLA",
+                        "parameters": {
+                            "read": [{"parameter": "E(A.READ,'PARAM_0')"}],
+                            "write": [{"parameter": "E(A.WRITE,'PARAM_12')"}],
+                        },
+                    },
+                },
+                {
+                    "path": "ignition",
+                    "name": "MENUSERWIS_USTAWIENIA_ROZPALANIA",
+                    "meta": {
+                        "displayName": "MENUSERWIS_USTAWIENIA_ROZPALANIA",
+                        "parameters": {
+                            "write": [{"parameter": "E(A.WRITE,'PARAM_135')"}],
+                        },
+                    },
+                },
+                {
+                    "path": "modules",
+                    "name": "routes.modules.menu.modules",
+                    "meta": {
+                        "displayName": "Modules",
+                        "parameters": {"read": [{"parameter": "E(A.READ,'PARAM_999')"}]},
+                    },
+                },
+            ]
+        }
+    )
+    routes_i18n = {
+        "MAINMENU_USTAWIENIA_KOTLA": "Ustawienia kotła",
+        "MENUSERWIS_USTAWIENIA_ROZPALANIA": "Ustawienia rozpalania",
+    }
+
+    groups = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True, routes_i18n=routes_i18n)
+    assert groups["Ustawienia kotła"] == ["PARAM_0", "PARAM_12"]
+    assert groups["Ustawienia rozpalania"] == ["PARAM_135"]
+    assert "Modules" not in groups
+
+    diagnostics = ParamResolver.panel_route_diagnostics_from_menu(menu, all_panels=True, routes_i18n=routes_i18n)
+    by_name = {row["name"]: row for row in diagnostics}
+    assert by_name["MAINMENU_USTAWIENIA_KOTLA"]["accepted"] is True
+    assert by_name["MENUSERWIS_USTAWIENIA_ROZPALANIA"]["accepted"] is True
+    assert by_name["routes.modules.menu.modules"]["reason"] == "rejected:not-module-item"
+
+
 def test_build_panel_groups_from_menu_core_only() -> None:
     """Return canonical three groups when all-panels mode is disabled."""
     menu = _menu_fixture()
@@ -352,9 +410,10 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
     groups = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True, routes_i18n=title_i18n)
     assert "Menu termostatów/Pompa CO" in groups
     assert groups["Menu termostatów/Pompa CO"] == ["PARAM_2"]
-    # Bare MAINMENU routes are not module-item panels themselves, but their
-    # translated titles still prefix children under modules.menu.*.
-    assert "Menu bufor" not in groups
+    # Bare MAINMENU_* routes carry parameters in live menus; include them as panels.
+    assert groups["Menu bufor"] == ["PARAM_3"]
+    assert groups["Preset title"] == ["PARAM_4"]
+    assert groups["Spaces title"] == ["PARAM_6"]
     assert ParamResolver._collect_menu_title_tokens(menu) == {
         "MAINMENU_MENU_TERMOSTATU",
         "MAINMENU_MENU_BUFOR",
@@ -365,5 +424,10 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
 
     groups_async = await resolver.build_panel_groups(device_menu=0, all_panels=True)
     assert "Menu termostatów/Pompa CO" in groups_async
+    assert "Menu bufor" in groups_async
     diagnostics = await resolver.panel_route_diagnostics(device_menu=0, all_panels=True)
     assert any(row.get("panel_title") == "Menu termostatów/Pompa CO" for row in diagnostics)
+    assert any(
+        row.get("name") == "MAINMENU_MENU_BUFOR" and row.get("accepted") is True and row.get("reason") == "accepted"
+        for row in diagnostics
+    )
