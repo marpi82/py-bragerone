@@ -13,8 +13,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   ``list_language_config()`` works against the current ``index-*.js`` bundle.
 - Resolve i18n chunks whose Vite hash contains or ends with a hyphen
   (``info-Bpu026-3.js``, ``tariff-Db9Vj8s-.js``).
-- Warn when the units descriptor table, an i18n namespace, or leftover ``\\x`` /
-  ``\\u`` / ``\\u{...}`` sequences indicate that upstream assets changed shape.
+- Warn when the units descriptor table, an i18n namespace, or leftover ``\\xNN`` /
+  ``\\uNNNN`` / ``\\u{...}`` sequences indicate that upstream assets changed shape.
 - Make the scheduled upstream-assets watch fail when language config, the
   descriptor table, or the ``units`` namespace parse empty.
 
