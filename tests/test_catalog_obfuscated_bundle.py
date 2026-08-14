@@ -166,3 +166,12 @@ def test_node_to_python_resolves_string_subscript_to_public_name() -> None:
     obj = next(node for node in _walk(tree.root_node) if node.type == "object")
     parsed = _node_to_python(code, obj)
     assert parsed == {"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "op": "equalTo"}
+
+
+def test_node_to_python_does_not_collapse_array_map_subscript() -> None:
+    """``['PARAM_1']['map']`` must keep the array so issue #285 can evaluate the call."""
+    code = b"const v=['PARAM_1']['map'];"
+    tree = _catalog()._ts.parse(code)
+    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
+    parsed = _node_to_python(code, sub)
+    assert parsed == "['PARAM_1']['map']"

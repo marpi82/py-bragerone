@@ -670,17 +670,22 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         return name
 
     if t == "subscript_expression":
+        obj_node = node.child_by_field_name("object")
         index_node = node.child_by_field_name("index")
         if index_node is not None and _is_string(index_node):
-            return _string_value(_node_text(code, index_node))
-        if index_node is not None:
-            resolved = _node_to_python(code, index_node, bindings)
-            if isinstance(resolved, str) and resolved:
-                public = js_public_member_name(resolved)
-                return public if public is not None else resolved
+            public = _string_value(_node_text(code, index_node))
+            # Import aliases: ``_0x521864['DISPLAY_MENU_DHW']``. Leave ``array['map']`` intact
+            # so call expressions can still see the receiver (issue #285).
+            if obj_node is not None and obj_node.type == "identifier":
+                obj_name = _node_text(code, obj_node)
+                if bindings and obj_name in bindings:
+                    obj_val = bindings[obj_name]
+                    if isinstance(obj_val, Mapping) and public in obj_val:
+                        return obj_val[public]
+                return public
         leftover = _node_text(code, node)
-        public = js_public_member_name(leftover)
-        return public if public is not None else leftover
+        public_leftover = js_public_member_name(leftover)
+        return public_leftover if public_leftover is not None else leftover
 
     if t == "arrow_function":
         raw_function = _node_text(code, node)
