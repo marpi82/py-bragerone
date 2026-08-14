@@ -12,8 +12,9 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 ### Fixed
 
 - Decode JavaScript escape sequences (``\xNN``, ``\uNNNN``, ``\u{...}``, surrogate
-  pairs and the simple forms) when parsing web-app assets. Labels used to read
-  ``Ilość\x20rozpaleń``; 1303 of 1339 parameter labels were affected on the live bundle.
+  pairs and the simple forms) when parsing web-app assets. Escapes survived verbatim,
+  so a space inside a label rendered as a literal ``\x20``; 1303 of 1339 parameter
+  labels were affected on the live bundle.
 - Parse the numeric literal forms the obfuscated bundle actually emits — radix
   prefixes (``0x9``, ``0o17``, ``0b1010``), digit separators (``1_000``) and the
   BigInt marker (``10n``). The hex-keyed unit descriptor table used to parse to zero
