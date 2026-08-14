@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
+from pybragerone.api.client import BragerOneApiClient
 from pybragerone.models.catalog import LiveAssetsCatalog, _decode_js_escapes, _string_value
 from pybragerone.models.i18n import I18nResolver
 
@@ -15,7 +18,7 @@ class _DummyApi:
 
 
 def _catalog() -> LiveAssetsCatalog:
-    return LiveAssetsCatalog(_DummyApi())  # type: ignore[arg-type]
+    return LiveAssetsCatalog(cast(BragerOneApiClient, _DummyApi()))
 
 
 @pytest.mark.parametrize(
