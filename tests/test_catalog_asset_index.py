@@ -28,7 +28,11 @@ def test_find_asset_for_full_name_matches_hash_and_misses() -> None:
     asset = AssetRef(url="https://one.brager.pl/module.menu-Ab12.js", base="module.menu", hash="Ab12")
     idx.assets_by_basename["module.menu"] = [asset]
     assert idx.find_asset_for_full_name("module.menu-Ab12") is asset
+    assert idx.find_asset_for_full_name("module.menu-Ab12.js") is asset
     assert idx.find_asset_for_full_name("module.menu-NOPE") is None
+    trailing = AssetRef(url="https://one.brager.pl/tariff-Db9Vj8s-.js", base="tariff", hash="Db9Vj8s-")
+    idx.assets_by_basename["tariff"] = [trailing]
+    assert idx.find_asset_for_full_name("tariff-Db9Vj8s-") is trailing
 
 
 @pytest.mark.asyncio

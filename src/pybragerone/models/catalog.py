@@ -102,15 +102,18 @@ class AssetIndex:
         """Find an asset reference by its full name with hash (e.g., 'module.menu-Dbo_n32n').
 
         Args:
-            full_name: The full name of the asset with hash to search for.
+            full_name: Stem (``base-hash``) or filename (``base-hash.js``).
 
         Returns:
             The asset reference if found, or None if not found.
         """
-        # Search through all assets by basename to find the one with matching full name
+        stem = full_name[:-3] if full_name.lower().endswith(".js") else full_name
+        filename = stem + ".js"
         for basename_assets in self.assets_by_basename.values():
             for asset in basename_assets:
-                if f"{asset.base}-{asset.hash}" == full_name:
+                if f"{asset.base}-{asset.hash}" == stem:
+                    return asset
+                if asset.url.endswith(filename) or asset.url.rsplit("/", 1)[-1] == filename:
                     return asset
         return None
 
@@ -425,6 +428,39 @@ def _string_value(text: str) -> str:
     return _decode_js_escapes(text)
 
 
+def _property_name(code: bytes, key_node: Node) -> str:
+    """Return the JavaScript property name a key node would produce at runtime.
+
+    Obfuscated bundles quote ordinary keys (``{'translations': ...}``) and emit hex
+    numeric keys (``{0xa: ...}``). Callers that compare against ``"translations"``
+    must go through this helper; raw node text keeps the quotes and radix prefix.
+    """
+    raw = _node_text(code, key_node)
+    if _is_string(key_node):
+        return _string_value(raw)
+    if key_node.type == "number":
+        return _js_property_key(raw)
+    return raw
+
+
+_JS_ESCAPE_LEAK_RE = re.compile(r"\\[xu][0-9a-fA-F]")
+
+
+def _count_js_escape_leaks(value: Any) -> int:
+    r"""Count strings that still contain JS ``\x`` / ``\u`` escape sequences.
+
+    After a successful parse those sequences should already have been decoded. A
+    leftover leak means a new escape form slipped past ``_decode_js_escapes``.
+    """
+    if isinstance(value, str):
+        return 1 if _JS_ESCAPE_LEAK_RE.search(value) else 0
+    if isinstance(value, Mapping):
+        return sum(_count_js_escape_leaks(item) for item in value.values())
+    if isinstance(value, list):
+        return sum(_count_js_escape_leaks(item) for item in value)
+    return 0
+
+
 def _split_top_level_csv(raw: str) -> list[str]:
     parts: list[str] = []
     cur: list[str] = []
@@ -593,12 +629,7 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
             if key_node is None or value_node is None:
                 continue
 
-            if _is_string(key_node):
-                key = _string_value(_node_text(code, key_node))
-            elif key_node.type == "number":
-                key = _js_property_key(_node_text(code, key_node))
-            else:
-                key = _node_text(code, key_node)
+            key = _property_name(code, key_node)
             obj[key] = _node_to_python(code, value_node, bindings)
         return obj
 
@@ -1807,7 +1838,24 @@ class LiveAssetsCatalog:
                 result = translations if isinstance(translations, dict) else {}
                 self._cache_i18n[cache_key] = result
 
-                self._log.debug("Loaded i18n %s/%s: %d keys", lang_norm, namespace_norm, len(result))
+                leaks = _count_js_escape_leaks(result)
+                if not result:
+                    self._log.warning(
+                        "i18n %s/%s parsed to 0 keys from a %d-byte asset (%s)",
+                        lang_norm,
+                        namespace_norm,
+                        len(code),
+                        asset_ref.url,
+                    )
+                elif leaks:
+                    self._log.warning(
+                        "i18n %s/%s has %d values that still contain JS escape sequences",
+                        lang_norm,
+                        namespace_norm,
+                        leaks,
+                    )
+                else:
+                    self._log.debug("Loaded i18n %s/%s: %d keys", lang_norm, namespace_norm, len(result))
                 return result
             except Exception as e:
                 self._log.warning("Failed to load i18n %s/%s: %s", lang_norm, namespace_norm, e)
@@ -1850,6 +1898,7 @@ class LiveAssetsCatalog:
             return {}
 
         best: dict[str, dict[str, Any]] = {}
+        largest_candidate = 0
 
         for statement in tree.root_node.named_children:
             if statement.type not in {"lexical_declaration", "variable_declaration"}:
@@ -1868,14 +1917,28 @@ class LiveAssetsCatalog:
                     continue
 
                 parsed: dict[str, dict[str, Any]] = {}
+                descriptor_keys = 0
                 for key_raw, value_raw in candidate.items():
+                    if not self._is_unit_descriptor_entry(value_raw):
+                        continue
+                    descriptor_keys += 1
                     key = self._normalize_unit_key(key_raw)
-                    if key is None or not self._is_unit_descriptor_entry(value_raw):
+                    if key is None:
                         continue
                     parsed[key] = dict(value_raw)
 
+                largest_candidate = max(largest_candidate, descriptor_keys)
                 if len(parsed) > len(best):
                     best = parsed
+
+        if not best:
+            if largest_candidate:
+                self._log.warning(
+                    "Units descriptor table kept 0 of %d keys from the largest candidate object",
+                    largest_candidate,
+                )
+            elif len(code) >= 50_000:
+                self._log.warning("Units descriptor table parsed to 0 entries from a %d-byte index", len(code))
 
         return best
 
@@ -1933,10 +1996,12 @@ class LiveAssetsCatalog:
         if not want:
             return None
 
-        # Capture: <ns> + import("./<file_base>-<hash>.js")
+        # Capture the full ``import("./<file>.js")`` filename. Hashes may contain hyphens
+        # (``info-Bpu026-3.js``) or even end with one (``tariff-Db9Vj8s-.js``); splitting the
+        # basename ourselves is how those chunks used to go missing.
         import_pattern = re.compile(
             rf'["\']\.\.\/\.\.\/resources\/languages\/{re.escape(lang)}\/([^"\']+)\.json["\']'
-            r':\s*\(\)\s*=>\s*\w+\s*\(\s*\(\)\s*=>\s*import\s*\(\s*["\']\.\/([^"\']+)-([A-Za-z0-9_]+)\.js["\']'
+            r':\s*\(\)\s*=>\s*\w+\s*\(\s*\(\)\s*=>\s*import\s*\(\s*["\']\.\/([^"\']+\.js)["\']'
         )
 
         match: re.Match[str] | None = None
@@ -1950,21 +2015,21 @@ class LiveAssetsCatalog:
             self._log.debug("No i18n asset match for %s/%s (case-insensitive)", lang, namespace)
             return None
 
-        file_base = match.group(2)  # e.g., "parameters" or "diodeState"
-        file_hash = match.group(3)  # e.g., "BNvCCsxi"
+        asset_filename = match.group(2)
+        stem = asset_filename[:-3] if asset_filename.lower().endswith(".js") else asset_filename
+        file_base, separator, file_hash = stem.rpartition("-")
+        if not separator:
+            file_base, file_hash = stem, ""
 
-        # Construct the full asset filename and URL
-        asset_filename = f"{file_base}-{file_hash}.js"
-
-        # Look up the asset in our index by basename
-        # The basename should match the file_base (e.g., "parameters")
-        asset_ref = self._idx.find_asset_for_basename(file_base)
-        if asset_ref and asset_ref.hash == file_hash:
+        asset_ref = self._idx.find_asset_for_full_name(stem)
+        if asset_ref is not None:
             return asset_ref
 
-        # Fallback: construct URL based on index URL pattern
-        # This assumes the i18n files are in the same directory as the index
-        if hasattr(self, "_last_index_url") and self._last_index_url:
+        asset_ref = self._idx.find_asset_for_basename(file_base)
+        if asset_ref is not None and (not file_hash or asset_ref.hash == file_hash):
+            return asset_ref
+
+        if self._last_index_url:
             asset_url = self._smart_urljoin(self._last_index_url, asset_filename)
             return AssetRef(url=asset_url, base=file_base, hash=file_hash)
 
@@ -2063,8 +2128,7 @@ class LiveAssetsCatalog:
                 key_node = pair.child_by_field_name("key")
                 if key_node is None:
                     continue
-                key_bytes = js_bytes[key_node.start_byte : key_node.end_byte]
-                key_text = key_bytes.decode("utf-8", errors="replace")
+                key_text = _property_name(js_bytes, key_node)
                 if key_text == "id":
                     has_id = True
                 elif key_text == "flag":
@@ -2101,8 +2165,7 @@ class LiveAssetsCatalog:
                 if key_node is None or value_node is None:
                     continue
 
-                key_bytes = js_bytes[key_node.start_byte : key_node.end_byte]
-                key_text = key_bytes.decode("utf-8", errors="replace")
+                key_text = _property_name(js_bytes, key_node)
 
                 if key_text == "translations" and value_node.type == "array":
                     if self._is_translations_array_bytes(value_node, js_bytes):
@@ -2125,13 +2188,17 @@ class LiveAssetsCatalog:
         if obj_node is None:
             raise ValueError("Language config object not found")
 
-        translations = self._extract_translations_array_bytes(obj_node, js_bytes)
-        default_translation = self._extract_default_translation_bytes(obj_node, js_bytes)
-
-        if translations is None or default_translation is None:
+        parsed = _node_to_python(js_bytes, obj_node)
+        if not isinstance(parsed, dict):
             raise ValueError("Language config object missing required fields")
-
-        return TranslationConfig(translations=translations, default_translation=default_translation)
+        translations = parsed.get("translations")
+        default_translation = parsed.get("defaultTranslation")
+        if not isinstance(translations, list) or not isinstance(default_translation, str) or not default_translation:
+            raise ValueError("Language config object missing required fields")
+        cleaned = [item for item in translations if isinstance(item, dict)]
+        if not cleaned:
+            raise ValueError("Language config object missing required fields")
+        return TranslationConfig(translations=cleaned, default_translation=default_translation)
 
     def _is_translations_array(self, array_node: Node, text: str) -> bool:
         """Check if an array looks like a translations array.
@@ -2174,13 +2241,10 @@ class LiveAssetsCatalog:
         for pair in obj_node.children:
             if pair.type == "pair":
                 key_node = pair.child_by_field_name("key")
-                if key_node:
-                    key_bytes = js_bytes[key_node.start_byte : key_node.end_byte]
-                    key_text = key_bytes.decode("utf-8", errors="replace")
-                    if key_text == "translations":
-                        value_node = pair.child_by_field_name("value")
-                        if value_node and value_node.type == "array":
-                            return self._parse_translations_array_bytes(value_node, js_bytes)
+                if key_node and _property_name(js_bytes, key_node) == "translations":
+                    value_node = pair.child_by_field_name("value")
+                    if value_node and value_node.type == "array":
+                        return self._parse_translations_array_bytes(value_node, js_bytes)
         return None
 
     def _extract_default_translation_bytes(self, obj_node: Node, js_bytes: bytes) -> str | None:
@@ -2188,16 +2252,12 @@ class LiveAssetsCatalog:
         for pair in obj_node.children:
             if pair.type == "pair":
                 key_node = pair.child_by_field_name("key")
-                if key_node:
-                    key_bytes = js_bytes[key_node.start_byte : key_node.end_byte]
-                    key_text = key_bytes.decode("utf-8", errors="replace")
-                    if key_text == "defaultTranslation":
-                        value_node = pair.child_by_field_name("value")
-                        if value_node and value_node.type == "string":
-                            # Remove quotes from string literal
-                            value_bytes = js_bytes[value_node.start_byte : value_node.end_byte]
-                            value_text = value_bytes.decode("utf-8", errors="replace")
-                            return _string_value(value_text)
+                if key_node and _property_name(js_bytes, key_node) == "defaultTranslation":
+                    value_node = pair.child_by_field_name("value")
+                    if value_node and value_node.type == "string":
+                        value_bytes = js_bytes[value_node.start_byte : value_node.end_byte]
+                        value_text = value_bytes.decode("utf-8", errors="replace")
+                        return _string_value(value_text)
         return None
 
     def _parse_translations_array_bytes(self, array_node: Node, js_bytes: bytes) -> list[dict[str, Any]]:
@@ -2218,8 +2278,7 @@ class LiveAssetsCatalog:
                 key_node = pair.child_by_field_name("key")
                 value_node = pair.child_by_field_name("value")
                 if key_node and value_node:
-                    key_bytes = js_bytes[key_node.start_byte : key_node.end_byte]
-                    key = key_bytes.decode("utf-8", errors="replace")
+                    key = _property_name(js_bytes, key_node)
                     value = self._parse_js_value_bytes(value_node, js_bytes)
                     translation[key] = value
         return translation if translation else None
@@ -2233,7 +2292,8 @@ class LiveAssetsCatalog:
         elif node.type == "number":
             val_bytes = js_bytes[node.start_byte : node.end_byte]
             val_text = val_bytes.decode("utf-8", errors="replace")
-            return int(val_text) if "." not in val_text else float(val_text)
+            parsed = _parse_js_number(val_text)
+            return val_text if parsed is None else parsed
         elif node.type == "true":
             return True
         elif node.type == "false":
@@ -2247,8 +2307,7 @@ class LiveAssetsCatalog:
                     key_node = pair.child_by_field_name("key")
                     value_node = pair.child_by_field_name("value")
                     if key_node and value_node:
-                        key_bytes = js_bytes[key_node.start_byte : key_node.end_byte]
-                        key = key_bytes.decode("utf-8", errors="replace")
+                        key = _property_name(js_bytes, key_node)
                         value = self._parse_js_value_bytes(value_node, js_bytes)
                         obj[key] = value
             return obj
@@ -2315,7 +2374,8 @@ class LiveAssetsCatalog:
             return self._get_node_text(node, text)
         elif node.type == "number":
             val_text = self._get_node_text(node, text)
-            return int(val_text) if "." not in val_text else float(val_text)
+            parsed = _parse_js_number(val_text)
+            return val_text if parsed is None else parsed
         elif node.type == "true":
             return True
         elif node.type == "false":

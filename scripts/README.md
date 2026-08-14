@@ -8,7 +8,7 @@ Utility scripts for development and system setup.
 
 - `setup_host_env.sh` - Configure development environment (installs uv, sets up git hooks)
 - `perf_bench.py` - Local wall-time micro-benchmarks, baseline compare, and real startup timing
-- `check_upstream_assets.py` - Unauthenticated probe of BragerOne `/system/version` + live `index-*.js` (used by the scheduled Upstream assets workflow)
+- `check_upstream_assets.py` - Unauthenticated probe of BragerOne `/system/version` + live `index-*.js` (used by the scheduled Upstream assets workflow). When the fingerprint changes (or `--always-parse`), the probe also requires a non-empty language config, units descriptor table, and `units` i18n namespace.
 
 CPU-bound dispatch/catalog cases also live as pytest tests in `tests/test_bench_micro.py`
 (`uv run --group dev --group test poe bench` / `pytest --codspeed`). This script remains the

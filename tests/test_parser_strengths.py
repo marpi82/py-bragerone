@@ -55,6 +55,8 @@ class TestParserStrengths:
         minified_examples = [
             # Extreme minification - single line, no spaces
             "var x={translations:[{id:'pl',flag:'pl'},{id:'en',flag:'gb'}],defaultTranslation:'pl'};",
+            # Quoted keys as in the live obfuscated bundle
+            "var x={'translations':[{'id':'pl','flag':'pl'},{'id':'en','flag':'gb'}],'defaultTranslation':'pl'};",
             # Multiple vars on one line
             "var a=1,config={translations:[{id:'pl',flag:'pl'}],defaultTranslation:'pl'},z=9;",
             # Compressed with JavaScript boolean

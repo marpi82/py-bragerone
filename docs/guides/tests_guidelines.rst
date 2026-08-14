@@ -10,7 +10,7 @@ Local unit tests
 - Mock HTTP (no network) with **pytest-httpx** (``httpx_mock`` fixture); in catalog tests, fake or mock the injected API client's ``get_bytes()`` method.
 - Coverage (``poe cov`` / pre-push ``--cov-fail-under=80``) measures the library package and omits CLI entrypoints (``cli.py``, ``__main__.py``). CI uploads the XML report to Codecov.
 - Optional captured UI dumps: drop ``*.js`` from ``one.brager.pl`` into ``tests/assets/index``, ``tests/assets/params``, ``tests/assets/menus``, or ``tests/assets/i18n``. Files matching ``tests/assets/**/*.js`` are gitignored (do not commit vendor JS). ``tests/test_catalog_captured_assets.py`` parses every file; empty directories skip. This does not hit the network.
-- Scheduled public catalog watch (no login, not a PR gate): ``.github/workflows/upstream-assets.yml`` compares ``GET /v1/system/version`` plus the homepage ``index-*.js`` filename, then tree-sitter-parses the live index only when that fingerprint changes. Local equivalent: ``uv run --group test python scripts/check_upstream_assets.py`` or ``pytest --run-live tests/test_catalog_live_upstream.py``.
+- Scheduled public catalog watch (no login, not a PR gate): ``.github/workflows/upstream-assets.yml`` compares ``GET /v1/system/version`` plus the homepage ``index-*.js`` filename, then tree-sitter-parses the live index only when that fingerprint changes. When it parses, it also asserts a non-empty language config, units descriptor table, and ``units`` i18n namespace, and rejects leftover JS ``\\x`` / ``\\u`` escapes. Local equivalent: ``uv run --group test python scripts/check_upstream_assets.py --always-parse`` or ``pytest --run-live tests/test_catalog_live_upstream.py``.
 
 Example layout::
 

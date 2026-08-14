@@ -19,7 +19,7 @@ from typing import Protocol, TextIO
 
 from pybragerone import BragerOneApiClient
 from pybragerone.models.api import SystemVersion
-from pybragerone.models.catalog import INDEX_ASSET_RE, LiveAssetsCatalog
+from pybragerone.models.catalog import INDEX_ASSET_RE, LiveAssetsCatalog, _count_js_escape_leaks
 
 _SAMPLE_LIMIT = 3
 _ISSUE_FINGERPRINT_SEP = "|"
@@ -61,6 +61,9 @@ class UpstreamProbe:
     sample_param_tokens: list[str]
     sample_param_resolved: list[str]
     parse_error: str | None = None
+    descriptor_table_count: int = 0
+    units_count: int = 0
+    escape_leaks: int = 0
 
 
 def build_fingerprint(*, api_version: str, index_asset: str) -> str:
@@ -146,11 +149,17 @@ async def _parse_live_catalog(api: _PublicCatalogClient, probe: UpstreamProbe, *
     if sample_tokens:
         mapping = await catalog.get_param_mapping(sample_tokens)
         resolved = sorted(mapping)
+    table = catalog._parse_units_descriptor_table_from_index(catalog._idx.index_bytes)
+    units = await catalog.get_i18n("en", "units")
+    units_map = units if isinstance(units, dict) else {}
     probe.basename_count = len(catalog._idx.assets_by_basename)
     probe.menu_count = len(catalog._idx.menu_map)
-    probe.language_ok = bool(language and language.translations)
+    probe.language_ok = bool(language and language.translations and language.default_translation)
     probe.sample_param_tokens = sample_tokens
     probe.sample_param_resolved = resolved
+    probe.descriptor_table_count = len(table)
+    probe.units_count = len(units_map)
+    probe.escape_leaks = _count_js_escape_leaks(units_map)
     return probe
 
 
@@ -183,6 +192,10 @@ def write_github_output(probe: UpstreamProbe, stream: TextIO) -> None:
     stream.write(f"previous={previous}\n")
     stream.write(f"api_version={api_version}\n")
     stream.write(f"index_asset={index_asset}\n")
+    stream.write(f"language_ok={'true' if probe.language_ok else 'false'}\n")
+    stream.write(f"descriptor_table_count={probe.descriptor_table_count}\n")
+    stream.write(f"units_count={probe.units_count}\n")
+    stream.write(f"escape_leaks={probe.escape_leaks}\n")
 
 
 def assert_probe_ok(probe: UpstreamProbe) -> None:
@@ -199,6 +212,14 @@ def assert_probe_ok(probe: UpstreamProbe) -> None:
         raise RuntimeError("upstream probe: live index parsed to zero asset basenames")
     if probe.sample_param_tokens and not probe.sample_param_resolved:
         raise RuntimeError(f"upstream probe: failed to parse sample params {probe.sample_param_tokens}")
+    if not probe.language_ok:
+        raise RuntimeError("upstream probe: language config did not parse")
+    if probe.descriptor_table_count < 1:
+        raise RuntimeError("upstream probe: units descriptor table is empty")
+    if probe.units_count < 1:
+        raise RuntimeError("upstream probe: units i18n namespace is empty")
+    if probe.escape_leaks:
+        raise RuntimeError(f"upstream probe: {probe.escape_leaks} JS escape leaks in units i18n")
 
 
 def main(argv: list[str] | None = None) -> int:

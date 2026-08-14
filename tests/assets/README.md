@@ -26,4 +26,10 @@ Do not commit credentials.
 CI does not use these dumps. A scheduled workflow
 (`.github/workflows/upstream-assets.yml`) fetches public
 `GET /v1/system/version` and the live `index-*.js` without login, parses only
-when that fingerprint changes, and comments on a rolling GitHub issue.
+when that fingerprint changes, and comments on a rolling GitHub issue. The
+parse step now also requires a non-empty language config, units descriptor
+table, and `units` i18n namespace.
+
+Refresh dumps when that fingerprint changes so captured-asset tests exercise
+the shape upstream actually ships. Readable hand-written fixtures will not
+catch quoted keys, hyphenated hashes, or hex numeric literals.
