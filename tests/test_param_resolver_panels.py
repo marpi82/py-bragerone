@@ -313,10 +313,13 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
             "MAINMENU_SPACES": "   ",
             # Blank routes placeholder must be replaced by the menu namespace title.
             "MAINMENU_MENU_BUFOR": "  ",
+            # Non-string routes placeholder must also be replaced by menu.
+            "MAINMENU_ODD": {"ignored": True},
         },
         "menu": {
             "MAINMENU_MENU_BUFOR": "Menu bufor",
             "MAINMENU_PRESET": "Menu should not win",
+            "MAINMENU_ODD": "Odd title",
             "nested": {"ignored": True},
             "bad-key": 12,
         },
@@ -342,6 +345,7 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
     assert title_i18n["MAINMENU_MENU_TERMOSTATU"] == "Menu termostatów"
     assert title_i18n["MAINMENU_MENU_BUFOR"] == "Menu bufor"
     assert title_i18n["MAINMENU_PRESET"] == "Preset title"
+    assert title_i18n["MAINMENU_ODD"] == "Odd title"
     assert title_i18n["MAINMENU_SPACES"] == "Spaces title"
     assert "MAINMENU_EMPTY" not in title_i18n or title_i18n.get("MAINMENU_EMPTY") != ""
 
