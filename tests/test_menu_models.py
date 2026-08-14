@@ -12,6 +12,8 @@ def test_menu_parameter_obfuscated_subscript_permission() -> None:
     assert js_public_member_name("A.DISPLAY_MENU_DHW") is None
     assert js_public_member_name("arr['map']") is None
     assert js_public_member_name("Math['floor']") is None
+    assert js_public_member_name("_0x4d7e32['INVISIBLE']]") is None
+    assert js_public_member_name("[_0x4d7e32['INVISIBLE']") is None
 
     param = MenuParameter.model_validate(
         {
