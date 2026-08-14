@@ -133,7 +133,30 @@ def test_build_param_map_from_obj_normalizes_command_branches_and_status() -> No
     assert pm.command_rules[0]["conditions"][0]["expected"] is True
     assert pm.command_rules[1]["conditions"][0]["operation"] == "equalTo"
     assert pm.command_rules[1]["conditions"][0]["expected"] is None
-    assert pm.command_rules[2]["value"] is False
+    leftover = catalog._build_param_map_from_obj(
+        {
+            "PARAM_CMD": {
+                "group": "P4",
+                "any": [
+                    {
+                        "if": [
+                            {
+                                "operation": "_0x4891b3['equalTo']",
+                                "expected": 1,
+                                "value": [{"group": "P4", "number": 1}],
+                            }
+                        ],
+                        "then": {"command": "_0xabc['WRITE']", "value": "e.ON"},
+                    }
+                ],
+            }
+        },
+        "PARAM_CMD",
+        "test",
+    )
+    assert leftover is not None
+    assert leftover.command_rules[0]["conditions"][0]["operation"] == "equalTo"
+    assert leftover.command_rules[0]["command"] == "WRITE"
 
     from_use = catalog._build_param_map_from_obj(
         {

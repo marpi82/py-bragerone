@@ -17,6 +17,7 @@ from pybragerone.api.client import BragerOneApiClient
 from pybragerone.models.catalog import (
     AssetRef,
     LiveAssetsCatalog,
+    _collect_bindings,
     _count_js_escape_leaks,
     _node_to_python,
     _walk,
@@ -226,9 +227,7 @@ def test_find_i18n_asset_falls_back_to_basename_when_full_name_misses() -> None:
     """Basename+hash still wins when the stored URL does not match the import filename."""
     catalog = _catalog()
     catalog._idx.index_bytes = _index_with_i18n_import("units-Ab12.js")
-    catalog._idx.assets_by_basename["units"] = [
-        AssetRef(url="https://cdn.example/not-the-import.js", base="units", hash="Ab12")
-    ]
+    catalog._idx.assets_by_basename["units"] = [AssetRef(url="https://cdn.example/not-the-import.js", base="units", hash="Ab12")]
     ref = catalog._find_i18n_asset("pl", "units")
     assert ref is not None
     assert ref.hash == "Ab12"
@@ -239,9 +238,7 @@ def test_find_i18n_asset_falls_back_to_index_url_when_hash_mismatches() -> None:
     """A basename hit with the wrong hash must not be returned; join against the index URL."""
     catalog = _catalog()
     catalog._idx.index_bytes = _index_with_i18n_import("units-Ab12.js")
-    catalog._idx.assets_by_basename["units"] = [
-        AssetRef(url="https://cdn.example/units-OTHER.js", base="units", hash="OTHER")
-    ]
+    catalog._idx.assets_by_basename["units"] = [AssetRef(url="https://cdn.example/units-OTHER.js", base="units", hash="OTHER")]
     catalog._last_index_url = "https://one.brager.pl/assets/index-Ab12.js"
     ref = catalog._find_i18n_asset("pl", "units")
     assert ref is not None
@@ -297,3 +294,28 @@ def test_node_to_python_does_not_collapse_array_map_subscript() -> None:
     sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
     parsed = _node_to_python(code, sub)
     assert parsed == "['PARAM_1']['map']"
+
+
+def test_node_to_python_resolves_identifier_subscript_from_bindings() -> None:
+    """``_0x['DISPLAY_FOO']`` looks up the bound object when the catalog collected it."""
+    code = b"const _0x={'DISPLAY_FOO':'yes','OTHER':1}; const v=_0x['DISPLAY_FOO'];"
+    tree = _catalog()._ts.parse(code)
+    bindings = _collect_bindings(code, tree.root_node)
+    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(code, sub, bindings) == "yes"
+    missing = b"const v=_0x['MISSING'];"
+    missing_tree = _catalog()._ts.parse(missing)
+    missing_sub = next(node for node in _walk(missing_tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(missing, missing_sub, bindings) == "MISSING"
+    not_map = b"const v=_0x['DISPLAY_FOO'];"
+    not_map_tree = _catalog()._ts.parse(not_map)
+    not_map_sub = next(node for node in _walk(not_map_tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(not_map, not_map_sub, {"_0x": "not-a-map"}) == "DISPLAY_FOO"
+
+
+def test_node_to_python_keeps_non_string_subscript() -> None:
+    """Computed numeric indexes are not public enum names."""
+    code = b"const v=arr[0];"
+    tree = _catalog()._ts.parse(code)
+    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(code, sub) == "arr[0]"

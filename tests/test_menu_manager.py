@@ -399,3 +399,42 @@ async def test_get_module_menu_gates_obfuscated_permission_subscripts() -> None:
 
     ungated = await catalog.get_module_menu(0, permissions=None)
     assert ungated.all_tokens() == {"PARAM_P30_2", "PARAM_P32_184"}
+
+
+def test_resolve_tokens_normalizes_leftover_permission_on_fast_path() -> None:
+    """Pre-extracted token+parameter entries still strip ``_0x…['DISPLAY_*']`` permissions."""
+    manager = MenuManager()
+    manager.store_raw_menu(
+        0,
+        [
+            {
+                "path": "dhw",
+                "name": "dhw",
+                "meta": {
+                    "displayName": "DHW",
+                    "permissionModule": "DISPLAY_MENU_DHW",
+                    "parameters": {
+                        "read": [
+                            {
+                                "permissionModule": "_0x521864['DISPLAY_PARAMETER_LEVEL_1']",
+                                "parameter": "E(A.READ,'PARAM_P30_2')",
+                                "token": "PARAM_P30_2",
+                            },
+                            {
+                                "permissionModule": "DISPLAY_PLAIN",
+                                "parameter": "E(A.READ,'PARAM_P30_3')",
+                                "token": "PARAM_P30_3",
+                            },
+                        ]
+                    },
+                },
+                "children": [],
+            }
+        ],
+    )
+    menu = manager.get_menu(0, permissions=None)
+    read = menu.routes[0].meta.parameters.read if menu.routes[0].meta is not None else []
+    assert read[0].permission is not None
+    assert read[0].permission.name == "DISPLAY_PARAMETER_LEVEL_1"
+    assert read[1].permission is not None
+    assert read[1].permission.name == "DISPLAY_PLAIN"
