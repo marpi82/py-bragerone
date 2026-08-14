@@ -7,6 +7,21 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.8.5] - 2026-08-14
+
+### Fixed
+
+- Evaluate nullish coalescing, ``void`` / ``undefined``, equality and ternary
+  expressions in parameter factory builders so optional ``name`` defaults expand to
+  ``parameters.PARAM_*`` tokens. Without this, factory-built classic params kept
+  leftover source such as ``_0x…??'parameters.PARAM_'+n`` and Home Assistant entity
+  labels stayed raw ``PARAM_10`` despite i18n entries (#298).
+- Include bare ``MAINMENU_*`` / ``MENUSERWIS_*`` / ``MENU_*`` menu routes as
+  all-panels candidates. Those routes carry classic ``PARAM_*`` tokens on live
+  device menus; treating only ``modules.menu.*`` as module-item panels dropped
+  bootstrap candidates from 466 to 292 and cut a fresh install to ~32 entities
+  instead of ~100 (#299).
+
 ## [2026.8.4] - 2026-08-14
 
 ### Fixed
@@ -130,7 +145,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.4...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.5...HEAD
+[2026.8.5]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.5
 [2026.8.4]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.4
 [2026.8.3]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.3
 [2026.8.1]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.1
