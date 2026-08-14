@@ -42,7 +42,8 @@ _OBFUSCATED_IDENTIFIER_RE = re.compile(r"_0x[0-9a-fA-F]*")
 # ``!1``/``![]`` are false. Bare ``true``/``false`` are deliberately absent — at this
 # layer they are indistinguishable from the quoted strings ``'true'``/``'false'``.
 _JS_BOOL_LITERALS = {"!0": True, "!1": False, "![]": False, "!![]": True}
-_JS_UNDEFINED_LITERALS = frozenset({"void 0", "undefined"})
+# ``void 0`` is spelled ``void 0x0`` once the bundle rewrites numeric literals as hex.
+_JS_UNDEFINED_LITERALS = frozenset({"void 0", "void 0x0", "undefined"})
 
 
 # ----------------------------- Data types -----------------------------
@@ -589,6 +590,193 @@ def _build_factory_callable(source: str, bindings: dict[str, Any] | None = None)
     return _factory
 
 
+def _js_concat(left: Any, right: Any) -> Any:
+    """Apply the JavaScript ``+`` operator to two already-converted operands.
+
+    Returns:
+        The sum for two numbers, the concatenation when either side is a string,
+        or ``None`` when the operands are not primitives this parser can join.
+    """
+    numeric = (int, float)
+    both_numeric = isinstance(left, numeric) and isinstance(right, numeric)
+    if both_numeric and not isinstance(left, bool) and not isinstance(right, bool):
+        return left + right
+
+    def _text(value: Any) -> str | None:
+        if isinstance(value, str):
+            return value
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
+            return str(int(value)) if value.is_integer() else str(value)
+        return None
+
+    if not isinstance(left, str) and not isinstance(right, str):
+        return None
+    left_text, right_text = _text(left), _text(right)
+    if left_text is None or right_text is None:
+        return None
+    return left_text + right_text
+
+
+def _pattern_bindings(code: bytes, pattern: Node, arg: Any, bindings: dict[str, Any]) -> dict[str, Any]:
+    """Bind a destructured object parameter against one call argument.
+
+    Handles the three element shapes the bundle emits: ``{key: var}``,
+    ``{key: var = default}`` and the shorthand ``{key}`` / ``{key = default}``.
+
+    Args:
+        code: Source bytes containing ``pattern``.
+        pattern: An ``object_pattern`` node.
+        arg: The already-converted call argument.
+        bindings: Bindings used to evaluate default expressions.
+
+    Returns:
+        Local bindings for the function body.
+    """
+    out: dict[str, Any] = {}
+    arg_map = arg if isinstance(arg, Mapping) else {}
+    for element in pattern.named_children:
+        var_node: Node | None = None
+        default_node: Node | None = None
+        if element.type == "pair_pattern":
+            key_node = element.child_by_field_name("key")
+            value_node = element.child_by_field_name("value")
+            if key_node is None or value_node is None:  # pragma: no cover
+                continue
+            key = _property_name(code, key_node)
+            if value_node.type == "assignment_pattern":
+                var_node = value_node.child_by_field_name("left")
+                default_node = value_node.child_by_field_name("right")
+            else:
+                var_node = value_node
+        elif element.type == "shorthand_property_identifier_pattern":
+            key = _node_text(code, element)
+            var_node = element
+        elif element.type == "object_assignment_pattern":
+            var_node = element.child_by_field_name("left")
+            default_node = element.child_by_field_name("right")
+            if var_node is None:  # pragma: no cover
+                continue
+            key = _node_text(code, var_node)
+        else:
+            continue
+        if var_node is None:  # pragma: no cover
+            continue
+        name = _node_text(code, var_node)
+        if key in arg_map:
+            out[name] = arg_map[key]
+        elif default_node is not None:
+            out[name] = _node_to_python(code, default_node, bindings)
+        else:
+            out[name] = None
+    return out
+
+
+def _arrow_body_builds_object(code: bytes, body: Node) -> bool:
+    """Report whether an arrow body statically evaluates to an object literal.
+
+    Guards the factory path: unit transforms such as ``e => Number((e * .1).toFixed(1))``
+    must keep their source text, so only bodies that provably build an object qualify.
+    """
+    target = body
+    if target.type == "parenthesized_expression" and target.named_children:
+        target = target.named_children[0]
+    if target.type == "object":
+        return True
+    if target.type != "statement_block":
+        return False
+
+    assigned: dict[str, bool] = {}
+    for statement in target.named_children:
+        if statement.type in {"lexical_declaration", "variable_declaration"}:
+            for declarator in statement.named_children:
+                if declarator.type != "variable_declarator":  # pragma: no cover
+                    continue
+                name_node = declarator.child_by_field_name("name")
+                value_node = declarator.child_by_field_name("value")
+                if name_node is None or value_node is None:
+                    continue
+                assigned[_node_text(code, name_node)] = value_node.type == "object"
+        elif statement.type == "return_statement":
+            if not statement.named_children:
+                return False
+            returned = statement.named_children[0]
+            if returned.type == "object":
+                return True
+            if returned.type == "identifier":
+                return assigned.get(_node_text(code, returned), False)
+            return False
+    return False
+
+
+def _eval_arrow_body(code: bytes, body: Node, bindings: dict[str, Any]) -> Any:
+    """Evaluate an arrow-function body, including ``{ const x = {...}; return x; }``."""
+    if body.type != "statement_block":
+        target = body
+        if target.type == "parenthesized_expression" and target.named_children:  # pragma: no branch
+            target = target.named_children[0]
+        return _node_to_python(code, target, bindings)
+
+    local = dict(bindings)
+    for statement in body.named_children:
+        if statement.type in {"lexical_declaration", "variable_declaration"}:
+            for declarator in statement.named_children:
+                if declarator.type != "variable_declarator":  # pragma: no cover
+                    continue
+                name_node = declarator.child_by_field_name("name")
+                value_node = declarator.child_by_field_name("value")
+                if name_node is None or value_node is None:
+                    continue
+                local[_node_text(code, name_node)] = _node_to_python(code, value_node, local)
+        elif statement.type == "return_statement" and statement.named_children:
+            return _node_to_python(code, statement.named_children[0], local)
+    return None
+
+
+def _build_arrow_factory(code: bytes, node: Node, bindings: dict[str, Any] | None) -> Any:
+    """Return a callable for an arrow function that builds an object, else ``None``.
+
+    Live index parameters are emitted as ``basicParameterBuilder_P11({id, number})``,
+    where the builder destructures its argument and returns an object from a statement
+    block. Without this the call stays leftover text and the token resolves to nothing.
+    """
+    params = node.child_by_field_name("parameter") or node.child_by_field_name("parameters")
+    body = node.child_by_field_name("body")
+    if params is None or body is None:  # pragma: no cover
+        return None
+
+    pattern = params
+    if params.type == "formal_parameters":
+        named = params.named_children
+        if len(named) != 1:
+            return None
+        pattern = named[0]
+    if pattern.type not in {"identifier", "object_pattern"}:
+        return None
+    if not _arrow_body_builds_object(code, body):
+        return None
+
+    def _factory(
+        arg: Any,
+        *,
+        _pattern: Node = pattern,
+        _body: Node = body,
+        _code: bytes = code,
+        _bindings: dict[str, Any] | None = bindings,
+    ) -> Any:
+        local = dict(_bindings or {})
+        if _pattern.type == "identifier":
+            local[_node_text(_code, _pattern)] = arg
+        else:
+            local.update(_pattern_bindings(_code, _pattern, arg, local))
+        return _eval_arrow_body(_code, _body, local)
+
+    return _factory
+
+
 def _walk(node: Node) -> Iterable[Node]:
     """Depth-first traversal of tree-sitter Node tree.
 
@@ -734,6 +922,11 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
     if t == "object":
         obj: dict[str, Any] = {}
         for prop in node.named_children:
+            if prop.type == "spread_element" and prop.named_children:
+                spread = _node_to_python(code, prop.named_children[0], bindings)
+                if isinstance(spread, Mapping):
+                    obj.update(spread)
+                continue
             if prop.type != "pair":
                 continue
             key_node = prop.child_by_field_name("key")
@@ -801,30 +994,25 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         return public_leftover if public_leftover is not None else leftover
 
     if t == "arrow_function":
-        param_node = node.child_by_field_name("parameter")
-        body_node = node.child_by_field_name("body")
-        if param_node is not None and param_node.type == "identifier" and body_node is not None:
-            object_body = body_node
-            if object_body.type == "parenthesized_expression" and object_body.named_children:
-                object_body = object_body.named_children[0]
-            if object_body.type == "object":
-                param_name = _node_text(code, param_node)
-
-                def _item_factory(
-                    arg: Any,
-                    *,
-                    _param: str = param_name,
-                    _body: Node = object_body,
-                    _code: bytes = code,
-                    _bindings: dict[str, Any] | None = bindings,
-                ) -> Any:
-                    local_bindings = dict(_bindings or {})
-                    local_bindings[_param] = arg
-                    return _node_to_python(_code, _body, local_bindings)
-
-                return _item_factory
+        factory = _build_arrow_factory(code, node, bindings)
+        if factory is not None:
+            return factory
         raw_function = _node_text(code, node)
         return _build_factory_callable(raw_function, bindings)
+
+    if t == "binary_expression":
+        operator = node.child_by_field_name("operator")
+        left_node = node.child_by_field_name("left")
+        right_node = node.child_by_field_name("right")
+        if operator is None or left_node is None or right_node is None:  # pragma: no cover
+            return _node_text(code, node)
+        if _node_text(code, operator) == "+":
+            joined = _js_concat(
+                _node_to_python(code, left_node, bindings),
+                _node_to_python(code, right_node, bindings),
+            )
+            if joined is not None:
+                return joined
 
     if t == "call_expression":
         func_node = node.child_by_field_name("function")
@@ -1863,9 +2051,9 @@ class LiveAssetsCatalog:
             "min": min_paths,
             "max": max_paths,
         }
-        component = obj.get("componentType")
+        component = _normalize_literal(obj.get("componentType"))
         if component is None:
-            component = obj.get("useComponent")
+            component = _normalize_literal(obj.get("useComponent"))
         units_raw: Any = obj.get("units")
         if units_raw is None:
             units_raw = obj.get("unit_name")
