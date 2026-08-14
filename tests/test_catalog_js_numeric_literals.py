@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
+from pybragerone.api.client import BragerOneApiClient
 from pybragerone.models.catalog import (
     _TS,
     LiveAssetsCatalog,
@@ -20,7 +23,7 @@ class _DummyApi:
 
 
 def _catalog() -> LiveAssetsCatalog:
-    return LiveAssetsCatalog(_DummyApi())  # type: ignore[arg-type]
+    return LiveAssetsCatalog(cast(BragerOneApiClient, _DummyApi()))
 
 
 @pytest.mark.parametrize(
@@ -87,8 +90,8 @@ def test_node_to_python_resolves_hex_object_keys_and_values() -> None:
     assert parsed["31"] == 42
 
 
-def test_node_to_python_keeps_unparseable_number_text() -> None:
-    """A literal we cannot interpret degrades to its source text rather than vanishing."""
+def test_node_to_python_parses_numeric_separators_in_values() -> None:
+    """Separators are grouping only, so `1_0` is the number ten, not the text `1_0`."""
     js = b"const t={'a':1_0};"
     tree = _TS().parse(js)
     value_node = tree.root_node.named_children[0].named_children[0].child_by_field_name("value")
