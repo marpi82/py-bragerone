@@ -13,8 +13,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   ``list_language_config()`` works against the current ``index-*.js`` bundle.
 - Resolve i18n chunks whose Vite hash contains or ends with a hyphen
   (``info-Bpu026-3.js``, ``tariff-Db9Vj8s-.js``).
-- Warn when the units descriptor table, an i18n namespace, or leftover ``\\x`` /
-  ``\\u`` / ``\\u{...}`` sequences indicate that upstream assets changed shape.
+- Warn when the units descriptor table, an i18n namespace, or leftover ``\\xNN`` /
+  ``\\uNNNN`` / ``\\u{...}`` sequences indicate that upstream assets changed shape.
 - Make the scheduled upstream-assets watch fail when language config, the
   descriptor table, or the ``units`` namespace parse empty.
 - Apply the unit-66 HH:MM formatter to the obfuscated live spelling
@@ -24,6 +24,9 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   ``_0xac50fa=>_0xac50fa-0x7f``).
 - Route the string-based catalog JS-value helpers through the bytes parsers so
   quoted keys and hex literals cannot drift between the two copies.
+- Collapse ``_0x…['DISPLAY_*']`` / ``_0x…['equalTo']`` to the public name, but keep
+  ``arr['map']`` and ``Math['floor']`` as leftover source for menu ``array['map']``
+  unwrapping.
 
 ## [2026.8.1] - 2026-08-08
 

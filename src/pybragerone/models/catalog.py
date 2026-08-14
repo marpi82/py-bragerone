@@ -443,7 +443,7 @@ def _property_name(code: bytes, key_node: Node) -> str:
     return raw
 
 
-_JS_ESCAPE_LEAK_RE = re.compile(r"\\(?:x[0-9a-fA-F]|u\{[0-9a-fA-F]+\}|u[0-9a-fA-F])")
+_JS_ESCAPE_LEAK_RE = re.compile(r"\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4})")
 
 
 def _count_js_escape_leaks(value: Any) -> int:
@@ -451,6 +451,7 @@ def _count_js_escape_leaks(value: Any) -> int:
 
     After a successful parse those sequences should already have been decoded. A
     leftover leak means a new escape form slipped past ``_decode_js_escapes``.
+    Incomplete fragments such as ``\\x2`` or ``\\u00`` are not JS escapes.
     """
     if isinstance(value, str):
         return 1 if _JS_ESCAPE_LEAK_RE.search(value) else 0
@@ -707,15 +708,16 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         index_node = node.child_by_field_name("index")
         if index_node is not None and _is_string(index_node):
             public = _string_value(_node_text(code, index_node))
-            # Import aliases: ``_0x521864['DISPLAY_MENU_DHW']``. Leave ``array['map']`` intact
-            # so call expressions can still see the receiver (issue #285).
+            # Import aliases: ``_0x521864['DISPLAY_MENU_DHW']``. Leave ``arr['map']`` and
+            # ``Math['floor']`` as leftover source so issue #285 can still see the receiver.
             if obj_node is not None and obj_node.type == "identifier":
                 obj_name = _node_text(code, obj_node)
                 if bindings and obj_name in bindings:
                     obj_val = bindings[obj_name]
                     if isinstance(obj_val, Mapping) and public in obj_val:
                         return obj_val[public]
-                return public
+                if obj_name.startswith("_0x"):
+                    return public
         leftover = _node_text(code, node)
         public_leftover = js_public_member_name(leftover)
         return public_leftover if public_leftover is not None else leftover

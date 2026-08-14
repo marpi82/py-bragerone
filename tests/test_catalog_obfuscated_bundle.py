@@ -115,6 +115,9 @@ def test_count_js_escape_leaks_walks_nested_values() -> None:
     assert _count_js_escape_leaks({"0": " ", "1": "a\\u00a0b"}) == 1
     assert _count_js_escape_leaks([{"x": "ok"}, {"y": "\\x0a"}]) == 1
     assert _count_js_escape_leaks("emoji \\u{1F4A9}") == 1
+    assert _count_js_escape_leaks("\\x2") == 0
+    assert _count_js_escape_leaks("\\u00") == 0
+    assert _count_js_escape_leaks("\\u00a0") == 1
     assert _count_js_escape_leaks(0) == 0
     assert _count_js_escape_leaks(None) == 0
 
@@ -350,6 +353,18 @@ def test_node_to_python_does_not_collapse_array_map_subscript() -> None:
     sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
     parsed = _node_to_python(code, sub)
     assert parsed == "['PARAM_1']['map']"
+
+
+def test_node_to_python_does_not_collapse_identifier_method_subscript() -> None:
+    """``arr['map']`` is a method lookup, not an obfuscated ``_0x…['ENUM']`` alias."""
+    code = b"const v=arr['map'];"
+    tree = _catalog()._ts.parse(code)
+    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(code, sub) == "arr['map']"
+    math_floor = b"const v=Math['floor'];"
+    math_tree = _catalog()._ts.parse(math_floor)
+    math_sub = next(node for node in _walk(math_tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(math_floor, math_sub) == "Math['floor']"
 
 
 def test_node_to_python_resolves_identifier_subscript_from_bindings() -> None:

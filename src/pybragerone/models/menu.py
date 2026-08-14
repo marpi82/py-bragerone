@@ -14,7 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .api.common import Permission
 
 # Obfuscated bundles keep the public name as a string index: ``_0xabc['DISPLAY_MENU_DHW']``.
-_JS_SUBSCRIPT_PUBLIC_RE = re.compile(r"^(?:\[)?[A-Za-z_$][\w$]*\[(['\"])(?P<name>[A-Za-z_][\w]*)\1\](?:\])?$")
+# Require the ``_0x…`` receiver so ``arr['map']`` / ``Math['floor']`` stay leftover source.
+_JS_SUBSCRIPT_PUBLIC_RE = re.compile(r"^(?:\[)?_0x[0-9a-fA-F]*\[(['\"])(?P<name>[A-Za-z_][\w]*)\1\](?:\])?$")
 
 
 def js_public_member_name(value: str) -> str | None:
