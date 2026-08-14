@@ -7,7 +7,7 @@ import io
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Protocol, TextIO, cast
+from typing import Protocol, TextIO, cast
 
 import pytest
 
@@ -56,7 +56,7 @@ class _UpstreamScript(Protocol):
         """Pick PARAM_* sample tokens."""
         ...
 
-    def _count_mangled_param_semantics(self, param_maps: Mapping[str, Any]) -> int:
+    def _count_mangled_param_semantics(self, param_maps: Mapping[str, ParamMap]) -> int:
         """Count sampled PARAM_* maps that still carry leftover ``_0x`` text."""
         ...
 
