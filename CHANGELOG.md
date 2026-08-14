@@ -35,8 +35,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   ``deviceMenu`` 153 and 2190 even with ``permissions=None``.
 - Recover ``PARAM_*`` / ``STATUS_*`` tokens from leftover ``array['map']`` source in
   either quote style, and never treat other quoted upper-case literals as parameters.
-- Collapse obfuscated helper calls only for ``_0x…(READ|WRITE|STATUS, PARAM_*)``, so a
-  readable ``foo('WRITE', 'PARAM_45')`` keeps its semantics.
+- Collapse obfuscated helper calls only for ``_0x…(READ|WRITE|STATUS, PARAM_*|STATUS_*)``,
+  so a readable ``foo('WRITE', 'PARAM_45')`` keeps its semantics.
 - Resolve computed property names (``{[_0x4d7e32['INVISIBLE']]: …}``) to the public
   key, so ``PARAM_*`` status conditions are addressable.
 - Normalize the minified boolean spellings ``![]`` and ``!![]`` alongside ``!0`` /
