@@ -11,6 +11,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
@@ -19,11 +20,19 @@ from typing import Protocol, TextIO
 
 from pybragerone import BragerOneApiClient
 from pybragerone.models.api import SystemVersion
-from pybragerone.models.catalog import INDEX_ASSET_RE, LiveAssetsCatalog, ParamMap, _count_js_escape_leaks
+from pybragerone.models.catalog import (
+    _PUBLIC_PARAM_PATTERN,
+    INDEX_ASSET_RE,
+    LiveAssetsCatalog,
+    ParamMap,
+    _count_js_escape_leaks,
+)
 from pybragerone.models.menu import MenuResult
 
 _SAMPLE_LIMIT = 3
 _ISSUE_FINGERPRINT_SEP = "|"
+# Keep the upstream watch token gate identical to catalog leftover/helper matching.
+_PARAM_TOKEN_RE = re.compile(_PUBLIC_PARAM_PATTERN)
 _WATCH_MENU_PERMISSIONS = frozenset(
     {
         "DISPLAY_PARAMETER_LEVEL_1",
@@ -75,6 +84,7 @@ class UpstreamProbe:
     menu_gated_tokens: int = -1
     menu_permissions_ok: bool = True
     param_semantics_mangled: int = 0
+    inline_param_tokens: int = -1
 
 
 def build_fingerprint(*, api_version: str, index_asset: str) -> str:
@@ -202,6 +212,11 @@ async def _parse_live_catalog(api: _PublicCatalogClient, probe: UpstreamProbe, *
     probe.descriptor_table_count = len(table)
     probe.units_count = len(units_map)
     probe.escape_leaks = _count_js_escape_leaks(units_map)
+    # Inline tokens never appear as asset basenames, so `pick_sample_tokens` cannot reach
+    # them. They were 91 of 100 descriptors on a live device, yet the watch stayed green
+    # through a total outage of that path — count them explicitly.
+    inline_maps = catalog._parse_index_token_raw_maps(catalog._idx.index_bytes)
+    probe.inline_param_tokens = sum(1 for token in inline_maps if _PARAM_TOKEN_RE.fullmatch(token))
     if 0 in catalog._idx.menu_map:
         ungated = await catalog.get_module_menu(0, permissions=None)
         gated = await catalog.get_module_menu(0, permissions=_WATCH_MENU_PERMISSIONS)
@@ -244,6 +259,7 @@ def write_github_output(probe: UpstreamProbe, stream: TextIO) -> None:
     stream.write(f"units_count={probe.units_count}\n")
     stream.write(f"escape_leaks={probe.escape_leaks}\n")
     stream.write(f"param_semantics_mangled={probe.param_semantics_mangled}\n")
+    stream.write(f"inline_param_tokens={probe.inline_param_tokens}\n")
 
 
 def assert_probe_ok(probe: UpstreamProbe) -> None:
@@ -273,6 +289,10 @@ def assert_probe_ok(probe: UpstreamProbe) -> None:
         raise RuntimeError("upstream probe: units i18n namespace is empty")
     if probe.escape_leaks:
         raise RuntimeError(f"upstream probe: {probe.escape_leaks} JS escape leaks in units i18n")
+    if probe.inline_param_tokens == 0:
+        raise RuntimeError(
+            "upstream probe: no inline PARAM_*/STATUS_* tokens parsed from the index; the inline parameter shape changed again"
+        )
     if probe.menu_gated_tokens >= 0:
         if not probe.menu_permissions_ok:
             raise RuntimeError("upstream probe: menu 0 permissionModule still contains leftover _0x subscript text")

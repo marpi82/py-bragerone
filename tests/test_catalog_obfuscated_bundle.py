@@ -12,6 +12,7 @@ import logging
 from typing import cast
 
 import pytest
+from tree_sitter import Node
 
 from pybragerone.api.client import BragerOneApiClient
 from pybragerone.models.catalog import (
@@ -19,7 +20,9 @@ from pybragerone.models.catalog import (
     LiveAssetsCatalog,
     _collect_bindings,
     _count_js_escape_leaks,
+    _eval_arrow_body,
     _i18n_import_base_and_hash,
+    _js_concat,
     _node_to_python,
     _walk,
 )
@@ -538,3 +541,166 @@ def test_component_type_prefers_explicit_field_over_use_component() -> None:
     neither = catalog._build_param_map_from_obj({"PARAM_X": {"group": "P4"}}, "PARAM_X", "test")
     assert neither is not None
     assert neither.component_type is None
+
+
+_LIVE_PARAM_BUILDERS = b"""
+const IconsList={'INFO':'INFO'},ParameterStatus={'INVISIBLE':'INVISIBLE'},
+basicParameterBuilder_P11=({id:_0x581f65,icon:icon=IconsList['INFO'],number:_0x5273a8,
+    useComponent:useComponent=void 0x0,status:status={}})=>{
+  const _0x888193={'id':_0x581f65,'icon':icon,'name':'parameters.PARAM_P11_'+_0x5273a8,
+    'value':[{'group':'P11','number':_0x5273a8,'use':'v'}],
+    'status':{...{[ParameterStatus['INVISIBLE']]:[{'group':'P11','number':_0x5273a8,'use':'s','bit':0x7}]},...status},
+    'useComponent':useComponent};
+  return _0x888193;
+},
+paramTable={'PARAM_P11_1':basicParameterBuilder_P11({'id':0x1268919fb79d,'number':0x1}),
+  'PARAM_P11_9':basicParameterBuilder_P11({'id':0x1268919fb7a5,'number':0x9,'useComponent':'SWITCH'})};
+"""
+
+
+def test_parameter_factory_builders_expand_to_param_maps() -> None:
+    """Live inline parameters are ``basicParameterBuilder_PX({id, number})`` calls."""
+    catalog = _catalog()
+    maps = catalog._parse_index_token_raw_maps(_LIVE_PARAM_BUILDERS)
+    assert "PARAM_P11_1" in maps
+    built = catalog._build_param_map_from_obj(dict(maps["PARAM_P11_1"]), "PARAM_P11_1", "test")
+    assert built is not None
+    assert built.raw["name"] == "parameters.PARAM_P11_1"
+    assert built.paths["value"] == [{"group": "P11", "number": 1, "use": "v"}]
+    assert built.status_conditions is not None
+    assert next(iter(built.status_conditions.values()))[0]["bit"] == 7
+    # `useComponent: void 0x0` is undefined, not a component name.
+    assert built.component_type is None
+    override = catalog._build_param_map_from_obj(dict(maps["PARAM_P11_9"]), "PARAM_P11_9", "test")
+    assert override is not None
+    assert override.component_type == "SWITCH"
+    assert override.raw["name"] == "parameters.PARAM_P11_9"
+
+
+def test_arrow_factory_keeps_non_object_bodies_as_source() -> None:
+    """Unit transforms must stay source text; only object-building arrows become callables."""
+    catalog = _catalog()
+    transform = b"const t=_0x2=>Number(_0x2*0.1)['toFixed'](0x1);"
+    tree = catalog._ts.parse(transform)
+    arrow = next(node for node in _walk(tree.root_node) if node.type == "arrow_function")
+    assert isinstance(_node_to_python(transform, arrow), str)
+    block_number = b"const t=(_0x2)=>{const _0x3=_0x2*2;return _0x3;};"
+    block_tree = catalog._ts.parse(block_number)
+    block_arrow = next(node for node in _walk(block_tree.root_node) if node.type == "arrow_function")
+    assert isinstance(_node_to_python(block_number, block_arrow), str)
+
+
+def test_object_spread_and_string_concat() -> None:
+    """Object spread merges maps and ``'a'+n`` builds the i18n name token."""
+    code = b"const base={'a':1};const o={...base,'b':'p_'+0x2,'c':1+2,'d':base};"
+    tree = _catalog()._ts.parse(code)
+    bindings = _collect_bindings(code, tree.root_node)
+    obj = [n for n in _walk(tree.root_node) if n.type == "object"][1]
+    parsed = _node_to_python(code, obj, bindings)
+    assert parsed == {"a": 1, "b": "p_2", "c": 3, "d": {"a": 1}}
+
+
+def test_object_spread_ignores_non_mapping_and_keeps_unknown_operators() -> None:
+    """A spread of a non-object contributes nothing; ``-`` is not concatenation."""
+    code = b"const o={...missing,'a':1};const d='x'-1;const e=[1]+2;"
+    tree = _catalog()._ts.parse(code)
+    obj = next(n for n in _walk(tree.root_node) if n.type == "object")
+    assert _node_to_python(code, obj) == {"a": 1}
+    minus = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(code, minus) == "'x'-1"
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "expected"),
+    [
+        (1, 2, 3),
+        (1.5, 2, 3.5),
+        ("a", "b", "ab"),
+        ("p_", 2, "p_2"),
+        (2, "_p", "2_p"),
+        ("v", 1.0, "v1"),
+        ("v", 1.5, "v1.5"),
+        ("v", True, "vtrue"),
+        ("v", False, "vfalse"),
+        (True, 1, None),
+        (1, True, None),
+        ("v", None, None),
+        ("v", [1], None),
+        (None, None, None),
+    ],
+)
+def test_js_concat_covers_primitive_combinations(left: object, right: object, expected: object) -> None:
+    """``+`` adds numbers, joins strings, and refuses anything it cannot represent."""
+    assert _js_concat(left, right) == expected
+
+
+def _arrow(catalog: LiveAssetsCatalog, js: bytes) -> tuple[bytes, Node]:
+    """Return the first arrow function node in ``js``."""
+    tree = catalog._ts.parse(js)
+    return js, next(node for node in _walk(tree.root_node) if node.type == "arrow_function")
+
+
+@pytest.mark.parametrize(
+    ("js", "arg", "expected"),
+    [
+        (b"const f=({a})=>({'x':a});", {"a": 1}, {"x": 1}),
+        (b"const f=({a})=>({'x':a});", {}, {"x": None}),
+        (b"const f=({a=7})=>({'x':a});", {}, {"x": 7}),
+        (b"const f=({a:b=7})=>({'x':b});", {"a": 2}, {"x": 2}),
+        (b"const f=({a:b})=>({'x':b});", {"a": 3}, {"x": 3}),
+        (b"const f=({...rest})=>({'x':1});", {"a": 3}, {"x": 1}),
+        (b"const f=(v)=>({'x':v});", 5, {"x": 5}),
+        (b"const f=({a})=>{return {'x':a};};", {"a": 4}, {"x": 4}),
+        (b"const f=({a})=>{const o={'x':a};return o;};", {"a": 6}, {"x": 6}),
+    ],
+)
+def test_arrow_factory_binds_parameter_shapes(js: bytes, arg: object, expected: object) -> None:
+    """Destructured, shorthand, defaulted and plain parameters all bind."""
+    code, node = _arrow(_catalog(), js)
+    factory = _node_to_python(code, node)
+    assert callable(factory)
+    assert factory(arg) == expected
+
+
+@pytest.mark.parametrize(
+    "js",
+    [
+        b"const f=({a})=>a;",  # body is not an object
+        b"const f=(a,b)=>({'x':a});",  # more than one parameter
+        b"const f=([a])=>({'x':a});",  # array pattern is not supported
+        b"const f=({a})=>{const o=1;return o;};",  # returned identifier is not an object
+        b"const f=({a})=>{return;};",  # bare return
+        b"const f=({a})=>{const o={'x':a};};",  # no return statement
+        b"const f=({a})=>{return f(a);};",  # returns a call, not an object
+    ],
+)
+def test_arrow_factory_declines_non_object_builders(js: bytes) -> None:
+    """Only arrows that provably build an object become callables."""
+    code, node = _arrow(_catalog(), js)
+    assert not callable(_node_to_python(code, node))
+
+
+def test_arrow_factory_ignores_unrelated_statements_in_the_block() -> None:
+    """A block may hold statements the parser does not model before the return."""
+    code, node = _arrow(_catalog(), b"const f=({a})=>{let q;q=1;const o={'x':a};return o;};")
+    factory = _node_to_python(code, node)
+    assert callable(factory)
+    assert factory({"a": 9}) == {"x": 9}
+
+
+def test_eval_arrow_body_returns_none_without_a_return_statement() -> None:
+    """A block that never returns yields None; the factory path rejects it earlier."""
+    catalog = _catalog()
+    code = b"const f=({a})=>{const o={'x':a};};"
+    _, arrow = _arrow(catalog, code)
+    body = arrow.child_by_field_name("body")
+    assert body is not None
+    assert _eval_arrow_body(code, body, {}) is None
+
+
+def test_string_concat_declines_non_primitive_operands() -> None:
+    """``[1]+2`` has no representation this parser will invent."""
+    code = b"const e=[1]+2;"
+    tree = _catalog()._ts.parse(code)
+    node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(code, node) == "[1]+2"
