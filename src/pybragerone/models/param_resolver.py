@@ -33,8 +33,9 @@ _JS_RADIX_LITERAL_RE = re.compile(r"(?<![\w$.])0(?:[xX][0-9a-fA-F]+|[oO][0-7]+|[
 # Unit 66: HH:MM formatter. Identifiers and quotes vary; these two pieces do not.
 _UNIT66_PADSTART_RE = re.compile(r"padStart\(2,['\"]0['\"]\)")
 _UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
-# Bare menu title tokens (``MAINMENU_*``, ``MENUSERWIS_*``, …) — not dotted i18n paths.
-_MENU_TITLE_TOKEN_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+# Bare menu-title i18n namespaces (``MAINMENU_*``, ``MENUSERWIS_*``, ``MENU_*``, …).
+# Require the known prefixes so abbreviations like ``DHW`` do not trigger asset fetches.
+_MENU_TITLE_TOKEN_RE = re.compile(r"^(?:MAINMENU|MENUSERWIS|MENUPALNIKA|MENU)_[A-Z0-9_]+$")
 
 
 class AssetsProtocol(Protocol):

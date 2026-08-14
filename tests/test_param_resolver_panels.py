@@ -230,6 +230,7 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
     from typing import Any, cast
     from unittest.mock import AsyncMock
 
+    from pybragerone.models.i18n import I18nResolver
     from pybragerone.models.param import ParamStore
     from pybragerone.models.param_resolver import AssetsProtocol
 
@@ -327,7 +328,12 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
 
     assets = AsyncMock()
     assets.get_module_menu = AsyncMock(return_value=menu)
-    resolver = ParamResolver(store=ParamStore(), assets=cast(AssetsProtocol, assets), lang="pl", i18n=_StubI18n())  # type: ignore[arg-type]
+    resolver = ParamResolver(
+        store=ParamStore(),
+        assets=cast(AssetsProtocol, assets),
+        lang="pl",
+        i18n=cast(I18nResolver, _StubI18n()),
+    )
     title_i18n = await resolver._panel_title_i18n(menu)
     assert title_i18n["MAINMENU_MENU_TERMOSTATU"] == "Menu termostatów"
     assert title_i18n["MAINMENU_MENU_BUFOR"] == "Menu bufor"

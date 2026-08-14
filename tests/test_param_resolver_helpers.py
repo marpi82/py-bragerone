@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from pybragerone.models.menu import MenuResult
 from pybragerone.models.param import ParamStore
@@ -598,9 +598,10 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
         routes=[
             SimpleNamespace(name=123, meta=SimpleNamespace(display_name=None), children=[]),
             SimpleNamespace(name="MAINMENU_OK", meta=SimpleNamespace(display_name=99), children=[]),
+            SimpleNamespace(name="DHW", meta=SimpleNamespace(display_name="CWU"), children=[]),
         ]
     )
-    assert ParamResolver._collect_menu_title_tokens(junk_menu) == {"MAINMENU_OK"}  # type: ignore[arg-type]
+    assert ParamResolver._collect_menu_title_tokens(cast(MenuResult, junk_menu)) == {"MAINMENU_OK"}
 
     assert ParamResolver._string_namespace_title("MAINMENU_X", {"MAINMENU_X": "Title"}) == "Title"
     assert ParamResolver._string_namespace_title("MAINMENU_X", {"__default__": "Title"}) == "Title"
