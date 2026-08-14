@@ -68,6 +68,14 @@ def test_decode_js_escapes_replaces_lone_surrogates() -> None:
     assert _decode_js_escapes(r"\ud83dtail") == "\ufffdtail"
 
 
+def test_decode_js_escapes_rejects_malformed_surrogate_pairs() -> None:
+    """A high surrogate followed by something other than a low surrogate is not a pair."""
+    # Second escape is a valid code point, but outside the low-surrogate range.
+    assert _decode_js_escapes(r"\ud83d\u0041") == "\ufffdA"
+    # Second escape is not readable as hex at all.
+    assert _decode_js_escapes(r"\ud83d\uZZZZ") == "\ufffduZZZZ"
+
+
 def test_decode_js_escapes_drops_line_continuations() -> None:
     """A backslash before a newline continues the literal and contributes nothing."""
     assert _decode_js_escapes("one\\\ntwo") == "onetwo"
