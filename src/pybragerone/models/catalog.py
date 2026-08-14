@@ -2257,6 +2257,10 @@ class LiveAssetsCatalog:
                     bindings[name] = _node_to_python(code, value_node, bindings)
 
             translations: Any | None = None
+            # When the default export is a single string (common for MAINMENU_* title
+            # namespaces), remember the exported binding name so callers can look the
+            # title up as ``namespace[token]``.
+            default_export_name: str | None = None
 
             # Prefer explicit `export default <expr>` if present.
             for child in root.named_children:
@@ -2265,6 +2269,10 @@ class LiveAssetsCatalog:
                 value_node = child.child_by_field_name("value")
                 if value_node is not None:
                     translations = _node_to_python(code, value_node, bindings)
+                    if value_node.type == "identifier":
+                        ident = _node_text(code, value_node).strip()
+                        if ident:
+                            default_export_name = ident
                     break
 
             if translations is None:
@@ -2274,6 +2282,7 @@ class LiveAssetsCatalog:
                 )
                 if match:
                     default_name = match.group(1)
+                    default_export_name = default_name
                     candidate = bindings.get(default_name)
                     if candidate is not None:
                         translations = candidate
@@ -2285,6 +2294,16 @@ class LiveAssetsCatalog:
 
             if isinstance(translations, dict):
                 return translations
+
+            # Upstream ships some language packs as a string default export, e.g.
+            # ``const MAINMENU_MENU_TERMOSTATU='Menu\x20termostatów';export{… as default}``.
+            # Wrap those as a one-key object so ``get_i18n`` stays dict-typed.
+            if isinstance(translations, str):
+                cleaned = translations.strip()
+                if not cleaned:
+                    return {}
+                key = default_export_name if default_export_name else "__default__"
+                return {key: cleaned}
 
             if translations is not None:
                 self._log.warning("i18n export is not an object: %s", type(translations))

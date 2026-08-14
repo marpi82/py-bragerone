@@ -223,3 +223,75 @@ def test_build_panel_groups_from_menu_all_panels_uses_parent_child_titles_for_du
     assert all("(" not in key and ")" not in key for key in groups)
     assert groups["Zawory/Zawór 1"] == ["PARAM_531"]
     assert groups["Termostaty/Zawór 1"] == ["PARAM_541"]
+
+
+async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
+    """Bare MAINMENU_* tokens resolve from string-default namespaces and menu pack."""
+    from typing import Any, cast
+    from unittest.mock import AsyncMock
+
+    from pybragerone.models.param import ParamStore
+    from pybragerone.models.param_resolver import AssetsProtocol
+
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "thermostats",
+                    "name": "MAINMENU_MENU_TERMOSTATU",
+                    "meta": {
+                        "displayName": "MAINMENU_MENU_TERMOSTATU",
+                        "parameters": {
+                            "read": [{"parameter": "E(A.READ,'PARAM_1')"}],
+                        },
+                    },
+                    "children": [
+                        {
+                            "path": "pump",
+                            "name": "modules.menu.thermostat.pump",
+                            "meta": {
+                                "displayName": "routes.modules.menu.thermostat.pump",
+                                "parameters": {
+                                    "write": [{"parameter": "E(A.WRITE,'PARAM_2')"}],
+                                },
+                            },
+                        }
+                    ],
+                },
+                {
+                    "path": "buffer",
+                    "name": "MAINMENU_MENU_BUFOR",
+                    "meta": {
+                        "displayName": "MAINMENU_MENU_BUFOR",
+                        "parameters": {
+                            "read": [{"parameter": "E(A.READ,'PARAM_3')"}],
+                        },
+                    },
+                },
+            ]
+        }
+    )
+
+    namespaces: dict[str, dict[str, Any]] = {
+        "routes": {"modules": {"menu": {"thermostat": {"pump": "Pompa CO"}}}},
+        "menu": {"MAINMENU_MENU_BUFOR": "Menu bufor"},
+        "MAINMENU_MENU_TERMOSTATU": {"MAINMENU_MENU_TERMOSTATU": "Menu termostatów"},
+    }
+
+    class _StubI18n:
+        async def get_namespace(self, namespace: str, *, lang: str | None = None) -> dict[str, Any]:
+            return dict(namespaces.get(namespace, {}))
+
+    assets = AsyncMock()
+    resolver = ParamResolver(store=ParamStore(), assets=cast(AssetsProtocol, assets), lang="pl", i18n=_StubI18n())  # type: ignore[arg-type]
+    title_i18n = await resolver._panel_title_i18n(menu)
+    assert title_i18n["MAINMENU_MENU_TERMOSTATU"] == "Menu termostatów"
+    assert title_i18n["MAINMENU_MENU_BUFOR"] == "Menu bufor"
+
+    groups = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True, routes_i18n=title_i18n)
+    assert "Menu termostatów/Pompa CO" in groups
+    assert "Menu bufor" in groups
+    assert ParamResolver._collect_menu_title_tokens(menu) == {
+        "MAINMENU_MENU_TERMOSTATU",
+        "MAINMENU_MENU_BUFOR",
+    }

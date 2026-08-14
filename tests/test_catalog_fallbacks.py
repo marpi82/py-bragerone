@@ -242,6 +242,11 @@ def test_parse_i18n_from_js_handles_export_styles_and_failures(monkeypatch: pyte
     assert catalog._parse_i18n_from_js(b"export default 12;") == {}
     assert catalog._parse_i18n_from_js(b"const only = { a: 1 };") == {"a": 1}
 
+    string_ns = "const MAINMENU_MENU_TERMOSTATU='Menu\\x20termostatów';export{MAINMENU_MENU_TERMOSTATU as default};\n".encode()
+    assert catalog._parse_i18n_from_js(string_ns) == {"MAINMENU_MENU_TERMOSTATU": "Menu termostatów"}
+    assert catalog._parse_i18n_from_js(b'export default "Bare title";') == {"__default__": "Bare title"}
+    assert catalog._parse_i18n_from_js(b"export default '';") == {}
+
     class _BoomTS:
         def parse(self, _code: bytes) -> Any:
             raise RuntimeError("parse failed")
