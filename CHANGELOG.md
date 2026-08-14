@@ -7,6 +7,23 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.8.6] - 2026-08-14
+
+### Fixed
+
+- Map unit option keys such as ``BoilerState['STOP']`` to cleaned computed tags
+  (``STOP``) when resolving STATUS value labels, then follow i18n tokens like
+  ``app.one.burnerState.0``. Without this, ``STATUS_P5_0`` kept ``value_label=None``
+  and Home Assistant showed raw ``STOP`` (and after first-letter lowercasing,
+  ``sTOP``) instead of ``Stop`` / ``Praca`` (#301).
+- Reject ``wn.<digits>`` strings in ``I18nResolver.normalize_unit_value`` so
+  bootstrap probes like ``wn.9998`` are not treated as display units (#301).
+- Evaluate index-inline STATUS rule leftovers such as ``ClauseOperation['equalTo']``
+  and ``DiodeState['OFF']`` / ``ThreeWayValveState['DISABLED']``. Dedicated
+  ``STATUS_*.js`` assets already emit cleaned ``equalTo`` / ``ON`` tokens, so those
+  kept working while six inline statuses (``STATUS_P5_10/11/12/19/20/21``) resolved
+  to ``None`` and were dropped at HA bootstrap as ``no_display_value`` (#302).
+
 ## [2026.8.5] - 2026-08-14
 
 ### Fixed
