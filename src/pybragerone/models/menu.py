@@ -62,7 +62,6 @@ class MenuParameter(BaseModel):
 
     # Prefixes like "A." / "e." are build artifacts; treat any short leading segment as a prefix.
     PREFIX_RE: ClassVar[re.Pattern[str]] = re.compile(r"^(?P<prefix>[A-Za-z]{1,3})\.(?P<rest>.+)$")
-    SUBSCRIPT_NAME_RE: ClassVar[re.Pattern[str]] = _JS_SUBSCRIPT_PUBLIC_RE
 
     @classmethod
     def _strip_prefix(cls, value: str) -> str:
