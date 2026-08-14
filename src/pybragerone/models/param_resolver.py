@@ -30,6 +30,9 @@ _STATUS_POOL_RE = re.compile(r"^STATUS_P(?P<pool>\d+)_(?P<idx>\d+)$")
 _JS_BRACKET_MEMBER_RE = re.compile(r"\[\s*['\"]([A-Za-z_$][\w$]*)['\"]\s*\]")
 # Radix literals only; the lookbehind keeps mangled identifiers such as `_0x4fdb4d` intact.
 _JS_RADIX_LITERAL_RE = re.compile(r"(?<![\w$.])0(?:[xX][0-9a-fA-F]+|[oO][0-7]+|[bB][01]+)")
+# Unit 66: HH:MM formatter. Identifiers and quotes vary; these two pieces do not.
+_UNIT66_PADSTART_RE = re.compile(r"padStart\(2,['\"]0['\"]\)")
+_UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
 
 
 class AssetsProtocol(Protocol):
@@ -830,25 +833,54 @@ class ParamResolver:
             shift = -offset if affine_match.group(2) == "-" else offset
             return _NumericTransform(shift=shift, factor=factor, precision=precision)
 
+        # Shift-only, e.g. unit 47 ``x => x - 127`` / ``_0xac50fa=>_0xac50fa-0x7f``.
+        shift_only = re.match(rf"^({var_name})([+-])([+-]?(?:\d+\.\d+|\d+|\.\d+))$", body_norm)
+        if shift_only is not None:
+            offset = cls._to_float_literal(shift_only.group(3))
+            if offset is None:
+                return None
+            shift = -offset if shift_only.group(2) == "-" else offset
+            return _NumericTransform(shift=shift, factor=1.0, precision=precision)
+
         return None
 
     @classmethod
+    def _is_unit66_time_expr(cls, raw_expr: str) -> bool:
+        """Return True if *raw_expr* is the unit-66 HH:MM formatter.
+
+        The readable spelling hard-codes ``e`` and double quotes; the obfuscated
+        bundle mangles the identifier, hex-encodes the literals, and uses
+        ``Math['floor']`` / ``['padStart']``. After ``_normalize_js_expression``
+        both collapse to: a ``units.202.0`` zero-token, ``(x-1)*10``, and
+        ``padStart(2, ...)``.
+        """
+        collapsed = re.sub(r"\s+", "", cls._normalize_js_expression(raw_expr))
+        if "units.202.0" not in collapsed:
+            return False
+        if _UNIT66_PADSTART_RE.search(collapsed) is None:
+            return False
+        return _UNIT66_SHIFT_TEN_RE.search(collapsed) is not None
+
+    @classmethod
+    def _format_unit66_time(cls, raw_value: Any) -> Any:
+        """Format a unit-66 raw value as ``units.202.0`` or ``HH:MM``."""
+        if isinstance(raw_value, bool):
+            return raw_value
+        try:
+            numeric = int(float(raw_value))
+        except (TypeError, ValueError):
+            return raw_value
+        if numeric == 0:
+            return "units.202.0"
+        total_minutes = (numeric - 1) * 10
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+        return f"{hours:02d}:{minutes:02d}"
+
+    @classmethod
     def _apply_numeric_transform(cls, raw_value: Any, raw_expr: Any) -> Any:
-        if isinstance(raw_expr, str):
-            expr_norm = re.sub(r"\s+", "", raw_expr)
-            if 'if(e===0)return"units.202.0"' in expr_norm and "(e-1)*10" in expr_norm and 'padStart(2,"0")' in expr_norm:
-                if isinstance(raw_value, bool):
-                    return raw_value
-                try:
-                    numeric = int(float(raw_value))
-                except (TypeError, ValueError):
-                    return raw_value
-                if numeric == 0:
-                    return "units.202.0"
-                total_minutes = (numeric - 1) * 10
-                hours = total_minutes // 60
-                minutes = total_minutes % 60
-                return f"{hours:02d}:{minutes:02d}"
+        if isinstance(raw_expr, str) and cls._is_unit66_time_expr(raw_expr):
+            return cls._format_unit66_time(raw_value)
 
         if isinstance(raw_value, bool):
             return raw_value

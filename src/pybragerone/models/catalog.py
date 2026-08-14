@@ -2230,35 +2230,7 @@ class LiveAssetsCatalog:
         Looks for array elements that are objects with 'id' and 'flag' properties,
         which is the signature of language configuration entries.
         """
-        valid_entries = 0
-        total_objects = 0
-
-        for child in array_node.children:
-            if child.type == "object":
-                total_objects += 1
-                has_id = False
-                has_flag = False
-
-                for pair in child.children:
-                    if pair.type != "pair":
-                        continue
-
-                    key_node = pair.child_by_field_name("key")
-                    if not key_node:
-                        continue
-
-                    key_text = self._get_node_text(key_node, text)
-                    if key_text == "id":
-                        has_id = True
-                    elif key_text == "flag":
-                        has_flag = True
-
-                if has_id and has_flag:
-                    valid_entries += 1
-
-        # Consider it a translations array if most objects have the expected structure
-        threshold = total_objects * 0.7
-        return total_objects > 0 and valid_entries >= threshold
+        return self._is_translations_array_bytes(array_node, text.encode("utf-8"))
 
     def _extract_translations_array_bytes(self, obj_node: Node, js_bytes: bytes) -> list[dict[str, Any]] | None:
         """Extract translations array from language configuration object (bytes version)."""
@@ -2348,95 +2320,12 @@ class LiveAssetsCatalog:
 
     def _extract_translations_array(self, obj_node: Node, text: str) -> list[dict[str, Any]] | None:
         """Extract translations array from language configuration object."""
-        for pair in obj_node.children:
-            if pair.type == "pair":
-                key_node = pair.child_by_field_name("key")
-                if key_node and self._get_node_text(key_node, text) == "translations":
-                    value_node = pair.child_by_field_name("value")
-                    if value_node and value_node.type == "array":
-                        return self._parse_translations_array(value_node, text)
-        return None
+        return self._extract_translations_array_bytes(obj_node, text.encode("utf-8"))
 
     def _extract_default_translation(self, obj_node: Node, text: str) -> str | None:
         """Extract defaultTranslation from language configuration object."""
-        for pair in obj_node.children:
-            if pair.type == "pair":
-                key_node = pair.child_by_field_name("key")
-                if key_node and self._get_node_text(key_node, text) == "defaultTranslation":
-                    value_node = pair.child_by_field_name("value")
-                    if value_node and value_node.type == "string":
-                        # Remove quotes from string literal
-                        return self._get_node_text(value_node, text)
-        return None
-
-    def _parse_translations_array(self, array_node: Node, text: str) -> list[dict[str, Any]]:
-        """Parse the translations array into Python list of dicts."""
-        translations = []
-        for child in array_node.children:
-            if child.type == "object":
-                translation = self._parse_translation_object(child, text)
-                if translation:
-                    translations.append(translation)
-        return translations
-
-    def _parse_translation_object(self, obj_node: Node, text: str) -> dict[str, Any] | None:
-        """Parse a single translation object."""
-        translation = {}
-        for pair in obj_node.children:
-            if pair.type == "pair":
-                key_node = pair.child_by_field_name("key")
-                value_node = pair.child_by_field_name("value")
-                if key_node and value_node:
-                    key = self._get_node_text(key_node, text)
-                    value = self._parse_js_value(value_node, text)
-                    translation[key] = value
-        return translation if translation else None
+        return self._extract_default_translation_bytes(obj_node, text.encode("utf-8"))
 
     def _parse_js_value(self, node: Node, text: str) -> Any:
         """Parse a JavaScript value node into Python equivalent."""
-        if node.type == "string":
-            return self._get_node_text(node, text)
-        elif node.type == "number":
-            val_text = self._get_node_text(node, text)
-            parsed = _parse_js_number(val_text)
-            return val_text if parsed is None else parsed
-        elif node.type == "true":
-            return True
-        elif node.type == "false":
-            return False
-        elif node.type == "null":
-            return None
-        elif node.type == "object":
-            obj = {}
-            for pair in node.children:
-                if pair.type == "pair":
-                    key_node = pair.child_by_field_name("key")
-                    value_node = pair.child_by_field_name("value")
-                    if key_node and value_node:
-                        key = self._get_node_text(key_node, text)
-                        value = self._parse_js_value(value_node, text)
-                        obj[key] = value
-            return obj
-        elif node.type == "array":
-            arr = []
-            for child in node.children:
-                if child.type != "," and child.type != "[" and child.type != "]":
-                    arr.append(self._parse_js_value(child, text))
-            return arr
-        else:
-            # Fallback to raw text
-            return self._get_node_text(node, text)
-
-    def _get_node_text(self, node: Node, text: str) -> str:
-        """Extract text content of a node, unquoting and unescaping string literals."""
-        node_text = text[node.start_byte : node.end_byte]
-        # Remove quotes from string literals
-        if (
-            node.type == "string"
-            and len(node_text) >= 2
-            and (
-                (node_text.startswith('"') and node_text.endswith('"')) or (node_text.startswith("'") and node_text.endswith("'"))
-            )
-        ):
-            return _decode_js_escapes(node_text[1:-1])
-        return node_text
+        return self._parse_js_value_bytes(node, text.encode("utf-8"))

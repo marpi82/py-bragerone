@@ -17,6 +17,13 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   ``\\uNNNN`` / ``\\u{...}`` sequences indicate that upstream assets changed shape.
 - Make the scheduled upstream-assets watch fail when language config, the
   descriptor table, or the ``units`` namespace parse empty.
+- Apply the unit-66 HH:MM formatter to the obfuscated live spelling
+  (``Math['floor']``, ``['padStart'](0x2, ...)``), not only the readable
+  ``e === 0`` special case.
+- Parse shift-only numeric transforms such as unit 47 (``x => x - 127`` /
+  ``_0xac50fa=>_0xac50fa-0x7f``).
+- Route the string-based catalog JS-value helpers through the bytes parsers so
+  quoted keys and hex literals cannot drift between the two copies.
 
 ## [2026.8.1] - 2026-08-08
 

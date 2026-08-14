@@ -140,7 +140,13 @@ def test_parse_and_apply_numeric_transform_variants() -> None:
     assert parse("   ") is None
     assert parse("e * 10") is None
     assert parse("e => { return e * 2; }") is None
-    assert parse("e => e + 1") is None
+
+    shift = parse("e => e + 1")
+    assert shift is not None
+    assert shift.shift == 1.0
+    assert shift.factor == 1.0
+    assert apply(10, "e => e + 1") == 11
+    assert apply(255, "e => e - 127") == 128
 
     mul = parse("e => e * 0.1")
     assert mul is not None
@@ -178,6 +184,18 @@ def test_parse_and_apply_numeric_transform_variants() -> None:
     assert apply(7, time_expr) == "01:00"
     assert apply(True, time_expr) is True
     assert apply("x", time_expr) == "x"
+
+    live_time = (
+        "_0x528242=>{if(_0x528242===0x0)return'units.202.0';"
+        "const _0x3355bc=(_0x528242-0x1)*0xa,"
+        "_0x39bbda=Math['floor'](_0x3355bc/0x3c),"
+        "_0x3a625e=_0x3355bc%0x3c;"
+        "return _0x39bbda['toString']()['padStart'](0x2,'0')+':'"
+        "+_0x3a625e['toString']()['padStart'](0x2,'0');}"
+    )
+    assert ParamResolver._is_unit66_time_expr(live_time)
+    assert apply(0, live_time) == "units.202.0"
+    assert apply(7, live_time) == "01:00"
 
 
 def test_format_command_rules_cleans_tags_and_targets() -> None:
