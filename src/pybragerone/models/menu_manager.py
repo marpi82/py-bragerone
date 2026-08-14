@@ -180,6 +180,10 @@ class MenuProcessor:
             def filter_parameters(container: dict[str, Any]) -> None:
                 for section in ("read", "write", "status", "special"):
                     original = container.get(section) or []
+                    if isinstance(original, str):
+                        original = []
+                    if not isinstance(original, list):
+                        original = []
                     filtered: list[dict[str, Any] | str] = []
                     for item in original:
                         if isinstance(item, dict):
@@ -274,7 +278,9 @@ class MenuProcessor:
                     return value[len(prefix) :]
             return MenuParameter._strip_prefix(value)
 
-        def normalize_list(items: list[Any]) -> list[Any]:
+        def normalize_list(items: list[Any] | str | None) -> list[Any]:
+            if isinstance(items, str) or not isinstance(items, list):
+                return []
             normalized: list[Any] = []
             for item in items:
                 if isinstance(item, dict):
@@ -342,6 +348,8 @@ class MenuProcessor:
                     continue
                 for section in ("read", "write", "status", "special"):
                     items = params.get(section, [])
+                    if not isinstance(items, list):
+                        continue
                     for item in items:
                         if isinstance(item, dict):
                             item_perm = item.get("permissionModule", "")

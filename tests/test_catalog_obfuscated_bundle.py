@@ -343,6 +343,80 @@ def test_node_to_python_resolves_string_subscript_to_public_name() -> None:
     assert parsed == {"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "op": "equalTo"}
 
 
+def test_node_to_python_evaluates_array_map_of_param_tokens() -> None:
+    """Live menus 153/2190 wrap write lists in ``array['map'](x => ({…, parameter: helper(WRITE, x)}))``."""
+    code = (
+        b"const v=['PARAM_45','PARAM_34']['map'](_0x46820c=>("
+        b"{'permissionModule':_0x58838d['DISPLAY_PARAMETER_LEVEL_1'],"
+        b"'parameter':_0x2d2290(_0x870f31['WRITE'],_0x46820c)}));"
+    )
+    tree = _catalog()._ts.parse(code)
+    call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
+    parsed = _node_to_python(code, call)
+    assert parsed == [
+        {"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "parameter": "PARAM_45"},
+        {"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "parameter": "PARAM_34"},
+    ]
+
+
+def test_eval_array_map_call_rejects_non_map_shapes() -> None:
+    """``array['map']`` evaluation must not swallow unrelated calls or non-list receivers."""
+    catalog = _catalog()
+
+    def _call(js: bytes) -> object:
+        tree = catalog._ts.parse(js)
+        call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
+        return _node_to_python(js, call)
+
+    assert _call(b"const v=arr[0](x=>({a:1}));") == "arr[0](x=>({a:1}))"
+    assert _call(b"const v=[1]['filter'](x=>({a:1}));") == "[1]['filter'](x=>({a:1}))"
+    assert _call(b"const v='nope'['map'](x=>({a:1}));") == "'nope'['map'](x=>({a:1}))"
+    assert _call(b"const v=[1]['map']();") == "[1]['map']()"
+    assert _call(b"const v=[1]['map'](1);") == "[1]['map'](1)"
+
+    def _boom(_item: object) -> object:
+        raise TypeError("unexpected callback shape")
+
+    raising = b"const v=[1]['map'](fn);"
+    tree = catalog._ts.parse(raising)
+    call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(raising, call, {"fn": _boom}) == "[1]['map'](fn)"
+
+
+def test_node_to_python_returns_helper_last_arg_token() -> None:
+    """Only obfuscated ``_0x…(WRITE, 'PARAM_45')`` helpers collapse to the public token."""
+    catalog = _catalog()
+
+    def _call(js: bytes) -> object:
+        tree = catalog._ts.parse(js)
+        call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
+        return _node_to_python(js, call)
+
+    assert _call(b"const v=_0x2d2290(_0x870f31['WRITE'],'PARAM_45');") == "PARAM_45"
+    assert _call(b"const v=_0x2d2290(_0x870f31['STATUS'],'STATUS_P5_1');") == "STATUS_P5_1"
+
+    # A readable callee with the same signature keeps its semantics.
+    assert _call(b"const v=foo('WRITE','PARAM_45');") == "foo('WRITE','PARAM_45')"
+    assert _call(b"const v=_0x1a['helper']('WRITE','PARAM_45');") == "_0x1a['helper']('WRITE','PARAM_45')"
+
+    # Argument-shape guards, all behind an obfuscated callee.
+    assert _call(b"const v=_0x2d2290();") == "_0x2d2290()"
+    assert _call(b"const v=_0x2d2290(1);") == "_0x2d2290(1)"
+    assert _call(b"const v=_0x2d2290('PARAM_45');") == "_0x2d2290('PARAM_45')"
+    assert _call(b"const v=_0x2d2290(1,'PARAM_45');") == "_0x2d2290(1,'PARAM_45')"
+    assert _call(b"const v=_0x2d2290('EQUALTO','PARAM_45');") == "_0x2d2290('EQUALTO','PARAM_45')"
+    assert _call(b"const v=_0x2d2290('WRITE',1);") == "_0x2d2290('WRITE',1)"
+    assert _call(b"const v=_0x2d2290('WRITE','DISPLAY_PARAMETER_LEVEL_1');") == ("_0x2d2290('WRITE','DISPLAY_PARAMETER_LEVEL_1')")
+
+
+def test_node_to_python_invokes_bound_callable_with_multiple_args() -> None:
+    """A bound callee with two arguments receives the argument list, not just the first value."""
+    code = b"const v=fn(1,2);"
+    tree = _catalog()._ts.parse(code)
+    call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(code, call, {"fn": lambda args: args}) == [1, 2]
+
+
 def test_node_to_python_does_not_collapse_array_map_subscript() -> None:
     """``['PARAM_1']['map']`` must keep the array so issue #285 can evaluate the call."""
     code = b"const v=['PARAM_1']['map'];"

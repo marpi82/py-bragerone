@@ -43,6 +43,11 @@ def _largest_node(root: Node, node_type: str) -> Node:
 
 def test_attach_parameters_tokens_normalizes_calls_dicts_and_children() -> None:
     """Extract tokens from call strings, dicts, and recurse into children."""
+
+    class _Blank:
+        def __str__(self) -> str:
+            return ""
+
     catalog = _catalog()
     attached = catalog._attach_parameters_tokens(
         {
@@ -53,9 +58,14 @@ def test_attach_parameters_tokens_normalizes_calls_dicts_and_children() -> None:
                     "PLAIN_TOKEN",
                     {"parameter": "E(A.WRITE,'PARAM_2')"},
                     {"token": "PARAM_3"},
+                    {"parameter": "PLAIN_FROM_DICT"},
+                    {"parameter": "KEEP_PLAIN", "token": "KEEP_TOKEN"},
                     {"name": "no-token"},
+                    {"label": "E(A.READ,'PARAM_FALLBACK')"},
                     7,
                     None,
+                    ("E(A.READ,'PARAM_SEQ')",),
+                    _Blank(),
                 ],
                 "write": None,
             },
@@ -71,14 +81,48 @@ def test_attach_parameters_tokens_normalizes_calls_dicts_and_children() -> None:
     assert read[1]["token"] == "PLAIN_TOKEN"
     assert read[2]["token"] == "PARAM_2"
     assert read[3]["parameter"] == "PARAM_3"
-    assert read[4] == {"name": "no-token"}
-    assert read[5]["token"] == "7"
+    assert read[4]["token"] == "PLAIN_FROM_DICT"
+    assert read[5]["token"] == "KEEP_TOKEN"
+    assert read[6] == {"name": "no-token"}
+    assert read[7]["token"] == "PARAM_FALLBACK"
+    assert read[8]["token"] == "7"
+    assert read[10]["token"] == "PARAM_SEQ"
     assert attached["parameters"]["write"] == []
     assert attached["children"][0]["parameters"]["status"][0]["token"] == "STATUS_P5_1"
     assert attached["children"][1] == "keep-me"
 
     converted = catalog._attach_parameters_tokens({"path": "x", "children": "wA"})
     assert converted["children"] == []
+
+    leftover = catalog._attach_parameters_tokens(
+        {
+            "path": "userMenu",
+            "meta": {
+                "parameters": {
+                    "write": (
+                        "['PARAM_45','PARAM_34']['map'](_0x46820c=>"
+                        "({'permissionModule':_0x58838d['DISPLAY_PARAMETER_LEVEL_1'],"
+                        "'parameter':_0x2d2290(_0x870f31['WRITE'],_0x46820c)}))"
+                    )
+                }
+            },
+        }
+    )
+    write_tokens = [item["token"] for item in leftover["meta"]["parameters"]["write"]]
+    assert write_tokens == ["PARAM_45", "PARAM_34"]
+
+    double_quote_map = catalog._parameter_section_items("['PARAM_99'][\"map\"](x => ({parameter: helper(WRITE, x)}))")
+    assert double_quote_map == [{"parameter": "PARAM_99"}]
+    double_quote_tokens = catalog._parameter_section_items(
+        '["PARAM_45","STATUS_P5_1"]["map"](x => ({parameter: helper(WRITE, x)}))'
+    )
+    assert double_quote_tokens == [{"parameter": "PARAM_45"}, {"parameter": "STATUS_P5_1"}]
+    non_token_literals = catalog._parameter_section_items(
+        "['PARAM_45','WRITE','DISPLAY_PARAMETER_LEVEL_1']['map'](x => ({parameter: helper(WRITE, x)}))"
+    )
+    assert non_token_literals == [{"parameter": "PARAM_45"}]
+    assert catalog._parameter_section_items("not-a-map") == []
+    assert catalog._parameter_section_items(None) == []
 
 
 def test_build_param_map_from_obj_normalizes_command_branches_and_status() -> None:

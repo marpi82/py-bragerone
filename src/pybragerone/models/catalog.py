@@ -31,6 +31,13 @@ if TYPE_CHECKING:
 JS_LANGUAGE = Language(tree_sitter_javascript.language())
 LOG = logging.getLogger(__name__)
 INDEX_ASSET_RE = re.compile(r"/assets/(index-[A-Za-z0-9_-]+\.js)")
+_HELPER_ACTIONS = frozenset({"READ", "WRITE", "STATUS"})
+# Only ``PARAM_*`` / ``STATUS_*`` are addressable tokens. Any other quoted upper-case
+# literal in leftover source (``'WRITE'``, ``'DISPLAY_*'``) would be a bogus parameter.
+_PUBLIC_PARAM_PATTERN = r"(?:PARAM|STATUS)_[A-Z0-9_]+"
+_HELPER_TOKEN_RE = re.compile(_PUBLIC_PARAM_PATTERN)
+_LEFTOVER_QUOTED_TOKEN_RE = re.compile(rf"""['"]({_PUBLIC_PARAM_PATTERN})['"]""")
+_OBFUSCATED_IDENTIFIER_RE = re.compile(r"_0x[0-9a-fA-F]*")
 
 
 # ----------------------------- Data types -----------------------------
@@ -622,6 +629,74 @@ def _find_export_root(code: bytes, root: Node) -> Node | None:
     return best
 
 
+def _eval_array_map_call(code: bytes, node: Node, bindings: dict[str, Any] | None) -> list[Any] | None:
+    """Evaluate ``array['map'](item => …)`` when the receiver is already a Python list.
+
+    Live device menus 153/2190 emit write lists as
+    ``['PARAM_45', …]['map'](x => ({permissionModule: …, parameter: helper(WRITE, x)}))``.
+    Leaving that as leftover source text made ``MenuResult`` iterate the string
+    character-by-character and raise thousands of validation errors.
+
+    Args:
+        code: Source bytes containing ``node``.
+        node: A ``call_expression`` node.
+        bindings: Identifier bindings for the surrounding chunk.
+
+    Returns:
+        The mapped list, or ``None`` when this call is not that shape.
+    """
+    func_node = node.child_by_field_name("function")
+    args_node = node.child_by_field_name("arguments")
+    if func_node is None or func_node.type != "subscript_expression" or args_node is None:
+        return None
+    obj_node = func_node.child_by_field_name("object")
+    index_node = func_node.child_by_field_name("index")
+    if obj_node is None or index_node is None or not _is_string(index_node):
+        return None
+    if _string_value(_node_text(code, index_node)) != "map":
+        return None
+    receiver = _node_to_python(code, obj_node, bindings)
+    callbacks = [_node_to_python(code, child, bindings) for child in args_node.named_children]
+    if not isinstance(receiver, list) or len(callbacks) != 1 or not callable(callbacks[0]):
+        return None
+    try:
+        return [callbacks[0](item) for item in receiver]
+    except Exception:
+        return None
+
+
+def _public_token_from_helper_args(code: bytes, func_node: Node | None, args: list[Any]) -> str | None:
+    """Return the PARAM_*/STATUS_* token from a leftover obfuscated helper call.
+
+    Live menus emit ``_0x2d2290(_0x870f31['WRITE'], 'PARAM_45')`` when the helper
+    identifier stays obfuscated. Readable calls that happen to share the signature
+    (``foo('WRITE', 'PARAM_45')``) keep their source text, because collapsing them
+    would erase semantics this parser cannot verify.
+
+    Args:
+        code: Source bytes containing ``func_node``.
+        func_node: The callee node of the call expression.
+        args: Already-converted call arguments.
+
+    Returns:
+        The public token, or ``None`` when this is not an obfuscated
+        ``(READ|WRITE|STATUS, TOKEN)`` helper call.
+    """
+    if func_node is None or func_node.type != "identifier":
+        return None
+    if _OBFUSCATED_IDENTIFIER_RE.fullmatch(_node_text(code, func_node)) is None:
+        return None
+    if len(args) < 2:
+        return None
+    action = args[0]
+    token = args[-1]
+    if not isinstance(action, str) or action not in _HELPER_ACTIONS:
+        return None
+    if not isinstance(token, str) or _HELPER_TOKEN_RE.fullmatch(token) is None:
+        return None
+    return token
+
+
 def _node_to_python(code: bytes, node: Node, bindings: dict[str, Any] | None = None) -> Any:
     """Convert an arbitrary AST node to a Python object.
 
@@ -715,18 +790,47 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         return public_leftover if public_leftover is not None else leftover
 
     if t == "arrow_function":
+        param_node = node.child_by_field_name("parameter")
+        body_node = node.child_by_field_name("body")
+        if param_node is not None and param_node.type == "identifier" and body_node is not None:
+            object_body = body_node
+            if object_body.type == "parenthesized_expression" and object_body.named_children:
+                object_body = object_body.named_children[0]
+            if object_body.type == "object":
+                param_name = _node_text(code, param_node)
+
+                def _item_factory(
+                    arg: Any,
+                    *,
+                    _param: str = param_name,
+                    _body: Node = object_body,
+                    _code: bytes = code,
+                    _bindings: dict[str, Any] | None = bindings,
+                ) -> Any:
+                    local_bindings = dict(_bindings or {})
+                    local_bindings[_param] = arg
+                    return _node_to_python(_code, _body, local_bindings)
+
+                return _item_factory
         raw_function = _node_text(code, node)
         return _build_factory_callable(raw_function, bindings)
 
     if t == "call_expression":
         func_node = node.child_by_field_name("function")
         args_node = node.child_by_field_name("arguments")
+        mapped = _eval_array_map_call(code, node, bindings)
+        if mapped is not None:
+            return mapped
         callee = _node_to_python(code, func_node, bindings) if func_node is not None else None
-        if callable(callee) and args_node is not None:
-            args = [_node_to_python(code, child, bindings) for child in args_node.named_children]
+        arg_nodes = args_node.named_children if args_node is not None else ()  # pragma: no branch
+        args = [_node_to_python(code, child, bindings) for child in arg_nodes]
+        if callable(callee):
             if len(args) == 1:
                 return callee(args[0])
             return callee(args)
+        helper_token = _public_token_from_helper_args(code, func_node, args)
+        if helper_token is not None:
+            return helper_token
 
     return _node_text(code, node)
 
@@ -1207,48 +1311,14 @@ class LiveAssetsCatalog:
         out = dict(node)
         params = out.get("parameters")
         if isinstance(params, dict):
-            newp: dict[str, list[dict[str, Any]]] = {}
-            for sec in ("read", "write", "status", "special"):
-                items = params.get(sec, []) or []
-                norm: list[dict[str, Any]] = []
-                for it in items:
-                    if isinstance(it, str):
-                        original = it.strip()
-                        m = self.PARAM_CALL_RE.search(original)
-                        if m:
-                            tok = m.group("tok")
-                            norm.append({"token": tok, "parameter": original})
-                        else:
-                            norm.append({"token": original, "parameter": original})
-                    elif isinstance(it, dict):
-                        entry = dict(it)
-                        param_value = entry.get("parameter")
-                        if isinstance(param_value, str):
-                            match = self.PARAM_CALL_RE.search(param_value)
-                            if match and "token" not in entry:
-                                entry["token"] = match.group("tok")
-                        elif "token" in entry:
-                            token_val = str(entry["token"])
-                            entry.setdefault("parameter", token_val)
-                        else:
-                            fallback_text = str(it)
-                            match = self.PARAM_CALL_RE.search(fallback_text)
-                            if match:
-                                entry["token"] = match.group("tok")
-                                entry.setdefault("parameter", fallback_text)
-                        if "parameter" not in entry and "token" in entry:
-                            entry["parameter"] = str(entry["token"]) or ""
-                        norm.append(entry)
-                    else:
-                        s = str(it)
-                        m = self.PARAM_CALL_RE.search(s)
-                        if m:
-                            tok = m.group("tok")
-                            norm.append({"token": tok, "parameter": s})
-                        elif s:
-                            norm.append({"token": s, "parameter": s})
-                newp[sec] = norm
-            out["parameters"] = newp
+            out["parameters"] = self._normalize_parameter_sections(params)
+        meta = out.get("meta")
+        if isinstance(meta, dict):
+            meta_out = dict(meta)
+            meta_params = meta_out.get("parameters")
+            if isinstance(meta_params, dict):
+                meta_out["parameters"] = self._normalize_parameter_sections(meta_params)
+            out["meta"] = meta_out
         # recursion for children
         ch = out.get("children")
         if isinstance(ch, list):
@@ -1259,6 +1329,67 @@ class LiveAssetsCatalog:
             self._log.debug(f"Converting non-list children to empty list: {type(ch)} {ch}")
             out["children"] = []
         return out
+
+    def _parameter_section_items(self, items: Any) -> list[Any]:
+        """Coerce a parameters.read/write/status/special value to a list of entries.
+
+        Leftover ``array['map'](…)`` source text must not be iterated as characters.
+        """
+        if isinstance(items, list):
+            return items
+        if isinstance(items, str):
+            if "['map']" in items or '["map"]' in items:
+                head = items.split("['map']", 1)[0].split('["map"]', 1)[0]
+                return [{"parameter": token} for token in _LEFTOVER_QUOTED_TOKEN_RE.findall(head)]
+            return []
+        return []
+
+    def _normalize_parameter_sections(self, params: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+        """Normalize read/write/status/special entries to ``{token, parameter}`` dicts."""
+        newp: dict[str, list[dict[str, Any]]] = {}
+        for sec in ("read", "write", "status", "special"):
+            items = self._parameter_section_items(params.get(sec, []) or [])
+            norm: list[dict[str, Any]] = []
+            for it in items:
+                if isinstance(it, str):
+                    original = it.strip()
+                    m = self.PARAM_CALL_RE.search(original)
+                    if m:
+                        tok = m.group("tok")
+                        norm.append({"token": tok, "parameter": original})
+                    else:
+                        norm.append({"token": original, "parameter": original})
+                elif isinstance(it, dict):
+                    entry = dict(it)
+                    param_value = entry.get("parameter")
+                    if isinstance(param_value, str):
+                        match = self.PARAM_CALL_RE.search(param_value)
+                        if match and "token" not in entry:
+                            entry["token"] = match.group("tok")
+                        elif "token" not in entry:
+                            entry["token"] = param_value.strip()
+                    elif "token" in entry:
+                        token_val = str(entry["token"])
+                        entry.setdefault("parameter", token_val)
+                    else:
+                        fallback_text = str(it)
+                        match = self.PARAM_CALL_RE.search(fallback_text)
+                        if match:
+                            entry["token"] = match.group("tok")
+                            entry.setdefault("parameter", fallback_text)
+                    if "token" in entry:
+                        entry.setdefault("parameter", str(entry["token"]) or "")
+                    norm.append(entry)
+                else:
+                    s = str(it)
+                    m = self.PARAM_CALL_RE.search(s)
+                    if m:
+                        tok = m.group("tok")
+                        norm.append({"token": tok, "parameter": s})
+                    elif s:
+                        norm.append({"token": s, "parameter": s})
+            newp[sec] = norm
+        return newp
 
     # ---------- PARAM MAPS ----------
 
