@@ -577,6 +577,40 @@ def test_parameter_factory_builders_expand_to_param_maps() -> None:
     assert override.raw["name"] == "parameters.PARAM_P11_9"
 
 
+_LIVE_NULLISH_NAME_BUILDERS = b"""
+const IconsList={'INFO':'INFO'},
+basicParameterBuilder_P6=({id:_0x522d69,icon:icon=IconsList['INFO'],name:_0x45f6f0,number:_0x3a4660,
+    useComponent:useComponent=void 0x0,status:status={}})=>{
+  const _0x4b63ed={'id':_0x522d69,'icon':icon,'name':_0x45f6f0??'parameters.PARAM_'+_0x3a4660,
+    'value':[{'group':'P6','number':_0x3a4660,'use':'v'}],'useComponent':useComponent};
+  return _0x4b63ed;
+},
+basicParameterBuilder_P32=({id:_0x1,name:_0x19fab0,number:_0x3211ea})=>{
+  const _0x2={'id':_0x1,'name':_0x19fab0!==void 0x0?_0x19fab0:'parameters.PARAM_P32_'+_0x3211ea,
+    'value':[{'group':'P32','number':_0x3211ea,'use':'v'}]};
+  return _0x2;
+},
+paramTable={'PARAM_10':basicParameterBuilder_P6({'id':0x1,'number':0xa}),
+  'PARAM_63':basicParameterBuilder_P6({'id':0x2,'number':0x3f,'name':'parameters.CUSTOM_63'}),
+  'PARAM_P32_4':basicParameterBuilder_P32({'id':0x3,'number':0x4}),
+  'PARAM_P32_9':basicParameterBuilder_P32({'id':0x4,'number':0x9,'name':'parameters.OVERRIDE'})};
+"""
+
+
+def test_parameter_factory_nullish_and_ternary_name_defaults() -> None:
+    """Optional ``name`` args use ``??`` / ``!== void 0x0 ?`` defaults to ``parameters.*``."""
+    catalog = _catalog()
+    maps = catalog._parse_index_token_raw_maps(_LIVE_NULLISH_NAME_BUILDERS)
+    assert maps["PARAM_10"]["name"] == "parameters.PARAM_10"
+    assert maps["PARAM_63"]["name"] == "parameters.CUSTOM_63"
+    assert maps["PARAM_P32_4"]["name"] == "parameters.PARAM_P32_4"
+    assert maps["PARAM_P32_9"]["name"] == "parameters.OVERRIDE"
+    built = catalog._build_param_map_from_obj(dict(maps["PARAM_10"]), "PARAM_10", "test")
+    assert built is not None
+    assert built.raw["name"] == "parameters.PARAM_10"
+    assert built.paths["value"] == [{"group": "P6", "number": 10, "use": "v"}]
+
+
 def test_arrow_factory_keeps_non_object_bodies_as_source() -> None:
     """Unit transforms must stay source text; only object-building arrows become callables."""
     catalog = _catalog()

@@ -621,6 +621,62 @@ def _js_concat(left: Any, right: Any) -> Any:
     return left_text + right_text
 
 
+def _is_js_nullish(value: Any) -> bool:
+    """Return whether *value* corresponds to JavaScript ``null`` / ``undefined``.
+
+    Unresolved obfuscated identifiers (``_0x…`` leftovers) are treated as undefined so
+    nullish coalescing defaults such as ``name ?? 'parameters.PARAM_'+n`` still expand.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        trimmed = value.strip()
+        if trimmed in _JS_UNDEFINED_LITERALS:
+            return True
+        if _OBFUSCATED_IDENTIFIER_RE.fullmatch(trimmed) is not None:
+            return True
+    return False
+
+
+def _js_loose_equal(left: Any, right: Any) -> bool:
+    """Compare two already-converted values with JavaScript-ish equality.
+
+    Covers the comparisons the bundle emits around optional factory args
+    (``x !== void 0x0``, ``x === undefined``). Full JS coercion is intentionally
+    out of scope — callers only need nullish / primitive checks.
+    """
+    if _is_js_nullish(left) and _is_js_nullish(right):
+        return True
+    return bool(left == right)
+
+
+def _eval_js_binary(operator: str, left: Any, right: Any) -> tuple[bool, Any]:
+    """Evaluate a subset of JavaScript binary operators on converted operands.
+
+    Returns:
+        ``(True, result)`` when *operator* is handled, otherwise ``(False, None)``.
+    """
+    if operator == "+":
+        joined = _js_concat(left, right)
+        if joined is not None:
+            return True, joined
+        return False, None
+    if operator == "??":
+        return True, right if _is_js_nullish(left) else left
+    if operator in {"===", "=="}:
+        return True, _js_loose_equal(left, right)
+    if operator in {"!==", "!="}:
+        return True, not _js_loose_equal(left, right)
+    return False, None
+
+
+def _js_truthy(value: Any) -> bool:
+    """Approximate JavaScript truthiness for ternary conditions."""
+    if _is_js_nullish(value) or value is False:
+        return False
+    return not (value == 0 or value == 0.0 or value == "")
+
+
 def _pattern_bindings(code: bytes, pattern: Node, arg: Any, bindings: dict[str, Any]) -> dict[str, Any]:
     """Bind a destructured object parameter against one call argument.
 
@@ -972,7 +1028,25 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         name = _node_text(code, node)
         if bindings and name in bindings:
             return bindings[name]
+        if name == "undefined":
+            return None
         return name
+
+    if t == "unary_expression":
+        operator = node.child_by_field_name("operator")
+        if operator is not None and _node_text(code, operator) == "void":
+            return None
+        return _node_text(code, node)
+
+    if t == "ternary_expression":
+        condition = node.child_by_field_name("condition")
+        consequence = node.child_by_field_name("consequence")
+        alternative = node.child_by_field_name("alternative")
+        if condition is None or consequence is None or alternative is None:  # pragma: no cover
+            return _node_text(code, node)
+        if _js_truthy(_node_to_python(code, condition, bindings)):
+            return _node_to_python(code, consequence, bindings)
+        return _node_to_python(code, alternative, bindings)
 
     if t == "subscript_expression":
         obj_node = node.child_by_field_name("object")
@@ -1006,13 +1080,13 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         right_node = node.child_by_field_name("right")
         if operator is None or left_node is None or right_node is None:  # pragma: no cover
             return _node_text(code, node)
-        if _node_text(code, operator) == "+":
-            joined = _js_concat(
-                _node_to_python(code, left_node, bindings),
-                _node_to_python(code, right_node, bindings),
-            )
-            if joined is not None:
-                return joined
+        handled, result = _eval_js_binary(
+            _node_text(code, operator),
+            _node_to_python(code, left_node, bindings),
+            _node_to_python(code, right_node, bindings),
+        )
+        if handled:
+            return result
 
     if t == "call_expression":
         func_node = node.child_by_field_name("function")
