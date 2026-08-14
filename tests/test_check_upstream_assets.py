@@ -7,11 +7,12 @@ import io
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Protocol, TextIO, cast
+from typing import Any, Protocol, TextIO, cast
 
 import pytest
 
 from pybragerone.models.api import SystemVersion
+from pybragerone.models.catalog import ParamMap
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "check_upstream_assets.py"
 _INDEX_ASSET = "index-Ab12Cd.js"
@@ -41,6 +42,7 @@ class _UpstreamProbe(Protocol):
     escape_leaks: int
     menu_gated_tokens: int
     menu_permissions_ok: bool
+    param_semantics_mangled: int
 
 
 class _UpstreamScript(Protocol):
@@ -52,6 +54,10 @@ class _UpstreamScript(Protocol):
 
     def pick_sample_tokens(self, assets_by_basename: Mapping[str, object], *, limit: int) -> list[str]:
         """Pick PARAM_* sample tokens."""
+        ...
+
+    def _count_mangled_param_semantics(self, param_maps: Mapping[str, Any]) -> int:
+        """Count sampled PARAM_* maps that still carry leftover ``_0x`` text."""
         ...
 
     def write_github_output(self, probe: _UpstreamProbe, stream: TextIO) -> None:
@@ -285,6 +291,44 @@ async def test_github_output_rejects_multiline_api_version() -> None:
     assert buf.getvalue() == ""
 
 
+def _param_map(
+    *,
+    component_type: str | None = "SWITCH",
+    status_key: str = "INVISIBLE",
+    operation: str = "equalTo",
+    command: str = "WRITE",
+) -> ParamMap:
+    """Build a minimal ParamMap carrying only the semantics the watch inspects."""
+    return ParamMap(
+        key="PARAM_66",
+        group=None,
+        paths={},
+        component_type=component_type,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions={status_key: [{"group": "P6", "number": 34, "use": "s"}]},
+        command_rules=[{"kind": "if", "command": command, "conditions": [{"operation": operation}]}],
+        origin="test",
+        raw={},
+    )
+
+
+def test_count_mangled_param_semantics_flags_each_leftover_field() -> None:
+    """Component, status key and operation each count as a mangled sample on their own."""
+    module = _load_upstream()
+    assert module._count_mangled_param_semantics({}) == 0
+    assert module._count_mangled_param_semantics({"PARAM_66": _param_map()}) == 0
+    assert module._count_mangled_param_semantics({"a": _param_map(component_type="_0x4d['SWITCH']")}) == 1
+    assert module._count_mangled_param_semantics({"a": _param_map(status_key="[_0x4d['INVISIBLE']]")}) == 1
+    assert module._count_mangled_param_semantics({"a": _param_map(operation="_0x48['equalTo']")}) == 1
+    assert module._count_mangled_param_semantics({"a": _param_map(command="_0xab['WRITE']")}) == 1
+    empty = _param_map(component_type=None)
+    empty.status_conditions = None
+    empty.command_rules = [{"kind": "if", "command": None, "conditions": None}]
+    assert module._count_mangled_param_semantics({"a": empty}) == 0
+
+
 @pytest.mark.asyncio
 async def test_assert_probe_ok_rejects_empty_table_units_and_escape_leaks() -> None:
     """Shape gates fire independently once fingerprint and basenames look fine."""
@@ -308,4 +352,8 @@ async def test_assert_probe_ok_rejects_empty_table_units_and_escape_leaks() -> N
     probe.menu_gated_tokens = 12
     probe.menu_permissions_ok = False
     with pytest.raises(RuntimeError, match="permissionModule still contains leftover"):
+        module.assert_probe_ok(probe)
+    probe.menu_permissions_ok = True
+    probe.param_semantics_mangled = 2
+    with pytest.raises(RuntimeError, match="leftover _0x subscript text in component/status/operation"):
         module.assert_probe_ok(probe)

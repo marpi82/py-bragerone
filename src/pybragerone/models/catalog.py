@@ -38,6 +38,11 @@ _PUBLIC_PARAM_PATTERN = r"(?:PARAM|STATUS)_[A-Z0-9_]+"
 _HELPER_TOKEN_RE = re.compile(_PUBLIC_PARAM_PATTERN)
 _LEFTOVER_QUOTED_TOKEN_RE = re.compile(rf"""['"]({_PUBLIC_PARAM_PATTERN})['"]""")
 _OBFUSCATED_IDENTIFIER_RE = re.compile(r"_0x[0-9a-fA-F]*")
+# Minified bundles spell booleans as unary expressions: ``!0``/``!![]`` are true,
+# ``!1``/``![]`` are false. Bare ``true``/``false`` are deliberately absent — at this
+# layer they are indistinguishable from the quoted strings ``'true'``/``'false'``.
+_JS_BOOL_LITERALS = {"!0": True, "!1": False, "![]": False, "!![]": True}
+_JS_UNDEFINED_LITERALS = frozenset({"void 0", "undefined"})
 
 
 # ----------------------------- Data types -----------------------------
@@ -438,15 +443,21 @@ def _string_value(text: str) -> str:
 def _property_name(code: bytes, key_node: Node) -> str:
     """Return the JavaScript property name a key node would produce at runtime.
 
-    Obfuscated bundles quote ordinary keys (``{'translations': ...}``) and emit hex
-    numeric keys (``{0xa: ...}``). Callers that compare against ``"translations"``
-    must go through this helper; raw node text keeps the quotes and radix prefix.
+    Obfuscated bundles quote ordinary keys (``{'translations': ...}``), emit hex
+    numeric keys (``{0xa: ...}``) and hide status names behind computed keys
+    (``{[_0x4d7e32['INVISIBLE']]: …}``). Callers that compare against
+    ``"translations"`` or ``"INVISIBLE"`` must go through this helper; raw node
+    text keeps the quotes, the radix prefix and the subscript spelling.
     """
     raw = _node_text(code, key_node)
     if _is_string(key_node):
         return _string_value(raw)
     if key_node.type == "number":
         return _js_property_key(raw)
+    if key_node.type == "computed_property_name" and key_node.named_children:  # pragma: no branch
+        inner = key_node.named_children[0]
+        public = js_public_member_name(_node_text(code, inner))
+        return public if public is not None else _property_name(code, inner)
     return raw
 
 
@@ -1746,14 +1757,10 @@ class LiveAssetsCatalog:
         def _normalize_literal(value: Any) -> Any:
             if isinstance(value, str):
                 trimmed = value.strip()
-                if trimmed == "void 0":
+                if trimmed in _JS_UNDEFINED_LITERALS:
                     return None
-                if trimmed == "undefined":
-                    return None
-                if trimmed == "!0":
-                    return True
-                if trimmed == "!1":
-                    return False
+                if trimmed in _JS_BOOL_LITERALS:
+                    return _JS_BOOL_LITERALS[trimmed]
             return value
 
         def _normalize_identifier(value: Any) -> str | None:
@@ -1857,6 +1864,8 @@ class LiveAssetsCatalog:
             "max": max_paths,
         }
         component = obj.get("componentType")
+        if component is None:
+            component = obj.get("useComponent")
         units_raw: Any = obj.get("units")
         if units_raw is None:
             units_raw = obj.get("unit_name")

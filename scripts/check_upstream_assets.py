@@ -19,7 +19,7 @@ from typing import Protocol, TextIO
 
 from pybragerone import BragerOneApiClient
 from pybragerone.models.api import SystemVersion
-from pybragerone.models.catalog import INDEX_ASSET_RE, LiveAssetsCatalog, _count_js_escape_leaks
+from pybragerone.models.catalog import INDEX_ASSET_RE, LiveAssetsCatalog, ParamMap, _count_js_escape_leaks
 from pybragerone.models.menu import MenuResult
 
 _SAMPLE_LIMIT = 3
@@ -74,6 +74,7 @@ class UpstreamProbe:
     escape_leaks: int = 0
     menu_gated_tokens: int = -1
     menu_permissions_ok: bool = True
+    param_semantics_mangled: int = 0
 
 
 def build_fingerprint(*, api_version: str, index_asset: str) -> str:
@@ -87,6 +88,26 @@ def _count_mangled_permission_names(menu: MenuResult) -> int:
     for permission in menu.all_permissions():
         name = permission.name
         if "_0x" in name or "['" in name or '["' in name:
+            count += 1
+    return count
+
+
+def _count_mangled_param_semantics(param_maps: Mapping[str, ParamMap]) -> int:
+    """Count sampled PARAM_* maps whose semantics still read as ``_0x…['NAME']`` text.
+
+    A map that merely parses proves an object came back. Component type, status
+    condition keys and command operations are what the resolver actually acts on,
+    so those are the fields that must carry public names.
+    """
+    count = 0
+    for param in param_maps.values():
+        fields: list[str] = [str(param.component_type or "")]
+        fields.extend(str(key) for key in (param.status_conditions or {}))
+        for rule in param.command_rules:
+            fields.append(str(rule.get("command") or ""))
+            for condition in rule.get("conditions") or []:
+                fields.append(str(condition.get("operation") or ""))
+        if any("_0x" in field for field in fields):
             count += 1
     return count
 
@@ -169,6 +190,7 @@ async def _parse_live_catalog(api: _PublicCatalogClient, probe: UpstreamProbe, *
     if sample_tokens:
         mapping = await catalog.get_param_mapping(sample_tokens)
         resolved = sorted(mapping)
+        probe.param_semantics_mangled = _count_mangled_param_semantics(mapping)
     table = catalog._parse_units_descriptor_table_from_index(catalog._idx.index_bytes)
     units = await catalog.get_i18n("en", "units")
     units_map = units if isinstance(units, dict) else {}
@@ -221,6 +243,7 @@ def write_github_output(probe: UpstreamProbe, stream: TextIO) -> None:
     stream.write(f"descriptor_table_count={probe.descriptor_table_count}\n")
     stream.write(f"units_count={probe.units_count}\n")
     stream.write(f"escape_leaks={probe.escape_leaks}\n")
+    stream.write(f"param_semantics_mangled={probe.param_semantics_mangled}\n")
 
 
 def assert_probe_ok(probe: UpstreamProbe) -> None:
@@ -237,6 +260,11 @@ def assert_probe_ok(probe: UpstreamProbe) -> None:
         raise RuntimeError("upstream probe: live index parsed to zero asset basenames")
     if probe.sample_param_tokens and not probe.sample_param_resolved:
         raise RuntimeError(f"upstream probe: failed to parse sample params {probe.sample_param_tokens}")
+    if probe.param_semantics_mangled:
+        raise RuntimeError(
+            f"upstream probe: {probe.param_semantics_mangled} sample PARAM_* maps still contain "
+            "leftover _0x subscript text in component/status/operation"
+        )
     if not probe.language_ok:
         raise RuntimeError("upstream probe: language config did not parse")
     if probe.descriptor_table_count < 1:
