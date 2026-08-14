@@ -109,6 +109,7 @@ See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for olde
 
 [Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.3...HEAD
 [2026.8.3]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.3
+[2026.8.1]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.1
 [2026.4.5]: https://github.com/marpi82/py-bragerone/releases/tag/2026.4.5
 [2026.4.4]: https://github.com/marpi82/py-bragerone/releases/tag/2026.4.4
 [2026.4.3]: https://github.com/marpi82/py-bragerone/releases/tag/2026.4.3
