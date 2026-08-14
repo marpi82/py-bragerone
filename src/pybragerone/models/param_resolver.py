@@ -227,6 +227,11 @@ class ComputedValueEvaluator:
             v = value.strip()
             if not v:
                 return None
+            # Index-inline factories leave TypeScript enum leftovers such as
+            # ``DiodeState['ON']`` / ``ThreeWayValveState['DISABLED']``.
+            bracket = _JS_BRACKET_MEMBER_RE.search(v)
+            if bracket is not None:
+                return bracket.group(1)
             # Minified bundles may encode enums as "o.WORK"; keep last segment.
             # Preserve the explicit enum namespace for values like "e.ON".
             if "." in v:
@@ -249,6 +254,11 @@ class ComputedValueEvaluator:
         s = op.strip() if isinstance(op, str) else str(op).strip()
         if not s:
             return None
+        # Index-inline STATUS maps emit ``ClauseOperation['equalTo']`` instead of
+        # the cleaned asset form ``equalTo`` / ``t.equalTo``.
+        bracket = _JS_BRACKET_MEMBER_RE.search(s)
+        if bracket is not None:
+            return bracket.group(1)
         if "." in s:
             s = s.split(".")[-1]
         return s
@@ -1265,6 +1275,9 @@ class ParamResolver:
         cleaned = raw.strip()
         if not cleaned:
             return None
+        bracket = _JS_BRACKET_MEMBER_RE.search(cleaned)
+        if bracket is not None:
+            return bracket.group(1)
         if cleaned.startswith("[") and cleaned.endswith("]"):
             cleaned = cleaned[1:-1]
         parts = cleaned.split(".", 1)

@@ -109,3 +109,99 @@ def test_evaluate_computed_status_paths_value_rules_enum_output() -> None:
     }
 
     assert evaluator.evaluate(raw) == "e.ON"
+
+
+def test_evaluate_inline_status_clause_operation_enum_members() -> None:
+    """Index-inline STATUS factories leave ClauseOperation/DiodeState enum leftovers.
+
+    Dedicated STATUS_*.js assets emit cleaned ``equalTo`` / ``ON`` tokens. The same
+    rules parsed from the index as ``ClauseOperation['equalTo']`` and
+    ``DiodeState['OFF']`` must still match bits and normalize to the public tag.
+    """
+    store = ParamStore()
+    evaluator = ComputedValueEvaluator(store)
+    # bit 1 clear → OFF branch (same shape as STATUS_P5_10 / STATUS_P5_11)
+    store.upsert("P5.s10", 1)  # bit 0 only
+    store.upsert("P5.s11", 1)
+    store.upsert("P5.s20", 1)  # mask 30 → 0 → DISABLED
+
+    diode_paths = {
+        "value": [
+            {
+                "if": [
+                    {
+                        "expected": 1,
+                        "operation": "ClauseOperation['equalTo']",
+                        "value": [{"group": "P5", "number": 10, "use": "s", "bit": 1}],
+                    }
+                ],
+                "then": "DiodeState['ON']",
+            },
+            {
+                "elseif": [
+                    {
+                        "expected": 0,
+                        "operation": "ClauseOperation['equalTo']",
+                        "value": [{"group": "P5", "number": 10, "use": "s", "bit": 1}],
+                    }
+                ],
+                "then": "DiodeState['OFF']",
+            },
+            {"else": None},
+        ]
+    }
+    assert evaluator.evaluate(diode_paths) == "OFF"
+
+    pump_any = {
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 1,
+                        "operation": "ClauseOperation['equalTo']",
+                        "value": [{"group": "P5", "number": 11, "use": "s", "bit": 1}],
+                    }
+                ],
+                "then": {"value": "DiodeState['ON']"},
+            },
+            {
+                "elseif": [
+                    {
+                        "expected": 0,
+                        "operation": "ClauseOperation['equalTo']",
+                        "value": [{"group": "P5", "number": 11, "use": "s", "bit": 1}],
+                    }
+                ],
+                "then": {"value": "DiodeState['OFF']"},
+            },
+            {"else": None},
+        ]
+    }
+    assert evaluator.evaluate(pump_any) == "OFF"
+
+    valve_paths = {
+        "value": [
+            {
+                "if": [
+                    {
+                        "expected": 7,
+                        "operation": "ClauseOperation['equalTo']",
+                        "value": [{"group": "P5", "number": 20, "use": "s", "mask": 7}],
+                    }
+                ],
+                "then": "ThreeWayValveState['CLOSING']",
+            },
+            {
+                "elseif": [
+                    {
+                        "expected": 0,
+                        "operation": "ClauseOperation['equalTo']",
+                        "value": [{"group": "P5", "number": 20, "use": "s", "mask": 30}],
+                    }
+                ],
+                "then": "ThreeWayValveState['DISABLED']",
+            },
+            {"else": None},
+        ]
+    }
+    assert evaluator.evaluate(valve_paths) == "DISABLED"

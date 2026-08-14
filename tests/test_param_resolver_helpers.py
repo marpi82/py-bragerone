@@ -129,6 +129,12 @@ def test_eval_any_rules_skips_junk_and_normalizes_then() -> None:
     assert evaluator._normalize_computed_value(1.5) is None
     assert evaluator._operation_name("  ") is None
     assert evaluator._operation_name(None) is None
+    assert evaluator._operation_name("ClauseOperation['equalTo']") == "equalTo"
+    assert evaluator._operation_name('ClauseOperation["notEqualTo"]') == "notEqualTo"
+    assert evaluator._normalize_computed_value("DiodeState['OFF']") == "OFF"
+    assert evaluator._normalize_computed_value("ThreeWayValveState['DISABLED']") == "DISABLED"
+    assert ParamResolver._clean_symbolic_tag("ClauseOperation['equalTo']") == "equalTo"
+    assert ParamResolver._clean_symbolic_tag("DiodeState['ON']") == "ON"
 
 
 def test_parse_and_apply_numeric_transform_variants() -> None:
