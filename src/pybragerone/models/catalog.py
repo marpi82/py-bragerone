@@ -228,18 +228,140 @@ def _is_string(n: Node) -> bool:
     return n.type in {"string", "template_string"}
 
 
+_JS_SIMPLE_ESCAPES = {
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+    "0": "\0",
+}
+
+# JS allows a backslash before any of these to continue a literal onto the next line.
+_JS_LINE_CONTINUATIONS = frozenset("\n\r\u2028\u2029")
+
+
+def _read_hex(text: str, start: int, length: int) -> int | None:
+    """Read exactly *length* hex digits at *start*, or return None if they are not there."""
+    chunk = text[start : start + length]
+    if len(chunk) != length:
+        return None
+    try:
+        return int(chunk, 16)
+    except ValueError:
+        return None
+
+
+def _safe_chr(code: int) -> str:
+    """Convert a code point to a character, replacing lone surrogates.
+
+    Lone surrogates are valid Python ``str`` members but cannot be encoded to UTF-8, which
+    would blow up much later when a label is serialized. Substitute them here instead.
+    """
+    if 0xD800 <= code <= 0xDFFF or code > 0x10FFFF:
+        return "\ufffd"
+    return chr(code)
+
+
+def _decode_js_escapes(text: str) -> str:
+    r"""Decode JavaScript escape sequences in a string literal body.
+
+    Upstream ships the web app minified and obfuscated, which hex-escapes ordinary
+    characters — spaces become ``\x20``. Without decoding, those escapes survive verbatim
+    into units and translated labels.
+
+    ``codecs.decode(..., "unicode_escape")`` is deliberately not used: it round-trips through
+    latin-1 and corrupts non-ASCII text (e.g. Polish diacritics).
+
+    Args:
+        text: String literal body, without the surrounding quotes.
+
+    Returns:
+        The text with escape sequences resolved. Unrecognized escapes drop the backslash and
+        keep the following character, matching JavaScript.
+    """
+    if "\\" not in text:
+        return text
+
+    out: list[str] = []
+    i = 0
+    n = len(text)
+
+    while i < n:
+        ch = text[i]
+        if ch != "\\" or i + 1 >= n:
+            out.append(ch)
+            i += 1
+            continue
+
+        esc = text[i + 1]
+        i += 2
+
+        if esc in _JS_LINE_CONTINUATIONS:
+            if esc == "\r" and i < n and text[i] == "\n":
+                i += 1
+            continue
+
+        if esc == "x":
+            code = _read_hex(text, i, 2)
+            if code is not None:
+                out.append(_safe_chr(code))
+                i += 2
+                continue
+            out.append(esc)
+            continue
+
+        if esc == "u":
+            if i < n and text[i] == "{":
+                close = text.find("}", i + 1)
+                code = _read_hex(text, i + 1, close - i - 1) if close > i + 1 else None
+                if code is not None:
+                    out.append(_safe_chr(code))
+                    i = close + 1
+                    continue
+                out.append(esc)
+                continue
+
+            code = _read_hex(text, i, 4)
+            if code is None:
+                out.append(esc)
+                continue
+            i += 4
+
+            # A high surrogate followed by a low surrogate is one astral character.
+            if 0xD800 <= code <= 0xDBFF and text[i : i + 2] == "\\u":
+                low = _read_hex(text, i + 2, 4)
+                if low is not None and 0xDC00 <= low <= 0xDFFF:
+                    out.append(chr(0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)))
+                    i += 6
+                    continue
+
+            out.append(_safe_chr(code))
+            continue
+
+        # "\0" is NUL only when a digit does not follow it (otherwise it is legacy octal).
+        if esc in _JS_SIMPLE_ESCAPES and not (esc == "0" and i < n and text[i].isdigit()):
+            out.append(_JS_SIMPLE_ESCAPES[esc])
+            continue
+
+        out.append(esc)
+
+    return "".join(out)
+
+
 def _string_value(text: str) -> str:
-    """Extract the value from a string literal, removing quotes.
+    """Extract the value from a string literal, removing quotes and decoding escapes.
 
     Args:
         text: The raw string text including quotes.
 
     Returns:
-        The string value with surrounding quotes removed.
+        The string value with surrounding quotes removed and JS escape sequences resolved.
     """
     if len(text) >= 2 and text[0] in "\"'`" and text[-1] == text[0]:
-        return text[1:-1]
-    return text
+        return _decode_js_escapes(text[1:-1])
+    return _decode_js_escapes(text)
 
 
 def _split_top_level_csv(raw: str) -> list[str]:
@@ -2011,7 +2133,7 @@ class LiveAssetsCatalog:
                             # Remove quotes from string literal
                             value_bytes = js_bytes[value_node.start_byte : value_node.end_byte]
                             value_text = value_bytes.decode("utf-8", errors="replace")
-                            return value_text.strip("\"'")
+                            return _string_value(value_text)
         return None
 
     def _parse_translations_array_bytes(self, array_node: Node, js_bytes: bytes) -> list[dict[str, Any]]:
@@ -2043,7 +2165,7 @@ class LiveAssetsCatalog:
         if node.type == "string":
             val_bytes = js_bytes[node.start_byte : node.end_byte]
             val_text = val_bytes.decode("utf-8", errors="replace")
-            return val_text.strip("\"'")
+            return _string_value(val_text)
         elif node.type == "number":
             val_bytes = js_bytes[node.start_byte : node.end_byte]
             val_text = val_bytes.decode("utf-8", errors="replace")
@@ -2097,7 +2219,7 @@ class LiveAssetsCatalog:
                     value_node = pair.child_by_field_name("value")
                     if value_node and value_node.type == "string":
                         # Remove quotes from string literal
-                        return self._get_node_text(value_node, text).strip("\"'")
+                        return self._get_node_text(value_node, text)
         return None
 
     def _parse_translations_array(self, array_node: Node, text: str) -> list[dict[str, Any]]:
@@ -2126,7 +2248,7 @@ class LiveAssetsCatalog:
     def _parse_js_value(self, node: Node, text: str) -> Any:
         """Parse a JavaScript value node into Python equivalent."""
         if node.type == "string":
-            return self._get_node_text(node, text).strip("\"'")
+            return self._get_node_text(node, text)
         elif node.type == "number":
             val_text = self._get_node_text(node, text)
             return int(val_text) if "." not in val_text else float(val_text)
@@ -2158,7 +2280,7 @@ class LiveAssetsCatalog:
             return self._get_node_text(node, text)
 
     def _get_node_text(self, node: Node, text: str) -> str:
-        """Extract text content of a node, handling quoted strings."""
+        """Extract text content of a node, unquoting and unescaping string literals."""
         node_text = text[node.start_byte : node.end_byte]
         # Remove quotes from string literals
         if (
@@ -2168,5 +2290,5 @@ class LiveAssetsCatalog:
                 (node_text.startswith('"') and node_text.endswith('"')) or (node_text.startswith("'") and node_text.endswith("'"))
             )
         ):
-            return node_text[1:-1]
+            return _decode_js_escapes(node_text[1:-1])
         return node_text
