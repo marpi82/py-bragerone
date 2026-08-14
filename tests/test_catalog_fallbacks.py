@@ -253,8 +253,8 @@ def test_parse_i18n_from_js_handles_export_styles_and_failures(monkeypatch: pyte
 
     ident_hits = {"n": 0}
 
-    def _blank_later_ident(code: bytes, node: object, *_args: object, **_kwargs: object) -> str:
-        text = _node_text(code, node)  # type: ignore[arg-type]
+    def _blank_later_ident(code: bytes, node: Node) -> str:
+        text = _node_text(code, node)
         if text != "MAINMENU_X":
             return text
         # 1) const binding name, 2) export identifier resolution — keep real.
