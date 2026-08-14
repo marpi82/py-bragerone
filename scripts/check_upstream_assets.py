@@ -21,10 +21,10 @@ from typing import Protocol, TextIO
 from pybragerone import BragerOneApiClient
 from pybragerone.models.api import SystemVersion
 from pybragerone.models.catalog import (
+    _PUBLIC_PARAM_PATTERN,
     INDEX_ASSET_RE,
     LiveAssetsCatalog,
     ParamMap,
-    _PUBLIC_PARAM_PATTERN,
     _count_js_escape_leaks,
 )
 from pybragerone.models.menu import MenuResult
