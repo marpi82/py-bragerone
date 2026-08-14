@@ -9,7 +9,7 @@ import pytest
 from tree_sitter import Node
 
 from pybragerone.api.client import BragerOneApiClient
-from pybragerone.models.catalog import AssetRef, LiveAssetsCatalog, _walk
+from pybragerone.models.catalog import AssetRef, LiveAssetsCatalog, _node_text, _walk
 
 
 def _catalog() -> LiveAssetsCatalog:
@@ -251,13 +251,10 @@ def test_parse_i18n_from_js_handles_export_styles_and_failures(monkeypatch: pyte
     assert catalog._parse_i18n_from_js(ident_default) == {"MAINMENU_X": "Title"}
     assert catalog._parse_i18n_from_js(b"export default '   ';\n") == {}
 
-    import pybragerone.models.catalog as catalog_mod
-
-    real_node_text = catalog_mod._node_text
     ident_hits = {"n": 0}
 
     def _blank_later_ident(code: bytes, node: object, *_args: object, **_kwargs: object) -> str:
-        text = real_node_text(code, node)  # type: ignore[arg-type]
+        text = _node_text(code, node)  # type: ignore[arg-type]
         if text != "MAINMENU_X":
             return text
         # 1) const binding name, 2) export identifier resolution — keep real.
@@ -265,9 +262,9 @@ def test_parse_i18n_from_js_handles_export_styles_and_failures(monkeypatch: pyte
         ident_hits["n"] += 1
         return "   " if ident_hits["n"] >= 3 else text
 
-    monkeypatch.setattr(catalog_mod, "_node_text", _blank_later_ident)
+    monkeypatch.setattr("pybragerone.models.catalog._node_text", _blank_later_ident)
     assert catalog._parse_i18n_from_js(ident_default) == {"__default__": "Title"}
-    monkeypatch.setattr(catalog_mod, "_node_text", real_node_text)
+    monkeypatch.setattr("pybragerone.models.catalog._node_text", _node_text)
 
     class _BoomTS:
         def parse(self, _code: bytes) -> Any:
