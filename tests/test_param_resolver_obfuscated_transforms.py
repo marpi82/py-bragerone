@@ -39,6 +39,8 @@ def test_normalize_js_expression_preserves_mangled_identifiers() -> None:
         ("_0x201288=>_0x201288*0x6", 7, 42),
         ("_0x23f809=>_0x23f809/0x6", 12, 2),
         ("_0x5c18a7=>(_0x5c18a7-0x7f)*0.5", 255, 64),
+        ("_0xac50fa=>_0xac50fa-0x7f", 255, 128),
+        ("e => e - 127", 255, 128),
     ],
 )
 def test_apply_numeric_transform_handles_obfuscated_expressions(expr: str, raw_value: int, expected: float) -> None:
@@ -56,7 +58,36 @@ def test_obfuscated_and_readable_transforms_parse_identically() -> None:
 
 
 def test_parse_numeric_transform_still_rejects_unsupported_bodies() -> None:
-    """Statement bodies and non-arrow text remain out of scope rather than mis-parsed."""
+    """Statement bodies that are not the unit-66 formatter stay out of the numeric parser."""
     assert ParamResolver._parse_numeric_transform("_0x1=>{return _0x1*2;}") is None
     assert ParamResolver._parse_numeric_transform("not an arrow function") is None
     assert ParamResolver._parse_numeric_transform(None) is None
+
+
+_LIVE_UNIT66 = (
+    "_0x528242=>{if(_0x528242===0x0)return'units.202.0';"
+    "const _0x3355bc=(_0x528242-0x1)*0xa,"
+    "_0x39bbda=Math['floor'](_0x3355bc/0x3c),"
+    "_0x3a625e=_0x3355bc%0x3c;"
+    "return _0x39bbda['toString']()['padStart'](0x2,'0')+':'"
+    "+_0x3a625e['toString']()['padStart'](0x2,'0');}"
+)
+
+
+def test_unit66_time_transform_matches_obfuscated_and_readable_spellings() -> None:
+    """Unit 66 must format HH:MM for both the readable special-case and the live bundle."""
+    readable = 'e => { if(e===0)return"units.202.0"; return String((e-1)*10).padStart(2,"0"); }'
+    apply = ParamResolver._apply_numeric_transform
+    assert apply(0, _LIVE_UNIT66) == apply(0, readable) == "units.202.0"
+    assert apply(7, _LIVE_UNIT66) == apply(7, readable) == "01:00"
+    assert ParamResolver._parse_numeric_transform(_LIVE_UNIT66) is None
+
+
+def test_shift_only_obfuscated_and_readable_parse_identically() -> None:
+    """Unit 47 is ``x - 127``; hex ``0x7f`` must ToString to the same shift."""
+    obfuscated = ParamResolver._parse_numeric_transform("_0xac50fa=>_0xac50fa-0x7f")
+    readable = ParamResolver._parse_numeric_transform("e => e - 127")
+    assert obfuscated is not None
+    assert obfuscated == readable
+    assert obfuscated.shift == -127.0
+    assert obfuscated.factor == 1.0

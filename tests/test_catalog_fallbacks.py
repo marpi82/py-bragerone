@@ -213,10 +213,19 @@ def test_parse_js_value_and_translations_array_heuristics() -> None:
     assert first["raw"] == "ident"
 
     parsed_bytes = catalog._parse_js_value_bytes(obj, source.encode())
-    assert parsed_bytes["translations"][1]["tags"] == ["a", "b"]
+    assert parsed_bytes == parsed
     assert catalog._extract_default_translation(obj, source) == "pl"
     assert catalog._extract_default_translation_bytes(obj, source.encode()) == "pl"
     assert catalog._extract_translations_array(obj, source) is not None
+    assert catalog._extract_translations_array(obj, source) == catalog._extract_translations_array_bytes(obj, source.encode())
+
+    quoted = "const cfg={'translations':[{'id':'pl','flag':'PL'}],'defaultTranslation':'pl'};"
+    quoted_tree = catalog._ts.parse(quoted.encode())
+    quoted_obj = _largest_node(quoted_tree.root_node, "object")
+    quoted_parsed = catalog._parse_js_value(quoted_obj, quoted)
+    assert quoted_parsed == catalog._parse_js_value_bytes(quoted_obj, quoted.encode())
+    assert quoted_parsed["translations"][0]["id"] == "pl"
+    assert catalog._extract_default_translation(quoted_obj, quoted) == "pl"
 
     weak = "const xs = [{id: 'pl', flag: 'PL'}, {foo: 1}, {bar: 2}];"
     weak_array = _first_node(catalog._ts.parse(weak.encode()).root_node, "array")

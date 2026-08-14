@@ -602,8 +602,26 @@ async def test_resolve_value_label_resolves_app_lang_token_reference() -> None:
     assert value.value_label == "Русский"
 
 
+@pytest.mark.parametrize(
+    "value_expr",
+    [
+        (
+            'e => { if (e === 0) return "units.202.0"; const t = (e - 1) * 10, '
+            "n = Math.floor(t / 60), r = t % 60; "
+            'return `${n.toString().padStart(2, "0")}:${r.toString().padStart(2, "0")}`; }'
+        ),
+        (
+            "_0x528242=>{if(_0x528242===0x0)return'units.202.0';"
+            "const _0x3355bc=(_0x528242-0x1)*0xa,"
+            "_0x39bbda=Math['floor'](_0x3355bc/0x3c),"
+            "_0x3a625e=_0x3355bc%0x3c;"
+            "return _0x39bbda['toString']()['padStart'](0x2,'0')+':'"
+            "+_0x3a625e['toString']()['padStart'](0x2,'0');}"
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_resolve_value_applies_unit_66_time_transform() -> None:
+async def test_resolve_value_applies_unit_66_time_transform(value_expr: str) -> None:
     """Unit 66 function-style transform should produce translated zero label or HH:MM."""
     store = ParamStore()
 
@@ -635,11 +653,7 @@ async def test_resolve_value_applies_unit_66_time_transform() -> None:
                 unit_descriptors={
                     "66": {
                         "text": "units.0",
-                        "value": (
-                            'e => { if (e === 0) return "units.202.0"; const t = (e - 1) * 10, '
-                            "n = Math.floor(t / 60), r = t % 60; "
-                            'return `${n.toString().padStart(2, "0")}:${r.toString().padStart(2, "0")}`; }'
-                        ),
+                        "value": value_expr,
                     }
                 },
                 i18n_by_namespace={
@@ -663,6 +677,41 @@ async def test_resolve_value_applies_unit_66_time_transform() -> None:
     await store.upsert_async("P4.v300", 7)
     time_val = await resolver.resolve_value("PARAM_300")
     assert time_val.value == "01:00"
+
+
+@pytest.mark.asyncio
+async def test_resolve_value_applies_unit_47_offset() -> None:
+    """Unit 47 is a shift-only transform (``x - 127``), including the obfuscated spelling."""
+    store = ParamStore()
+    mapping = ParamMap(
+        key="PARAM_47",
+        group="P4",
+        paths={"value": [{"pool": "P4", "chan": "v", "idx": 47}]},
+        component_type=None,
+        units=47,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"group": "P4", "use": {"v": {"pool": "P4", "chan": "v", "idx": 47}}},
+    )
+    resolver = ParamResolver(
+        store=store,
+        assets=cast(
+            AssetsProtocol,
+            _StubAssets(
+                mapping=mapping,
+                unit_descriptors={"47": {"text": "units.5", "value": "_0xac50fa=>_0xac50fa-0x7f"}},
+                i18n_by_namespace={"units": {"5": "°C"}},
+            ),
+        ),
+        lang="en",
+    )
+    await store.upsert_async("P4.v47", 255)
+    resolved = await resolver.resolve_value("PARAM_47")
+    assert resolved.value == 128
+    assert resolved.unit == "°C"
 
 
 @pytest.mark.asyncio
