@@ -19,6 +19,7 @@ from pybragerone.models.catalog import (
     LiveAssetsCatalog,
     _collect_bindings,
     _count_js_escape_leaks,
+    _i18n_import_base_and_hash,
     _node_to_python,
     _walk,
 )
@@ -200,9 +201,11 @@ def test_language_config_rejects_empty_default_translation_string() -> None:
         _catalog()._parse_language_config_from_js(js)
 
 
-def _index_with_i18n_import(filename: str) -> bytes:
+def _index_with_i18n_import(filename: str, *, lang: str = "pl", namespace: str = "units") -> bytes:
     """Build a minimal index that points one namespace at ``filename``."""
-    return (f"var assets={{\"../../resources/languages/pl/units.json\":()=>d(()=>import('./{filename}'),[])}};").encode()
+    return (
+        f"var assets={{\"../../resources/languages/{lang}/{namespace}.json\":()=>d(()=>import('./{filename}'),[])}};"
+    ).encode()
 
 
 def test_find_i18n_asset_accepts_unhashed_filename() -> None:
@@ -218,7 +221,7 @@ def test_find_i18n_asset_accepts_unhashed_filename() -> None:
 
 
 def test_find_i18n_asset_basename_matches_unhashed_import() -> None:
-    """An empty hash after ``rpartition`` must still accept a basename catalog hit."""
+    """An empty hash (unhashed ``units.js``) must still accept a basename catalog hit."""
     catalog = _catalog()
     catalog._idx.index_bytes = _index_with_i18n_import("units.js")
     asset = AssetRef(url="https://cdn.example/not-units.js", base="units", hash="ignored")
@@ -256,6 +259,56 @@ def test_find_i18n_asset_returns_none_without_index_url_or_catalog_hit() -> None
     catalog._idx.index_bytes = _index_with_i18n_import("units-Ab12.js")
     catalog._last_index_url = None
     assert catalog._find_i18n_asset("pl", "units") is None
+
+
+@pytest.mark.parametrize(
+    ("namespace", "stem", "base", "file_hash"),
+    [
+        ("units", "units", "units", ""),
+        ("Units", "units", "Units", ""),
+        ("units", "units-Ab12", "units", "Ab12"),
+        ("info", "info-Bpu026-3", "info", "Bpu026-3"),
+        ("Info", "info-Bpu026-3", "Info", "Bpu026-3"),
+        ("tariff", "tariff-Db9Vj8s-", "tariff", "Db9Vj8s-"),
+        ("units", "other-Ab12", "other-Ab12", ""),
+    ],
+)
+def test_i18n_import_base_and_hash_uses_json_namespace(namespace: str, stem: str, base: str, file_hash: str) -> None:
+    """Hashes with internal or trailing hyphens stay attached to the JSON namespace."""
+    assert _i18n_import_base_and_hash(namespace, stem) == (base, file_hash)
+
+
+def test_find_i18n_asset_basename_matches_hyphenated_hash() -> None:
+    """``info-Bpu026-3`` must look up basename ``info``, not ``info-Bpu026``."""
+    catalog = _catalog()
+    catalog._idx.index_bytes = _index_with_i18n_import("info-Bpu026-3.js", namespace="info")
+    asset = AssetRef(url="https://cdn.example/info-other.js", base="info", hash="Bpu026-3")
+    catalog._idx.assets_by_basename["info"] = [asset]
+    assert catalog._find_i18n_asset("pl", "info") is asset
+
+
+def test_find_i18n_asset_url_fallback_preserves_trailing_hyphen_hash() -> None:
+    """URL fallback must keep ``Db9Vj8s-`` as the hash, not an empty rpartition tail."""
+    catalog = _catalog()
+    catalog._idx.index_bytes = _index_with_i18n_import("tariff-Db9Vj8s-.js", lang="en", namespace="tariff")
+    catalog._last_index_url = "https://one.brager.pl/assets/index-Ab12.js"
+    ref = catalog._find_i18n_asset("en", "tariff")
+    assert ref is not None
+    assert ref.base == "tariff"
+    assert ref.hash == "Db9Vj8s-"
+    assert ref.url.endswith("/tariff-Db9Vj8s-.js")
+
+
+def test_find_i18n_asset_url_fallback_when_filename_does_not_start_with_namespace() -> None:
+    """A divergent import filename still joins against the index URL."""
+    catalog = _catalog()
+    catalog._idx.index_bytes = _index_with_i18n_import("other-Ab12.js")
+    catalog._last_index_url = "https://one.brager.pl/assets/index-Ab12.js"
+    ref = catalog._find_i18n_asset("pl", "units")
+    assert ref is not None
+    assert ref.base == "other-Ab12"
+    assert ref.hash == ""
+    assert ref.url.endswith("/other-Ab12.js")
 
 
 def test_extract_language_helpers_handle_quoted_keys() -> None:

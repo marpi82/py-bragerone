@@ -462,6 +462,31 @@ def _count_js_escape_leaks(value: Any) -> int:
     return 0
 
 
+def _i18n_import_base_and_hash(namespace: str, stem: str) -> tuple[str, str]:
+    """Split an i18n import stem into ``(base, hash)`` using the JSON namespace.
+
+    Vite hashes may contain hyphens (``info-Bpu026-3``) or end with one
+    (``tariff-Db9Vj8s-``). ``str.rpartition("-")`` would treat those as extra
+    base segments. The JSON path already names the namespace, so everything after
+    ``<namespace>-`` is the hash.
+
+    Args:
+        namespace: Namespace captured from the language JSON path (e.g. ``info``).
+        stem: Import filename without ``.js`` (e.g. ``info-Bpu026-3``).
+
+    Returns:
+        ``(base, hash)``. Hash is empty when the import has no ``-hash`` suffix.
+        When *stem* does not start with *namespace*, the whole stem is the base.
+    """
+    prefix = f"{namespace}-"
+    stem_l = stem.lower()
+    if stem_l.startswith(prefix.lower()):
+        return namespace, stem[len(namespace) + 1 :]
+    if stem_l == namespace.lower():
+        return namespace, ""
+    return stem, ""
+
+
 def _split_top_level_csv(raw: str) -> list[str]:
     parts: list[str] = []
     cur: list[str] = []
@@ -2128,9 +2153,7 @@ class LiveAssetsCatalog:
 
         asset_filename = match.group(2)
         stem = asset_filename[:-3]  # the import regex already requires a ``.js`` suffix
-        file_base, separator, file_hash = stem.rpartition("-")
-        if not separator:
-            file_base, file_hash = stem, ""
+        file_base, file_hash = _i18n_import_base_and_hash(match.group(1), stem)
 
         asset_ref = self._idx.find_asset_for_full_name(stem)
         if asset_ref is not None:

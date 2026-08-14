@@ -169,6 +169,7 @@ def test_build_param_map_from_obj_normalizes_command_branches_and_status() -> No
     assert pm.command_rules[0]["conditions"][0]["expected"] is True
     assert pm.command_rules[1]["conditions"][0]["operation"] == "equalTo"
     assert pm.command_rules[1]["conditions"][0]["expected"] is None
+    assert pm.command_rules[2]["value"] is False
     leftover = catalog._build_param_map_from_obj(
         {
             "PARAM_CMD": {
