@@ -384,47 +384,29 @@ def test_eval_array_map_call_rejects_non_map_shapes() -> None:
 
 
 def test_node_to_python_returns_helper_last_arg_token() -> None:
-    """``helper(WRITE, 'PARAM_45')`` leftover calls collapse to the public token."""
-    code = b"const v=_0x2d2290(_0x870f31['WRITE'],'PARAM_45');"
-    tree = _catalog()._ts.parse(code)
-    call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
-    assert _node_to_python(code, call) == "PARAM_45"
-    status = b"const v=_0x2d2290(_0x870f31['STATUS'],'STATUS_P5_1');"
-    status_tree = _catalog()._ts.parse(status)
-    status_call = next(node for node in _walk(status_tree.root_node) if node.type == "call_expression")
-    assert _node_to_python(status, status_call) == "STATUS_P5_1"
-    empty = b"const v=foo();"
-    empty_tree = _catalog()._ts.parse(empty)
-    empty_call = next(node for node in _walk(empty_tree.root_node) if node.type == "call_expression")
-    assert _node_to_python(empty, empty_call) == "foo()"
-    numeric = b"const v=foo(1);"
-    numeric_tree = _catalog()._ts.parse(numeric)
-    numeric_call = next(node for node in _walk(numeric_tree.root_node) if node.type == "call_expression")
-    assert _node_to_python(numeric, numeric_call) == "foo(1)"
-    permission = b"const v=foo('DISPLAY_PARAMETER_LEVEL_1');"
-    permission_tree = _catalog()._ts.parse(permission)
-    permission_call = next(node for node in _walk(permission_tree.root_node) if node.type == "call_expression")
-    assert _node_to_python(permission, permission_call) == "foo('DISPLAY_PARAMETER_LEVEL_1')"
-    token_only = b"const v=foo('PARAM_45');"
-    token_only_tree = _catalog()._ts.parse(token_only)
-    token_only_call = next(node for node in _walk(token_only_tree.root_node) if node.type == "call_expression")
-    assert _node_to_python(token_only, token_only_call) == "foo('PARAM_45')"
-    wrong_action = b"const v=foo(1,'PARAM_45');"
-    wrong_action_tree = _catalog()._ts.parse(wrong_action)
-    wrong_action_call = next(node for node in _walk(wrong_action_tree.root_node) if node.type == "call_expression")
-    assert _node_to_python(wrong_action, wrong_action_call) == "foo(1,'PARAM_45')"
-    unknown_action = b"const v=foo('EQUALTO','PARAM_45');"
-    unknown_action_tree = _catalog()._ts.parse(unknown_action)
-    unknown_action_call = next(node for node in _walk(unknown_action_tree.root_node) if node.type == "call_expression")
-    assert _node_to_python(unknown_action, unknown_action_call) == "foo('EQUALTO','PARAM_45')"
-    non_string_token = b"const v=foo('WRITE',1);"
-    non_string_token_tree = _catalog()._ts.parse(non_string_token)
-    non_string_token_call = next(node for node in _walk(non_string_token_tree.root_node) if node.type == "call_expression")
-    assert _node_to_python(non_string_token, non_string_token_call) == "foo('WRITE',1)"
-    wrong_token = b"const v=foo('WRITE','DISPLAY_PARAMETER_LEVEL_1');"
-    wrong_token_tree = _catalog()._ts.parse(wrong_token)
-    wrong_token_call = next(node for node in _walk(wrong_token_tree.root_node) if node.type == "call_expression")
-    assert _node_to_python(wrong_token, wrong_token_call) == "foo('WRITE','DISPLAY_PARAMETER_LEVEL_1')"
+    """Only obfuscated ``_0x…(WRITE, 'PARAM_45')`` helpers collapse to the public token."""
+    catalog = _catalog()
+
+    def _call(js: bytes) -> object:
+        tree = catalog._ts.parse(js)
+        call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
+        return _node_to_python(js, call)
+
+    assert _call(b"const v=_0x2d2290(_0x870f31['WRITE'],'PARAM_45');") == "PARAM_45"
+    assert _call(b"const v=_0x2d2290(_0x870f31['STATUS'],'STATUS_P5_1');") == "STATUS_P5_1"
+
+    # A readable callee with the same signature keeps its semantics.
+    assert _call(b"const v=foo('WRITE','PARAM_45');") == "foo('WRITE','PARAM_45')"
+    assert _call(b"const v=_0x1a['helper']('WRITE','PARAM_45');") == "_0x1a['helper']('WRITE','PARAM_45')"
+
+    # Argument-shape guards, all behind an obfuscated callee.
+    assert _call(b"const v=_0x2d2290();") == "_0x2d2290()"
+    assert _call(b"const v=_0x2d2290(1);") == "_0x2d2290(1)"
+    assert _call(b"const v=_0x2d2290('PARAM_45');") == "_0x2d2290('PARAM_45')"
+    assert _call(b"const v=_0x2d2290(1,'PARAM_45');") == "_0x2d2290(1,'PARAM_45')"
+    assert _call(b"const v=_0x2d2290('EQUALTO','PARAM_45');") == "_0x2d2290('EQUALTO','PARAM_45')"
+    assert _call(b"const v=_0x2d2290('WRITE',1);") == "_0x2d2290('WRITE',1)"
+    assert _call(b"const v=_0x2d2290('WRITE','DISPLAY_PARAMETER_LEVEL_1');") == ("_0x2d2290('WRITE','DISPLAY_PARAMETER_LEVEL_1')")
 
 
 def test_node_to_python_invokes_bound_callable_with_multiple_args() -> None:

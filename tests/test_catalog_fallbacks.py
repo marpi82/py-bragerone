@@ -113,8 +113,14 @@ def test_attach_parameters_tokens_normalizes_calls_dicts_and_children() -> None:
 
     double_quote_map = catalog._parameter_section_items("['PARAM_99'][\"map\"](x => ({parameter: helper(WRITE, x)}))")
     assert double_quote_map == [{"parameter": "PARAM_99"}]
-    double_quote_tokens = catalog._parameter_section_items('["PARAM_45","PARAM_34"]["map"](x => ({parameter: helper(WRITE, x)}))')
-    assert double_quote_tokens == [{"parameter": "PARAM_45"}, {"parameter": "PARAM_34"}]
+    double_quote_tokens = catalog._parameter_section_items(
+        '["PARAM_45","STATUS_P5_1"]["map"](x => ({parameter: helper(WRITE, x)}))'
+    )
+    assert double_quote_tokens == [{"parameter": "PARAM_45"}, {"parameter": "STATUS_P5_1"}]
+    non_token_literals = catalog._parameter_section_items(
+        "['PARAM_45','WRITE','DISPLAY_PARAMETER_LEVEL_1']['map'](x => ({parameter: helper(WRITE, x)}))"
+    )
+    assert non_token_literals == [{"parameter": "PARAM_45"}]
     assert catalog._parameter_section_items("not-a-map") == []
     assert catalog._parameter_section_items(None) == []
 

@@ -32,8 +32,12 @@ JS_LANGUAGE = Language(tree_sitter_javascript.language())
 LOG = logging.getLogger(__name__)
 INDEX_ASSET_RE = re.compile(r"/assets/(index-[A-Za-z0-9_-]+\.js)")
 _HELPER_ACTIONS = frozenset({"READ", "WRITE", "STATUS"})
-_HELPER_TOKEN_RE = re.compile(r"(?:PARAM|STATUS)_[A-Z0-9_]+")
-_LEFTOVER_QUOTED_TOKEN_RE = re.compile(r"""['"]([A-Z][A-Z0-9_]+)['"]""")
+# Only ``PARAM_*`` / ``STATUS_*`` are addressable tokens. Any other quoted upper-case
+# literal in leftover source (``'WRITE'``, ``'DISPLAY_*'``) would be a bogus parameter.
+_PUBLIC_PARAM_PATTERN = r"(?:PARAM|STATUS)_[A-Z0-9_]+"
+_HELPER_TOKEN_RE = re.compile(_PUBLIC_PARAM_PATTERN)
+_LEFTOVER_QUOTED_TOKEN_RE = re.compile(rf"""['"]({_PUBLIC_PARAM_PATTERN})['"]""")
+_OBFUSCATED_IDENTIFIER_RE = re.compile(r"_0x[0-9a-fA-F]*")
 
 
 # ----------------------------- Data types -----------------------------
@@ -661,19 +665,27 @@ def _eval_array_map_call(code: bytes, node: Node, bindings: dict[str, Any] | Non
         return None
 
 
-def _public_token_from_helper_args(args: list[Any]) -> str | None:
-    """Return the PARAM_*/STATUS_* token from a leftover helper call.
+def _public_token_from_helper_args(code: bytes, func_node: Node | None, args: list[Any]) -> str | None:
+    """Return the PARAM_*/STATUS_* token from a leftover obfuscated helper call.
 
-    Live menus emit ``helper(WRITE, 'PARAM_45')`` after the callee stays obfuscated.
-    Unrelated enum calls such as ``foo('DISPLAY_PARAMETER_LEVEL_1')`` must remain
-    leftover source text.
+    Live menus emit ``_0x2d2290(_0x870f31['WRITE'], 'PARAM_45')`` when the helper
+    identifier stays obfuscated. Readable calls that happen to share the signature
+    (``foo('WRITE', 'PARAM_45')``) keep their source text, because collapsing them
+    would erase semantics this parser cannot verify.
 
     Args:
+        code: Source bytes containing ``func_node``.
+        func_node: The callee node of the call expression.
         args: Already-converted call arguments.
 
     Returns:
-        The public token, or ``None`` when the call is not ``(READ|WRITE|STATUS, TOKEN)``.
+        The public token, or ``None`` when this is not an obfuscated
+        ``(READ|WRITE|STATUS, TOKEN)`` helper call.
     """
+    if func_node is None or func_node.type != "identifier":
+        return None
+    if _OBFUSCATED_IDENTIFIER_RE.fullmatch(_node_text(code, func_node)) is None:
+        return None
     if len(args) < 2:
         return None
     action = args[0]
@@ -816,7 +828,7 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
             if len(args) == 1:
                 return callee(args[0])
             return callee(args)
-        helper_token = _public_token_from_helper_args(args)
+        helper_token = _public_token_from_helper_args(code, func_node, args)
         if helper_token is not None:
             return helper_token
 
