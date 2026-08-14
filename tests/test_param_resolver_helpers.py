@@ -615,6 +615,9 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
     assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="MAINMENU_USTAWIENIA_KOTLA")) is True
     assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="MENUSERWIS_USTAWIENIA_ROZPALANIA")) is True
     assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="routes.modules.menu.modules")) is False
+    assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="   ")) is False
+    assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="other.menu.item")) is False
+    assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="modules.menu.boiler")) is True
 
     assert ParamResolver._to_float_literal("") is None
     assert ParamResolver._to_float_literal(".5") == 0.5
