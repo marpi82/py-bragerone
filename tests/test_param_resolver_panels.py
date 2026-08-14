@@ -306,7 +306,8 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
     namespaces: dict[str, dict[str, Any]] = {
         "routes": {
             "modules": {"menu": {"thermostat": {"pump": "Pompa CO"}}},
-            # Already-resolved overlay entry must not be replaced by a later fetch.
+            # Already-resolved overlay entry must not be replaced by a later fetch
+            # or by a competing menu-namespace title.
             "MAINMENU_PRESET": "Preset title",
             # Whitespace-only overlay must be treated as missing and re-fetched.
             "MAINMENU_SPACES": "   ",
@@ -315,6 +316,7 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
         },
         "menu": {
             "MAINMENU_MENU_BUFOR": "Menu bufor",
+            "MAINMENU_PRESET": "Menu should not win",
             "nested": {"ignored": True},
             "bad-key": 12,
         },
