@@ -18,6 +18,13 @@ _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "check_upstream_asse
 _INDEX_ASSET = "index-Ab12Cd.js"
 _INDEX_JS = b"""
 const x=()=>import("./module.menu-Xy9.js");
+const IconsList={'INFO':'INFO'},
+basicParameterBuilder_P11=({id:_i,icon:icon=IconsList['INFO'],number:_n})=>{
+  const _o={'id':_i,'icon':icon,'name':'parameters.PARAM_P11_'+_n,
+    'value':[{'group':'P11','number':_n,'use':'v'}]};
+  return _o;
+},
+paramTable={'PARAM_P11_1':basicParameterBuilder_P11({'id':0x1,'number':0x1})};
 const _u={0x9:{'text':'units.1'}};
 const _c={'translations':[{'id':'PL','flag':'pl'}],'defaultTranslation':'pl'};
 Object.assign({"../../resources/languages/en/units.json":()=>d(()=>import("./units-Ab12Cd.js"),[])});
@@ -43,6 +50,7 @@ class _UpstreamProbe(Protocol):
     menu_gated_tokens: int
     menu_permissions_ok: bool
     param_semantics_mangled: int
+    inline_param_tokens: int
 
 
 class _UpstreamScript(Protocol):
@@ -354,6 +362,10 @@ async def test_assert_probe_ok_rejects_empty_table_units_and_escape_leaks() -> N
     with pytest.raises(RuntimeError, match="permissionModule still contains leftover"):
         module.assert_probe_ok(probe)
     probe.menu_permissions_ok = True
+    probe.inline_param_tokens = 0
+    with pytest.raises(RuntimeError, match=r"no inline PARAM_.*tokens parsed"):
+        module.assert_probe_ok(probe)
+    probe.inline_param_tokens = 1260
     probe.param_semantics_mangled = 2
     with pytest.raises(RuntimeError, match="leftover _0x subscript text in component/status/operation"):
         module.assert_probe_ok(probe)
