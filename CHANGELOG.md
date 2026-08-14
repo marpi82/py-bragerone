@@ -7,6 +7,21 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.8.4] - 2026-08-14
+
+### Fixed
+
+- Evaluate statement-block parameter factory builders such as
+  ``basicParameterBuilder_P*({…})`` in ``index-*.js``. Upstream replaced inline
+  parameter object literals with these calls; without statement-block bodies,
+  destructuring defaults, object spread and string ``+``, a fresh bootstrap on a
+  live device kept only 17 of ~100 entity descriptors (#295, closed #293).
+- Resolve bare ``MAINMENU_*`` / ``MENUSERWIS_*`` / ``MENU_*`` panel-title tokens
+  from their dedicated string-default i18n namespaces (and the ``menu`` pack).
+  Parent segments such as ``MAINMENU_MENU_TERMOSTATU`` used to leak into Home
+  Assistant entity names built as ``"{panel_path} - {label}"`` while child
+  ``routes.modules.menu.*`` segments already translated (#296, closed #294).
+
 ## [2026.8.3] - 2026-08-14
 
 ### Fixed
@@ -115,7 +130,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.3...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.4...HEAD
+[2026.8.4]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.4
 [2026.8.3]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.3
 [2026.8.1]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.1
 [2026.4.5]: https://github.com/marpi82/py-bragerone/releases/tag/2026.4.5
