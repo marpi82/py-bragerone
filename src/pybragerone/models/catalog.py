@@ -443,7 +443,7 @@ def _property_name(code: bytes, key_node: Node) -> str:
     return raw
 
 
-_JS_ESCAPE_LEAK_RE = re.compile(r"\\(?:x[0-9a-fA-F]|u\{[0-9a-fA-F]+\}|u[0-9a-fA-F])")
+_JS_ESCAPE_LEAK_RE = re.compile(r"\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4})")
 
 
 def _count_js_escape_leaks(value: Any) -> int:
@@ -451,6 +451,7 @@ def _count_js_escape_leaks(value: Any) -> int:
 
     After a successful parse those sequences should already have been decoded. A
     leftover leak means a new escape form slipped past ``_decode_js_escapes``.
+    Incomplete fragments such as ``\\x2`` or ``\\u00`` are not JS escapes.
     """
     if isinstance(value, str):
         return 1 if _JS_ESCAPE_LEAK_RE.search(value) else 0

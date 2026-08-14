@@ -114,6 +114,9 @@ def test_count_js_escape_leaks_walks_nested_values() -> None:
     assert _count_js_escape_leaks({"0": " ", "1": "a\\u00a0b"}) == 1
     assert _count_js_escape_leaks([{"x": "ok"}, {"y": "\\x0a"}]) == 1
     assert _count_js_escape_leaks("emoji \\u{1F4A9}") == 1
+    assert _count_js_escape_leaks("\\x2") == 0
+    assert _count_js_escape_leaks("\\u00") == 0
+    assert _count_js_escape_leaks("\\u00a0") == 1
     assert _count_js_escape_leaks(0) == 0
     assert _count_js_escape_leaks(None) == 0
 
