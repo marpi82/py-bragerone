@@ -11,6 +11,14 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- Decode JavaScript escape sequences (``\xNN``, ``\uNNNN``, ``\u{...}``, surrogate
+  pairs and the simple forms) when parsing web-app assets. Escapes survived verbatim,
+  so a space inside a label rendered as a literal ``\x20``; 1303 of 1339 parameter
+  labels were affected on the live bundle.
+- Parse the numeric literal forms the obfuscated bundle actually emits — radix
+  prefixes (``0x9``, ``0o17``, ``0b1010``), digit separators (``1_000``) and the
+  BigInt marker (``10n``). The hex-keyed unit descriptor table used to parse to zero
+  entries, losing every unit resolved through indirection (kW among them).
 - Parse quoted object keys in the live (obfuscated) language-config object so
   ``list_language_config()`` works against the current ``index-*.js`` bundle.
 - Resolve i18n chunks whose Vite hash contains or ends with a hyphen
