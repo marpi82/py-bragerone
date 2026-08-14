@@ -459,7 +459,6 @@ export default _201;
 """
 
 
-@pytest.mark.asyncio()
 async def test_get_module_menu_unwraps_array_map_write_lists() -> None:
     """DeviceMenu 153/2190 write lists must become PARAM_* tokens, not ValidationError."""
     mock_api = AsyncMock()
