@@ -46,7 +46,7 @@ Parameter addressing: `P<n>.<chan><idx>` (channels: `v` value, `s` status bitmas
 - pytest with `asyncio_mode = "auto"`; mock HTTP with **pytest-httpx** (`httpx_mock`).
 - Live-API tests must be marked `@pytest.mark.needs_internet`.
 - Hypothesis for property-based tests; fuzz harness lives in `fuzz/` (atheris).
-- Parser resilience (catalog/tree-sitter) is heavily tested in `tests/test_catalog_*.py` — keep it that way; upstream JS assets change without notice. Optional captured dumps live in `tests/assets/{index,params,menus,i18n}/` (`*.js` gitignored) and are parsed by `tests/test_catalog_captured_assets.py` (skipped when empty). Scheduled watch: `.github/workflows/upstream-assets.yml` (unauthenticated `/system/version` + `index-*.js` fingerprint; not a `ci.yml` gate).
+- Parser resilience (catalog/tree-sitter) is heavily tested in `tests/test_catalog_*.py` — keep it that way; upstream JS assets change without notice. Optional captured dumps live in `tests/assets/{index,params,menus,i18n}/` (`*.js` gitignored) and are parsed by `tests/test_catalog_captured_assets.py` (skipped when empty). Scheduled watch: `.github/workflows/upstream-assets.yml` (unauthenticated `/system/version` + `index-*.js` fingerprint; when it parses, also requires language config, units descriptor table, and `units` i18n — not a `ci.yml` gate).
 
 ## Docs
 

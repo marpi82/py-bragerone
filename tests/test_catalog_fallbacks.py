@@ -217,6 +217,9 @@ def test_parse_js_value_and_translations_array_heuristics() -> None:
     assert catalog._extract_default_translation(obj, source) == "pl"
     assert catalog._extract_default_translation_bytes(obj, source.encode()) == "pl"
     assert catalog._extract_translations_array(obj, source) is not None
+    extracted = catalog._extract_translations_array_bytes(obj, source.encode())
+    assert extracted is not None
+    assert extracted[0]["id"] == "pl"
 
     weak = "const xs = [{id: 'pl', flag: 'PL'}, {foo: 1}, {bar: 2}];"
     weak_array = _first_node(catalog._ts.parse(weak.encode()).root_node, "array")

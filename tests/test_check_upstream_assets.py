@@ -15,8 +15,15 @@ from pybragerone.models.api import SystemVersion
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "check_upstream_assets.py"
 _INDEX_ASSET = "index-Ab12Cd.js"
-_INDEX_JS = b'const x=()=>import("./module.menu-Xy9.js");'
+_INDEX_JS = b"""
+const x=()=>import("./module.menu-Xy9.js");
+const _u={0x9:{'text':'units.1'}};
+const _c={'translations':[{'id':'PL','flag':'pl'}],'defaultTranslation':'pl'};
+Object.assign({"../../resources/languages/en/units.json":()=>d(()=>import("./units-Ab12Cd.js"),[])});
+"""
+_UNITS_JS = b"export default {'1':'kW'};"
 _HOME_HTML = b'<script src="/assets/index-Ab12Cd.js"></script>'
+_BARE_INDEX_JS = b'const x=()=>import("./module.menu-Xy9.js");'
 
 
 class _UpstreamProbe(Protocol):
@@ -28,6 +35,10 @@ class _UpstreamProbe(Protocol):
     previous_fingerprint: str | None
     basename_count: int
     parse_error: str | None
+    language_ok: bool
+    descriptor_table_count: int
+    units_count: int
+    escape_leaks: int
 
 
 class _UpstreamScript(Protocol):
@@ -117,6 +128,7 @@ def _client(*, version: str = "2.08") -> _FakePublicClient:
         },
         assets={
             f"https://one.brager.pl/assets/{_INDEX_ASSET}": _INDEX_JS,
+            "https://one.brager.pl/assets/units-Ab12Cd.js": _UNITS_JS,
         },
     )
 
@@ -184,6 +196,10 @@ async def test_probe_parses_index_when_fingerprint_changes() -> None:
     assert probe.changed is True
     assert probe.parse_skipped is False
     assert probe.basename_count >= 1
+    assert probe.language_ok is True
+    assert probe.descriptor_table_count >= 1
+    assert probe.units_count >= 1
+    assert probe.escape_leaks == 0
     assert any(url.endswith(_INDEX_ASSET) for url in client.urls)
     module.assert_probe_ok(probe)
 
@@ -197,6 +213,31 @@ async def test_probe_first_run_parses_without_previous() -> None:
     assert probe.changed is True
     assert probe.parse_skipped is False
     assert probe.basename_count >= 1
+    assert probe.language_ok is True
+    module.assert_probe_ok(probe)
+
+
+@pytest.mark.asyncio
+async def test_probe_rejects_index_without_language_or_units() -> None:
+    """A parseable index that yields no language/table/units must fail the probe gate."""
+    module = _load_upstream()
+    client = _FakePublicClient(
+        version="2.08",
+        pages={
+            "https://one.brager.pl/": _HOME_HTML,
+            "https://one.brager.pl/assets/": _HOME_HTML,
+        },
+        assets={f"https://one.brager.pl/assets/{_INDEX_ASSET}": _BARE_INDEX_JS},
+    )
+    probe = await module.probe_upstream(
+        previous_fingerprint="1.0|index-old.js",
+        client=client,
+    )
+    assert probe.parse_skipped is False
+    assert probe.basename_count >= 1
+    assert probe.language_ok is False
+    with pytest.raises(RuntimeError, match="language config did not parse"):
+        module.assert_probe_ok(probe)
 
 
 @pytest.mark.asyncio
@@ -240,3 +281,21 @@ async def test_github_output_rejects_multiline_api_version() -> None:
     with pytest.raises(RuntimeError, match="single line"):
         module.write_github_output(dirty, buf)
     assert buf.getvalue() == ""
+
+
+@pytest.mark.asyncio
+async def test_assert_probe_ok_rejects_empty_table_units_and_escape_leaks() -> None:
+    """Shape gates fire independently once fingerprint and basenames look fine."""
+    module = _load_upstream()
+    probe = await module.probe_upstream(client=_client())
+    probe.descriptor_table_count = 0
+    with pytest.raises(RuntimeError, match="descriptor table is empty"):
+        module.assert_probe_ok(probe)
+    probe.descriptor_table_count = 1
+    probe.units_count = 0
+    with pytest.raises(RuntimeError, match="units i18n namespace is empty"):
+        module.assert_probe_ok(probe)
+    probe.units_count = 1
+    probe.escape_leaks = 4
+    with pytest.raises(RuntimeError, match="escape leaks"):
+        module.assert_probe_ok(probe)
