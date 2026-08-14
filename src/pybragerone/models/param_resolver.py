@@ -33,6 +33,9 @@ _JS_RADIX_LITERAL_RE = re.compile(r"(?<![\w$.])0(?:[xX][0-9a-fA-F]+|[oO][0-7]+|[
 # Unit 66: HH:MM formatter. Identifiers and quotes vary; these two pieces do not.
 _UNIT66_PADSTART_RE = re.compile(r"padStart\(2,['\"]0['\"]\)")
 _UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
+# Bare menu-title i18n namespaces (``MAINMENU_*``, ``MENUSERWIS_*``, ``MENU_*``, …).
+# Require the known prefixes so abbreviations like ``DHW`` do not trigger asset fetches.
+_MENU_TITLE_TOKEN_RE = re.compile(r"^(?:MAINMENU|MENUSERWIS|MENUPALNIKA|MENU)_[A-Z0-9_]+$")
 
 
 class AssetsProtocol(Protocol):
@@ -473,6 +476,13 @@ class ParamResolver:
                 translated = cls._lookup_dotted_path(routes_i18n, translation_path)
                 if translated is not None:
                     return translated
+            else:
+                # Bare tokens such as ``MAINMENU_MENU_TERMOSTATU`` resolve via the
+                # flat overlay built by :meth:`_panel_title_i18n` (string-default
+                # namespaces and the ``menu`` pack), not via ``routes.*`` paths.
+                translated = cls._lookup_dotted_path(routes_i18n, dn_norm)
+                if translated is not None:
+                    return translated
 
         if isinstance(routes_i18n, Mapping):
             route_name = getattr(route, "name", None)
@@ -488,6 +498,69 @@ class ParamResolver:
             return route_name.strip()
         route_path = getattr(route, "path", None)
         return str(route_path or "-")
+
+    @classmethod
+    def _collect_menu_title_tokens(cls, menu: MenuResult) -> set[str]:
+        """Collect bare ``MAINMENU_*``-style tokens from route names and display names."""
+        tokens: set[str] = set()
+        for route, _ancestors in cls._iter_routes_with_ancestors(menu.routes):
+            meta = getattr(route, "meta", None)
+            candidates = (
+                getattr(route, "name", None),
+                getattr(meta, "display_name", None) if meta is not None else None,
+            )
+            for raw in candidates:
+                if not isinstance(raw, str):
+                    continue
+                token = raw.strip()
+                if _MENU_TITLE_TOKEN_RE.fullmatch(token):
+                    tokens.add(token)
+        return tokens
+
+    @staticmethod
+    def _string_namespace_title(namespace: str, table: Mapping[str, Any]) -> str | None:
+        """Extract the title string from a string-default or self-keyed i18n namespace."""
+        direct = table.get(namespace)
+        if isinstance(direct, str) and direct.strip():
+            return direct.strip()
+        default = table.get("__default__")
+        if isinstance(default, str) and default.strip():
+            return default.strip()
+        if len(table) == 1:
+            only = next(iter(table.values()))
+            if isinstance(only, str) and only.strip():
+                return only.strip()
+        return None
+
+    async def _panel_title_i18n(self, menu: MenuResult) -> dict[str, Any]:
+        """Build the i18n map used for panel path titles.
+
+        Starts from the ``routes`` namespace (nested ``modules.menu.*`` keys) and
+        overlays flat title strings for bare menu tokens. Those titles live in:
+
+        - the ``menu`` namespace (a few ``MAINMENU_*`` / ``MENUSERWIS_*`` keys), and
+        - dedicated string-default namespaces named like the token itself
+          (``MAINMENU_MENU_TERMOSTATU`` → ``"Menu termostatów"``).
+        """
+        routes_i18n = dict(await self._i18n.get_namespace("routes"))
+        menu_i18n = await self._i18n.get_namespace("menu")
+        for key, value in menu_i18n.items():
+            if not (isinstance(key, str) and isinstance(value, str) and value.strip()):
+                continue
+            existing = routes_i18n.get(key)
+            # Prefer a real menu title over a blank/whitespace routes placeholder.
+            if not (isinstance(existing, str) and existing.strip()):
+                routes_i18n[key] = value.strip()
+
+        for token in self._collect_menu_title_tokens(menu):
+            existing = routes_i18n.get(token)
+            if isinstance(existing, str) and existing.strip():
+                continue
+            table = await self._i18n.get_namespace(token)
+            title = self._string_namespace_title(token, table)
+            if title is not None:
+                routes_i18n[token] = title
+        return routes_i18n
 
     @classmethod
     def _route_allowed_in_module_item(cls, route: Any) -> bool:
@@ -715,7 +788,7 @@ class ParamResolver:
     ) -> dict[str, list[str]]:
         """Build panel groups from module menu for selected permissions."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
-        routes_i18n = await self._i18n.get_namespace("routes")
+        routes_i18n = await self._panel_title_i18n(menu)
         return self.build_panel_groups_from_menu(menu, all_panels=all_panels, routes_i18n=routes_i18n)
 
     async def panel_route_diagnostics(
@@ -727,7 +800,7 @@ class ParamResolver:
     ) -> list[dict[str, Any]]:
         """Return route diagnostics for panel inclusion filtering."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
-        routes_i18n = await self._i18n.get_namespace("routes")
+        routes_i18n = await self._panel_title_i18n(menu)
         return self.panel_route_diagnostics_from_menu(menu, all_panels=all_panels, routes_i18n=routes_i18n)
 
     async def resolve_label(self, symbol: str) -> str | None:

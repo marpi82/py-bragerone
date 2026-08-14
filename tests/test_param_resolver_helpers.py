@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from pybragerone.models.menu import MenuResult
 from pybragerone.models.param import ParamStore
@@ -513,6 +513,102 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
     assert ParamResolver._route_title(named, routes_i18n={"modules": {"menu": {"boiler": "Kocioł"}}}) == "Kocioł"
     assert ParamResolver._route_title(SimpleNamespace(name="modules.menu.x", path="x", meta=None)) == "modules.menu.x"
     assert ParamResolver._route_title(SimpleNamespace(name="", path="fallback", meta=None)) == "fallback"
+
+    mainmenu = SimpleNamespace(
+        name="MAINMENU_MENU_TERMOSTATU",
+        path="thermostats",
+        meta=SimpleNamespace(display_name="MAINMENU_MENU_TERMOSTATU"),
+    )
+    assert (
+        ParamResolver._route_title(
+            mainmenu,
+            routes_i18n={"MAINMENU_MENU_TERMOSTATU": "Menu termostatów"},
+        )
+        == "Menu termostatów"
+    )
+    dhw = SimpleNamespace(
+        name="modules.menu.dhw",
+        path="dhw",
+        meta=SimpleNamespace(display_name="MAINMENU_USTAWIENIA_CWU"),
+    )
+    assert (
+        ParamResolver._route_title(
+            dhw,
+            routes_i18n={"MAINMENU_USTAWIENIA_CWU": "Ustawienia CWU", "modules": {"menu": {}}},
+        )
+        == "Ustawienia CWU"
+    )
+    child = SimpleNamespace(
+        name="modules.menu.thermostat.pump",
+        path="pump",
+        meta=SimpleNamespace(display_name="routes.modules.menu.thermostat.pump"),
+    )
+    assert (
+        ParamResolver._panel_title_hierarchical(
+            route=child,
+            ancestors=(mainmenu,),
+            routes_i18n={
+                "MAINMENU_MENU_TERMOSTATU": "Menu termostatów",
+                "modules": {"menu": {"thermostat": {"pump": "Pompa CO"}}},
+            },
+        )
+        == "Menu termostatów/Pompa CO"
+    )
+
+    # Missed i18n lookups fall through to the raw display name / route name.
+    assert (
+        ParamResolver._route_title(
+            SimpleNamespace(
+                name="modules.menu.dhw",
+                path="dhw",
+                meta=SimpleNamespace(display_name="routes.modules.menu.missing"),
+            ),
+            routes_i18n={"modules": {"menu": {}}},
+        )
+        == "routes.modules.menu.missing"
+    )
+    assert (
+        ParamResolver._route_title(
+            SimpleNamespace(
+                name="modules.menu.dhw",
+                path="dhw",
+                meta=SimpleNamespace(display_name="UNKNOWN_TOKEN"),
+            ),
+            routes_i18n={"modules": {"menu": {}}},
+        )
+        == "UNKNOWN_TOKEN"
+    )
+    assert (
+        ParamResolver._route_title(
+            SimpleNamespace(name="modules.menu.missing", path="x", meta=None),
+            routes_i18n={"modules": {"menu": {}}},
+        )
+        == "modules.menu.missing"
+    )
+    assert (
+        ParamResolver._route_title(
+            SimpleNamespace(name="   ", path="fallback-path", meta=None),
+            routes_i18n={},
+        )
+        == "fallback-path"
+    )
+
+    # Non-string name/display candidates are skipped while collecting tokens.
+    junk_menu = SimpleNamespace(
+        routes=[
+            SimpleNamespace(name=123, meta=SimpleNamespace(display_name=None), children=[]),
+            SimpleNamespace(name="MAINMENU_OK", meta=SimpleNamespace(display_name=99), children=[]),
+            SimpleNamespace(name="DHW", meta=SimpleNamespace(display_name="CWU"), children=[]),
+        ]
+    )
+    assert ParamResolver._collect_menu_title_tokens(cast(MenuResult, junk_menu)) == {"MAINMENU_OK"}
+
+    assert ParamResolver._string_namespace_title("MAINMENU_X", {"MAINMENU_X": "Title"}) == "Title"
+    assert ParamResolver._string_namespace_title("MAINMENU_X", {"__default__": "Title"}) == "Title"
+    assert ParamResolver._string_namespace_title("MAINMENU_X", {"other": "Title"}) == "Title"
+    assert ParamResolver._string_namespace_title("MAINMENU_X", {"a": "1", "b": "2"}) is None
+    assert ParamResolver._string_namespace_title("MAINMENU_X", {"MAINMENU_X": "  "}) is None
+
     assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name=None)) is False
     assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="other.item")) is False
     assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="companies.modules.menu.x")) is True

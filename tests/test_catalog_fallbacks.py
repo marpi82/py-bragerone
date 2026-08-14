@@ -9,7 +9,7 @@ import pytest
 from tree_sitter import Node
 
 from pybragerone.api.client import BragerOneApiClient
-from pybragerone.models.catalog import AssetRef, LiveAssetsCatalog, _walk
+from pybragerone.models.catalog import AssetRef, LiveAssetsCatalog, _node_text, _walk
 
 
 def _catalog() -> LiveAssetsCatalog:
@@ -241,6 +241,30 @@ def test_parse_i18n_from_js_handles_export_styles_and_failures(monkeypatch: pyte
 
     assert catalog._parse_i18n_from_js(b"export default 12;") == {}
     assert catalog._parse_i18n_from_js(b"const only = { a: 1 };") == {"a": 1}
+
+    string_ns = "const MAINMENU_MENU_TERMOSTATU='Menu\\x20termostatów';export{MAINMENU_MENU_TERMOSTATU as default};\n".encode()
+    assert catalog._parse_i18n_from_js(string_ns) == {"MAINMENU_MENU_TERMOSTATU": "Menu termostatów"}
+    assert catalog._parse_i18n_from_js(b'export default "Bare title";') == {"__default__": "Bare title"}
+    assert catalog._parse_i18n_from_js(b"export default '';") == {}
+    # ``export default IDENT`` keeps the binding name as the dict key.
+    ident_default = b"const MAINMENU_X='Title';\nexport default MAINMENU_X;\n"
+    assert catalog._parse_i18n_from_js(ident_default) == {"MAINMENU_X": "Title"}
+    assert catalog._parse_i18n_from_js(b"export default '   ';\n") == {}
+
+    ident_hits = {"n": 0}
+
+    def _blank_later_ident(code: bytes, node: Node) -> str:
+        text = _node_text(code, node)
+        if text != "MAINMENU_X":
+            return text
+        # 1) const binding name, 2) export identifier resolution — keep real.
+        # 3) default_export_name capture — blank so ``if ident:`` is false.
+        ident_hits["n"] += 1
+        return "   " if ident_hits["n"] >= 3 else text
+
+    monkeypatch.setattr("pybragerone.models.catalog._node_text", _blank_later_ident)
+    assert catalog._parse_i18n_from_js(ident_default) == {"__default__": "Title"}
+    monkeypatch.setattr("pybragerone.models.catalog._node_text", _node_text)
 
     class _BoomTS:
         def parse(self, _code: bytes) -> Any:
