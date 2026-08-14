@@ -129,6 +129,86 @@ async def test_resolve_value_computed_reactive_any_rules() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_value_maps_boilerstate_bracket_option_keys() -> None:
+    """Unit 9998 options use ``BoilerState['STOP']`` keys; computed values emit ``STOP``."""
+    store = ParamStore()
+    raw = {
+        "name": "app.one.boilerStatus.name",
+        "unit": 9998,
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 1,
+                        "operation": "equalTo",
+                        "value": [{"group": "P5", "number": 4, "use": "s", "bit": 5}],
+                    }
+                ],
+                "then": {"value": "STOP"},
+            },
+            {
+                "elseif": [
+                    {
+                        "expected": 0,
+                        "operation": "equalTo",
+                        "value": [{"group": "P5", "number": 4, "use": "s", "bit": 5}],
+                    }
+                ],
+                "then": {"value": "WORK"},
+            },
+        ],
+    }
+    mapping = ParamMap(
+        key="STATUS_P5_0",
+        group=None,
+        paths={},
+        component_type=None,
+        units=9998,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+    resolver = ParamResolver(
+        store=store,
+        assets=cast(
+            AssetsProtocol,
+            _StubAssets(
+                mapping=mapping,
+                unit_descriptors={
+                    "9998": {
+                        "options": {
+                            "BoilerState['STOP']": "app.one.burnerState.0",
+                            "BoilerState['WORK']": "app.one.boilerStatus.1",
+                        }
+                    }
+                },
+                i18n_by_namespace={
+                    "app": {
+                        "one": {
+                            "burnerState": {"0": "Stop"},
+                            "boilerStatus": {"1": "Praca"},
+                        }
+                    }
+                },
+            ),
+        ),
+        lang="pl",
+    )
+    await store.upsert_async("P5.s4", 1 << 5)
+    stopped = await resolver.resolve_value("STATUS_P5_0")
+    assert stopped.value == "STOP"
+    assert stopped.value_label == "Stop"
+
+    await store.upsert_async("P5.s4", 0)
+    working = await resolver.resolve_value("STATUS_P5_0")
+    assert working.value == "WORK"
+    assert working.value_label == "Praca"
+
+
+@pytest.mark.asyncio
 async def test_resolve_value_computed_reactive_paths_value_rules() -> None:
     """Computed rules stored under paths.value are evaluated correctly."""
     store = ParamStore()

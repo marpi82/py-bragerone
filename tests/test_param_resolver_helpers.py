@@ -635,6 +635,20 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
     assert ParamResolver._unit_mapping_value_label({"2.0": "Two"}, 2.0) == "Two"
     assert ParamResolver._unit_mapping_value_label({"e.AUTO": "Auto"}, "[e.AUTO]") == "Auto"
     assert ParamResolver._unit_mapping_value_label({"x": "  "}, "missing") is None
+    assert (
+        ParamResolver._unit_mapping_value_label(
+            {"BoilerState['STOP']": "app.one.burnerState.0", "BoilerState['WORK']": "app.one.boilerStatus.1"},
+            "STOP",
+        )
+        == "app.one.burnerState.0"
+    )
+    assert (
+        ParamResolver._unit_mapping_value_label(
+            {'BoilerState["WORK"]': "app.one.boilerStatus.1"},
+            "WORK",
+        )
+        == "app.one.boilerStatus.1"
+    )
     assert ParamResolver._unit_options_map("C") is None
     assert ParamResolver._unit_options_map({"options": {"0": "Off"}}) == {"0": "Off"}
     assert ParamResolver._unit_options_map({"text": "x", "0": "Off"}) is None

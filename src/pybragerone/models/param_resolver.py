@@ -1572,6 +1572,11 @@ class ParamResolver:
             normalized = text.strip()
             if normalized.startswith("[") and normalized.endswith("]") and len(normalized) > 2:
                 normalized = normalized[1:-1].strip()
+            # Unit option tables keep enums as ``BoilerState['STOP']`` while computed
+            # STATUS rules emit the cleaned tag ``STOP``.
+            bracket = _JS_BRACKET_MEMBER_RE.search(normalized)
+            if bracket is not None:
+                return bracket.group(1)
             if "." in normalized:
                 normalized = normalized.split(".", 1)[1].strip()
             return normalized

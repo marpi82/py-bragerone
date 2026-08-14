@@ -106,6 +106,10 @@ class I18nResolver:
             cleaned = raw.replace("\r", " ").replace("\n", " ").strip()
             if not cleaned or cleaned.isdigit():
                 return None
+            # Bootstrap sometimes probes ``wn.<code>``; that is an unresolved symbolic
+            # token, not a display unit or enum table.
+            if cleaned.casefold().startswith("wn.") and cleaned[3:].isdigit():
+                return None
             normalized = cls.normalize_unit_label(cleaned)
             return normalized if normalized is not None else cleaned
         return None

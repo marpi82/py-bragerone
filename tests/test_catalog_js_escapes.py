@@ -123,6 +123,8 @@ export{units as default};
     parsed = _catalog()._parse_i18n_from_js(js)
 
     assert I18nResolver.normalize_unit_value(parsed["0"]) is None
+    assert I18nResolver.normalize_unit_value("wn.9998") is None
+    assert I18nResolver.normalize_unit_value("wn.12") is None
 
 
 def test_parse_i18n_decodes_obfuscated_parameter_labels() -> None:
