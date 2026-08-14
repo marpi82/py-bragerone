@@ -310,6 +310,8 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
             "MAINMENU_PRESET": "Preset title",
             # Whitespace-only overlay must be treated as missing and re-fetched.
             "MAINMENU_SPACES": "   ",
+            # Blank routes placeholder must be replaced by the menu namespace title.
+            "MAINMENU_MENU_BUFOR": "  ",
         },
         "menu": {
             "MAINMENU_MENU_BUFOR": "Menu bufor",

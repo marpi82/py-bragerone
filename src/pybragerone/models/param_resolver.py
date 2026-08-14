@@ -545,8 +545,12 @@ class ParamResolver:
         routes_i18n = dict(await self._i18n.get_namespace("routes"))
         menu_i18n = await self._i18n.get_namespace("menu")
         for key, value in menu_i18n.items():
-            if isinstance(key, str) and isinstance(value, str) and value.strip():
-                routes_i18n.setdefault(key, value.strip())
+            if not (isinstance(key, str) and isinstance(value, str) and value.strip()):
+                continue
+            existing = routes_i18n.get(key)
+            # Prefer a real menu title over a blank/whitespace routes placeholder.
+            if not (isinstance(existing, str) and existing.strip()):
+                routes_i18n[key] = value.strip()
 
         for token in self._collect_menu_title_tokens(menu):
             existing = routes_i18n.get(token)
