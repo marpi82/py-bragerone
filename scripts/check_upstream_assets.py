@@ -20,12 +20,19 @@ from typing import Protocol, TextIO
 
 from pybragerone import BragerOneApiClient
 from pybragerone.models.api import SystemVersion
-from pybragerone.models.catalog import INDEX_ASSET_RE, LiveAssetsCatalog, ParamMap, _count_js_escape_leaks
+from pybragerone.models.catalog import (
+    INDEX_ASSET_RE,
+    LiveAssetsCatalog,
+    ParamMap,
+    _PUBLIC_PARAM_PATTERN,
+    _count_js_escape_leaks,
+)
 from pybragerone.models.menu import MenuResult
 
 _SAMPLE_LIMIT = 3
 _ISSUE_FINGERPRINT_SEP = "|"
-_PARAM_TOKEN_RE = re.compile(r"(?:PARAM|STATUS)[A-Z0-9_]*_[A-Z0-9_]+")
+# Keep the upstream watch token gate identical to catalog leftover/helper matching.
+_PARAM_TOKEN_RE = re.compile(_PUBLIC_PARAM_PATTERN)
 _WATCH_MENU_PERMISSIONS = frozenset(
     {
         "DISPLAY_PARAMETER_LEVEL_1",
