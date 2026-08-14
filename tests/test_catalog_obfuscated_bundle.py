@@ -461,3 +461,80 @@ def test_node_to_python_keeps_non_string_subscript() -> None:
     tree = _catalog()._ts.parse(code)
     sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
     assert _node_to_python(code, sub) == "arr[0]"
+
+
+_LIVE_PARAM_66 = b"""
+const builder={
+  'name':'parameters.PARAM_66',
+  'useComponent':_0x4d7e32['SWITCH'],
+  'status':{[_0x4d7e32['INVISIBLE']]:[{'group':'P6','number':0x22,'use':'s'}],
+            [_0x4d7e32['ENABLED']]:[{'group':'P6','number':0x23,'use':'s'}]},
+  'any':[{'if':[{'operation':_0x4891b3['equalTo'],'expected':![],'value':[{'group':'P6','number':0x22}]}],
+          'then':{'command':_0xabc['WRITE'],'value':!![]}}]
+};
+export { builder as default };
+"""
+
+
+def test_param_map_recovers_computed_status_keys_and_bool_literals() -> None:
+    """Live PARAM_66 hides status names in computed keys and booleans in `![]` / `!![]`."""
+    param = _catalog()._parse_param_map_from_js(_LIVE_PARAM_66, "PARAM_66", "test")
+    assert param is not None
+    assert param.component_type == "SWITCH"
+    assert sorted(param.status_conditions or {}) == ["ENABLED", "INVISIBLE"]
+    rule = param.command_rules[0]
+    assert rule["command"] == "WRITE"
+    assert rule["value"] is True
+    assert rule["conditions"][0]["operation"] == "equalTo"
+    assert rule["conditions"][0]["expected"] is False
+    # Schema drift: the pool now lives on the nested channel refs, not at the top level.
+    assert param.group is None
+
+
+def test_property_name_resolves_computed_keys() -> None:
+    """Computed keys resolve through the public enum name, the literal, or the raw text."""
+    code = b"const o={[_0x4d['INVISIBLE']]:1,['lit']:2,[0x9]:3,[someVar]:4};"
+    tree = _catalog()._ts.parse(code)
+    obj = next(node for node in _walk(tree.root_node) if node.type == "object")
+    assert _node_to_python(code, obj) == {"INVISIBLE": 1, "lit": 2, "9": 3, "someVar": 4}
+
+
+@pytest.mark.parametrize(
+    ("literal", "expected"),
+    [
+        ("!0", True),
+        ("!1", False),
+        ("![]", False),
+        ("!![]", True),
+        ("true", "true"),
+        ("void 0", None),
+        ("undefined", None),
+        ("PARAM_45", "PARAM_45"),
+    ],
+)
+def test_command_rule_literals_normalize(literal: str, expected: object) -> None:
+    """Minified boolean and undefined spellings normalize to Python values."""
+    catalog = _catalog()
+    param = catalog._build_param_map_from_obj(
+        {"PARAM_X": {"group": "P4", "any": [{"if": [], "then": {"command": "WRITE", "value": literal}}]}},
+        "PARAM_X",
+        "test",
+    )
+    assert param is not None
+    if expected is None:
+        assert "value" not in param.command_rules[0]
+    else:
+        assert param.command_rules[0]["value"] == expected
+
+
+def test_component_type_prefers_explicit_field_over_use_component() -> None:
+    """``componentType`` wins; ``useComponent`` is only the obfuscated-bundle alias."""
+    catalog = _catalog()
+    both = catalog._build_param_map_from_obj(
+        {"PARAM_X": {"componentType": "number", "useComponent": "SWITCH"}}, "PARAM_X", "test"
+    )
+    assert both is not None
+    assert both.component_type == "number"
+    neither = catalog._build_param_map_from_obj({"PARAM_X": {"group": "P4"}}, "PARAM_X", "test")
+    assert neither is not None
+    assert neither.component_type is None
