@@ -278,7 +278,7 @@ class MenuProcessor:
                     return value[len(prefix) :]
             return MenuParameter._strip_prefix(value)
 
-        def normalize_list(items: list[Any] | Any) -> list[Any]:
+        def normalize_list(items: list[Any] | str | None) -> list[Any]:
             if isinstance(items, str) or not isinstance(items, list):
                 return []
             normalized: list[Any] = []

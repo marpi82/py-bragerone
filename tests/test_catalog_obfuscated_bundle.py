@@ -303,6 +303,46 @@ def test_node_to_python_evaluates_array_map_of_param_tokens() -> None:
     ]
 
 
+def test_eval_array_map_call_rejects_non_map_shapes() -> None:
+    """``array['map']`` evaluation must not swallow unrelated calls or non-list receivers."""
+    catalog = _catalog()
+
+    def _call(js: bytes) -> object:
+        tree = catalog._ts.parse(js)
+        call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
+        return _node_to_python(js, call)
+
+    assert _call(b"const v=arr[0](x=>({a:1}));") == "arr[0](x=>({a:1}))"
+    assert _call(b"const v=[1]['filter'](x=>({a:1}));") == "[1]['filter'](x=>({a:1}))"
+    assert _call(b"const v='nope'['map'](x=>({a:1}));") == "'nope'['map'](x=>({a:1}))"
+    assert _call(b"const v=[1]['map']();") == "[1]['map']()"
+    assert _call(b"const v=[1]['map'](1);") == "[1]['map'](1)"
+
+
+def test_node_to_python_returns_helper_last_arg_token() -> None:
+    """``helper(WRITE, 'PARAM_45')`` leftover calls collapse to the public token."""
+    code = b"const v=_0x2d2290(_0x870f31['WRITE'],'PARAM_45');"
+    tree = _catalog()._ts.parse(code)
+    call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(code, call) == "PARAM_45"
+    empty = b"const v=foo();"
+    empty_tree = _catalog()._ts.parse(empty)
+    empty_call = next(node for node in _walk(empty_tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(empty, empty_call) == "foo()"
+    numeric = b"const v=foo(1);"
+    numeric_tree = _catalog()._ts.parse(numeric)
+    numeric_call = next(node for node in _walk(numeric_tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(numeric, numeric_call) == "foo(1)"
+
+
+def test_node_to_python_invokes_bound_callable_with_multiple_args() -> None:
+    """A bound callee with two arguments receives the argument list, not just the first value."""
+    code = b"const v=fn(1,2);"
+    tree = _catalog()._ts.parse(code)
+    call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(code, call, {"fn": lambda args: args}) == [1, 2]
+
+
 def test_node_to_python_does_not_collapse_array_map_subscript() -> None:
     """``['PARAM_1']['map']`` must keep the array so issue #285 can evaluate the call."""
     code = b"const v=['PARAM_1']['map'];"

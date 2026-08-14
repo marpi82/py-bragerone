@@ -499,12 +499,16 @@ def test_menu_manager_does_not_iterate_map_leftover_strings() -> None:
                 "meta": {
                     "displayName": "User",
                     "permissionModule": "DISPLAY_PARAMETER_LEVEL_1",
-                    "parameters": {"write": leftover},
+                    "parameters": {"write": leftover, "read": {"not": "a-list"}},
                 },
                 "children": [],
             }
         ],
     )
-    menu = manager.get_menu(2190, permissions=None, debug_mode=True)
+    unfiltered = manager.get_menu(2190, permissions=None, debug_mode=True)
+    assert unfiltered.routes[0].meta is not None
+    assert unfiltered.routes[0].meta.parameters.write == []
+    menu = manager.get_menu(2190, permissions={"DISPLAY_PARAMETER_LEVEL_1"}, debug_mode=True)
     assert menu.routes[0].meta is not None
     assert menu.routes[0].meta.parameters.write == []
+    assert menu.routes[0].meta.parameters.read == []

@@ -753,15 +753,14 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         if mapped is not None:
             return mapped
         callee = _node_to_python(code, func_node, bindings) if func_node is not None else None
-        if callable(callee) and args_node is not None:
-            args = [_node_to_python(code, child, bindings) for child in args_node.named_children]
+        arg_nodes = args_node.named_children if args_node is not None else ()  # pragma: no branch
+        args = [_node_to_python(code, child, bindings) for child in arg_nodes]
+        if callable(callee):
             if len(args) == 1:
                 return callee(args[0])
             return callee(args)
-        if args_node is not None:
-            args = [_node_to_python(code, child, bindings) for child in args_node.named_children]
-            if args and isinstance(args[-1], str) and re.fullmatch(r"[A-Z][A-Z0-9_]+", args[-1]):
-                return args[-1]
+        if args and isinstance(args[-1], str) and re.fullmatch(r"[A-Z][A-Z0-9_]+", args[-1]):
+            return args[-1]
 
     return _node_text(code, node)
 
@@ -1308,8 +1307,8 @@ class LiveAssetsCatalog:
                         if match:
                             entry["token"] = match.group("tok")
                             entry.setdefault("parameter", fallback_text)
-                    if "parameter" not in entry and "token" in entry:
-                        entry["parameter"] = str(entry["token"]) or ""
+                    if "token" in entry:
+                        entry.setdefault("parameter", str(entry["token"]) or "")
                     norm.append(entry)
                 else:
                     s = str(it)
