@@ -638,12 +638,13 @@ def _is_js_nullish(value: Any) -> bool:
     return False
 
 
-def _js_loose_equal(left: Any, right: Any) -> bool:
-    """Compare two already-converted values with JavaScript-ish equality.
+def _js_nullish_aware_equal(left: Any, right: Any) -> bool:
+    """Equality used for both ``==``/``===`` and ``!=``/``!==`` in factory AST eval.
 
-    Covers the comparisons the bundle emits around optional factory args
-    (``x !== void 0x0``, ``x === undefined``). Full JS coercion is intentionally
-    out of scope — callers only need nullish / primitive checks.
+    Intentionally collapses JavaScript ``null`` / ``undefined`` (and unresolved
+    ``_0x…`` leftovers) so ``x !== void 0x0`` / ``x === undefined`` work after
+    ``void`` has already become ``None``. This is not full JS loose or strict
+    equality — only the nullish/primitive subset the obfuscated builders emit.
     """
     if _is_js_nullish(left) and _is_js_nullish(right):
         return True
@@ -664,9 +665,9 @@ def _eval_js_binary(operator: str, left: Any, right: Any) -> tuple[bool, Any]:
     if operator == "??":
         return True, right if _is_js_nullish(left) else left
     if operator in {"===", "=="}:
-        return True, _js_loose_equal(left, right)
+        return True, _js_nullish_aware_equal(left, right)
     if operator in {"!==", "!="}:
-        return True, not _js_loose_equal(left, right)
+        return True, not _js_nullish_aware_equal(left, right)
     return False, None
 
 
@@ -674,7 +675,8 @@ def _js_truthy(value: Any) -> bool:
     """Approximate JavaScript truthiness for ternary conditions."""
     if _is_js_nullish(value) or value is False:
         return False
-    return not (value == 0 or value == 0.0 or value == "")
+    # ``0`` and ``0.0`` compare equal in Python, so a single zero check is enough.
+    return bool(value != 0 and value != "")
 
 
 def _pattern_bindings(code: bytes, pattern: Node, arg: Any, bindings: dict[str, Any]) -> dict[str, Any]:
@@ -1024,12 +1026,13 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
     if t == "null":
         return None
 
+    if t == "undefined":
+        return None
+
     if t in {"identifier", "property_identifier"}:
         name = _node_text(code, node)
         if bindings and name in bindings:
             return bindings[name]
-        if name == "undefined":
-            return None
         return name
 
     if t == "unary_expression":

@@ -21,8 +21,12 @@ from pybragerone.models.catalog import (
     _collect_bindings,
     _count_js_escape_leaks,
     _eval_arrow_body,
+    _eval_js_binary,
     _i18n_import_base_and_hash,
+    _is_js_nullish,
     _js_concat,
+    _js_nullish_aware_equal,
+    _js_truthy,
     _node_to_python,
     _walk,
 )
@@ -609,6 +613,58 @@ def test_parameter_factory_nullish_and_ternary_name_defaults() -> None:
     assert built is not None
     assert built.raw["name"] == "parameters.PARAM_10"
     assert built.paths["value"] == [{"group": "P6", "number": 10, "use": "v"}]
+
+
+def test_js_nullish_ternary_and_equality_helpers() -> None:
+    """Cover nullish / equality / truthiness helpers and leftover AST edges for patch coverage."""
+    assert _is_js_nullish(None) is True
+    assert _is_js_nullish("undefined") is True
+    assert _is_js_nullish("void 0") is True
+    assert _is_js_nullish("void 0x0") is True
+    assert _is_js_nullish("_0x45f6f0") is True
+    assert _is_js_nullish("parameters.PARAM_10") is False
+    assert _is_js_nullish(0) is False
+
+    assert _js_nullish_aware_equal(None, "undefined") is True
+    assert _js_nullish_aware_equal(None, "_0xabc") is True
+    assert _js_nullish_aware_equal(1, 1) is True
+    assert _js_nullish_aware_equal(1, 2) is False
+
+    assert _eval_js_binary("+", "a", 1) == (True, "a1")
+    assert _eval_js_binary("+", [], {}) == (False, None)
+    assert _eval_js_binary("??", None, "fallback") == (True, "fallback")
+    assert _eval_js_binary("??", "kept", "fallback") == (True, "kept")
+    assert _eval_js_binary("===", None, None) == (True, True)
+    assert _eval_js_binary("==", "x", "x") == (True, True)
+    assert _eval_js_binary("!==", None, 1) == (True, True)
+    assert _eval_js_binary("!=", 1, 1) == (True, False)
+    assert _eval_js_binary("-", 1, 2) == (False, None)
+
+    assert _js_truthy(None) is False
+    assert _js_truthy(False) is False
+    assert _js_truthy(0) is False
+    assert _js_truthy(0.0) is False
+    assert _js_truthy("") is False
+    assert _js_truthy("ok") is True
+    assert _js_truthy(1) is True
+
+    # Bare ``undefined`` identifier and non-void unary leftovers.
+    undef_code = b"const o={'a':undefined,'b':!0};"
+    undef_tree = _catalog()._ts.parse(undef_code)
+    undef_obj = next(n for n in _walk(undef_tree.root_node) if n.type == "object")
+    assert _node_to_python(undef_code, undef_obj) == {"a": None, "b": "!0"}
+
+    # ``===`` / ``!==`` through ternary AST (not only the helper).
+    eq_code = b"const o={'a':'x'===undefined?'yes':'no','b':1!==undefined?'keep':'drop'};"
+    eq_tree = _catalog()._ts.parse(eq_code)
+    eq_obj = next(n for n in _walk(eq_tree.root_node) if n.type == "object")
+    assert _node_to_python(eq_code, eq_obj) == {"a": "no", "b": "keep"}
+
+    # Unknown binary operators fall back to leftover source text.
+    unknown = b"const o={'a':1-2};"
+    unknown_tree = _catalog()._ts.parse(unknown)
+    unknown_obj = next(n for n in _walk(unknown_tree.root_node) if n.type == "object")
+    assert _node_to_python(unknown, unknown_obj) == {"a": "1-2"}
 
 
 def test_arrow_factory_keeps_non_object_bodies_as_source() -> None:
