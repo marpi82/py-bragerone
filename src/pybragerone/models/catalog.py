@@ -228,6 +228,67 @@ def _is_string(n: Node) -> bool:
     return n.type in {"string", "template_string"}
 
 
+def _parse_js_number(text: str) -> int | float | None:
+    """Parse a JavaScript numeric literal.
+
+    Covers the radix prefixes and separators the language allows, not just decimals:
+    obfuscated bundles routinely emit ``0x9`` where the source said ``9``.
+
+    Args:
+        text: Raw literal text, e.g. ``"0x1f"``, ``"1_000"``, ``"1.5e3"``, ``"10n"``.
+
+    Returns:
+        The numeric value, or None if the text is not a numeric literal.
+    """
+    raw = text.strip().replace("_", "")
+    if not raw:
+        return None
+
+    sign = 1
+    if raw[0] in "+-":
+        sign = -1 if raw[0] == "-" else 1
+        raw = raw[1:]
+
+    # BigInt literals carry a trailing marker that is not part of the value.
+    if raw.endswith(("n", "N")) and len(raw) > 1:
+        raw = raw[:-1]
+
+    prefix = raw[:2].lower()
+    radix = {"0x": 16, "0o": 8, "0b": 2}.get(prefix)
+    if radix is not None:
+        try:
+            return sign * int(raw[2:], radix)
+        except ValueError:
+            return None
+
+    try:
+        if any(c in raw for c in ".eE"):
+            return sign * float(raw)
+        return sign * int(raw)
+    except ValueError:
+        return None
+
+
+def _js_property_key(text: str) -> str:
+    """Convert a non-string property key literal to the property name JavaScript would use.
+
+    JavaScript coerces numeric keys through ``ToString``, so ``{0xa: 1}`` has the property
+    name ``"10"`` rather than ``"0xa"``.
+
+    Args:
+        text: Raw key text as it appears in the source.
+
+    Returns:
+        The resolved property name.
+    """
+    number = _parse_js_number(text)
+    if number is None:
+        return text
+    if isinstance(number, float) and number.is_integer():
+        return str(int(number))
+    return str(number)
+
+
 def _string_value(text: str) -> str:
     """Extract the value from a string literal, removing quotes.
 
@@ -410,7 +471,12 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
             if key_node is None or value_node is None:
                 continue
 
-            key = _string_value(_node_text(code, key_node)) if _is_string(key_node) else _node_text(code, key_node)
+            if _is_string(key_node):
+                key = _string_value(_node_text(code, key_node))
+            elif key_node.type == "number":
+                key = _js_property_key(_node_text(code, key_node))
+            else:
+                key = _node_text(code, key_node)
             obj[key] = _node_to_python(code, value_node, bindings)
         return obj
 
@@ -435,10 +501,8 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
 
     if t == "number":
         text = _node_text(code, node)
-        try:
-            return float(text) if any(c in text for c in ".eE") else int(text)
-        except Exception:
-            return text
+        parsed = _parse_js_number(text)
+        return text if parsed is None else parsed
 
     if t in {"true", "false"}:
         return t == "true"

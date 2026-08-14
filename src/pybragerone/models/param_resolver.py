@@ -26,6 +26,11 @@ if TYPE_CHECKING:
 _PARAM_POOL_RE = re.compile(r"^PARAM_P(?P<pool>\d+)_(?P<idx>\d+)$")
 _STATUS_POOL_RE = re.compile(r"^STATUS_P(?P<pool>\d+)_(?P<idx>\d+)$")
 
+# Obfuscated builds write `x['toFixed'](0x1)` where readable ones write `x.toFixed(1)`.
+_JS_BRACKET_MEMBER_RE = re.compile(r"\[\s*['\"]([A-Za-z_$][\w$]*)['\"]\s*\]")
+# Radix literals only; the lookbehind keeps mangled identifiers such as `_0x4fdb4d` intact.
+_JS_RADIX_LITERAL_RE = re.compile(r"(?<![\w$.])0(?:[xX][0-9a-fA-F]+|[oO][0-7]+|[bB][01]+)")
+
 
 class AssetsProtocol(Protocol):
     """Minimal async API used by ParamResolver.
@@ -753,11 +758,28 @@ class ParamResolver:
             return None
 
     @classmethod
+    def _normalize_js_expression(cls, text: str) -> str:
+        """Rewrite obfuscated JS syntax into the plain forms the transform patterns expect.
+
+        Upstream ships the web app obfuscated, which turns ``x.toFixed(1)`` into
+        ``x['toFixed'](0x1)``. Normalizing bracket member access and radix literals lets one
+        set of patterns match both the readable and the obfuscated build.
+
+        Args:
+            text: Raw expression source.
+
+        Returns:
+            The expression with bracket member access and radix literals in plain form.
+        """
+        normalized = _JS_BRACKET_MEMBER_RE.sub(r".\1", text)
+        return _JS_RADIX_LITERAL_RE.sub(lambda m: str(int(m.group(0), 0)), normalized)
+
+    @classmethod
     def _parse_numeric_transform(cls, raw_expr: Any) -> _NumericTransform | None:
         if not isinstance(raw_expr, str):
             return None
 
-        text = raw_expr.strip()
+        text = cls._normalize_js_expression(raw_expr.strip())
         if not text:
             return None
 
@@ -772,7 +794,10 @@ class ParamResolver:
         body_norm = re.sub(r"\s+", "", body)
 
         precision: int | None = None
-        rounded_match = re.match(r"^Number\(\((.+)\)\.toFixed\((\d+)\)\)$", body_norm)
+        # Readable builds wrap the operand in parentheses; obfuscated ones do not.
+        rounded_match = re.match(r"^Number\(\((.+)\)\.toFixed\((\d+)\)\)$", body_norm) or re.match(
+            r"^Number\((.+)\)\.toFixed\((\d+)\)$", body_norm
+        )
         if rounded_match is not None:
             body_norm = rounded_match.group(1).strip()
             precision = int(rounded_match.group(2))
