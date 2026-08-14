@@ -374,6 +374,14 @@ def test_eval_array_map_call_rejects_non_map_shapes() -> None:
     assert _call(b"const v=[1]['map']();") == "[1]['map']()"
     assert _call(b"const v=[1]['map'](1);") == "[1]['map'](1)"
 
+    def _boom(_item: object) -> object:
+        raise TypeError("unexpected callback shape")
+
+    raising = b"const v=[1]['map'](fn);"
+    tree = catalog._ts.parse(raising)
+    call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(raising, call, {"fn": _boom}) == "[1]['map'](fn)"
+
 
 def test_node_to_python_returns_helper_last_arg_token() -> None:
     """``helper(WRITE, 'PARAM_45')`` leftover calls collapse to the public token."""
@@ -381,6 +389,10 @@ def test_node_to_python_returns_helper_last_arg_token() -> None:
     tree = _catalog()._ts.parse(code)
     call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
     assert _node_to_python(code, call) == "PARAM_45"
+    status = b"const v=_0x2d2290(_0x870f31['STATUS'],'STATUS_P5_1');"
+    status_tree = _catalog()._ts.parse(status)
+    status_call = next(node for node in _walk(status_tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(status, status_call) == "STATUS_P5_1"
     empty = b"const v=foo();"
     empty_tree = _catalog()._ts.parse(empty)
     empty_call = next(node for node in _walk(empty_tree.root_node) if node.type == "call_expression")
@@ -389,6 +401,30 @@ def test_node_to_python_returns_helper_last_arg_token() -> None:
     numeric_tree = _catalog()._ts.parse(numeric)
     numeric_call = next(node for node in _walk(numeric_tree.root_node) if node.type == "call_expression")
     assert _node_to_python(numeric, numeric_call) == "foo(1)"
+    permission = b"const v=foo('DISPLAY_PARAMETER_LEVEL_1');"
+    permission_tree = _catalog()._ts.parse(permission)
+    permission_call = next(node for node in _walk(permission_tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(permission, permission_call) == "foo('DISPLAY_PARAMETER_LEVEL_1')"
+    token_only = b"const v=foo('PARAM_45');"
+    token_only_tree = _catalog()._ts.parse(token_only)
+    token_only_call = next(node for node in _walk(token_only_tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(token_only, token_only_call) == "foo('PARAM_45')"
+    wrong_action = b"const v=foo(1,'PARAM_45');"
+    wrong_action_tree = _catalog()._ts.parse(wrong_action)
+    wrong_action_call = next(node for node in _walk(wrong_action_tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(wrong_action, wrong_action_call) == "foo(1,'PARAM_45')"
+    unknown_action = b"const v=foo('EQUALTO','PARAM_45');"
+    unknown_action_tree = _catalog()._ts.parse(unknown_action)
+    unknown_action_call = next(node for node in _walk(unknown_action_tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(unknown_action, unknown_action_call) == "foo('EQUALTO','PARAM_45')"
+    non_string_token = b"const v=foo('WRITE',1);"
+    non_string_token_tree = _catalog()._ts.parse(non_string_token)
+    non_string_token_call = next(node for node in _walk(non_string_token_tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(non_string_token, non_string_token_call) == "foo('WRITE',1)"
+    wrong_token = b"const v=foo('WRITE','DISPLAY_PARAMETER_LEVEL_1');"
+    wrong_token_tree = _catalog()._ts.parse(wrong_token)
+    wrong_token_call = next(node for node in _walk(wrong_token_tree.root_node) if node.type == "call_expression")
+    assert _node_to_python(wrong_token, wrong_token_call) == "foo('WRITE','DISPLAY_PARAMETER_LEVEL_1')"
 
 
 def test_node_to_python_invokes_bound_callable_with_multiple_args() -> None:

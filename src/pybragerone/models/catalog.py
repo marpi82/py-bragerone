@@ -31,6 +31,9 @@ if TYPE_CHECKING:
 JS_LANGUAGE = Language(tree_sitter_javascript.language())
 LOG = logging.getLogger(__name__)
 INDEX_ASSET_RE = re.compile(r"/assets/(index-[A-Za-z0-9_-]+\.js)")
+_HELPER_ACTIONS = frozenset({"READ", "WRITE", "STATUS"})
+_HELPER_TOKEN_RE = re.compile(r"(?:PARAM|STATUS)_[A-Z0-9_]+")
+_LEFTOVER_QUOTED_TOKEN_RE = re.compile(r"""['"]([A-Z][A-Z0-9_]+)['"]""")
 
 
 # ----------------------------- Data types -----------------------------
@@ -652,7 +655,34 @@ def _eval_array_map_call(code: bytes, node: Node, bindings: dict[str, Any] | Non
     callbacks = [_node_to_python(code, child, bindings) for child in args_node.named_children]
     if not isinstance(receiver, list) or len(callbacks) != 1 or not callable(callbacks[0]):
         return None
-    return [callbacks[0](item) for item in receiver]
+    try:
+        return [callbacks[0](item) for item in receiver]
+    except Exception:
+        return None
+
+
+def _public_token_from_helper_args(args: list[Any]) -> str | None:
+    """Return the PARAM_*/STATUS_* token from a leftover helper call.
+
+    Live menus emit ``helper(WRITE, 'PARAM_45')`` after the callee stays obfuscated.
+    Unrelated enum calls such as ``foo('DISPLAY_PARAMETER_LEVEL_1')`` must remain
+    leftover source text.
+
+    Args:
+        args: Already-converted call arguments.
+
+    Returns:
+        The public token, or ``None`` when the call is not ``(READ|WRITE|STATUS, TOKEN)``.
+    """
+    if len(args) < 2:
+        return None
+    action = args[0]
+    token = args[-1]
+    if not isinstance(action, str) or action not in _HELPER_ACTIONS:
+        return None
+    if not isinstance(token, str) or _HELPER_TOKEN_RE.fullmatch(token) is None:
+        return None
+    return token
 
 
 def _node_to_python(code: bytes, node: Node, bindings: dict[str, Any] | None = None) -> Any:
@@ -786,8 +816,9 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
             if len(args) == 1:
                 return callee(args[0])
             return callee(args)
-        if args and isinstance(args[-1], str) and re.fullmatch(r"[A-Z][A-Z0-9_]+", args[-1]):
-            return args[-1]
+        helper_token = _public_token_from_helper_args(args)
+        if helper_token is not None:
+            return helper_token
 
     return _node_text(code, node)
 
@@ -1297,7 +1328,7 @@ class LiveAssetsCatalog:
         if isinstance(items, str):
             if "['map']" in items or '["map"]' in items:
                 head = items.split("['map']", 1)[0].split('["map"]', 1)[0]
-                return [{"parameter": token} for token in re.findall(r"'([A-Z][A-Z0-9_]+)'", head)]
+                return [{"parameter": token} for token in _LEFTOVER_QUOTED_TOKEN_RE.findall(head)]
             return []
         return []
 
