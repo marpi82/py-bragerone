@@ -62,6 +62,13 @@ def test_parse_numeric_transform_still_rejects_unsupported_bodies() -> None:
     assert ParamResolver._parse_numeric_transform("_0x1=>{return _0x1*2;}") is None
     assert ParamResolver._parse_numeric_transform("not an arrow function") is None
     assert ParamResolver._parse_numeric_transform(None) is None
+    assert ParamResolver._parse_numeric_transform("e => e") is None
+
+
+def test_shift_only_returns_none_when_offset_is_unparsable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The shift-only arm still guards ``_to_float_literal`` returning None."""
+    monkeypatch.setattr(ParamResolver, "_to_float_literal", staticmethod(lambda _raw: None))
+    assert ParamResolver._parse_numeric_transform("e => e - 127") is None
 
 
 _LIVE_UNIT66 = (
@@ -91,3 +98,10 @@ def test_shift_only_obfuscated_and_readable_parse_identically() -> None:
     assert obfuscated == readable
     assert obfuscated.shift == -127.0
     assert obfuscated.factor == 1.0
+
+
+def test_is_unit66_time_expr_requires_all_three_markers() -> None:
+    """``units.202.0`` alone is not unit 66; padStart and ``(x-1)*10`` must both be present."""
+    assert ParamResolver._is_unit66_time_expr('if(e===0)return"units.202.0"; (e-1)*10') is False
+    assert ParamResolver._is_unit66_time_expr('if(e===0)return"units.202.0"; n.padStart(2,"0")') is False
+    assert ParamResolver._is_unit66_time_expr("e => e * 2") is False

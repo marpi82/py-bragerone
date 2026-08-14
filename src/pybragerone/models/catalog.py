@@ -113,7 +113,7 @@ class AssetIndex:
             for asset in basename_assets:
                 if f"{asset.base}-{asset.hash}" == stem:
                     return asset
-                if asset.url.endswith(filename) or asset.url.rsplit("/", 1)[-1] == filename:
+                if asset.url.rsplit("/", 1)[-1] == filename:
                     return asset
         return None
 
@@ -443,11 +443,11 @@ def _property_name(code: bytes, key_node: Node) -> str:
     return raw
 
 
-_JS_ESCAPE_LEAK_RE = re.compile(r"\\[xu][0-9a-fA-F]")
+_JS_ESCAPE_LEAK_RE = re.compile(r"\\(?:x[0-9a-fA-F]|u\{[0-9a-fA-F]+\}|u[0-9a-fA-F])")
 
 
 def _count_js_escape_leaks(value: Any) -> int:
-    r"""Count strings that still contain JS ``\x`` / ``\u`` escape sequences.
+    r"""Count strings that still contain JS ``\x`` / ``\u`` / ``\u{...}`` escape sequences.
 
     After a successful parse those sequences should already have been decoded. A
     leftover leak means a new escape form slipped past ``_decode_js_escapes``.
@@ -2037,7 +2037,7 @@ class LiveAssetsCatalog:
             return None
 
         asset_filename = match.group(2)
-        stem = asset_filename[:-3] if asset_filename.lower().endswith(".js") else asset_filename
+        stem = asset_filename[:-3]  # the import regex already requires a ``.js`` suffix
         file_base, separator, file_hash = stem.rpartition("-")
         if not separator:
             file_base, file_hash = stem, ""
