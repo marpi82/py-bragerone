@@ -157,3 +157,12 @@ async def test_get_i18n_warns_when_fetched_asset_parses_empty(caplog: pytest.Log
         data = await catalog.get_i18n("pl", "units")
     assert data == {}
     assert any("parsed to 0 keys" in rec.getMessage() for rec in caplog.records)
+
+
+def test_node_to_python_resolves_string_subscript_to_public_name() -> None:
+    """``_0xabc['DISPLAY_FOO']`` is the public enum name, not leftover source text."""
+    code = b"const o={'permissionModule':_0x521864['DISPLAY_PARAMETER_LEVEL_1'],'op':_0x4891b3['equalTo']};"
+    tree = _catalog()._ts.parse(code)
+    obj = next(node for node in _walk(tree.root_node) if node.type == "object")
+    parsed = _node_to_python(code, obj)
+    assert parsed == {"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "op": "equalTo"}

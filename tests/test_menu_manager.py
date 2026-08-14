@@ -324,3 +324,78 @@ def test_device_menu_mapping_parsed_from_src_router_paths() -> None:
 
     assert idx.menu_map[0] == "module.menu-DmY2Kb59"
     assert idx.menu_map[1] == "module.menu-DCbbkfeq"
+
+
+_LIVE_MENU_ZERO = """
+export default [{
+  path:'dhw',
+  name:'modules.menu.dhw',
+  meta:{
+    displayName:'MAINMENU_USTAWIENIA_CWU',
+    permissionModule:_0x521864['DISPLAY_MENU_DHW'],
+    parameters:{
+      read:[{permissionModule:_0x521864['DISPLAY_PARAMETER_LEVEL_1'], parameter:_0x3e8c51(_0x1cc358['READ'],'PARAM_P30_2')}],
+      write:[{
+        permissionModule:_0x521864['DISPLAY_PARAMETER_LEVEL_MAX'],
+        parameter:_0x3e8c51(_0x1cc358['WRITE'],'PARAM_P32_184')
+      }],
+      status:[],
+      special:[]
+    }
+  },
+  children:[]
+}];
+"""
+
+
+def test_menu_manager_gates_leftover_subscript_permission_strings() -> None:
+    """Gating still matches when permissionModule was left as raw subscript text."""
+    manager = MenuManager()
+    manager.store_raw_menu(
+        0,
+        [
+            {
+                "path": "dhw",
+                "name": "dhw",
+                "meta": {
+                    "displayName": "DHW",
+                    "permissionModule": "_0x521864['DISPLAY_MENU_DHW']",
+                    "parameters": {
+                        "read": [
+                            {
+                                "permissionModule": "_0x521864['DISPLAY_PARAMETER_LEVEL_1']",
+                                "parameter": "_0x3e8c51(_0x1cc358['READ'],'PARAM_P30_2')",
+                            }
+                        ]
+                    },
+                },
+                "children": [],
+            }
+        ],
+    )
+    gated = manager.get_menu(0, permissions={"DISPLAY_MENU_DHW", "DISPLAY_PARAMETER_LEVEL_1"})
+    assert gated.all_tokens() == {"PARAM_P30_2"}
+
+
+@pytest.mark.asyncio()
+async def test_get_module_menu_gates_obfuscated_permission_subscripts() -> None:
+    """API DISPLAY_* strings must match live ``_0x…['DISPLAY_*']`` menu fields."""
+    mock_api = AsyncMock()
+    mock_api.get_bytes.return_value = _LIVE_MENU_ZERO.encode()
+    catalog = LiveAssetsCatalog(mock_api)
+    from pybragerone.models.catalog import AssetRef
+
+    catalog._idx.menu_map[0] = "0-DRINFhbV"
+    catalog._idx.assets_by_basename["0"] = [AssetRef(url="https://one.brager.pl/assets/0-DRINFhbV.js", base="0", hash="DRINFhbV")]
+
+    gated = await catalog.get_module_menu(
+        0,
+        permissions=["DISPLAY_MENU_DHW", "DISPLAY_PARAMETER_LEVEL_1"],
+    )
+    assert gated.all_tokens() == {"PARAM_P30_2"}
+    assert gated.routes[0].meta is not None
+    assert gated.routes[0].meta.permission is not None
+    assert gated.routes[0].meta.permission.name == "DISPLAY_MENU_DHW"
+
+    ungated = await catalog.get_module_menu(0, permissions=None)
+    assert ungated.all_tokens() == {"PARAM_P30_2", "PARAM_P32_184"}

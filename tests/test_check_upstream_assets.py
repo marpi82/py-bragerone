@@ -39,6 +39,8 @@ class _UpstreamProbe(Protocol):
     descriptor_table_count: int
     units_count: int
     escape_leaks: int
+    menu_gated_tokens: int
+    menu_permissions_ok: bool
 
 
 class _UpstreamScript(Protocol):
@@ -298,4 +300,12 @@ async def test_assert_probe_ok_rejects_empty_table_units_and_escape_leaks() -> N
     probe.units_count = 1
     probe.escape_leaks = 4
     with pytest.raises(RuntimeError, match="escape leaks"):
+        module.assert_probe_ok(probe)
+    probe.escape_leaks = 0
+    probe.menu_gated_tokens = 0
+    with pytest.raises(RuntimeError, match="gated by DISPLAY"):
+        module.assert_probe_ok(probe)
+    probe.menu_gated_tokens = 12
+    probe.menu_permissions_ok = False
+    with pytest.raises(RuntimeError, match="permissionModule still contains leftover"):
         module.assert_probe_ok(probe)

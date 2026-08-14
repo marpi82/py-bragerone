@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 import tree_sitter_javascript
 from tree_sitter import Language, Node, Parser, Tree
 
-from .menu import MenuResult
+from .menu import MenuResult, js_public_member_name
 from .menu_manager import MenuManager, RawMenuData
 
 if TYPE_CHECKING:
@@ -668,6 +668,19 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         if bindings and name in bindings:
             return bindings[name]
         return name
+
+    if t == "subscript_expression":
+        index_node = node.child_by_field_name("index")
+        if index_node is not None and _is_string(index_node):
+            return _string_value(_node_text(code, index_node))
+        if index_node is not None:
+            resolved = _node_to_python(code, index_node, bindings)
+            if isinstance(resolved, str) and resolved:
+                public = js_public_member_name(resolved)
+                return public if public is not None else resolved
+        leftover = _node_text(code, node)
+        public = js_public_member_name(leftover)
+        return public if public is not None else leftover
 
     if t == "arrow_function":
         raw_function = _node_text(code, node)
@@ -1586,6 +1599,9 @@ class LiveAssetsCatalog:
             cleaned = value.strip()
             if not cleaned:
                 return None
+            public = js_public_member_name(cleaned)
+            if public is not None:
+                return public
             if cleaned.startswith("[") and cleaned.endswith("]") and len(cleaned) > 2:
                 cleaned = cleaned[1:-1]
             parts = cleaned.split(".", 1)
