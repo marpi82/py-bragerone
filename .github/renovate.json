@@ -13,7 +13,7 @@
     "enabled": true,
     "automerge": true,
     "schedule": [
-      "every weekend"
+      "* 0-5 * * 6"
     ]
   },
   "packageRules": [
