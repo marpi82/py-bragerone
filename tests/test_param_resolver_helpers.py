@@ -668,3 +668,16 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
     assert ParamResolver._unit_options_map({"options": {"0": "Off"}}) == {"0": "Off"}
     assert ParamResolver._unit_options_map({"text": "x", "0": "Off"}) is None
     assert ParamResolver._unit_options_map({"0": "Off"}) == {"0": "Off"}
+
+
+def test_format_channel_entries_keeps_index_zero() -> None:
+    """Index 0 must not be dropped by falsy ``number or index`` coalescing."""
+    formatted = ParamResolver._format_channel_entries(
+        [{"group": "P5", "number": 0, "use": "s", "bit": 0}],
+    )
+    assert formatted == [{"address": "P5.s0", "channel": "P5.s0", "bit": 0}]
+
+    via_index = ParamResolver._format_channel_entries(
+        [{"group": "P5", "index": 0, "use": "s", "bit": 1}],
+    )
+    assert via_index == [{"address": "P5.s0", "channel": "P5.s0", "bit": 1}]

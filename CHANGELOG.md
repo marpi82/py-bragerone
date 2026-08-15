@@ -7,6 +7,12 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep channel index ``0`` when formatting command-rule / status targets
+  (``number: 0`` was dropped by falsy ``number or index`` coalescing, so bit-gated
+  switches such as boiler start/stop lost their ``targets`` and could not match).
+
 ## [2026.8.7] - 2026-08-15
 
 ### Added
