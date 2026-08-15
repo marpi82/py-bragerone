@@ -184,7 +184,7 @@ async def test_get_object_permissions_dict_and_list(api_client: BragerOneApiClie
 
 @pytest.mark.asyncio
 async def test_get_modules_shapes_and_non_200(api_client: BragerOneApiClient, httpx_mock: HTTPXMock) -> None:
-    """``get_modules`` accepts ``data``/list shapes and returns [] on failure."""
+    """``get_modules`` accepts ``data``/list shapes and raises on non-200."""
     url = f"{API}/v1/modules?page=1&limit=999&group_id=3"
     httpx_mock.add_response(method="GET", url=url, json={"data": [MODULE_PAYLOAD]})
     from_data = await api_client.get_modules(3)
@@ -196,7 +196,21 @@ async def test_get_modules_shapes_and_non_200(api_client: BragerOneApiClient, ht
     assert from_list[0].id == 1
 
     httpx_mock.add_response(method="GET", url=url, status_code=201, json={"data": [MODULE_PAYLOAD]})
+    with pytest.raises(ApiError) as err:
+        await api_client.get_modules(3)
+    assert err.value.status == 201
+
+    httpx_mock.add_response(method="GET", url=url, json={"unexpected": True})
     assert await api_client.get_modules(3) == []
+
+    httpx_mock.add_response(
+        method="GET",
+        url=url,
+        json={"data": [MODULE_PAYLOAD, {"devid": None, "not": "a-module"}, "also-bad"]},
+    )
+    resilient = await api_client.get_modules(3)
+    assert len(resilient) == 1
+    assert resilient[0].id == MODULE_PAYLOAD["id"]
 
 
 @pytest.mark.asyncio

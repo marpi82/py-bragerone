@@ -68,6 +68,47 @@ At runtime, use lightweight mode for best performance.
    # 3. Start gateway (connects WS, subscribes, primes)
    await gateway.start()
 
+Module connectivity
+-------------------
+
+Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so existing
+``bus.subscribe()`` loops stay typed and unbroken). Use the dedicated gateway API:
+
+.. code-block:: python
+
+   from pybragerone.models.events import ModuleConnectivity
+
+   def on_connectivity(event: ModuleConnectivity) -> None:
+       print(event.devid, "online" if event.online else "offline", event.source)
+
+   gateway.on_module_connectivity(on_connectivity)
+   # After start / refresh:
+   # gateway.module_online(devid) -> True | False | None
+   # gateway.module_connected_at(devid) -> int | None  # REST connectedAt
+
+The gateway primes from ``GET /v1/modules`` (``connectedAt != 0`` means online —
+same truthiness check as the SPA card/modal) and listens for the official Socket.IO
+push ``app:module:connection:status:changed`` (payload
+``{devid: {connectedAt, gateway}}``, applied by Layout / ObjectsLayout in the web
+app). The client's own Socket.IO session is tracked separately and does **not**
+force modules offline (SPA parity). A background REST poll (default 60s;
+``connectivity_poll_interval=0`` disables it) continues even while WS is down.
+Failed or empty ``get_modules`` responses never wipe every module to offline.
+
+Connection **labels** are not hardcoded: resolve them from the live ``module``
+i18n namespace (same keys the SPA uses):
+
+.. code-block:: python
+
+   from pybragerone.models.i18n import I18nResolver
+
+   labels = await I18nResolver(assets).resolve_module_connection_labels(lang="pl")
+   # labels["serverConnection"], labels["connection.status"],
+   # labels["connection.connected"], labels["connection.notConnected"], ...
+
+Stable grouping key for the HA connection child device: ``module.connection``
+(i18n namespace path — **not** a menu-router route).
+
 .. important::
    **After WebSocket reconnect:** Always re-fetch parameters via REST!
 

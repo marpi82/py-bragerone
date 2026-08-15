@@ -1,0 +1,567 @@
+"""Tests for gateway per-module cloud connectivity signals."""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Awaitable, Callable, Iterable
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from pybragerone.gateway import (
+    ApiClient,
+    BragerOneGateway,
+    RealtimeManagerClient,
+    _gateway_as_dict,
+    _parse_connected_at,
+    module_connected_at_means_online,
+)
+from pybragerone.models.events import ModuleConnectivity
+
+
+class FakeApiClient:
+    """Fake API client with controllable ``get_modules`` rows."""
+
+    def __init__(self) -> None:
+        """Initialize the fake API client."""
+        self.module_rows: list[Any] = []
+        self.get_modules_calls = 0
+        self.get_modules_error: Exception | None = None
+        self.closed = False
+
+    @property
+    def access_token(self) -> str:
+        """Return a fake bearer token."""
+        return "fake-token"
+
+    async def modules_connect(
+        self,
+        wsid_ns: str,
+        modules: list[str],
+        group_id: int | None = None,
+        engine_sid: str | None = None,
+    ) -> bool:
+        """Return success without side effects."""
+        return True
+
+    async def modules_parameters_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        """Return an empty successful prime."""
+        if not return_data:
+            return True
+        return 200, {}
+
+    async def modules_activity_quantity_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        """Return an empty successful activity prime."""
+        if not return_data:
+            return True
+        return 200, {}
+
+    async def get_modules(self, object_id: int) -> list[Any]:
+        """Return the configured module rows (or raise when configured)."""
+        self.get_modules_calls += 1
+        if self.get_modules_error is not None:
+            raise self.get_modules_error
+        return list(self.module_rows)
+
+    async def close(self) -> None:
+        """Mark the client as closed."""
+        self.closed = True
+
+
+class FakeRealtimeManager:
+    """Fake WS manager with connect/disconnect hooks."""
+
+    def __init__(self) -> None:
+        """Initialize the fake realtime manager."""
+        self._on_connected: list[Callable[[], Awaitable[None] | None]] = []
+        self._on_disconnected: list[Callable[[], Awaitable[None] | None]] = []
+        self._on_event: Callable[[str, Any], Awaitable[None] | None] | None = None
+        self.group_id: int | None = None
+        self.connect_calls = 0
+        self.subscribe_calls: list[list[str]] = []
+
+    def on_event(self, cb: Callable[[str, Any], Awaitable[None] | None]) -> None:
+        """Store the event callback."""
+        self._on_event = cb
+
+    async def connect(self) -> None:
+        """Record a connect call."""
+        self.connect_calls += 1
+
+    async def disconnect(self) -> None:
+        """Invoke disconnect callbacks like a real socket drop."""
+        for cb in list(self._on_disconnected):
+            res = cb()
+            if asyncio.iscoroutine(res):
+                # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
+                _ = await res
+
+    def add_on_connected(self, cb: Callable[[], Awaitable[None] | None]) -> None:
+        """Register reconnect callback."""
+        self._on_connected.append(cb)
+
+    def add_on_disconnected(self, cb: Callable[[], Awaitable[None] | None]) -> None:
+        """Register disconnect callback."""
+        self._on_disconnected.append(cb)
+
+    def sid(self) -> str | None:
+        """Return a namespace SID."""
+        return "NS-SID"
+
+    def engine_sid(self) -> str | None:
+        """Return an engine SID."""
+        return "ENG-SID"
+
+    async def subscribe(self, modules: Iterable[str]) -> None:
+        """Record a subscribe call."""
+        self.subscribe_calls.append(list(modules))
+
+    async def trigger_disconnected(self) -> None:
+        """Invoke disconnect callbacks."""
+        for cb in list(self._on_disconnected):
+            res = cb()
+            if asyncio.iscoroutine(res):
+                # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
+                _ = await res
+
+    async def emit(self, name: str, payload: Any) -> None:
+        """Dispatch a fake Socket.IO event through the registered handler."""
+        handler = self._on_event
+        assert handler is not None
+        result = handler(name, payload)
+        if asyncio.iscoroutine(result):
+            # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
+            _ = await result
+        elif result is not None:
+            raise TypeError(f"event handler returned unexpected value: {type(result)!r}")
+
+
+def test_module_connected_at_means_online() -> None:
+    """``connectedAt == 0`` is the upstream offline sentinel."""
+    assert module_connected_at_means_online(0) is False
+    assert module_connected_at_means_online(1_700_000_000) is True
+
+
+@pytest.mark.asyncio
+async def test_gateway_connectivity_from_rest_and_ws_disconnect_preserves_online() -> None:
+    """REST connectedAt drives online; client WS disconnect does not force offline."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=1_700_000_000, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1", "M2"],
+        ws=ws,
+        connectivity_poll_interval=0,
+    )
+
+    events: list[ModuleConnectivity] = []
+    gw.on_module_connectivity(events.append)
+
+    assert gw.module_online("M1") is None
+    await gw.start()
+
+    assert api.get_modules_calls == 1
+    assert gw.module_online("M1") is True
+    assert gw.module_connected_at("M1") == 1_700_000_000
+    assert gw.module_online("M2") is False
+    assert [(e.devid, e.online, e.source) for e in events] == [
+        ("M1", True, "rest"),
+        ("M2", False, "derived"),
+    ]
+
+    events.clear()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
+    await gw.refresh_module_connectivity()
+    assert gw.module_online("M1") is False
+    offline = list(events)
+    assert len(offline) == 1
+    assert offline[0].online is False
+    assert offline[0].source == "rest"
+
+    events.clear()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=1_700_000_001, gateway=None)]
+    await gw.refresh_module_connectivity()
+    assert gw.module_online("M1") is True
+
+    events.clear()
+    await ws.trigger_disconnected()
+    await asyncio.sleep(0)
+    assert gw.module_online("M1") is True
+    assert gw.ws_session_up() is False
+    assert events == []
+
+    events.clear()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
+    await gw.refresh_module_connectivity()
+    assert gw.module_online("M1") is False
+    assert events[0].source == "rest"
+
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_connectivity_empty_listing_does_not_wipe() -> None:
+    """An empty get_modules result must not mark every module offline."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    assert gw.module_online("M1") is True
+
+    api.module_rows = []
+    await gw.refresh_module_connectivity()
+    assert gw.module_online("M1") is True
+    await gw.stop()
+
+
+async def _wait_until(predicate: Callable[[], bool], *, timeout: float = 2.0) -> None:
+    """Spin until ``predicate`` is true without relying on a fixed wall-clock sleep."""
+
+    async def _spin() -> None:
+        while not predicate():
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(_spin(), timeout=timeout)
+
+
+@pytest.mark.asyncio
+async def test_gateway_connectivity_poll_loop_and_get_modules_error() -> None:
+    """Background poll refreshes state; get_modules failures are logged and ignored."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+    )
+    await gw.start()
+    assert gw.module_online("M1") is True
+
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
+    await _wait_until(lambda: gw.module_online("M1") is False)
+    assert gw.module_online("M1") is False
+
+    calls_before_error = api.get_modules_calls
+    api.get_modules_error = RuntimeError("modules down")
+    await _wait_until(lambda: api.get_modules_calls > calls_before_error)
+    assert gw.module_online("M1") is False
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_connectivity_skips_blank_devid_rows() -> None:
+    """Rows without a devid are ignored during REST refresh."""
+    api = FakeApiClient()
+    api.module_rows = [
+        SimpleNamespace(devid="", connectedAt=99, gateway=None),
+        SimpleNamespace(devid="M1", connectedAt=99, gateway=None),
+    ]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    assert gw.module_online("M1") is True
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_connectivity_metadata_notifies_without_online_flip() -> None:
+    """Gateway/connectedAt updates notify even when online stays True."""
+    api = FakeApiClient()
+    api.module_rows = [
+        SimpleNamespace(
+            devid="M1",
+            connectedAt=50,
+            gateway={"address": "1.1.1.1", "interface": "wifi", "version": "V1"},
+        )
+    ]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    events: list[ModuleConnectivity] = []
+    gw.on_module_connectivity(events.append)
+    await gw.start()
+    events.clear()
+
+    api.module_rows = [
+        SimpleNamespace(
+            devid="M1",
+            connectedAt=51,
+            gateway={"address": "1.1.1.2", "interface": "wifi", "version": "V1"},
+        )
+    ]
+    await gw.refresh_module_connectivity()
+    assert gw.module_online("M1") is True
+    assert len(events) == 1
+    assert events[0].online_changed is False
+    assert events[0].metadata_changed is True
+    assert events[0].connected_at == 51
+    assert events[0].gateway == {"address": "1.1.1.2", "interface": "wifi", "version": "V1"}
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_connectivity_from_ws_connection_status_event() -> None:
+    """SPA ``app:module:connection:status:changed`` updates online + gateway."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    events: list[ModuleConnectivity] = []
+    gw.on_module_connectivity(events.append)
+    await gw.start()
+    assert gw.module_online("M1") is False
+    events.clear()
+
+    await ws.emit(
+        "app:module:connection:status:changed",
+        {
+            "M1": {
+                "connectedAt": 1_700_000_100,
+                "gateway": {"address": "10.0.0.2", "interface": "wifi", "version": "V2.08"},
+            }
+        },
+    )
+    await asyncio.sleep(0)
+
+    assert gw.module_online("M1") is True
+    assert gw.module_connected_at("M1") == 1_700_000_100
+    assert gw.module_gateway("M1") == {"address": "10.0.0.2", "interface": "wifi", "version": "V2.08"}
+    assert len(events) == 1
+    assert events[0].source == "ws"
+    assert events[0].online is True
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_connectivity_callback_error_does_not_abort() -> None:
+    """A raising connectivity callback does not block later listeners."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=99, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+
+    seen: list[bool] = []
+
+    def _boom(_event: ModuleConnectivity) -> None:
+        raise RuntimeError("cb")
+
+    def _ok(event: ModuleConnectivity) -> None:
+        seen.append(event.online)
+
+    gw.on_module_connectivity(_boom)
+    gw.on_module_connectivity(_ok)
+    await gw.start()
+    assert seen == [True]
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_stop_does_not_force_offline_callbacks() -> None:
+    """stop() must not emit mass-offline connectivity events after shutdown."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=99, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    events: list[ModuleConnectivity] = []
+    gw.on_module_connectivity(events.append)
+    await gw.start()
+    events.clear()
+    await gw.stop()
+    await asyncio.sleep(0)
+    assert events == []
+    assert gw.module_online("M1") is True
+
+
+def test_parse_connected_at_and_gateway_helpers() -> None:
+    """Helpers accept SPA shapes and reject unusable values."""
+    assert _parse_connected_at(None) is None
+    assert _parse_connected_at("nope") is None
+    assert _parse_connected_at(12) == 12
+    assert _gateway_as_dict(None) is None
+    assert _gateway_as_dict({"address": "1.1.1.1"}) == {"address": "1.1.1.1"}
+    assert _gateway_as_dict(SimpleNamespace(model_dump=lambda mode="json": {"address": "2.2.2.2"})) == {"address": "2.2.2.2"}
+    assert _gateway_as_dict(SimpleNamespace(model_dump=lambda mode="json": "bad")) is None
+    assert _gateway_as_dict("not-a-gateway") is None
+
+
+@pytest.mark.asyncio
+async def test_protocol_stubs_raise_not_implemented() -> None:
+    """Protocol default bodies exist so structural typing stays explicit."""
+
+    class _Probe:
+        pass
+
+    probe = _Probe()
+    with pytest.raises(NotImplementedError):
+        await ApiClient.get_modules(probe, 1)  # type: ignore[arg-type]
+    with pytest.raises(NotImplementedError):
+        RealtimeManagerClient.add_on_disconnected(probe, lambda: None)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_gateway_connectivity_edge_paths() -> None:
+    """Cover refresh/ingest/stop edge cases that keep SPA parity fail-closed."""
+    api = FakeApiClient()
+    api.module_rows = [
+        SimpleNamespace(
+            devid="M1",
+            connectedAt=50,
+            gateway=SimpleNamespace(model_dump=lambda mode="json": {"address": "9.9.9.9"}),
+        )
+    ]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1", "M2"], ws=ws, connectivity_poll_interval=0)
+
+    # Refresh before start is a no-op.
+    await gw.refresh_module_connectivity()
+    assert gw.module_online("M1") is None
+
+    events: list[ModuleConnectivity] = []
+    gw.on_module_connectivity(events.append)
+    await gw.start()
+    assert gw.module_online("M1") is True
+    assert gw.module_gateway("M1") == {"address": "9.9.9.9"}
+    events.clear()
+
+    # Unusable connectedAt rows are skipped (no false offline).
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt="bad", gateway=None)]
+    await gw.refresh_module_connectivity()
+    assert gw.module_online("M1") is True
+    assert events == []
+
+    # WS ingest: ignore foreign devid / non-dict body / bad connectedAt.
+    await gw._ingest_module_connection_status(
+        {
+            "OTHER": {"connectedAt": 1},
+            "M1": "not-a-dict",
+            "M2": {"connectedAt": "bad"},
+        }
+    )
+    assert gw.module_online("M1") is True
+
+    # Gateway-only WS update refreshes metadata without inventing online.
+    await gw._ingest_module_connection_status({"M1": {"gateway": {"address": "8.8.8.8"}}})
+    assert gw.module_gateway("M1") == {"address": "8.8.8.8"}
+    assert gw.module_online("M1") is True
+
+    # Gateway-only update with no prior online + empty gateway is ignored.
+    await gw._ingest_module_connection_status({"M2": {"gateway": None}})
+    assert gw.module_online("M2") is False
+
+    # Ingest after stop is ignored.
+    await gw.stop()
+    await gw._ingest_module_connection_status({"M1": {"connectedAt": 0}})
+    assert gw.module_online("M1") is True
+
+
+@pytest.mark.asyncio
+async def test_gateway_ws_reconnect_and_poll_exception_paths() -> None:
+    """Reconnect hooks and poll-tick exceptions must not tear down the gateway."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0.05)
+    await gw.start()
+
+    # Stale reconnect while stopped is ignored.
+    gw._ws_session_up = False
+    gw._started = False
+    await gw._on_ws_connected()
+    assert gw.ws_session_up() is False
+    gw._started = True
+
+    async def _boom_resubscribe() -> None:
+        raise RuntimeError("resubscribe failed")
+
+    gw.resubscribe = _boom_resubscribe  # type: ignore[method-assign]
+    await gw._on_ws_connected()
+    assert gw.ws_session_up() is True
+
+    tick_hits = 0
+
+    async def _boom_refresh(*, source: str) -> None:
+        nonlocal tick_hits
+        _ = source
+        tick_hits += 1
+        raise RuntimeError("tick failed")
+
+    gw._refresh_module_connectivity = _boom_refresh  # type: ignore[method-assign]
+    await _wait_until(lambda: tick_hits >= 1)
+
+    async def _boom_cancel() -> None:
+        raise RuntimeError("cancel failed")
+
+    gw._cancel_all_tasks = _boom_cancel  # type: ignore[method-assign]
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_ingest_skips_gateway_only_when_online_unknown() -> None:
+    """Gateway-only WS updates require a known prior online bit."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1", "M2"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    gw._module_online.pop("M2", None)
+    gw._module_gateway.pop("M2", None)
+    await gw._ingest_module_connection_status({"M2": {"gateway": {"address": "1.2.3.4"}}})
+    assert gw.module_online("M2") is None
+    assert gw.module_gateway("M2") is None
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_start_registers_ws_hooks_once() -> None:
+    """Second start after stop must not duplicate Socket.IO connected/disconnected hooks."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    assert len(ws._on_connected) == 1
+    assert gw._ws_hooks_registered is True
+    await gw.stop()
+    # stop clears started but keeps hook registration so reconnect paths stay single-shot.
+    assert gw._ws_hooks_registered is True
+    await gw.start()
+    assert len(ws._on_connected) == 1
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_reconnect_skips_stale_generation_refresh() -> None:
+    """A reconnect finally block must not refresh after a newer disconnect generation."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    calls_before = api.get_modules_calls
+
+    async def _slow_resubscribe() -> None:
+        gw._on_ws_disconnected()
+        return None
+
+    gw.resubscribe = _slow_resubscribe  # type: ignore[method-assign]
+    await gw._on_ws_connected()
+    assert api.get_modules_calls == calls_before
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_refresh_with_empty_module_list() -> None:
+    """Empty subscription list skips derived-offline warnings."""
+    api = FakeApiClient()
+    api.module_rows = []
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=[], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    await gw.refresh_module_connectivity()
+    await gw.stop()

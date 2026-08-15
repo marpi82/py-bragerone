@@ -7,7 +7,7 @@ import time
 from collections.abc import AsyncGenerator
 from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,45 @@ class FeatureChanged:
     #: Name of the feature that changed.
     value: bool
     #: New boolean value of the feature.
+
+
+@dataclass(frozen=True)
+class ModuleConnectivity:
+    """Per-module cloud connectivity signal for gateway consumers.
+
+    This is **not** published on :class:`EventBus` (which stays ``ParamUpdate``-only
+    for Home Assistant compatibility). Consumers register
+    ``BragerOneGateway.on_module_connectivity`` or poll
+    :meth:`BragerOneGateway.module_online`.
+
+    Mirrors the SPA module card / connection modal: online iff ``connectedAt`` is
+    truthy (upstream uses ``0`` as offline). Live updates arrive on Socket.IO
+    ``app:module:connection:status:changed`` with ``{devid: {connectedAt, gateway}}``.
+
+    The client's own Socket.IO session is **not** folded into ``online`` — a local
+    transport blip must not look like the module dropped off the cloud.
+    """
+
+    devid: str
+    #: Device identifier.
+    online: bool
+    #: ``True`` when upstream ``connectedAt`` is truthy (SPA parity).
+    source: Literal["rest", "ws", "derived"]
+    #: Where the observation came from (REST poll, WS push, or derived absence).
+    connected_at: int | None = None
+    #: Raw ``connectedAt`` epoch seconds when known (``0`` means offline upstream).
+    gateway: dict[str, Any] | None = None
+    #: Optional gateway blob from REST/WS (``address``, ``interface``, ``version``).
+    online_changed: bool = True
+    #: ``True`` when the online bit flipped versus the previous cache.
+    metadata_changed: bool = False
+    #: ``True`` when ``connected_at`` and/or ``gateway`` changed without an online flip.
+    ts: float = field(default_factory=time.time)
+    #: Timestamp when this signal was produced.
+
+
+# Official SPA Layout / ObjectsLayout event name.
+MODULE_CONNECTION_STATUS_CHANGED = "app:module:connection:status:changed"
 
 
 @dataclass(frozen=True)

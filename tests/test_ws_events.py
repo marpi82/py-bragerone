@@ -101,6 +101,7 @@ async def test_domain_handlers_dispatch_and_survive_callback_errors(
         await manager._on_app_modules_task_created({"k": 5})
         await manager._on_app_modules_task_status_changed({"k": 6})
         await manager._on_app_modules_task_completed({"k": 7})
+        await manager._on_app_module_connection_status_changed({"M1": {"connectedAt": 1}})
         await manager._on_ev60({"k": 8})
         await manager._on_ev61({"k": 9})
         await manager._on_ev63({"k": 10})
@@ -114,6 +115,7 @@ async def test_domain_handlers_dispatch_and_survive_callback_errors(
         "app:module:task:created",
         "app:module:task:status:changed",
         "app:module:task:completed",
+        "app:module:connection:status:changed",
         "app:module:task:status:changed",
         "app:module:task:created",
         "app:module:task:completed",
@@ -145,9 +147,35 @@ async def test_lifecycle_handlers_and_connect_callbacks(monkeypatch: pytest.Monk
     assert "async" in calls
     assert manager._connected.is_set()
 
+    disc: list[str] = []
+
+    def _disc() -> None:
+        disc.append("disc")
+
+    async def _disc_async() -> None:
+        disc.append("disc-async")
+
+    manager.add_on_disconnected(_disc)
+    manager.add_on_disconnected(_disc_async)
+    manager.add_on_disconnected(_boom)
+
     await manager._on_connect_error("nope")
     assert not manager._connected.is_set()
+    # connect_error after connect: was_connected True → disconnect callbacks
+    await _drain_spawned()
+    assert "disc" in disc
+    assert "disc-async" in disc
+
+    disc.clear()
+    # connect_error while already disconnected does not re-fire disconnect callbacks
+    await manager._on_connect_error("still-down")
+    await _drain_spawned()
+    assert disc == []
+
+    disc.clear()
     await manager._on_disconnect()
+    await _drain_spawned()
+    assert "disc" in disc
     await manager._on_reconnect()
     await manager._on_reconnect_attempt(2)
     await manager._on_reconnect_error("err")
