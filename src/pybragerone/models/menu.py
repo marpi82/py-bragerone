@@ -19,9 +19,26 @@ from .api.common import Permission
 # the leading ``[`` matched, so ``_0xabc['NAME']]`` is not normalized.
 _JS_SUBSCRIPT_PUBLIC_RE = re.compile(r"^(\[)?_0x[0-9a-fA-F]*\[(['\"])(?P<name>[A-Za-z_]\w*)\2\](?(1)\])$")
 # Index-inline builders also leave readable enum leftovers such as
-# ``ParameterStatus['INVISIBLE']``. Require a PascalCase receiver and a
-# SCREAMING_SNAKE member so ``Math['floor']`` / ``arr['map']`` stay untouched.
+# ``ParameterStatus['INVISIBLE']``. Require a PascalCase receiver that looks like
+# an enum namespace and a SCREAMING_SNAKE member so ``Math['floor']`` /
+# ``Object['DEFINE']`` / ``PARAMS['P11_1']`` stay untouched.
 _JS_PASCAL_ENUM_SUBSCRIPT_RE = re.compile(r"^(\[)?(?P<recv>[A-Z][\w$]*)\[(['\"])(?P<name>[A-Z][A-Z0-9_]*)\3\](?(1)\])$")
+_JS_ENUM_RECEIVER_EXACT: frozenset[str] = frozenset({"Permissions", "IconsList"})
+_JS_ENUM_RECEIVER_SUFFIXES: tuple[str, ...] = (
+    "Status",
+    "Operation",
+    "Property",
+    "Type",
+    "State",
+    "List",
+    "Commands",
+    "Component",
+)
+
+
+def _is_js_enum_receiver(receiver: str) -> bool:
+    """Return whether *receiver* looks like a TypeScript/JS enum namespace."""
+    return receiver in _JS_ENUM_RECEIVER_EXACT or any(receiver.endswith(suffix) for suffix in _JS_ENUM_RECEIVER_SUFFIXES)
 
 
 def js_public_member_name(value: str) -> str | None:
@@ -43,7 +60,7 @@ def js_public_member_name(value: str) -> str | None:
     if match is not None:
         return match.group("name")
     match = _JS_PASCAL_ENUM_SUBSCRIPT_RE.match(text)
-    if match is not None:
+    if match is not None and _is_js_enum_receiver(match.group("recv")):
         return match.group("name")
     return None
 

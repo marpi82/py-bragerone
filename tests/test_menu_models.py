@@ -15,6 +15,9 @@ def test_menu_parameter_obfuscated_subscript_permission() -> None:
     assert js_public_member_name("A.DISPLAY_MENU_DHW") is None
     assert js_public_member_name("arr['map']") is None
     assert js_public_member_name("Math['floor']") is None
+    assert js_public_member_name("Object['DEFINE']") is None
+    assert js_public_member_name("PARAMS['P11_1']") is None
+    assert js_public_member_name("X['A']") is None
     assert js_public_member_name("_0x4d7e32['INVISIBLE']]") is None
     assert js_public_member_name("[_0x4d7e32['INVISIBLE']") is None
 

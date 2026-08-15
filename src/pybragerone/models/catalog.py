@@ -2009,7 +2009,8 @@ class LiveAssetsCatalog:
                     normalized_entries = _ensure_mapping_list(entries)
                     if not normalized_entries:
                         continue
-                    conditions[key_str] = normalized_entries
+                    bucket = conditions.setdefault(key_str, [])
+                    bucket.extend(normalized_entries)
                     for entry in normalized_entries:
                         enriched = dict(entry)
                         enriched.setdefault("condition", key_str)
@@ -2042,7 +2043,8 @@ class LiveAssetsCatalog:
             if cleaned.startswith("[") and cleaned.endswith("]") and len(cleaned) > 2:
                 cleaned = cleaned[1:-1]
             parts = cleaned.split(".", 1)
-            if len(parts) == 2 and parts[0] in {"a", "e", "n", "o", "t"}:
+            # Keep in sync with ParamResolver._clean_symbolic_tag short prefixes.
+            if len(parts) == 2 and parts[0].lower() in {"a", "e", "n", "o", "t", "u", "s", "r", "p", "m"}:
                 cleaned = parts[1]
             return cleaned
 

@@ -37,8 +37,8 @@ _UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
 # Require the known prefixes so abbreviations like ``DHW`` do not trigger asset fetches.
 _MENU_TITLE_TOKEN_RE = re.compile(r"^(?:MAINMENU|MENUSERWIS|MENUPALNIKA|MENU)_[A-Z0-9_]+$")
 
-# Installer / service module-item routes that are not everyday web-UI panels.
-# Everyday panels may still use ``MENUSERWIS_*`` title tokens (e.g. buffer settings).
+# Installer / service module-item route *suffixes* (after optional ``companies.``).
+# Compared case-insensitively. Everyday panels may still use ``MENUSERWIS_*`` titles.
 _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES: frozenset[str] = frozenset(
     {
         "modules.menu.dev",
@@ -46,8 +46,10 @@ _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES: frozenset[str] = frozenset(
         "modules.menu.configuration",
         "modules.menu.schema",
         "modules.menu.tests_output_input",
+        "modules.menu.testsoutputinput",
         "modules.menu.calibration",
         "modules.menu.lock_board",
+        "modules.menu.lockboard",
     }
 )
 
@@ -616,6 +618,21 @@ class ParamResolver:
         return name_cf.startswith("modules.menu.") or name_cf.startswith("companies.modules.menu.")
 
     @classmethod
+    def _normalize_module_menu_route_name(cls, name: str) -> str:
+        """Normalize a module-menu route name for installer denylist matching."""
+        name_cf = name.strip().casefold()
+        if name_cf.startswith("companies."):
+            name_cf = name_cf[len("companies.") :]
+        # Live menus use camelCase (``testsOutputInput``); denylist is snake_case.
+        return name_cf.replace("_", "")
+
+    @classmethod
+    def _route_name_is_excluded_installer_menu(cls, name: str) -> bool:
+        """Return whether *name* matches a known installer-only module-menu route."""
+        excluded = {cls._normalize_module_menu_route_name(item) for item in _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES}
+        return cls._normalize_module_menu_route_name(name) in excluded
+
+    @classmethod
     def _route_is_end_user_web_ui(
         cls,
         route: Any,
@@ -624,19 +641,27 @@ class ParamResolver:
     ) -> bool:
         """Return whether a module-item route belongs on the everyday web UI.
 
-        Mirrors SPA ``isRouteVisible`` side-menu gating in ``index-*.js``:
+        Mirrors SPA side-menu gating in ``index-*.js`` (``isRouteVisible`` + the
+        side-menu computed filter):
 
-        - ``meta.isVisibleOnSideMenu`` is not ``False`` on the route.
-        - No ancestor has ``isVisibleOnSideMenu is False`` (parent gates children).
+        - ``meta.isVisibleOnSideMenu`` is not ``False`` on the route or any ancestor.
+        - Path has no ``:param`` segments (side menu only lists concrete paths).
+        - Route name is not a known installer-only ``modules.menu.*`` /
+          ``companies.modules.menu.*`` entry (denylist; case-insensitive).
 
-        Additionally drops known installer-only ``modules.menu.*`` routes that are
-        never everyday panels. ``MENUSERWIS_*`` title tokens are **not** excluded:
-        everyday UI panels such as buffer settings use that prefix
-        (``MENUSERWIS_USTAWIENIA_BUFORU``).
+        ``MENUSERWIS_*`` title tokens are **not** excluded: everyday UI panels such
+        as buffer settings use that prefix (``MENUSERWIS_USTAWIENIA_BUFORU``).
+
+        Account permissions are applied by the menu fetch (``permissions=…``), not
+        here — callers must not retry with ``permissions=None`` for UI mode.
         """
         raw_name = getattr(route, "name", None)
         name = raw_name.strip() if isinstance(raw_name, str) else ""
-        if name in _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES:
+        if name and cls._route_name_is_excluded_installer_menu(name):
+            return False
+
+        path = getattr(route, "path", None)
+        if isinstance(path, str) and ":" in path:
             return False
 
         meta = getattr(route, "meta", None)
@@ -645,6 +670,13 @@ class ParamResolver:
             return False
 
         for ancestor in ancestors:
+            ancestor_name = getattr(ancestor, "name", None)
+            if (
+                isinstance(ancestor_name, str)
+                and ancestor_name.strip()
+                and cls._route_name_is_excluded_installer_menu(ancestor_name)
+            ):
+                return False
             ancestor_meta = getattr(ancestor, "meta", None)
             ancestor_side = getattr(ancestor_meta, "is_visible_on_side_menu", None) if ancestor_meta is not None else None
             if ancestor_side is False:
@@ -1884,18 +1916,17 @@ class ParamResolver:
 
         Mirrors SPA ``isParameterVisible`` status checks in ``index-*.js``:
 
-        - when ``status.invisible`` is present, it must be ``0`` / false;
-        - when ``status.device_available`` is present, it must be ``1`` / true.
+        - when the ``INVISIBLE`` flag resolves truthy, the parameter is hidden;
+        - when the ``DEVICE_AVAILABLE`` flag resolves falsey, the parameter is hidden;
+        - when a flag path is present but its backing value is missing, the flag
+          is treated as unknown and does not hide the parameter.
 
         Condition tokens are normalized (``ParameterStatus['INVISIBLE']``,
         ``[t.INVISIBLE]``, ``INVISIBLE``) before comparison.
 
         Notes:
-        - Missing current value does not automatically hide a parameter. Some
-          write/control entries (e.g. command-like params) are visible in UI
-          even without a direct live value. Callers that want the SPA
-          ``parameter.value !== undefined`` gate apply it separately (HA bootstrap
-          already drops ``no_display_value`` before this check).
+        - This helper does not enforce the SPA ``parameter.value !== undefined``
+          gate. Callers (HA bootstrap) drop ``no_display_value`` separately.
         """
         values = flat_values if flat_values is not None else self._store.flatten()
 
