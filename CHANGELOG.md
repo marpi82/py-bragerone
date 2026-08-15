@@ -7,6 +7,30 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.8.7] - 2026-08-15
+
+### Added
+
+- Expose per-module cloud connectivity on ``BragerOneGateway``: REST ``connectedAt``
+  priming, Socket.IO ``app:module:connection:status:changed``, background
+  ``get_modules`` poll/diff, ``on_module_connectivity`` / ``module_online`` /
+  ``module_connected_at``, and SPA ``module.connection`` i18n helpers for Home
+  Assistant connectivity entities (#312).
+
+### Fixed
+
+- Align UI / parameter visibility with the manufacturer SPA
+  (``isParameterVisible`` + side-menu gating). Recover index-inline
+  ``ParameterStatus['INVISIBLE']`` leftovers, match ``INVISIBLE`` /
+  ``DEVICE_AVAILABLE`` case-insensitively, and honor installer denylist /
+  ancestor gating so ``web_ui_only`` can exclude service panels (#310, closed
+  #307).
+
+### Changed
+
+- Document Stable status and that GitHub Pages defaults to ``/latest/`` rather
+  than ``/dev/`` (#308).
+
 ## [2026.8.6] - 2026-08-14
 
 ### Fixed
@@ -162,7 +186,9 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.5...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.7...HEAD
+[2026.8.7]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.7
+[2026.8.6]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.6
 [2026.8.5]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.5
 [2026.8.4]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.4
 [2026.8.3]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.3
