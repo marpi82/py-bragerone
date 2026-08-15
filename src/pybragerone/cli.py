@@ -726,7 +726,7 @@ async def _run_tui(
         from rich.text import Text
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError(
-            "TUI mode requires optional CLI dependencies. Install the 'cli' extra (e.g. `pip install py-bragerone[cli]`)."
+            "TUI mode requires optional CLI dependencies. Install the 'cli' extra (e.g. `pip install \"py-bragerone[cli]\"`)."
         ) from exc
 
     console = Console()

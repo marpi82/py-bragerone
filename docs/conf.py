@@ -134,7 +134,7 @@ else:
     try:
         from importlib.metadata import version as _pkg_version
 
-        release = _pkg_version("pybragerone")
+        release = _pkg_version("py-bragerone")
     except Exception:
         ver_file = os.path.join(os.path.dirname(__file__), "../src/pybragerone/_version.py")
         _ns: dict[str, object] = {}
