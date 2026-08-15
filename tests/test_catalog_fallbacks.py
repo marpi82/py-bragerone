@@ -166,7 +166,8 @@ def test_build_param_map_from_obj_normalizes_command_branches_and_status() -> No
     assert pm.limits == {"min": 0, "max": 1}
     assert pm.status_flags == []
     assert pm.status_conditions is not None
-    assert "t.INVISIBLE" in pm.status_conditions
+    assert "INVISIBLE" in pm.status_conditions
+    assert "t.INVISIBLE" not in pm.status_conditions
     assert pm.paths["min"][0]["use"] == "n"
     assert pm.paths["max"][0]["use"] == "x"
 

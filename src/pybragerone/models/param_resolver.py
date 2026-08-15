@@ -37,6 +37,37 @@ _UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
 # Require the known prefixes so abbreviations like ``DHW`` do not trigger asset fetches.
 _MENU_TITLE_TOKEN_RE = re.compile(r"^(?:MAINMENU|MENUSERWIS|MENUPALNIKA|MENU)_[A-Z0-9_]+$")
 
+# Installer / service module-item route *suffixes* (after optional ``companies.``).
+# Compared case-insensitively. Everyday panels may still use ``MENUSERWIS_*`` titles.
+_WEB_UI_EXCLUDED_MODULE_MENU_ROUTES: frozenset[str] = frozenset(
+    {
+        "modules.menu.dev",
+        "modules.menu.producer",
+        "modules.menu.configuration",
+        "modules.menu.schema",
+        "modules.menu.tests_output_input",
+        "modules.menu.testsoutputinput",
+        "modules.menu.calibration",
+        "modules.menu.lock_board",
+        "modules.menu.lockboard",
+    }
+)
+
+
+def _normalize_module_menu_route_name(name: str) -> str:
+    """Normalize a module-menu route name for installer denylist matching."""
+    name_cf = name.strip().casefold()
+    if name_cf.startswith("companies."):
+        name_cf = name_cf[len("companies.") :]
+    # Live menus use camelCase (``testsOutputInput``); denylist is snake_case.
+    return name_cf.replace("_", "")
+
+
+# Precomputed once — ``_route_name_is_excluded_installer_menu`` runs per route/ancestor.
+_WEB_UI_EXCLUDED_MODULE_MENU_ROUTES_NORMALIZED: frozenset[str] = frozenset(
+    _normalize_module_menu_route_name(item) for item in _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES
+)
+
 
 class AssetsProtocol(Protocol):
     """Minimal async API used by ParamResolver.
@@ -601,6 +632,62 @@ class ParamResolver:
             return False
         return name_cf.startswith("modules.menu.") or name_cf.startswith("companies.modules.menu.")
 
+    @classmethod
+    def _route_name_is_excluded_installer_menu(cls, name: str) -> bool:
+        """Return whether *name* matches a known installer-only module-menu route."""
+        return _normalize_module_menu_route_name(name) in _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES_NORMALIZED
+
+    @classmethod
+    def _route_is_end_user_web_ui(
+        cls,
+        route: Any,
+        *,
+        ancestors: tuple[Any, ...] = (),
+    ) -> bool:
+        """Return whether a module-item route belongs on the everyday web UI.
+
+        Mirrors SPA side-menu gating in ``index-*.js`` (``isRouteVisible`` + the
+        side-menu computed filter):
+
+        - ``meta.isVisibleOnSideMenu`` is not ``False`` on the route or any ancestor.
+        - Path has no ``:param`` segments (side menu only lists concrete paths).
+        - Route name is not a known installer-only ``modules.menu.*`` /
+          ``companies.modules.menu.*`` entry (denylist; case-insensitive).
+
+        ``MENUSERWIS_*`` title tokens are **not** excluded: everyday UI panels such
+        as buffer settings use that prefix (``MENUSERWIS_USTAWIENIA_BUFORU``).
+
+        Account permissions are applied by the menu fetch (``permissions=…``), not
+        here — callers must not retry with ``permissions=None`` for UI mode.
+        """
+        raw_name = getattr(route, "name", None)
+        name = raw_name.strip() if isinstance(raw_name, str) else ""
+        if name and cls._route_name_is_excluded_installer_menu(name):
+            return False
+
+        path = getattr(route, "path", None)
+        if isinstance(path, str) and ":" in path:
+            return False
+
+        meta = getattr(route, "meta", None)
+        side = getattr(meta, "is_visible_on_side_menu", None) if meta is not None else None
+        if side is False:
+            return False
+
+        for ancestor in ancestors:
+            ancestor_name = getattr(ancestor, "name", None)
+            if (
+                isinstance(ancestor_name, str)
+                and ancestor_name.strip()
+                and cls._route_name_is_excluded_installer_menu(ancestor_name)
+            ):
+                return False
+            ancestor_meta = getattr(ancestor, "meta", None)
+            ancestor_side = getattr(ancestor_meta, "is_visible_on_side_menu", None) if ancestor_meta is not None else None
+            if ancestor_side is False:
+                return False
+        return True
+
     @staticmethod
     def _iter_routes(routes: Iterable[Any]) -> Iterable[Any]:
         stack = list(routes)[::-1]
@@ -675,16 +762,25 @@ class ParamResolver:
         menu: MenuResult,
         *,
         all_panels: bool = False,
+        web_ui_only: bool = False,
         routes_i18n: Mapping[str, Any] | None = None,
     ) -> dict[str, list[str]]:
         """Build route-driven panel groups from a menu tree.
 
-        When ``all_panels`` is enabled, every non-empty route becomes a panel.
-        Otherwise, only the canonical Boiler/DHW/Valve1 groups are returned.
+        When ``all_panels`` is enabled, every non-empty module-item route becomes a
+        panel. Otherwise, only the canonical Boiler/DHW/Valve1 groups are returned.
+
+        When ``web_ui_only`` is enabled, installer routes and side-menu-hidden
+        routes are dropped (:meth:`_route_is_end_user_web_ui`) so the panel set
+        matches everyday web-UI navigation. Per-parameter SPA visibility
+        (``isParameterVisible`` / status bits) is applied by callers such as HA
+        bootstrap UI filter mode.
         """
         routes_meta: list[tuple[str, str, str, set[str], tuple[Any, ...], Any]] = []
         for route, ancestors in cls._iter_routes_with_ancestors(menu.routes):
             if all_panels and not cls._route_allowed_in_module_item(route):
+                continue
+            if web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
                 continue
             symbols = cls._collect_route_symbols(route)
             if symbols:
@@ -756,6 +852,7 @@ class ParamResolver:
         menu: MenuResult,
         *,
         all_panels: bool = False,
+        web_ui_only: bool = False,
         routes_i18n: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Return per-route panel inclusion diagnostics.
@@ -778,11 +875,17 @@ class ParamResolver:
                 if not cls._route_allowed_in_module_item(route):
                     accepted = False
                     reason = "rejected:not-module-item"
+                elif web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
+                    accepted = False
+                    reason = "rejected:not-web-ui"
                 elif not symbols:
                     accepted = False
                     reason = "rejected:no-symbols"
             else:
-                if not symbols:
+                if web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
+                    accepted = False
+                    reason = "rejected:not-web-ui"
+                elif not symbols:
                     accepted = False
                     reason = "rejected:no-symbols"
 
@@ -805,11 +908,17 @@ class ParamResolver:
         device_menu: int,
         permissions: Iterable[str] | None = None,
         all_panels: bool = False,
+        web_ui_only: bool = False,
     ) -> dict[str, list[str]]:
         """Build panel groups from module menu for selected permissions."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
         routes_i18n = await self._panel_title_i18n(menu)
-        return self.build_panel_groups_from_menu(menu, all_panels=all_panels, routes_i18n=routes_i18n)
+        return self.build_panel_groups_from_menu(
+            menu,
+            all_panels=all_panels,
+            web_ui_only=web_ui_only,
+            routes_i18n=routes_i18n,
+        )
 
     async def panel_route_diagnostics(
         self,
@@ -817,11 +926,17 @@ class ParamResolver:
         device_menu: int,
         permissions: Iterable[str] | None = None,
         all_panels: bool = False,
+        web_ui_only: bool = False,
     ) -> list[dict[str, Any]]:
         """Return route diagnostics for panel inclusion filtering."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
         routes_i18n = await self._panel_title_i18n(menu)
-        return self.panel_route_diagnostics_from_menu(menu, all_panels=all_panels, routes_i18n=routes_i18n)
+        return self.panel_route_diagnostics_from_menu(
+            menu,
+            all_panels=all_panels,
+            web_ui_only=web_ui_only,
+            routes_i18n=routes_i18n,
+        )
 
     async def resolve_label(self, symbol: str) -> str | None:
         """Resolve label strictly from mapping `name` token."""
@@ -1670,11 +1785,14 @@ class ParamResolver:
         for condition, entries in raw_status.items():
             if not isinstance(entries, list):
                 continue
+            # Normalize ``ParameterStatus['INVISIBLE']`` / ``[t.INVISIBLE]`` to ``INVISIBLE``
+            # so visibility matches the SPA ``status.invisible`` flag name.
+            condition_name = ParamResolver._clean_symbolic_tag(condition) or str(condition)
             for entry in entries:
                 if not isinstance(entry, Mapping):
                     continue
                 row = dict(entry)
-                row.setdefault("condition", condition)
+                row["condition"] = condition_name
                 status_paths.append(row)
         return status_paths
 
@@ -1732,6 +1850,13 @@ class ParamResolver:
         return []
 
     @classmethod
+    def _status_condition_name(cls, condition: Any) -> str:
+        """Return the public status flag name for a path/raw condition token."""
+        if not isinstance(condition, str):
+            return ""
+        return (cls._clean_symbolic_tag(condition) or condition).strip()
+
+    @classmethod
     def _status_flag_value(
         cls,
         *,
@@ -1740,10 +1865,13 @@ class ParamResolver:
         flat_values: Mapping[str, Any],
     ) -> bool | None:
         explicit_else: bool | None = None
+        wanted = cls._status_condition_name(flag_condition).casefold()
+        if not wanted:
+            return None
 
         for status in status_paths:
-            condition = str(status.get("condition") or "")
-            if condition != flag_condition:
+            condition = cls._status_condition_name(status.get("condition")).casefold()
+            if condition != wanted:
                 continue
 
             group = status.get("group")
@@ -1791,14 +1919,19 @@ class ParamResolver:
     ) -> tuple[bool, str]:
         """Return visibility using the same status semantics as the official app.
 
-        Rules mirrored from frontend filtering:
-        - `status.invisible` / `t.INVISIBLE` must not be true,
-        - when present, `status.device_available` must not be false.
+        Mirrors SPA ``isParameterVisible`` status checks in ``index-*.js``:
+
+        - when the ``INVISIBLE`` flag resolves truthy, the parameter is hidden;
+        - when the ``DEVICE_AVAILABLE`` flag resolves falsey, the parameter is hidden;
+        - when a flag path is present but its backing value is missing, the flag
+          is treated as unknown and does not hide the parameter.
+
+        Condition tokens are normalized (``ParameterStatus['INVISIBLE']``,
+        ``[t.INVISIBLE]``, ``INVISIBLE``) before comparison.
 
         Notes:
-        - Missing current value does not automatically hide a parameter. Some
-          write/control entries (e.g. command-like params) are visible in UI
-          even without a direct live value.
+        - This helper does not enforce the SPA ``parameter.value !== undefined``
+          gate. Callers (HA bootstrap) drop ``no_display_value`` separately.
         """
         values = flat_values if flat_values is not None else self._store.flatten()
 
@@ -1814,17 +1947,15 @@ class ParamResolver:
         if not status_paths:
             return True, "visible:no-paths"
 
-        invisible = self._status_flag_value(status_paths=status_paths, flag_condition="[u.INVISIBLE]", flat_values=values)
-        if invisible is None:
-            invisible = self._status_flag_value(status_paths=status_paths, flag_condition="[t.INVISIBLE]", flat_values=values)
-        if invisible is None:
-            invisible = self._status_flag_value(status_paths=status_paths, flag_condition="[r.INVISIBLE]", flat_values=values)
+        # SPA stores ParameterStatus.INVISIBLE as ``'invisible'``; catalog/paths keep
+        # the public member ``INVISIBLE``. Match either spelling after cleanup.
+        invisible = self._status_flag_value(status_paths=status_paths, flag_condition="INVISIBLE", flat_values=values)
         if invisible is True:
             return False, "hidden:invisible"
 
         device_available = self._status_flag_value(
             status_paths=status_paths,
-            flag_condition="[o.DEVICE_AVAILABLE]",
+            flag_condition="DEVICE_AVAILABLE",
             flat_values=values,
         )
         if device_available is False:

@@ -18,14 +18,36 @@ from .api.common import Permission
 # The computed-key brackets must balance: ``(?(1)\])`` demands the closing one only when
 # the leading ``[`` matched, so ``_0xabc['NAME']]`` is not normalized.
 _JS_SUBSCRIPT_PUBLIC_RE = re.compile(r"^(\[)?_0x[0-9a-fA-F]*\[(['\"])(?P<name>[A-Za-z_]\w*)\2\](?(1)\])$")
+# Index-inline builders also leave readable enum leftovers such as
+# ``ParameterStatus['INVISIBLE']``. Require a PascalCase receiver that looks like
+# an enum namespace and a SCREAMING_SNAKE member so ``Math['floor']`` /
+# ``Object['DEFINE']`` / ``PARAMS['P11_1']`` stay untouched.
+_JS_PASCAL_ENUM_SUBSCRIPT_RE = re.compile(r"^(\[)?(?P<recv>[A-Z][\w$]*)\[(['\"])(?P<name>[A-Z][A-Z0-9_]*)\3\](?(1)\])$")
+_JS_ENUM_RECEIVER_EXACT: frozenset[str] = frozenset({"Permissions", "IconsList"})
+_JS_ENUM_RECEIVER_SUFFIXES: tuple[str, ...] = (
+    "Status",
+    "Operation",
+    "Property",
+    "Type",
+    "State",
+    "List",
+    "Commands",
+    "Component",
+)
+
+
+def _is_js_enum_receiver(receiver: str) -> bool:
+    """Return whether *receiver* looks like a TypeScript/JS enum namespace."""
+    return receiver in _JS_ENUM_RECEIVER_EXACT or any(receiver.endswith(suffix) for suffix in _JS_ENUM_RECEIVER_SUFFIXES)
 
 
 def js_public_member_name(value: str) -> str | None:
     """Return the public identifier inside an obfuscated member/subscript leftover.
 
     Live menu and PARAM chunks store enums as ``_0x521864['DISPLAY_PARAMETER_LEVEL_1']``
-    (sometimes wrapped in ``[…]`` for computed keys). The REST API still emits the
-    inner name as a plain string, so catalog matching has to recover it.
+    (sometimes wrapped in ``[…]`` for computed keys). Index-inline parameter factories
+    keep readable enum receivers such as ``ParameterStatus['INVISIBLE']``. The REST API
+    still emits the inner name as a plain string, so catalog matching has to recover it.
 
     Args:
         value: Raw leftover text from ``_node_to_python`` or a permission field.
@@ -33,10 +55,14 @@ def js_public_member_name(value: str) -> str | None:
     Returns:
         The public name, or ``None`` when ``value`` is not that leftover shape.
     """
-    match = _JS_SUBSCRIPT_PUBLIC_RE.match(value.strip())
-    if match is None:
-        return None
-    return match.group("name")
+    text = value.strip()
+    match = _JS_SUBSCRIPT_PUBLIC_RE.match(text)
+    if match is not None:
+        return match.group("name")
+    match = _JS_PASCAL_ENUM_SUBSCRIPT_RE.match(text)
+    if match is not None and _is_js_enum_receiver(match.group("recv")):
+        return match.group("name")
+    return None
 
 
 class MenuParameter(BaseModel):

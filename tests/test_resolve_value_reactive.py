@@ -440,6 +440,60 @@ async def test_is_parameter_visible_like_app_hides_t_invisible() -> None:
 
 
 @pytest.mark.asyncio
+async def test_is_parameter_visible_hides_parameter_status_invisible_bit() -> None:
+    """SPA Layout filter: ParameterStatus['INVISIBLE'] bit-0 hides write params.
+
+    Index-inline builders leave readable ``ParameterStatus['INVISIBLE']`` keys (not
+    ``_0x…``). Visibility must resolve those leftovers the same way as ``[t.INVISIBLE]``.
+    """
+    store = ParamStore()
+
+    mapping = ParamMap(
+        key="PARAM_13",
+        group="P6",
+        paths={
+            "value": [{"group": "P6", "number": 13, "use": "v"}],
+            "status": [
+                {
+                    "group": "P6",
+                    "number": 13,
+                    "use": "s",
+                    "bit": 0,
+                    "condition": "ParameterStatus['INVISIBLE']",
+                }
+            ],
+        },
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={
+            "status": {
+                "ParameterStatus['INVISIBLE']": [{"group": "P6", "number": 13, "use": "s", "bit": 0}],
+            }
+        },
+    )
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping=mapping)), lang="en")
+    await store.upsert_async("P6.v13", 1)
+    await store.upsert_async("P6.s13", 3)  # bit0 + bit1 set → invisible
+
+    desc = await resolver.describe_symbol("PARAM_13")
+    resolved = await resolver.resolve_value("PARAM_13")
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=desc, resolved=resolved, flat_values=store.flatten())
+    assert visible is False
+    assert reason == "hidden:invisible"
+
+    await store.upsert_async("P6.s13", 64)  # bit0 clear → visible (matches live PARAM_0)
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=desc, resolved=resolved, flat_values=store.flatten())
+    assert visible is True
+    assert reason == "visible:default"
+
+
+@pytest.mark.asyncio
 async def test_is_parameter_visible_like_app_hides_device_unavailable_status() -> None:
     """Visibility helper hides status params when [o.DEVICE_AVAILABLE] bit is false."""
     store = ParamStore()

@@ -298,7 +298,7 @@ def test_status_paths_for_visibility_prefers_paths_then_raw_then_branch() -> Non
         {"raw": {"status": {"t.INVISIBLE": [{"group": "P2", "number": 1, "use": "s"}]}}},
         {},
     )
-    assert from_raw[0]["condition"] == "t.INVISIBLE"
+    assert from_raw[0]["condition"] == "INVISIBLE"
 
     from_branch = ParamResolver._status_paths_for_visibility(
         {
@@ -323,6 +323,15 @@ def test_status_paths_for_visibility_prefers_paths_then_raw_then_branch() -> Non
     assert ParamResolver._status_paths_for_visibility({"raw": 1}, {}) == []
     assert ParamResolver._status_paths_from_raw_status(["bad"]) == []
     assert ParamResolver._status_paths_from_raw_status({"x": "nope"}) == []
+
+
+def test_status_condition_name_and_empty_flag() -> None:
+    """Normalize status condition tokens; non-str / empty wanted yield empty / None."""
+    assert ParamResolver._status_condition_name("ParameterStatus['INVISIBLE']") == "INVISIBLE"
+    assert ParamResolver._status_condition_name("t.INVISIBLE") == "INVISIBLE"
+    assert ParamResolver._status_condition_name(None) == ""
+    assert ParamResolver._status_condition_name(3) == ""
+    assert ParamResolver._status_flag_value(status_paths=[], flag_condition="", flat_values={}) is None
 
 
 def test_status_flag_value_reads_bits_and_if_else_rules() -> None:

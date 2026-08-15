@@ -2003,11 +2003,14 @@ class LiveAssetsCatalog:
             flat: list[dict[str, Any]] = []
             if isinstance(value, Mapping):
                 for raw_key, entries in value.items():
-                    key_str = str(raw_key)
+                    # Resolve ``ParameterStatus['INVISIBLE']`` / ``_0x…['ENABLED']`` to the
+                    # public flag name the SPA stores on ``parameter.status.<flag>``.
+                    key_str = _normalize_identifier(raw_key) or str(raw_key)
                     normalized_entries = _ensure_mapping_list(entries)
                     if not normalized_entries:
                         continue
-                    conditions[key_str] = normalized_entries
+                    bucket = conditions.setdefault(key_str, [])
+                    bucket.extend(normalized_entries)
                     for entry in normalized_entries:
                         enriched = dict(entry)
                         enriched.setdefault("condition", key_str)
@@ -2040,7 +2043,8 @@ class LiveAssetsCatalog:
             if cleaned.startswith("[") and cleaned.endswith("]") and len(cleaned) > 2:
                 cleaned = cleaned[1:-1]
             parts = cleaned.split(".", 1)
-            if len(parts) == 2 and parts[0] in {"a", "e", "n", "o", "t"}:
+            # Keep in sync with ParamResolver._clean_symbolic_tag short prefixes.
+            if len(parts) == 2 and parts[0].lower() in {"a", "e", "n", "o", "t", "u", "s", "r", "p", "m"}:
                 cleaned = parts[1]
             return cleaned
 
