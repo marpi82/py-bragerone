@@ -76,7 +76,10 @@ class I18nResolver:
 
         - ``serverConnection`` — card field title
         - ``connection.status`` / ``connection.connected`` / ``connection.notConnected``
-        - ``connection.index`` — modal title (stable grouping key for HA #165)
+        - ``connection.index`` — modal title (display label only)
+
+        The stable HA child-device grouping key is the i18n path ``module.connection``
+        (not a menu-router route and not the ``connection.index`` label string).
 
         Labels come from live assets only — never hardcoded.
         """

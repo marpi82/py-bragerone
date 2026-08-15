@@ -78,6 +78,7 @@ class FakeRealtimeManager:
 
     async def connect(self) -> None:
         """No-op connect."""
+        return None
 
     async def disconnect(self) -> None:
         """Invoke disconnect callbacks like a real socket drop."""
@@ -104,6 +105,8 @@ class FakeRealtimeManager:
 
     async def subscribe(self, modules: Iterable[str]) -> None:
         """No-op subscribe."""
+        _ = modules
+        return None
 
     async def trigger_disconnected(self) -> None:
         """Invoke disconnect callbacks."""
@@ -111,6 +114,14 @@ class FakeRealtimeManager:
             res = cb()
             if asyncio.iscoroutine(res):
                 await res
+
+    async def emit(self, name: str, payload: Any) -> None:
+        """Dispatch a fake Socket.IO event through the registered handler."""
+        handler = self._on_event
+        assert handler is not None
+        result = handler(name, payload)
+        if asyncio.iscoroutine(result):
+            await result
 
 
 def test_module_connected_at_means_online() -> None:
@@ -194,6 +205,16 @@ async def test_gateway_connectivity_empty_listing_does_not_wipe() -> None:
     await gw.stop()
 
 
+async def _wait_until(predicate: Callable[[], bool], *, timeout: float = 2.0) -> None:
+    """Spin until ``predicate`` is true without relying on a fixed wall-clock sleep."""
+
+    async def _spin() -> None:
+        while not predicate():
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(_spin(), timeout=timeout)
+
+
 @pytest.mark.asyncio
 async def test_gateway_connectivity_poll_loop_and_get_modules_error() -> None:
     """Background poll refreshes state; get_modules failures are logged and ignored."""
@@ -211,11 +232,13 @@ async def test_gateway_connectivity_poll_loop_and_get_modules_error() -> None:
     assert gw.module_online("M1") is True
 
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
-    await asyncio.sleep(0.12)
+    await _wait_until(lambda: gw.module_online("M1") is False)
     assert gw.module_online("M1") is False
 
+    calls_before_error = api.get_modules_calls
     api.get_modules_error = RuntimeError("modules down")
-    await asyncio.sleep(0.12)
+    await _wait_until(lambda: api.get_modules_calls > calls_before_error)
+    assert gw.module_online("M1") is False
     await gw.stop()
 
 
@@ -282,7 +305,7 @@ async def test_gateway_connectivity_from_ws_connection_status_event() -> None:
     assert gw.module_online("M1") is False
     events.clear()
 
-    result = ws._on_event(
+    await ws.emit(
         "app:module:connection:status:changed",
         {
             "M1": {
@@ -291,8 +314,6 @@ async def test_gateway_connectivity_from_ws_connection_status_event() -> None:
             }
         },
     )
-    if asyncio.iscoroutine(result):
-        await result
     await asyncio.sleep(0)
 
     assert gw.module_online("M1") is True

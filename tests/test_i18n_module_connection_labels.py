@@ -43,6 +43,7 @@ async def test_resolve_module_connection_labels_flattens_spa_keys() -> None:
             "ignored": 123,
         }
     )
+    # _FakeAssets only stubs the methods I18nResolver calls (not LiveAssetsCatalog).
     resolver = I18nResolver(assets, lang="en")  # type: ignore[arg-type]
     labels = await resolver.resolve_module_connection_labels()
     assert labels["serverConnection"] == "Server connection status"
