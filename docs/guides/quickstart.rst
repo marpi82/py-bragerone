@@ -10,13 +10,13 @@ Install from PyPI:
 
 .. code-block:: bash
 
-   pip install pybragerone
+   pip install py-bragerone
 
 Or install from TestPyPI for pre-release versions:
 
 .. code-block:: bash
 
-   pip install -i https://test.pypi.org/simple/ pybragerone
+   pip install -i https://test.pypi.org/simple/ py-bragerone
 
 Optional Extras
 ~~~~~~~~~~~~~~~
@@ -24,10 +24,10 @@ Optional Extras
 .. code-block:: bash
 
    # CLI tools with rich formatting
-   pip install "pybragerone[cli]"
+   pip install "py-bragerone[cli]"
 
    # Secure token storage
-   pip install "pybragerone[keyring]"
+   pip install "py-bragerone[keyring]"
 
 Basic Usage
 -----------
@@ -208,10 +208,10 @@ If you get import errors:
 .. code-block:: bash
 
    # Ensure you installed the package
-   pip install pybragerone
+   pip install py-bragerone
 
    # For CLI features
-   pip install "pybragerone[cli]"
+   pip install "py-bragerone[cli]"
 
 Need Help?
 ----------

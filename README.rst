@@ -101,16 +101,16 @@ Installation
 
 Stable (PyPI)::
 
-  pip install pybragerone
+  pip install py-bragerone
 
 Pre-release (TestPyPI)::
 
-  pip install -i https://test.pypi.org/simple/ pybragerone
+  pip install -i https://test.pypi.org/simple/ py-bragerone
 
 Optional extras::
 
-  pip install "pybragerone[cli]"      # CLI with typer, rich, aiofiles
-  pip install "pybragerone[keyring]"  # Secure token storage with keyring
+  pip install "py-bragerone[cli]"      # CLI with typer, rich, aiofiles
+  pip install "py-bragerone[keyring]"  # Secure token storage with keyring
 
 Development Dependencies
 ------------------------
