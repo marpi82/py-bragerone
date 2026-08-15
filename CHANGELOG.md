@@ -7,11 +7,14 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.8.8] - 2026-08-15
+
 ### Fixed
 
 - Keep channel index ``0`` when formatting command-rule / status targets
   (``number: 0`` was dropped by falsy ``number or index`` coalescing, so bit-gated
-  switches such as boiler start/stop lost their ``targets`` and could not match).
+  switches such as boiler start/stop lost their ``targets`` and could not match)
+  (#315).
 
 ## [2026.8.7] - 2026-08-15
 
@@ -192,7 +195,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.7...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.8...HEAD
+[2026.8.8]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.8
 [2026.8.7]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.7
 [2026.8.6]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.6
 [2026.8.5]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.5
