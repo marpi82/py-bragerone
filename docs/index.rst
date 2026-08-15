@@ -26,9 +26,9 @@ It provides REST and WebSocket clients, real-time parameter updates, and everyth
 to build Home Assistant integrations or custom automation solutions.
 
 .. important::
-   **Status:** Alpha - APIs may still evolve
+   **Status:** Stable — production-ready; follow CalVer releases for changes
 
-   **Requirements:** Python 3.13.2+ (aligned with Home Assistant 2025)
+   **Requirements:** Python 3.13.2+ (aligned with Home Assistant 2026)
 
 Quick Example
 =============

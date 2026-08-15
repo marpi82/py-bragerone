@@ -125,19 +125,26 @@ pygments_style = "friendly"
 pygments_dark_style = "monokai"
 
 # --- Version resolution ---
-try:
-    from importlib.metadata import version as _pkg_version
+# Pages / CI may set DOCS_VERSION (e.g. CalVer tag or "dev") so the published
+# site label matches the URL folder instead of a local hatch-vcs dirty version.
+_docs_version = os.environ.get("DOCS_VERSION", "").strip()
+if _docs_version:
+    release = _docs_version
+else:
+    try:
+        from importlib.metadata import version as _pkg_version
 
-    release = _pkg_version("pybragerone")
-except Exception:
-    ver_file = os.path.join(os.path.dirname(__file__), "../src/pybragerone/_version.py")
-    _ns: dict[str, str] = {}
-    if os.path.exists(ver_file):
-        with open(ver_file, encoding="utf-8") as f:
-            exec(f.read(), _ns)
-        release = _ns.get("__version__", "0.0.0")
-    else:
-        release = "dev"
+        release = _pkg_version("py-bragerone")
+    except Exception:
+        ver_file = os.path.join(os.path.dirname(__file__), "../src/pybragerone/_version.py")
+        _ns: dict[str, object] = {}
+        if os.path.exists(ver_file):
+            with open(ver_file, encoding="utf-8") as f:
+                exec(f.read(), _ns)
+            raw_version = _ns.get("__version__", "0.0.0")
+            release = raw_version if isinstance(raw_version, str) else str(raw_version)
+        else:
+            release = "dev"
 
 version = release
 
