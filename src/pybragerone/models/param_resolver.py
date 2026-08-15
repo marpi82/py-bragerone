@@ -1412,7 +1412,9 @@ class ParamResolver:
             use_raw = entry.get("use") or entry.get("path") or entry.get("pathType")
             if use_raw is None:
                 use_raw = entry.get("chan")
-            number_raw = entry.get("number") or entry.get("index")
+            number_raw = entry.get("number")
+            if number_raw is None:
+                number_raw = entry.get("index")
             if number_raw is None:
                 number_raw = entry.get("idx")
             if not isinstance(group, str) or not isinstance(use_raw, str) or number_raw is None:
