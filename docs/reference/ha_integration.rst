@@ -90,9 +90,10 @@ The gateway primes from ``GET /v1/modules`` (``connectedAt != 0`` means online â
 same truthiness check as the SPA card/modal) and listens for the official Socket.IO
 push ``app:module:connection:status:changed`` (payload
 ``{devid: {connectedAt, gateway}}``, applied by Layout / ObjectsLayout in the web
-app). While the client Socket.IO session is down, subscribed modules are forced
-offline. A background REST poll (default 60s; ``connectivity_poll_interval=0``
-disables it) remains as a fallback.
+app). The client's own Socket.IO session is tracked separately and does **not**
+force modules offline (SPA parity). A background REST poll (default 60s;
+``connectivity_poll_interval=0`` disables it) continues even while WS is down.
+Failed or empty ``get_modules`` responses never wipe every module to offline.
 
 Connection **labels** are not hardcoded: resolve them from the live ``module``
 i18n namespace (same keys the SPA uses):
@@ -105,7 +106,7 @@ i18n namespace (same keys the SPA uses):
    # labels["serverConnection"], labels["connection.status"],
    # labels["connection.connected"], labels["connection.notConnected"], ...
 
-Stable grouping key for a future HA "connection" child device: ``module.connection``
+Stable grouping key for the HA connection child device: ``module.connection``
 (i18n namespace path â€” **not** a menu-router route).
 
 .. important::

@@ -713,21 +713,34 @@ class BragerOneApiClient:
             object_id: The object/group identifier.
 
         Returns:
-            List of Module models.
+            List of Module models (invalid rows are skipped and logged).
+
+        Raises:
+            ApiError: If the HTTP status is not 200 (empty list used to be ambiguous
+                with a genuine empty object listing).
         """
-        st, data, _ = await self._req("GET", modules_url(object_id, api_base=self._api_base))
+        st, data, headers = await self._req("GET", modules_url(object_id, api_base=self._api_base))
         if st != 200:
-            return []
+            raise ApiError(st, data, headers if isinstance(headers, dict) else {})
 
         # Extract modules array from different response formats
-        modules_data = []
+        modules_data: list[Any] = []
         if isinstance(data, dict) and isinstance(data.get("data"), list):
             modules_data = data["data"]
         elif isinstance(data, list):
             modules_data = data
+        else:
+            LOG.warning("Unexpected get_modules payload type: %s", type(data).__name__)
+            return []
 
-        # Convert to Pydantic models
-        return [Module.model_validate(mod) for mod in modules_data]
+        # Convert to Pydantic models; skip corrupt rows rather than failing the batch.
+        out: list[Module] = []
+        for mod in modules_data:
+            try:
+                out.append(Module.model_validate(mod))
+            except Exception:
+                LOG.warning("Skipping invalid module row from get_modules", exc_info=True)
+        return out
 
     async def get_module_card(self, code: str) -> ModuleCard:
         """Get module card information by code.

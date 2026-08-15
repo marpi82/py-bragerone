@@ -15,6 +15,7 @@ from typing import (
 
 import socketio
 
+from ..models.events import MODULE_CONNECTION_STATUS_CHANGED
 from ..utils import spawn
 from .constants import IO_BASE, ONE_BASE, SOCK_PATH, WS_NAMESPACE
 
@@ -168,7 +169,7 @@ class RealtimeManager:
             namespace=ns,
         )
         self._sio.on(
-            "app:module:connection:status:changed",
+            MODULE_CONNECTION_STATUS_CHANGED,
             self._on_app_module_connection_status_changed,
             namespace=ns,
         )
@@ -267,8 +268,8 @@ class RealtimeManager:
         self._dispatch("app:module:task:completed", p)
 
     async def _on_app_module_connection_status_changed(self, p: Any) -> None:
-        log.debug("WS EVENT app:module:connection:status:changed → %s", p)
-        self._dispatch("app:module:connection:status:changed", p)
+        log.debug("WS EVENT %s → %s", MODULE_CONNECTION_STATUS_CHANGED, p)
+        self._dispatch(MODULE_CONNECTION_STATUS_CHANGED, p)
 
     # Numeric fallbacks observed in some builds
     async def _on_ev60(self, p: Any) -> None:

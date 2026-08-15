@@ -18,7 +18,7 @@ from typing import Any, Literal, Protocol
 
 from .api import BragerOneApiClient, RealtimeManager, ServerConfig
 from .models.api.modules import Module
-from .models.events import EventBus, ModuleConnectivity, ParamUpdate
+from .models.events import MODULE_CONNECTION_STATUS_CHANGED, EventBus, ModuleConnectivity, ParamUpdate
 
 LOG = logging.getLogger(__name__)
 
@@ -43,8 +43,27 @@ def module_connected_at_means_online(connected_at: int) -> bool:
     return int(connected_at) != 0
 
 
-# Socket.IO event the official SPA listens for in Layout / ObjectsLayout.
-MODULE_CONNECTION_STATUS_CHANGED = "app:module:connection:status:changed"
+def _parse_connected_at(raw: Any) -> int | None:
+    """Parse a connectedAt value; return ``None`` when missing/unusable."""
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _gateway_as_dict(gateway_obj: Any) -> dict[str, Any] | None:
+    """Normalize a Module.gateway / WS gateway blob to a plain dict."""
+    if gateway_obj is None:
+        return None
+    dump = getattr(gateway_obj, "model_dump", None)
+    if callable(dump):
+        raw = dump(mode="json")
+        return dict(raw) if isinstance(raw, dict) else None
+    if isinstance(gateway_obj, dict):
+        return dict(gateway_obj)
+    return None
 
 
 class ApiClient(Protocol):
@@ -73,7 +92,7 @@ class ApiClient(Protocol):
         raise NotImplementedError
 
     async def get_modules(self, object_id: int) -> list[Module]:  # noqa: D102
-        ...
+        raise NotImplementedError
 
     async def close(self) -> None:  # noqa: D102
         raise NotImplementedError
@@ -103,7 +122,7 @@ class RealtimeManagerClient(Protocol):
         raise NotImplementedError
 
     def add_on_disconnected(self, cb: Callable[[], Awaitable[None] | None]) -> None:  # noqa: D102
-        ...
+        raise NotImplementedError
 
     def sid(self) -> str | None:  # noqa: D102
         raise NotImplementedError
@@ -174,8 +193,11 @@ class BragerOneGateway:
         self._on_any: list[GenericCb] = []
         self._on_module_connectivity: list[ModuleConnectivityCb] = []
 
-        # Per-module cloud connectivity (REST/WS connectedAt) + gateway WS session.
+        # Per-module cloud connectivity (REST/WS connectedAt). Client WS session is tracked
+        # separately and does not force module offline (SPA parity).
         self._ws_session_up = False
+        self._ws_hooks_registered = False
+        self._connectivity_generation = 0
         self._module_connected_at: dict[str, int] = {}
         self._module_online: dict[str, bool] = {}
         self._module_gateway: dict[str, dict[str, Any]] = {}
@@ -262,8 +284,12 @@ class BragerOneGateway:
         gateway = self._module_gateway.get(devid)
         return dict(gateway) if isinstance(gateway, dict) else None
 
+    def ws_session_up(self) -> bool:
+        """Return whether this gateway's Socket.IO client session is currently up."""
+        return self._ws_session_up
+
     async def refresh_module_connectivity(self) -> None:
-        """Refresh connectivity from REST ``get_modules`` (no-op when WS session is down)."""
+        """Refresh connectivity from REST ``get_modules`` (works with WS up or down)."""
         await self._refresh_module_connectivity(source="rest")
 
     async def start(self) -> None:
@@ -291,8 +317,10 @@ class BragerOneGateway:
         ws.on_event(self._ws_dispatch)
         await ws.connect()
         self._ws_session_up = True
-        ws.add_on_connected(self._on_ws_connected)
-        ws.add_on_disconnected(self._on_ws_disconnected)
+        if not self._ws_hooks_registered:
+            ws.add_on_connected(self._on_ws_connected)
+            ws.add_on_disconnected(self._on_ws_disconnected)
+            self._ws_hooks_registered = True
         ws_connected_at = time.monotonic()
 
         # 3) modules.connect binds the current WS session with modules
@@ -332,14 +360,9 @@ class BragerOneGateway:
     async def stop(self) -> None:
         """Gracefully stop the gateway: drop WS and release HTTP resources."""
         self._started = False
+        self._connectivity_generation += 1
 
-        # Cancel background tasks first (callbacks / bus injectors)
-        try:
-            await self._cancel_all_tasks()
-        except Exception:
-            LOG.exception("Error while canceling background tasks")
-
-        # 1) disconnect WS
+        # 1) disconnect WS first so disconnect hooks see ``_started is False`` and skip work.
         try:
             if self.ws is not None:
                 await self.ws.disconnect()
@@ -351,7 +374,13 @@ class BragerOneGateway:
         finally:
             self._ws_session_up = False
 
-        # 2) close the HTTP client (if the gateway manages it)
+        # 2) Cancel background tasks (including anything spawned by disconnect).
+        try:
+            await self._cancel_all_tasks()
+        except Exception:
+            LOG.exception("Error while canceling background tasks")
+
+        # 3) close the HTTP client (if the gateway manages it)
         try:
             if self._owns_api:
                 await self.api.close()
@@ -376,24 +405,27 @@ class BragerOneGateway:
         return api.access_token
 
     async def _on_ws_connected(self) -> None:
-        """Re-bind modules after WS reconnect, then refresh connectivity."""
+        """Re-bind modules after WS reconnect, then refresh connectedAt from REST."""
+        if not self._started:
+            return
         self._ws_session_up = True
-        await self.resubscribe()
-        await self._refresh_module_connectivity(source="rest")
+        generation = self._connectivity_generation
+        try:
+            await self.resubscribe()
+        except Exception:
+            LOG.exception("WS resubscribe failed after reconnect")
+        finally:
+            if self._started and generation == self._connectivity_generation:
+                await self._refresh_module_connectivity(source="rest")
 
     def _on_ws_disconnected(self) -> None:
-        """Mark subscribed modules offline while the client Socket.IO session is down."""
+        """Track client Socket.IO down without forcing module offline (SPA parity)."""
         self._ws_session_up = False
-        self._spawn(self._mark_modules_offline_from_ws(), name="gateway.ws_disconnect_offline")
-
-    async def _mark_modules_offline_from_ws(self) -> None:
-        for devid in self.modules:
-            await self._apply_connectivity(
-                devid=devid,
-                online=False,
-                source="ws",
-                connected_at=self._module_connected_at.get(devid),
-            )
+        if not self._started:
+            return
+        # Bump generation so any stale disconnect work cannot clobber a reconnect.
+        self._connectivity_generation += 1
+        # Keep last connectedAt; REST poll / reconnect refresh remains authoritative.
 
     async def resubscribe(self) -> None:
         """Call after WS reconnect to re-bind modules + prime again."""
@@ -440,12 +472,18 @@ class BragerOneGateway:
         interval = self._connectivity_poll_interval
         while True:
             await asyncio.sleep(interval)
-            await self._refresh_module_connectivity(source="rest")
+            try:
+                await self._refresh_module_connectivity(source="rest")
+            except Exception:
+                LOG.exception("Connectivity poll tick failed")
 
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource) -> None:
-        """Pull ``get_modules`` and apply online state for subscribed devids."""
-        if not self._ws_session_up:
-            # Client session down: keep modules offline until reconnect + refresh.
+        """Pull ``get_modules`` and apply online state for subscribed devids.
+
+        A failed or empty fetch does **not** mark every module offline — that would
+        turn HTTP errors / empty payloads into false plant-wide outages.
+        """
+        if not self._started:
             return
         try:
             rows = await self.api.get_modules(self.object_id)
@@ -453,34 +491,36 @@ class BragerOneGateway:
             LOG.exception("get_modules failed during connectivity refresh")
             return
 
+        rows_list = list(rows)
         wanted = set(self.modules)
         seen: set[str] = set()
-        for row in rows:
+        for row in rows_list:
             devid = str(getattr(row, "devid", "") or "")
             if not devid or devid not in wanted:
                 continue
+            connected_at = _parse_connected_at(getattr(row, "connectedAt", None))
+            if connected_at is None:
+                LOG.warning("Skipping connectivity row with unusable connectedAt for devid=%s", devid)
+                continue
             seen.add(devid)
-            connected_at = int(getattr(row, "connectedAt", 0) or 0)
-            rest_online = module_connected_at_means_online(connected_at)
-            gateway_obj = getattr(row, "gateway", None)
-            gateway: dict[str, Any] | None = None
-            if gateway_obj is not None:
-                dump = getattr(gateway_obj, "model_dump", None)
-                if callable(dump):
-                    raw = dump(mode="json")
-                    if isinstance(raw, dict):
-                        gateway = raw
-                elif isinstance(gateway_obj, dict):
-                    gateway = dict(gateway_obj)
             await self._apply_connectivity(
                 devid=devid,
-                online=rest_online and self._ws_session_up,
+                online=module_connected_at_means_online(connected_at),
                 source=source,
                 connected_at=connected_at,
-                gateway=gateway,
+                gateway=_gateway_as_dict(getattr(row, "gateway", None)),
             )
 
-        # Subscribed modules missing from the object listing → offline.
+        # Only derive offline for missing devids when the listing contained at least
+        # one recognised subscribed module (avoids treating [] / odd shapes as wipe).
+        if not seen:
+            if wanted:
+                LOG.warning(
+                    "get_modules returned no recognised subscribed modules (wanted=%s); skipping derived offline",
+                    sorted(wanted),
+                )
+            return
+
         for devid in wanted - seen:
             await self._apply_connectivity(
                 devid=devid,
@@ -498,14 +538,23 @@ class BragerOneGateway:
         connected_at: int | None,
         gateway: dict[str, Any] | None = None,
     ) -> None:
-        """Update cache and notify listeners when the online bit changes."""
+        """Update cache and notify listeners when online or metadata changes."""
+        previous_online = self._module_online.get(devid)
+        previous_connected_at = self._module_connected_at.get(devid)
+        previous_gateway = self._module_gateway.get(devid)
+
         if connected_at is not None:
             self._module_connected_at[devid] = int(connected_at)
         if gateway is not None:
             self._module_gateway[devid] = dict(gateway)
-        previous = self._module_online.get(devid)
-        if previous is online:
+
+        online_changed = previous_online is not online
+        metadata_changed = (connected_at is not None and connected_at != previous_connected_at) or (
+            gateway is not None and gateway != previous_gateway
+        )
+        if not online_changed and not metadata_changed:
             return
+
         self._module_online[devid] = online
         event = ModuleConnectivity(
             devid=devid,
@@ -513,13 +562,17 @@ class BragerOneGateway:
             source=source,
             connected_at=self._module_connected_at.get(devid),
             gateway=self.module_gateway(devid),
+            online_changed=online_changed,
+            metadata_changed=metadata_changed,
         )
         LOG.info(
-            "Module connectivity: devid=%s online=%s source=%s connectedAt=%s",
+            "Module connectivity: devid=%s online=%s source=%s connectedAt=%s online_changed=%s metadata_changed=%s",
             devid,
             online,
             source,
             event.connected_at,
+            online_changed,
+            metadata_changed,
         )
         if self._on_module_connectivity:
             await self._invoke_list(self._on_module_connectivity, event)
@@ -657,20 +710,34 @@ class BragerOneGateway:
 
     async def _ingest_module_connection_status(self, payload: dict[str, Any]) -> None:
         """Apply SPA ``app:module:connection:status:changed`` payloads per devid."""
-        if not self._ws_session_up:
+        if not self._started:
             return
         wanted = set(self.modules)
         for raw_devid, body in payload.items():
             devid = str(raw_devid or "")
             if not devid or devid not in wanted or not isinstance(body, dict):
                 continue
-            connected_raw = body.get("connectedAt", body.get("connected_at", 0))
-            try:
-                connected_at = int(connected_raw or 0)
-            except (TypeError, ValueError):
-                connected_at = 0
-            gateway_raw = body.get("gateway")
-            gateway = dict(gateway_raw) if isinstance(gateway_raw, dict) else None
+            gateway = _gateway_as_dict(body.get("gateway"))
+            has_connected_at = "connectedAt" in body or "connected_at" in body
+            if not has_connected_at:
+                # Gateway-only update: refresh metadata without inventing an offline bit.
+                if gateway is None:
+                    continue
+                previous_online = self._module_online.get(devid)
+                if previous_online is None:
+                    continue
+                await self._apply_connectivity(
+                    devid=devid,
+                    online=previous_online,
+                    source="ws",
+                    connected_at=None,
+                    gateway=gateway,
+                )
+                continue
+            connected_at = _parse_connected_at(body.get("connectedAt", body.get("connected_at")))
+            if connected_at is None:
+                LOG.warning("Ignoring connection status event with bad connectedAt for devid=%s", devid)
+                continue
             await self._apply_connectivity(
                 devid=devid,
                 online=module_connected_at_means_online(connected_at),
