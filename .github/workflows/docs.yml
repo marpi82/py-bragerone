@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    tags: ["20*"] # CalVer tags like 2025.1.15 or 2025a1
+    tags: ["20*"] # CalVer tags like 2026.8.6 or 2026.8.6a1
   workflow_run:
     workflows: ["CI"]
     types: [completed]
@@ -44,70 +44,111 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y graphviz
 
-      - name: Detect version and check if stable
+      - name: Detect version and publish targets
         id: version
         env:
           REF: ${{ github.ref }}
           REF_NAME: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
+          # Latest stable CalVer: YYYY.M.N only (no a/b/rc/dev suffix)
+          LATEST_STABLE="$(git tag -l | grep -E '^[0-9]{4}\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)"
+          echo "latest_stable=${LATEST_STABLE}" >> "$GITHUB_OUTPUT"
+
           if [[ "$REF" == refs/tags/* ]]; then
             VERSION="$REF_NAME"
-            # Check if version contains pre-release markers (a, b, rc, dev)
             if [[ "$VERSION" =~ (a|b|rc|dev) ]]; then
-              echo "is_stable=false" >> $GITHUB_OUTPUT
-              echo "version=$VERSION" >> $GITHUB_OUTPUT
-              echo "Pre-release version detected: $VERSION - skipping deployment"
+              echo "deploy=false" >> "$GITHUB_OUTPUT"
+              echo "is_stable=false" >> "$GITHUB_OUTPUT"
+              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+              echo "Pre-release tag $VERSION — skip Pages deploy"
             else
-              echo "is_stable=true" >> $GITHUB_OUTPUT
-              echo "version=$VERSION" >> $GITHUB_OUTPUT
-              echo "Stable version detected: $VERSION"
+              echo "deploy=true" >> "$GITHUB_OUTPUT"
+              echo "is_stable=true" >> "$GITHUB_OUTPUT"
+              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+              echo "Stable tag $VERSION"
             fi
           else
-            # Push to main branch - use 'dev' as version
-            echo "is_stable=false" >> $GITHUB_OUTPUT
-            echo "version=dev" >> $GITHUB_OUTPUT
-            echo "Development build from main branch"
+            # main / workflow_dispatch / workflow_run
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            echo "is_stable=false" >> "$GITHUB_OUTPUT"
+            echo "version=dev" >> "$GITHUB_OUTPUT"
+            echo "Development build; /latest/ is the default stable docs surface (not /dev/)"
           fi
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y graphviz
-
-      - name: Build Sphinx docs
+      - name: Build Sphinx docs (version folder)
+        if: steps.version.outputs.deploy == 'true'
         env:
           LC_ALL: C.UTF-8
           LANG: C.UTF-8
-        run: uv run sphinx-build -W --keep-going -b html docs docs/_build/html
-
-      - name: Prepare versioned site
+          DOCS_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.version.outputs.version }}"          # np. 0.3.0 albo dev
-          IS_STABLE="${{ steps.version.outputs.is_stable }}"      # "true"/"false"
+          uv run sphinx-build -W --keep-going -b html docs docs/_build/html
 
+      - name: Build Sphinx docs (latest stable surface)
+        # On main: rebuild with the last stable CalVer label so /latest/ is not "dev".
+        # On stable tags: reuse the version-folder build (same tree).
+        if: steps.version.outputs.deploy == 'true'
+        env:
+          LC_ALL: C.UTF-8
+          LANG: C.UTF-8
+          IS_STABLE: ${{ steps.version.outputs.is_stable }}
+          LATEST_STABLE: ${{ steps.version.outputs.latest_stable }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$IS_STABLE" == "true" ]]; then
+            rm -rf docs/_build/html-latest
+            cp -a docs/_build/html docs/_build/html-latest
+            echo "latest surface = stable tag ${VERSION}"
+            exit 0
+          fi
+          LABEL="${LATEST_STABLE:-latest}"
+          DOCS_VERSION="$LABEL" uv run sphinx-build -W --keep-going -b html docs docs/_build/html-latest
+          echo "latest surface = main docs labeled ${LABEL} (URL /latest/, not /dev/)"
+
+      - name: Prepare versioned site
+        if: steps.version.outputs.deploy == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IS_STABLE: ${{ steps.version.outputs.is_stable }}
+          LATEST_STABLE: ${{ steps.version.outputs.latest_stable }}
+        run: |
+          set -euo pipefail
           mkdir -p site
-          cp -r docs/_build/html "site/${VERSION}"
+          cp -a docs/_build/html "site/${VERSION}"
+          cp -a docs/_build/html-latest site/latest
 
-          mkdir -p site/latest
-          cat > site/latest/index.html <<HTML
-          <!doctype html><meta charset="utf-8"><title>Redirect…</title>
-          <meta http-equiv="refresh" content="0; url=../${VERSION}/">
-          <p>Redirecting to <a href="../${VERSION}/">${VERSION}</a>…</p>
-          HTML
+          if [[ "$IS_STABLE" == "true" ]]; then
+            echo "Published /${VERSION}/ and /latest/ from stable tag"
+          else
+            echo "Published /dev/ (mainline) and /latest/ (default stable surface, not /dev/)"
+          fi
 
           cat > site/index.html <<'HTML'
           <!doctype html><meta charset="utf-8"><title>Redirect…</title>
           <meta http-equiv="refresh" content="0; url=latest/">
-          <p>Redirecting to <a href="latest/">latest</a>…</p>
+          <p>Redirecting to <a href="latest/">latest</a> (stable)…</p>
           HTML
 
-          echo "Prepared versioned site: ${VERSION} (stable=${IS_STABLE}) with latest/ redirect."
+          cat > site/versions.html <<'HTML'
+          <!doctype html><meta charset="utf-8"><title>py-bragerone docs versions</title>
+          <h1>Documentation versions</h1>
+          <ul>
+            <li><a href="latest/"><strong>latest</strong></a> — current stable release (default)</li>
+            <li><a href="dev/">dev</a> — tip of <code>main</code> (may change)</li>
+          </ul>
+          HTML
+
+          echo "Prepared site: version=${VERSION} stable=${IS_STABLE} latest_stable=${LATEST_STABLE:-none}"
 
       - name: Upload Pages Artifact
+        if: steps.version.outputs.deploy == 'true'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: site
 
       - name: Deploy to GitHub Pages
+        if: steps.version.outputs.deploy == 'true'
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

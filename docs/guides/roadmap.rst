@@ -8,15 +8,16 @@ Home Assistant) evolves.
 Planned
 -------
 
-- **Stabilize the public API** (``BragerOneApiClient``, ``BragerOneGateway``,
-  ``ParamStore``) and graduate from Alpha status.
+- **Keep the public API stable** (``BragerOneApiClient``, ``BragerOneGateway``,
+  ``ParamStore``): prefer additive changes; call out breaking changes in the
+  changelog and release notes.
 - **Keep pace with upstream assets**: the live catalog parser depends on
   BragerOne's web-app bundles; ongoing work is resilience to upstream changes
   (tree-sitter grammars, menu/i18n shapes).
 - **Home Assistant integration parity**: extend ``ha-bragerone`` coverage of
   the parameter catalog as new modules/panels are discovered.
-- **Release cadence**: CalVer releases as changes land; security fixes as
-  soon as practical.
+- **Release cadence**: CalVer stable releases as changes land; security fixes
+  as soon as practical.
 
 Not planned
 -----------

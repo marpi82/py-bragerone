@@ -73,13 +73,13 @@ The library consists of several key components working together:
 Version & Python
 ----------------
 
-- **Alpha**: APIs may still evolve.
-- **Python**: **3.13.2+** (aligned with Home Assistant 2025).
+- **Status**: Stable (Production/Stable on PyPI).
+- **Python**: **3.13.2+** (aligned with Home Assistant 2026).
 
 Installation
 ------------
 
-Stable (PyPI, when published)::
+Stable (PyPI)::
 
   pip install pybragerone
 
