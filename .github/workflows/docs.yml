@@ -108,6 +108,27 @@ jobs:
           DOCS_VERSION="$LABEL" uv run sphinx-build -W --keep-going -b html docs docs/_build/html-latest
           echo "latest surface = main docs labeled ${LABEL} (URL /latest/, not /dev/)"
 
+      - name: Build Sphinx docs (dev from main)
+        # Stable-tag deploys replace the whole Pages site; rebuild /dev/ from origin/main
+        # so versions.html does not link to a missing folder.
+        if: steps.version.outputs.deploy == 'true' && steps.version.outputs.is_stable == 'true'
+        env:
+          LC_ALL: C.UTF-8
+          LANG: C.UTF-8
+        run: |
+          set -euo pipefail
+          WORKTREE="/tmp/pybragerone-docs-main"
+          git fetch origin main
+          git worktree add --detach "$WORKTREE" origin/main
+          (
+            cd "$WORKTREE"
+            uv sync --locked --group docs
+            DOCS_VERSION=dev uv run sphinx-build -W --keep-going -b html docs docs/_build/html
+          )
+          rm -rf docs/_build/html-dev
+          cp -a "$WORKTREE/docs/_build/html" docs/_build/html-dev
+          echo "dev surface = origin/main (preserved alongside stable tag deploy)"
+
       - name: Prepare versioned site
         if: steps.version.outputs.deploy == 'true'
         env:
@@ -117,12 +138,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p site
-          cp -a docs/_build/html "site/${VERSION}"
           cp -a docs/_build/html-latest site/latest
 
           if [[ "$IS_STABLE" == "true" ]]; then
-            echo "Published /${VERSION}/ and /latest/ from stable tag"
+            cp -a docs/_build/html "site/${VERSION}"
+            cp -a docs/_build/html-dev site/dev
+            echo "Published /${VERSION}/, /latest/, and /dev/ (from origin/main)"
           else
+            cp -a docs/_build/html site/dev
             echo "Published /dev/ (mainline) and /latest/ (default stable surface, not /dev/)"
           fi
 
@@ -132,16 +155,23 @@ jobs:
           <p>Redirecting to <a href="latest/">latest</a> (stable)…</p>
           HTML
 
-          cat > site/versions.html <<'HTML'
-          <!doctype html><meta charset="utf-8"><title>py-bragerone docs versions</title>
-          <h1>Documentation versions</h1>
-          <ul>
-            <li><a href="latest/"><strong>latest</strong></a> — current stable release (default)</li>
-            <li><a href="dev/">dev</a> — tip of <code>main</code> (may change)</li>
-          </ul>
-          HTML
+          # Only advertise folders that exist in this deploy (Pages replaces the whole site).
+          {
+            echo '<!doctype html><meta charset="utf-8"><title>py-bragerone docs versions</title>'
+            echo '<h1>Documentation versions</h1>'
+            echo '<ul>'
+            echo '  <li><a href="latest/"><strong>latest</strong></a> — current stable release (default)</li>'
+            if [[ -d site/dev ]]; then
+              echo '  <li><a href="dev/">dev</a> — tip of <code>main</code> (may change)</li>'
+            fi
+            if [[ -n "${VERSION}" && -d "site/${VERSION}" && "${VERSION}" != "dev" && "${VERSION}" != "latest" ]]; then
+              echo "  <li><a href=\"${VERSION}/\">${VERSION}</a> — this release</li>"
+            fi
+            echo '</ul>'
+          } > site/versions.html
 
           echo "Prepared site: version=${VERSION} stable=${IS_STABLE} latest_stable=${LATEST_STABLE:-none}"
+          find site -maxdepth 1 -type d | sort
 
       - name: Upload Pages Artifact
         if: steps.version.outputs.deploy == 'true'
