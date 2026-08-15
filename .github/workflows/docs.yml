@@ -4,11 +4,14 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    tags: ["20*"] # CalVer tags like 2026.8.6 or 2026.8.6a1
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
+    # Match release.yml so docs publish when a release tag is cut.
+    tags: ["20*", "v20*"]
+
+# Serialize Pages deploys: each run replaces the whole site, so overlapping
+# main/tag jobs must not race (last writer wins).
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -27,23 +30,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { fetch-depth: 0 }
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          version: "latest"
-          enable-cache: true
-          prune-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.2
-
-      - name: Install dependencies
-        run: uv sync --locked --group docs
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y graphviz
-
       - name: Detect version and publish targets
         id: version
         env:
@@ -51,32 +37,66 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # Latest stable CalVer: YYYY.M.N only (no a/b/rc/dev suffix)
-          LATEST_STABLE="$(git tag -l | grep -E '^[0-9]{4}\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)"
+          # Stable CalVer only: YYYY.M.N (optional leading v on the git tag).
+          STABLE_RE='^[0-9]{4}\.[0-9]+\.[0-9]+$'
+          LATEST_STABLE="$(
+            git tag -l '20*' 'v20*' \
+              | sed 's/^v//' \
+              | grep -E "${STABLE_RE}" \
+              | sort -V \
+              | tail -1 || true
+          )"
           echo "latest_stable=${LATEST_STABLE}" >> "$GITHUB_OUTPUT"
 
           if [[ "$REF" == refs/tags/* ]]; then
-            VERSION="$REF_NAME"
-            if [[ "$VERSION" =~ (a|b|rc|dev) ]]; then
-              echo "deploy=false" >> "$GITHUB_OUTPUT"
-              echo "is_stable=false" >> "$GITHUB_OUTPUT"
-              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-              echo "Pre-release tag $VERSION — skip Pages deploy"
-            else
+            VERSION="${REF_NAME#v}"
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+            if [[ "$VERSION" =~ ${STABLE_RE} ]]; then
               echo "deploy=true" >> "$GITHUB_OUTPUT"
               echo "is_stable=true" >> "$GITHUB_OUTPUT"
-              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-              echo "Stable tag $VERSION"
+              if [[ -n "$LATEST_STABLE" && "$VERSION" == "$LATEST_STABLE" ]]; then
+                echo "promote_latest=true" >> "$GITHUB_OUTPUT"
+                echo "Stable tag ${VERSION} is newest — will update /latest/"
+              else
+                echo "promote_latest=false" >> "$GITHUB_OUTPUT"
+                echo "Stable tag ${VERSION} is not newest (latest=${LATEST_STABLE}) — keep /latest/ on newest"
+              fi
+            else
+              echo "deploy=false" >> "$GITHUB_OUTPUT"
+              echo "is_stable=false" >> "$GITHUB_OUTPUT"
+              echo "promote_latest=false" >> "$GITHUB_OUTPUT"
+              echo "Non-stable tag ${REF_NAME} — skip Pages deploy"
             fi
           else
-            # main / workflow_dispatch / workflow_run
             echo "deploy=true" >> "$GITHUB_OUTPUT"
             echo "is_stable=false" >> "$GITHUB_OUTPUT"
+            echo "promote_latest=false" >> "$GITHUB_OUTPUT"
             echo "version=dev" >> "$GITHUB_OUTPUT"
-            echo "Development build; /latest/ is the default stable docs surface (not /dev/)"
+            echo "Mainline deploy: /dev/ from this checkout, /latest/ from tag ${LATEST_STABLE:-none}"
           fi
 
-      - name: Build Sphinx docs (version folder)
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        if: steps.version.outputs.deploy == 'true'
+        with:
+          version: "latest"
+          enable-cache: true
+          prune-cache: true
+
+      - name: Set up Python
+        if: steps.version.outputs.deploy == 'true'
+        run: uv python install 3.13.2
+
+      - name: Install dependencies
+        if: steps.version.outputs.deploy == 'true'
+        run: uv sync --locked --group docs
+
+      - name: Install system dependencies
+        if: steps.version.outputs.deploy == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
+      - name: Build Sphinx docs (current checkout)
         if: steps.version.outputs.deploy == 'true'
         env:
           LC_ALL: C.UTF-8
@@ -84,50 +104,82 @@ jobs:
           DOCS_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          uv run sphinx-build -W --keep-going -b html docs docs/_build/html
+          uv run sphinx-build -W --keep-going -b html docs docs/_build/html-current
 
-      - name: Build Sphinx docs (latest stable surface)
-        # On main: rebuild with the last stable CalVer label so /latest/ is not "dev".
-        # On stable tags: reuse the version-folder build (same tree).
+      - name: Build Sphinx docs (/dev/ surface)
+        # Mainline: current checkout is tip-of-main.
+        # Stable tag: rebuild from origin/main (best-effort — must not block release docs).
         if: steps.version.outputs.deploy == 'true'
+        id: build_dev
+        continue-on-error: true
         env:
           LC_ALL: C.UTF-8
           LANG: C.UTF-8
           IS_STABLE: ${{ steps.version.outputs.is_stable }}
-          LATEST_STABLE: ${{ steps.version.outputs.latest_stable }}
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          if [[ "$IS_STABLE" == "true" ]]; then
-            rm -rf docs/_build/html-latest
-            cp -a docs/_build/html docs/_build/html-latest
-            echo "latest surface = stable tag ${VERSION}"
+          rm -rf docs/_build/html-dev
+          if [[ "$IS_STABLE" != "true" ]]; then
+            cp -a docs/_build/html-current docs/_build/html-dev
+            echo "dev surface = current checkout (mainline)"
             exit 0
           fi
-          LABEL="${LATEST_STABLE:-latest}"
-          DOCS_VERSION="$LABEL" uv run sphinx-build -W --keep-going -b html docs docs/_build/html-latest
-          echo "latest surface = main docs labeled ${LABEL} (URL /latest/, not /dev/)"
-
-      - name: Build Sphinx docs (dev from main)
-        # Stable-tag deploys replace the whole Pages site; rebuild /dev/ from origin/main
-        # so versions.html does not link to a missing folder.
-        if: steps.version.outputs.deploy == 'true' && steps.version.outputs.is_stable == 'true'
-        env:
-          LC_ALL: C.UTF-8
-          LANG: C.UTF-8
-        run: |
-          set -euo pipefail
           WORKTREE="/tmp/pybragerone-docs-main"
-          git fetch origin main
+          git fetch origin refs/heads/main:refs/remotes/origin/main
           git worktree add --detach "$WORKTREE" origin/main
           (
             cd "$WORKTREE"
             uv sync --locked --group docs
             DOCS_VERSION=dev uv run sphinx-build -W --keep-going -b html docs docs/_build/html
           )
-          rm -rf docs/_build/html-dev
           cp -a "$WORKTREE/docs/_build/html" docs/_build/html-dev
-          echo "dev surface = origin/main (preserved alongside stable tag deploy)"
+          echo "dev surface = origin/main"
+
+      - name: Build Sphinx docs (/latest/ from last stable tag)
+        # Always build the default surface from the newest stable tag tree — never
+        # from tip-of-main with a stamped CalVer label.
+        if: steps.version.outputs.deploy == 'true'
+        env:
+          LC_ALL: C.UTF-8
+          LANG: C.UTF-8
+          LATEST_STABLE: ${{ steps.version.outputs.latest_stable }}
+          VERSION: ${{ steps.version.outputs.version }}
+          IS_STABLE: ${{ steps.version.outputs.is_stable }}
+          PROMOTE_LATEST: ${{ steps.version.outputs.promote_latest }}
+        run: |
+          set -euo pipefail
+          rm -rf docs/_build/html-latest
+
+          if [[ -z "${LATEST_STABLE}" ]]; then
+            echo "No stable CalVer tag found — /latest/ will be omitted"
+            exit 0
+          fi
+
+          # This checkout is exactly the newest stable tag: reuse the current build.
+          if [[ "$IS_STABLE" == "true" && "$PROMOTE_LATEST" == "true" ]]; then
+            cp -a docs/_build/html-current docs/_build/html-latest
+            echo "latest surface = current stable tag ${VERSION}"
+            exit 0
+          fi
+
+          TAG_REF="${LATEST_STABLE}"
+          if ! git rev-parse --verify "refs/tags/${TAG_REF}" >/dev/null 2>&1; then
+            TAG_REF="v${LATEST_STABLE}"
+          fi
+          if ! git rev-parse --verify "refs/tags/${TAG_REF}" >/dev/null 2>&1; then
+            echo "::error::Cannot resolve stable tag ref for ${LATEST_STABLE}"
+            exit 1
+          fi
+
+          WORKTREE="/tmp/pybragerone-docs-stable"
+          git worktree add --detach "$WORKTREE" "refs/tags/${TAG_REF}"
+          (
+            cd "$WORKTREE"
+            uv sync --locked --group docs
+            DOCS_VERSION="${LATEST_STABLE}" uv run sphinx-build -W --keep-going -b html docs docs/_build/html
+          )
+          cp -a "$WORKTREE/docs/_build/html" docs/_build/html-latest
+          echo "latest surface = tag ${TAG_REF} (CalVer ${LATEST_STABLE})"
 
       - name: Prepare versioned site
         if: steps.version.outputs.deploy == 'true'
@@ -138,40 +190,65 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p site
-          cp -a docs/_build/html-latest site/latest
 
-          if [[ "$IS_STABLE" == "true" ]]; then
-            cp -a docs/_build/html "site/${VERSION}"
-            cp -a docs/_build/html-dev site/dev
-            echo "Published /${VERSION}/, /latest/, and /dev/ (from origin/main)"
-          else
-            cp -a docs/_build/html site/dev
-            echo "Published /dev/ (mainline) and /latest/ (default stable surface, not /dev/)"
+          if [[ -d docs/_build/html-latest ]]; then
+            cp -a docs/_build/html-latest site/latest
+            # Permalink for the newest stable CalVer (survives main deploys).
+            if [[ -n "${LATEST_STABLE}" ]]; then
+              cp -a docs/_build/html-latest "site/${LATEST_STABLE}"
+            fi
           fi
 
-          cat > site/index.html <<'HTML'
+          if [[ "$IS_STABLE" == "true" ]]; then
+            cp -a docs/_build/html-current "site/${VERSION}"
+          fi
+
+          if [[ -d docs/_build/html-dev ]]; then
+            cp -a docs/_build/html-dev site/dev
+          else
+            echo "::warning::/dev/ docs were not built; publishing without /dev/"
+          fi
+
+          if [[ -d site/latest ]]; then
+            cat > site/index.html <<'HTML'
           <!doctype html><meta charset="utf-8"><title>Redirect…</title>
           <meta http-equiv="refresh" content="0; url=latest/">
-          <p>Redirecting to <a href="latest/">latest</a> (stable)…</p>
+          <p>Redirecting to <a href="latest/">latest</a> (stable)…
+          See also <a href="versions.html">versions</a>.</p>
           HTML
+          elif [[ -d site/dev ]]; then
+            cat > site/index.html <<'HTML'
+          <!doctype html><meta charset="utf-8"><title>Redirect…</title>
+          <meta http-equiv="refresh" content="0; url=dev/">
+          <p>Redirecting to <a href="dev/">dev</a> (no stable release yet)…
+          See also <a href="versions.html">versions</a>.</p>
+          HTML
+          else
+            echo "::error::Neither /latest/ nor /dev/ was produced"
+            exit 1
+          fi
 
-          # Only advertise folders that exist in this deploy (Pages replaces the whole site).
           {
             echo '<!doctype html><meta charset="utf-8"><title>py-bragerone docs versions</title>'
             echo '<h1>Documentation versions</h1>'
             echo '<ul>'
-            echo '  <li><a href="latest/"><strong>latest</strong></a> — current stable release (default)</li>'
+            if [[ -d site/latest ]]; then
+              echo '  <li><a href="latest/"><strong>latest</strong></a> — newest stable CalVer release (default)</li>'
+            fi
             if [[ -d site/dev ]]; then
               echo '  <li><a href="dev/">dev</a> — tip of <code>main</code> (may change)</li>'
             fi
-            if [[ -n "${VERSION}" && -d "site/${VERSION}" && "${VERSION}" != "dev" && "${VERSION}" != "latest" ]]; then
+            if [[ -n "${LATEST_STABLE}" && -d "site/${LATEST_STABLE}" ]]; then
+              echo "  <li><a href=\"${LATEST_STABLE}/\">${LATEST_STABLE}</a> — newest stable permalink</li>"
+            fi
+            if [[ "$IS_STABLE" == "true" && -n "${VERSION}" && "${VERSION}" != "${LATEST_STABLE}" && -d "site/${VERSION}" ]]; then
               echo "  <li><a href=\"${VERSION}/\">${VERSION}</a> — this release</li>"
             fi
             echo '</ul>'
           } > site/versions.html
 
           echo "Prepared site: version=${VERSION} stable=${IS_STABLE} latest_stable=${LATEST_STABLE:-none}"
-          find site -maxdepth 1 -type d | sort
+          find site -maxdepth 1 \( -type d -o -type f \) | sort
 
       - name: Upload Pages Artifact
         if: steps.version.outputs.deploy == 'true'
