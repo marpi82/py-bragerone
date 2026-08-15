@@ -7,7 +7,7 @@ import time
 from collections.abc import AsyncGenerator
 from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,28 @@ class FeatureChanged:
     #: Name of the feature that changed.
     value: bool
     #: New boolean value of the feature.
+
+
+@dataclass(frozen=True)
+class ModuleConnectivity:
+    """Per-module cloud connectivity signal for gateway consumers.
+
+    This is **not** published on :class:`EventBus` (which stays ``ParamUpdate``-only
+    for Home Assistant compatibility). Consumers register
+    ``BragerOneGateway.on_module_connectivity`` or poll
+    :meth:`BragerOneGateway.module_online`.
+    """
+
+    devid: str
+    #: Device identifier.
+    online: bool
+    #: ``True`` when the module is connected to the cloud and this gateway session is up.
+    source: Literal["rest", "ws", "derived"]
+    #: Where the transition was observed (REST poll, WS session, or combined).
+    connected_at: int | None = None
+    #: Raw REST ``connectedAt`` epoch seconds when known (``0`` means offline upstream).
+    ts: float = field(default_factory=time.time)
+    #: Timestamp when this signal was produced.
 
 
 @dataclass(frozen=True)

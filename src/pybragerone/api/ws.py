@@ -107,6 +107,7 @@ class RealtimeManager:
 
         self._connected = asyncio.Event()
         self._on_connected: list[ConnectedCb] = []
+        self._on_disconnected: list[ConnectedCb] = []
         self._on_event: EventDispatcher | None = None
         self._modules: list[str] = []
         self._group_id: int | None = None
@@ -195,10 +196,24 @@ class RealtimeManager:
     async def _on_disconnect(self) -> None:
         log.info("WS disconnected")
         self._connected.clear()
+        self._notify_disconnected()
 
     async def _on_connect_error(self, data: Any | None = None) -> None:
         log.warning("WS connect_error: %s", data)
+        was_connected = self._connected.is_set()
         self._connected.clear()
+        if was_connected:
+            self._notify_disconnected()
+
+    def _notify_disconnected(self) -> None:
+        """Invoke disconnect callbacks (sync or async)."""
+        for cb in list(self._on_disconnected):
+            try:
+                res = cb()
+                if asyncio.iscoroutine(res):
+                    spawn(res, "on_disconnected_cb", log)
+            except Exception:
+                log.exception("Error in on_disconnected callback")
 
     async def _on_reconnect(self) -> None:
         log.info("WS reconnect OK")
@@ -378,6 +393,10 @@ class RealtimeManager:
     def add_on_connected(self, cb: ConnectedCb) -> None:
         """Register a callback to be called when the connection is established."""
         self._on_connected.append(cb)
+
+    def add_on_disconnected(self, cb: ConnectedCb) -> None:
+        """Register a callback to be called when the Socket.IO session drops."""
+        self._on_disconnected.append(cb)
 
     @property
     def group_id(self) -> int | None:

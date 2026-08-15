@@ -68,6 +68,10 @@ class FakeApiClient:
             return True
         return 200, {"activityQuantity": {}}
 
+    async def get_modules(self, object_id: int) -> list[Any]:
+        """Return no modules by default (connectivity stays unknown/offline)."""
+        return []
+
     async def close(self) -> None:
         """Mark the client as closed."""
         self.closed = True
@@ -81,6 +85,7 @@ class FakeRealtimeManager:
         self._sid = sid
         self._engine_sid = engine_sid
         self._on_connected: list[Callable[[], Awaitable[None] | None]] = []
+        self._on_disconnected: list[Callable[[], Awaitable[None] | None]] = []
         self._on_event: Callable[[str, Any], Awaitable[None] | None] | None = None
 
         self.group_id: int | None = None
@@ -104,6 +109,10 @@ class FakeRealtimeManager:
         """Register a callback invoked after a (re)connect."""
         self._on_connected.append(cb)
 
+    def add_on_disconnected(self, cb: Callable[[], Awaitable[None] | None]) -> None:
+        """Register a callback invoked after a disconnect."""
+        self._on_disconnected.append(cb)
+
     def sid(self) -> str | None:
         """Return a namespace SID."""
         return self._sid
@@ -126,6 +135,16 @@ class FakeRealtimeManager:
         if tasks:
             await asyncio.gather(*tasks)
 
+    async def trigger_disconnected(self) -> None:
+        """Trigger all registered on_disconnected callbacks."""
+        tasks: list[asyncio.Task[None]] = []
+        for cb in list(self._on_disconnected):
+            res = cb()
+            if asyncio.iscoroutine(res):
+                tasks.append(asyncio.create_task(cast(Coroutine[Any, Any, None], res)))
+        if tasks:
+            await asyncio.gather(*tasks)
+
 
 @pytest.mark.asyncio
 async def test_gateway_start_primes_and_subscribes() -> None:
@@ -133,7 +152,7 @@ async def test_gateway_start_primes_and_subscribes() -> None:
     api = FakeApiClient()
     ws = FakeRealtimeManager()
 
-    gw = BragerOneGateway(api=api, object_id=123, modules=["M1"], ws=ws)
+    gw = BragerOneGateway(api=api, object_id=123, modules=["M1"], ws=ws, connectivity_poll_interval=0)
     it = gw.bus.subscribe()
     first_update_task = asyncio.create_task(it.__anext__())
     try:
@@ -165,7 +184,7 @@ async def test_gateway_resubscribe_on_connected_reprimes() -> None:
     api = FakeApiClient()
     ws = FakeRealtimeManager()
 
-    gw = BragerOneGateway(api=api, object_id=123, modules=["M1"], ws=ws)
+    gw = BragerOneGateway(api=api, object_id=123, modules=["M1"], ws=ws, connectivity_poll_interval=0)
     await gw.start()
 
     await ws.trigger_connected()
@@ -198,6 +217,7 @@ async def test_start_wires_self_healing_token_provider(monkeypatch: pytest.Monke
     monkeypatch.setattr(api, "modules_connect", lambda *a, **k: _async_true())
     monkeypatch.setattr(api, "modules_parameters_prime", lambda *a, **k: _async_true())
     monkeypatch.setattr(api, "modules_activity_quantity_prime", lambda *a, **k: _async_true())
+    monkeypatch.setattr(api, "get_modules", lambda *a, **k: _async_empty_modules())
 
     httpx_mock.add_response(
         method="POST",
@@ -210,7 +230,7 @@ async def test_start_wires_self_healing_token_provider(monkeypatch: pytest.Monke
         },
     )
 
-    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"])
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], connectivity_poll_interval=0)
     await gw.start()
 
     provider = captured.get("token_provider")
@@ -223,3 +243,7 @@ async def test_start_wires_self_healing_token_provider(monkeypatch: pytest.Monke
 
 async def _async_true() -> bool:
     return True
+
+
+async def _async_empty_modules() -> list[Any]:
+    return []

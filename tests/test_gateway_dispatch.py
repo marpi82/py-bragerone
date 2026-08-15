@@ -54,6 +54,10 @@ class FakeApiClient:
             return True
         return 200, {"activityQuantity": {}}
 
+    async def get_modules(self, object_id: int) -> list[Any]:
+        """Return no modules by default (connectivity stays unknown/offline)."""
+        return []
+
     async def close(self) -> None:
         """Mark the client as closed."""
         self.closed = True
@@ -67,6 +71,7 @@ class FakeRealtimeManager:
         self._sid = sid
         self._engine_sid = engine_sid
         self._on_connected: list[Callable[[], Awaitable[None] | None]] = []
+        self._on_disconnected: list[Callable[[], Awaitable[None] | None]] = []
         self._on_event: Callable[[str, Any], Awaitable[None] | None] | None = None
 
         self.group_id: int | None = None
@@ -90,6 +95,10 @@ class FakeRealtimeManager:
         """Register a callback invoked after a (re)connect."""
         self._on_connected.append(cb)
 
+    def add_on_disconnected(self, cb: Callable[[], Awaitable[None] | None]) -> None:
+        """Register a callback invoked after a disconnect."""
+        self._on_disconnected.append(cb)
+
     def sid(self) -> str | None:
         """Return a namespace SID."""
         return self._sid
@@ -109,7 +118,14 @@ def _gateway(
     """Build a gateway with fakes."""
     api = FakeApiClient()
     ws = FakeRealtimeManager(sid=sid)
-    gw = BragerOneGateway(api=api, object_id=123, modules=["M1"], ws=ws, owns_api=owns_api)
+    gw = BragerOneGateway(
+        api=api,
+        object_id=123,
+        modules=["M1"],
+        ws=ws,
+        owns_api=owns_api,
+        connectivity_poll_interval=0,
+    )
     return gw, api, ws
 
 

@@ -68,6 +68,28 @@ At runtime, use lightweight mode for best performance.
    # 3. Start gateway (connects WS, subscribes, primes)
    await gateway.start()
 
+Module connectivity
+-------------------
+
+Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so existing
+``bus.subscribe()`` loops stay typed and unbroken). Use the dedicated gateway API:
+
+.. code-block:: python
+
+   from pybragerone.models.events import ModuleConnectivity
+
+   def on_connectivity(event: ModuleConnectivity) -> None:
+       print(event.devid, "online" if event.online else "offline", event.source)
+
+   gateway.on_module_connectivity(on_connectivity)
+   # After start / refresh:
+   # gateway.module_online(devid) -> True | False | None
+   # gateway.module_connected_at(devid) -> int | None  # REST connectedAt
+
+The gateway polls ``GET /v1/modules`` (``connectedAt != 0`` means online upstream)
+and forces offline while the client Socket.IO session is down. Background poll
+interval defaults to 60s (``connectivity_poll_interval=0`` disables it).
+
 .. important::
    **After WebSocket reconnect:** Always re-fetch parameters via REST!
 
