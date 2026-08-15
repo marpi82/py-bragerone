@@ -490,7 +490,11 @@ async def _prompt_select_object(api: BragerOneApiClient) -> int | None:
 
 async def _prompt_select_modules(api: BragerOneApiClient, object_id: int) -> list[str]:
     """Prompt user to select modules from the list of available ones."""
-    rows = await api.get_modules(object_id=object_id)
+    try:
+        rows = await api.get_modules(object_id=object_id)
+    except ApiError as exc:
+        print(f"Failed to list modules for object {object_id}: HTTP {exc.status}")
+        return []
     if not rows:
         print("No modules for the selected object.")
         return []
@@ -689,7 +693,11 @@ async def _build_watch_groups(
     all_panels: bool,
 ) -> dict[str, list[str]]:
     """Build watch groups from library adapter (core or all-panels mode)."""
-    modules = await api.get_modules(object_id=object_id)
+    try:
+        modules = await api.get_modules(object_id=object_id)
+    except ApiError as exc:
+        print(f"Failed to load modules for watch groups (object {object_id}): HTTP {exc.status}")
+        return {"Boiler": [], "DHW": [], "Valve 1": []}
     selected = {m.devid: m for m in modules if m.devid is not None and str(m.devid) in set(module_ids)}
     first_id = module_ids[0]
     mod = selected.get(first_id)
@@ -1012,7 +1020,11 @@ async def _run_tui(
         # Keep prime fast and avoid repeated expensive UI recomposition during bootstrap.
         await gw.wait_for_prime(timeout=None)
 
-        modules = await api.get_modules(object_id=object_id)
+        try:
+            modules = await api.get_modules(object_id=object_id)
+        except ApiError as exc:
+            log_lines.append(f"ERROR: Failed to load modules for TUI init: HTTP {exc.status}")
+            modules = []
         selected = {m.devid: m for m in modules if m.devid is not None and str(m.devid) in set(module_ids)}
         selected_module = selected.get(module_ids[0])
         if selected_module is not None and selected_module.devid is not None:

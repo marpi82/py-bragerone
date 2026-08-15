@@ -78,14 +78,16 @@ class FakeRealtimeManager:
         self._on_disconnected: list[Callable[[], Awaitable[None] | None]] = []
         self._on_event: Callable[[str, Any], Awaitable[None] | None] | None = None
         self.group_id: int | None = None
+        self.connect_calls = 0
+        self.subscribe_calls: list[list[str]] = []
 
     def on_event(self, cb: Callable[[str, Any], Awaitable[None] | None]) -> None:
         """Store the event callback."""
         self._on_event = cb
 
     async def connect(self) -> None:
-        """No-op connect."""
-        return None
+        """Record a connect call."""
+        self.connect_calls += 1
 
     async def disconnect(self) -> None:
         """Invoke disconnect callbacks like a real socket drop."""
@@ -111,9 +113,8 @@ class FakeRealtimeManager:
         return "ENG-SID"
 
     async def subscribe(self, modules: Iterable[str]) -> None:
-        """No-op subscribe."""
-        _ = modules
-        return None
+        """Record a subscribe call."""
+        self.subscribe_calls.append(list(modules))
 
     async def trigger_disconnected(self) -> None:
         """Invoke disconnect callbacks."""
@@ -129,6 +130,8 @@ class FakeRealtimeManager:
         result = handler(name, payload)
         if asyncio.iscoroutine(result):
             await result
+        elif result is not None:
+            raise TypeError(f"event handler returned unexpected value: {type(result)!r}")
 
 
 def test_module_connected_at_means_online() -> None:
