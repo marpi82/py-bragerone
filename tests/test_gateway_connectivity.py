@@ -94,7 +94,8 @@ class FakeRealtimeManager:
         for cb in list(self._on_disconnected):
             res = cb()
             if asyncio.iscoroutine(res):
-                await res
+                # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
+                _ = await res
 
     def add_on_connected(self, cb: Callable[[], Awaitable[None] | None]) -> None:
         """Register reconnect callback."""
@@ -121,7 +122,8 @@ class FakeRealtimeManager:
         for cb in list(self._on_disconnected):
             res = cb()
             if asyncio.iscoroutine(res):
-                await res
+                # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
+                _ = await res
 
     async def emit(self, name: str, payload: Any) -> None:
         """Dispatch a fake Socket.IO event through the registered handler."""
@@ -129,7 +131,8 @@ class FakeRealtimeManager:
         assert handler is not None
         result = handler(name, payload)
         if asyncio.iscoroutine(result):
-            await result
+            # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
+            _ = await result
         elif result is not None:
             raise TypeError(f"event handler returned unexpected value: {type(result)!r}")
 

@@ -655,7 +655,8 @@ class BragerOneGateway:
             try:
                 res = cb(*args, **kwargs)
                 if asyncio.iscoroutine(res):
-                    await res
+                    # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
+                    _ = await res
             except Exception:
                 LOG.exception("Callback error")
 
