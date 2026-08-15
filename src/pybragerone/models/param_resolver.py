@@ -54,6 +54,21 @@ _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES: frozenset[str] = frozenset(
 )
 
 
+def _normalize_module_menu_route_name(name: str) -> str:
+    """Normalize a module-menu route name for installer denylist matching."""
+    name_cf = name.strip().casefold()
+    if name_cf.startswith("companies."):
+        name_cf = name_cf[len("companies.") :]
+    # Live menus use camelCase (``testsOutputInput``); denylist is snake_case.
+    return name_cf.replace("_", "")
+
+
+# Precomputed once — ``_route_name_is_excluded_installer_menu`` runs per route/ancestor.
+_WEB_UI_EXCLUDED_MODULE_MENU_ROUTES_NORMALIZED: frozenset[str] = frozenset(
+    _normalize_module_menu_route_name(item) for item in _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES
+)
+
+
 class AssetsProtocol(Protocol):
     """Minimal async API used by ParamResolver.
 
@@ -618,19 +633,9 @@ class ParamResolver:
         return name_cf.startswith("modules.menu.") or name_cf.startswith("companies.modules.menu.")
 
     @classmethod
-    def _normalize_module_menu_route_name(cls, name: str) -> str:
-        """Normalize a module-menu route name for installer denylist matching."""
-        name_cf = name.strip().casefold()
-        if name_cf.startswith("companies."):
-            name_cf = name_cf[len("companies.") :]
-        # Live menus use camelCase (``testsOutputInput``); denylist is snake_case.
-        return name_cf.replace("_", "")
-
-    @classmethod
     def _route_name_is_excluded_installer_menu(cls, name: str) -> bool:
         """Return whether *name* matches a known installer-only module-menu route."""
-        excluded = {cls._normalize_module_menu_route_name(item) for item in _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES}
-        return cls._normalize_module_menu_route_name(name) in excluded
+        return _normalize_module_menu_route_name(name) in _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES_NORMALIZED
 
     @classmethod
     def _route_is_end_user_web_ui(
