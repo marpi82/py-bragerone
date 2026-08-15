@@ -200,6 +200,18 @@ async def test_get_modules_shapes_and_non_200(api_client: BragerOneApiClient, ht
         await api_client.get_modules(3)
     assert err.value.status == 201
 
+    httpx_mock.add_response(method="GET", url=url, json={"unexpected": True})
+    assert await api_client.get_modules(3) == []
+
+    httpx_mock.add_response(
+        method="GET",
+        url=url,
+        json={"data": [MODULE_PAYLOAD, {"devid": None, "not": "a-module"}, "also-bad"]},
+    )
+    resilient = await api_client.get_modules(3)
+    assert len(resilient) == 1
+    assert resilient[0].id == MODULE_PAYLOAD["id"]
+
 
 @pytest.mark.asyncio
 async def test_get_module_card_success_and_errors(api_client: BragerOneApiClient, httpx_mock: HTTPXMock) -> None:

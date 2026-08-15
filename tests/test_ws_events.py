@@ -101,6 +101,7 @@ async def test_domain_handlers_dispatch_and_survive_callback_errors(
         await manager._on_app_modules_task_created({"k": 5})
         await manager._on_app_modules_task_status_changed({"k": 6})
         await manager._on_app_modules_task_completed({"k": 7})
+        await manager._on_app_module_connection_status_changed({"M1": {"connectedAt": 1}})
         await manager._on_ev60({"k": 8})
         await manager._on_ev61({"k": 9})
         await manager._on_ev63({"k": 10})
@@ -114,6 +115,7 @@ async def test_domain_handlers_dispatch_and_survive_callback_errors(
         "app:module:task:created",
         "app:module:task:status:changed",
         "app:module:task:completed",
+        "app:module:connection:status:changed",
         "app:module:task:status:changed",
         "app:module:task:created",
         "app:module:task:completed",
