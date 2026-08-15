@@ -312,6 +312,72 @@ def test_route_is_end_user_web_ui_parent_side_menu_gates_children() -> None:
     assert by_name["modules.menu.hiddenChild"]["reason"] == "rejected:not-web-ui"
 
 
+def test_route_is_end_user_web_ui_visible_ancestor_allows_child() -> None:
+    """Visible (or unset) ancestors are walked without rejecting the child route."""
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "boiler",
+                    "name": "modules.menu.boiler",
+                    "meta": {
+                        "displayName": "Boiler",
+                        "isVisibleOnSideMenu": True,
+                        "parameters": {},
+                    },
+                    "children": [
+                        {
+                            "path": "extra",
+                            "name": "modules.menu.boilerExtra",
+                            "meta": {
+                                "displayName": "Boiler extra",
+                                "parameters": {
+                                    "write": [{"parameter": "E(A.WRITE,'PARAM_12')"}],
+                                },
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    groups = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True, web_ui_only=True)
+    assert groups == {"Boiler/Boiler extra": ["PARAM_12"]}
+
+
+def test_web_ui_only_diagnostics_when_all_panels_disabled() -> None:
+    """Diagnostics apply web_ui_only rejection in the canonical (all_panels=False) branch."""
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "boiler",
+                    "name": "modules.menu.boiler",
+                    "meta": {
+                        "displayName": "Boiler",
+                        "parameters": {"write": [{"parameter": "E(A.WRITE,'PARAM_1')"}]},
+                    },
+                },
+                {
+                    "path": "dev",
+                    "name": "modules.menu.dev",
+                    "meta": {
+                        "displayName": "Installer",
+                        "parameters": {"write": [{"parameter": "E(A.WRITE,'PARAM_999')"}]},
+                    },
+                },
+            ]
+        }
+    )
+
+    diagnostics = ParamResolver.panel_route_diagnostics_from_menu(menu, all_panels=False, web_ui_only=True)
+    by_name = {row["name"]: row for row in diagnostics}
+    assert by_name["modules.menu.boiler"]["accepted"] is True
+    assert by_name["modules.menu.dev"]["accepted"] is False
+    assert by_name["modules.menu.dev"]["reason"] == "rejected:not-web-ui"
+
+
 def test_build_panel_groups_from_menu_core_only() -> None:
     """Return canonical three groups when all-panels mode is disabled."""
     menu = _menu_fixture()
