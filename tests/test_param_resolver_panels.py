@@ -135,6 +135,117 @@ def test_build_panel_groups_all_panels_includes_mainmenu_parameter_routes() -> N
     assert by_name["routes.modules.menu.modules"]["reason"] == "rejected:not-module-item"
 
 
+def test_build_panel_groups_web_ui_only_excludes_service_and_hidden_side_menu() -> None:
+    """web_ui_only drops MENUSERWIS_*, installer menus, and isVisibleOnSideMenu=False."""
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "boiler",
+                    "name": "MAINMENU_USTAWIENIA_KOTLA",
+                    "meta": {
+                        "displayName": "Boiler settings",
+                        "parameters": {
+                            "write": [{"parameter": "E(A.WRITE,'PARAM_12')"}],
+                        },
+                    },
+                },
+                {
+                    "path": "ignition",
+                    "name": "MENUSERWIS_USTAWIENIA_ROZPALANIA",
+                    "meta": {
+                        "displayName": "Ignition service",
+                        "parameters": {
+                            "write": [{"parameter": "E(A.WRITE,'PARAM_135')"}],
+                        },
+                    },
+                },
+                {
+                    "path": "dev",
+                    "name": "modules.menu.dev",
+                    "meta": {
+                        "displayName": "Installer",
+                        "parameters": {
+                            "write": [{"parameter": "E(A.WRITE,'PARAM_999')"}],
+                        },
+                    },
+                },
+                {
+                    "path": "sensors-corrections",
+                    "name": "modules.menu.sensorsCorrections",
+                    "meta": {
+                        "displayName": "Sensors corrections",
+                        "isVisibleOnSideMenu": False,
+                        "parameters": {
+                            "read": [{"parameter": "E(A.READ,'PARAM_888')"}],
+                        },
+                    },
+                },
+                {
+                    "path": "dhw",
+                    "name": "modules.menu.dhw",
+                    "meta": {
+                        "displayName": "DHW",
+                        "parameters": {
+                            "write": [{"parameter": "E(A.WRITE,'PARAM_50')"}],
+                        },
+                    },
+                },
+            ]
+        }
+    )
+
+    groups = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True, web_ui_only=True)
+    assert set(groups) == {"Boiler settings", "DHW"}
+    assert groups["Boiler settings"] == ["PARAM_12"]
+    assert groups["DHW"] == ["PARAM_50"]
+
+    diagnostics = ParamResolver.panel_route_diagnostics_from_menu(menu, all_panels=True, web_ui_only=True)
+    by_name = {row["name"]: row for row in diagnostics}
+    assert by_name["MAINMENU_USTAWIENIA_KOTLA"]["accepted"] is True
+    assert by_name["modules.menu.dhw"]["accepted"] is True
+    assert by_name["MENUSERWIS_USTAWIENIA_ROZPALANIA"]["reason"] == "rejected:not-web-ui"
+    assert by_name["modules.menu.dev"]["reason"] == "rejected:not-web-ui"
+    assert by_name["modules.menu.sensorsCorrections"]["reason"] == "rejected:not-web-ui"
+
+
+def test_route_is_end_user_web_ui_parent_side_menu_gates_children() -> None:
+    """A parent with isVisibleOnSideMenu=False hides descendant module-item routes."""
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "hidden-parent",
+                    "name": "modules.menu.hiddenParent",
+                    "meta": {
+                        "displayName": "Hidden parent",
+                        "isVisibleOnSideMenu": False,
+                        "parameters": {},
+                    },
+                    "children": [
+                        {
+                            "path": "child",
+                            "name": "modules.menu.hiddenChild",
+                            "meta": {
+                                "displayName": "Hidden child",
+                                "parameters": {
+                                    "write": [{"parameter": "E(A.WRITE,'PARAM_77')"}],
+                                },
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    groups = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True, web_ui_only=True)
+    assert groups == {}
+    diagnostics = ParamResolver.panel_route_diagnostics_from_menu(menu, all_panels=True, web_ui_only=True)
+    by_name = {row["name"]: row for row in diagnostics}
+    assert by_name["modules.menu.hiddenChild"]["reason"] == "rejected:not-web-ui"
+
+
 def test_build_panel_groups_from_menu_core_only() -> None:
     """Return canonical three groups when all-panels mode is disabled."""
     menu = _menu_fixture()

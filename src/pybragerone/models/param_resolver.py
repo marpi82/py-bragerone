@@ -37,6 +37,20 @@ _UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
 # Require the known prefixes so abbreviations like ``DHW`` do not trigger asset fetches.
 _MENU_TITLE_TOKEN_RE = re.compile(r"^(?:MAINMENU|MENUSERWIS|MENUPALNIKA|MENU)_[A-Z0-9_]+$")
 
+# Installer / service module-item routes that are not everyday web-UI panels.
+# ``MENUSERWIS_*`` title tokens are handled separately via prefix match.
+_WEB_UI_EXCLUDED_MODULE_MENU_ROUTES: frozenset[str] = frozenset(
+    {
+        "modules.menu.dev",
+        "modules.menu.producer",
+        "modules.menu.configuration",
+        "modules.menu.schema",
+        "modules.menu.tests_output_input",
+        "modules.menu.calibration",
+        "modules.menu.lock_board",
+    }
+)
+
 
 class AssetsProtocol(Protocol):
     """Minimal async API used by ParamResolver.
@@ -601,6 +615,47 @@ class ParamResolver:
             return False
         return name_cf.startswith("modules.menu.") or name_cf.startswith("companies.modules.menu.")
 
+    @classmethod
+    def _route_is_end_user_web_ui(
+        cls,
+        route: Any,
+        *,
+        ancestors: tuple[Any, ...] = (),
+    ) -> bool:
+        """Return whether a module-item route belongs on the everyday web UI.
+
+        Distinct from account permissions: a normal user may hold
+        ``DISPLAY_PARAMETER_LEVEL_1`` (which also unlocks ``MENUSERWIS_*`` service
+        panels) and still not see installer menus such as ``modules.menu.dev``.
+
+        Rules (all must pass):
+
+        - Not a ``MENUSERWIS_*`` service title token.
+        - Not in the known installer/service ``modules.menu.*`` exclusion set.
+        - ``meta.isVisibleOnSideMenu`` is not ``False`` on the route.
+        - No ancestor has ``isVisibleOnSideMenu is False`` (parent gates children).
+        """
+        raw_name = getattr(route, "name", None)
+        name = raw_name.strip() if isinstance(raw_name, str) else ""
+        if name.startswith("MENUSERWIS_"):
+            return False
+        if name in _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES:
+            return False
+
+        meta = getattr(route, "meta", None)
+        side = getattr(meta, "is_visible_on_side_menu", None) if meta is not None else None
+        if side is False:
+            return False
+
+        for ancestor in ancestors:
+            ancestor_meta = getattr(ancestor, "meta", None)
+            ancestor_side = (
+                getattr(ancestor_meta, "is_visible_on_side_menu", None) if ancestor_meta is not None else None
+            )
+            if ancestor_side is False:
+                return False
+        return True
+
     @staticmethod
     def _iter_routes(routes: Iterable[Any]) -> Iterable[Any]:
         stack = list(routes)[::-1]
@@ -675,16 +730,23 @@ class ParamResolver:
         menu: MenuResult,
         *,
         all_panels: bool = False,
+        web_ui_only: bool = False,
         routes_i18n: Mapping[str, Any] | None = None,
     ) -> dict[str, list[str]]:
         """Build route-driven panel groups from a menu tree.
 
-        When ``all_panels`` is enabled, every non-empty route becomes a panel.
-        Otherwise, only the canonical Boiler/DHW/Valve1 groups are returned.
+        When ``all_panels`` is enabled, every non-empty module-item route becomes a
+        panel. Otherwise, only the canonical Boiler/DHW/Valve1 groups are returned.
+
+        When ``web_ui_only`` is enabled, installer/service routes are dropped
+        (:meth:`_route_is_end_user_web_ui`) so the result matches everyday web-UI
+        panels rather than the full permission-visible menu.
         """
         routes_meta: list[tuple[str, str, str, set[str], tuple[Any, ...], Any]] = []
         for route, ancestors in cls._iter_routes_with_ancestors(menu.routes):
             if all_panels and not cls._route_allowed_in_module_item(route):
+                continue
+            if web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
                 continue
             symbols = cls._collect_route_symbols(route)
             if symbols:
@@ -756,6 +818,7 @@ class ParamResolver:
         menu: MenuResult,
         *,
         all_panels: bool = False,
+        web_ui_only: bool = False,
         routes_i18n: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Return per-route panel inclusion diagnostics.
@@ -778,11 +841,17 @@ class ParamResolver:
                 if not cls._route_allowed_in_module_item(route):
                     accepted = False
                     reason = "rejected:not-module-item"
+                elif web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
+                    accepted = False
+                    reason = "rejected:not-web-ui"
                 elif not symbols:
                     accepted = False
                     reason = "rejected:no-symbols"
             else:
-                if not symbols:
+                if web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
+                    accepted = False
+                    reason = "rejected:not-web-ui"
+                elif not symbols:
                     accepted = False
                     reason = "rejected:no-symbols"
 
@@ -805,11 +874,17 @@ class ParamResolver:
         device_menu: int,
         permissions: Iterable[str] | None = None,
         all_panels: bool = False,
+        web_ui_only: bool = False,
     ) -> dict[str, list[str]]:
         """Build panel groups from module menu for selected permissions."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
         routes_i18n = await self._panel_title_i18n(menu)
-        return self.build_panel_groups_from_menu(menu, all_panels=all_panels, routes_i18n=routes_i18n)
+        return self.build_panel_groups_from_menu(
+            menu,
+            all_panels=all_panels,
+            web_ui_only=web_ui_only,
+            routes_i18n=routes_i18n,
+        )
 
     async def panel_route_diagnostics(
         self,
@@ -817,11 +892,17 @@ class ParamResolver:
         device_menu: int,
         permissions: Iterable[str] | None = None,
         all_panels: bool = False,
+        web_ui_only: bool = False,
     ) -> list[dict[str, Any]]:
         """Return route diagnostics for panel inclusion filtering."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
         routes_i18n = await self._panel_title_i18n(menu)
-        return self.panel_route_diagnostics_from_menu(menu, all_panels=all_panels, routes_i18n=routes_i18n)
+        return self.panel_route_diagnostics_from_menu(
+            menu,
+            all_panels=all_panels,
+            web_ui_only=web_ui_only,
+            routes_i18n=routes_i18n,
+        )
 
     async def resolve_label(self, symbol: str) -> str | None:
         """Resolve label strictly from mapping `name` token."""
