@@ -137,11 +137,12 @@ else:
         release = _pkg_version("pybragerone")
     except Exception:
         ver_file = os.path.join(os.path.dirname(__file__), "../src/pybragerone/_version.py")
-        _ns: dict[str, str] = {}
+        _ns: dict[str, object] = {}
         if os.path.exists(ver_file):
             with open(ver_file, encoding="utf-8") as f:
                 exec(f.read(), _ns)
-            release = _ns.get("__version__", "0.0.0")
+            raw_version = _ns.get("__version__", "0.0.0")
+            release = raw_version if isinstance(raw_version, str) else str(raw_version)
         else:
             release = "dev"
 
