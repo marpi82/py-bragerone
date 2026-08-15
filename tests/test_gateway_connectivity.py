@@ -20,6 +20,7 @@ class FakeApiClient:
         """Initialize the fake API client."""
         self.module_rows: list[Any] = []
         self.get_modules_calls = 0
+        self.get_modules_error: Exception | None = None
         self.closed = False
 
     @property
@@ -50,8 +51,10 @@ class FakeApiClient:
         return 200, {}
 
     async def get_modules(self, object_id: int) -> list[Any]:
-        """Return the configured module rows."""
+        """Return the configured module rows (or raise when configured)."""
         self.get_modules_calls += 1
+        if self.get_modules_error is not None:
+            raise self.get_modules_error
         return list(self.module_rows)
 
     async def close(self) -> None:
@@ -195,10 +198,7 @@ async def test_gateway_connectivity_poll_loop_and_get_modules_error() -> None:
     await asyncio.sleep(0.12)
     assert gw.module_online("M1") is False
 
-    async def _boom(_object_id: int) -> list[Any]:
-        raise RuntimeError("modules down")
-
-    setattr(api, "get_modules", _boom)
+    api.get_modules_error = RuntimeError("modules down")
     # Another poll tick should not raise out of the gateway.
     await asyncio.sleep(0.12)
     await gw.stop()
