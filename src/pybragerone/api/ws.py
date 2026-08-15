@@ -167,6 +167,11 @@ class RealtimeManager:
             self._on_app_modules_task_completed,
             namespace=ns,
         )
+        self._sio.on(
+            "app:module:connection:status:changed",
+            self._on_app_module_connection_status_changed,
+            namespace=ns,
+        )
         # Numeric fallbacks observed in some builds
         self._sio.on("60", self._on_ev60, namespace=ns)
         self._sio.on("61", self._on_ev61, namespace=ns)
@@ -260,6 +265,10 @@ class RealtimeManager:
     async def _on_app_modules_task_completed(self, p: Any) -> None:
         log.debug("WS EVENT app:module:task:completed → %s", p)
         self._dispatch("app:module:task:completed", p)
+
+    async def _on_app_module_connection_status_changed(self, p: Any) -> None:
+        log.debug("WS EVENT app:module:connection:status:changed → %s", p)
+        self._dispatch("app:module:connection:status:changed", p)
 
     # Numeric fallbacks observed in some builds
     async def _on_ev60(self, p: Any) -> None:

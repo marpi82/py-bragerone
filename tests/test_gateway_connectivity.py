@@ -220,6 +220,53 @@ async def test_gateway_connectivity_skips_blank_devid_rows() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gateway_connectivity_from_ws_connection_status_event() -> None:
+    """SPA ``app:module:connection:status:changed`` updates online + gateway."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    events: list[ModuleConnectivity] = []
+    gw.on_module_connectivity(events.append)
+    await gw.start()
+    assert gw.module_online("M1") is False
+    events.clear()
+
+    result = ws._on_event(
+        "app:module:connection:status:changed",
+        {
+            "M1": {
+                "connectedAt": 1_700_000_100,
+                "gateway": {"address": "10.0.0.2", "interface": "wifi", "version": "V2.08"},
+            }
+        },
+    )
+    if asyncio.iscoroutine(result):
+        await result
+    await asyncio.sleep(0)
+
+    assert gw.module_online("M1") is True
+    assert gw.module_connected_at("M1") == 1_700_000_100
+    assert gw.module_gateway("M1") == {"address": "10.0.0.2", "interface": "wifi", "version": "V2.08"}
+    assert len(events) == 1
+    assert events[0].source == "ws"
+    assert events[0].online is True
+    assert events[0].gateway == {"address": "10.0.0.2", "interface": "wifi", "version": "V2.08"}
+
+    events.clear()
+    result = ws._on_event(
+        "app:module:connection:status:changed",
+        {"M1": {"connectedAt": 0, "gateway": {"address": None, "interface": None, "version": None}}},
+    )
+    if asyncio.iscoroutine(result):
+        await result
+    await asyncio.sleep(0)
+    assert gw.module_online("M1") is False
+    assert events[0].online is False
+    await gw.stop()
+
+
+@pytest.mark.asyncio
 async def test_gateway_connectivity_apply_without_connected_at() -> None:
     """WS-driven offline updates may omit a fresh connectedAt value."""
     api = FakeApiClient()

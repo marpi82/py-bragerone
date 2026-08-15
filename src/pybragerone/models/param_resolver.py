@@ -954,6 +954,10 @@ class ParamResolver:
         """Resolve unit metadata to a human-readable label or enumeration mapping."""
         return await self._i18n.resolve_unit(unit_code)
 
+    async def resolve_module_connection_labels(self, *, lang: str | None = None) -> dict[str, str]:
+        """Return SPA module connection-panel labels from the ``module`` i18n namespace."""
+        return await self._i18n.resolve_module_connection_labels(lang=lang)
+
     @staticmethod
     def _to_float_literal(raw: str) -> float | None:
         text = raw.strip()

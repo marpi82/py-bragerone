@@ -35,11 +35,16 @@ ModuleConnectivityCb = Callable[[ModuleConnectivity], Awaitable[None] | None]
 
 
 def module_connected_at_means_online(connected_at: int) -> bool:
-    """Return whether a REST ``connectedAt`` value means the module is online.
+    """Return whether a ``connectedAt`` value means the module is online.
 
+    Mirrors the SPA ternary ``connectedAt ? 'connected' : 'notConnected'``.
     Upstream uses ``0`` as the offline sentinel (see fixtures and live payloads).
     """
     return int(connected_at) != 0
+
+
+# Socket.IO event the official SPA listens for in Layout / ObjectsLayout.
+MODULE_CONNECTION_STATUS_CHANGED = "app:module:connection:status:changed"
 
 
 class ApiClient(Protocol):
@@ -169,10 +174,11 @@ class BragerOneGateway:
         self._on_any: list[GenericCb] = []
         self._on_module_connectivity: list[ModuleConnectivityCb] = []
 
-        # Per-module cloud connectivity (REST connectedAt) + gateway WS session.
+        # Per-module cloud connectivity (REST/WS connectedAt) + gateway WS session.
         self._ws_session_up = False
         self._module_connected_at: dict[str, int] = {}
         self._module_online: dict[str, bool] = {}
+        self._module_gateway: dict[str, dict[str, Any]] = {}
 
     @classmethod
     async def from_credentials(
@@ -248,8 +254,13 @@ class BragerOneGateway:
         return self._module_online.get(devid)
 
     def module_connected_at(self, devid: str) -> int | None:
-        """Return the last REST ``connectedAt`` for *devid*, or ``None`` if unknown."""
+        """Return the last ``connectedAt`` for *devid*, or ``None`` if unknown."""
         return self._module_connected_at.get(devid)
+
+    def module_gateway(self, devid: str) -> dict[str, Any] | None:
+        """Return the last gateway blob for *devid* (address/interface/version)."""
+        gateway = self._module_gateway.get(devid)
+        return dict(gateway) if isinstance(gateway, dict) else None
 
     async def refresh_module_connectivity(self) -> None:
         """Refresh connectivity from REST ``get_modules`` (no-op when WS session is down)."""
@@ -451,11 +462,22 @@ class BragerOneGateway:
             seen.add(devid)
             connected_at = int(getattr(row, "connectedAt", 0) or 0)
             rest_online = module_connected_at_means_online(connected_at)
+            gateway_obj = getattr(row, "gateway", None)
+            gateway: dict[str, Any] | None = None
+            if gateway_obj is not None:
+                dump = getattr(gateway_obj, "model_dump", None)
+                if callable(dump):
+                    raw = dump(mode="json")
+                    if isinstance(raw, dict):
+                        gateway = raw
+                elif isinstance(gateway_obj, dict):
+                    gateway = dict(gateway_obj)
             await self._apply_connectivity(
                 devid=devid,
                 online=rest_online and self._ws_session_up,
                 source=source,
                 connected_at=connected_at,
+                gateway=gateway,
             )
 
         # Subscribed modules missing from the object listing → offline.
@@ -474,10 +496,13 @@ class BragerOneGateway:
         online: bool,
         source: ConnectivitySource,
         connected_at: int | None,
+        gateway: dict[str, Any] | None = None,
     ) -> None:
         """Update cache and notify listeners when the online bit changes."""
         if connected_at is not None:
             self._module_connected_at[devid] = int(connected_at)
+        if gateway is not None:
+            self._module_gateway[devid] = dict(gateway)
         previous = self._module_online.get(devid)
         if previous is online:
             return
@@ -487,6 +512,7 @@ class BragerOneGateway:
             online=online,
             source=source,
             connected_at=self._module_connected_at.get(devid),
+            gateway=self.module_gateway(devid),
         )
         LOG.info(
             "Module connectivity: devid=%s online=%s source=%s connectedAt=%s",
@@ -619,7 +645,39 @@ class BragerOneGateway:
                     self._invoke_list(self._on_parameters_change, event_name, payload),
                     name="gateway.on_parameters_change",
                 )
+            return None
+
+        # SPA Layout handler: Object.entries(payload) → module.connectedAt / gateway
+        if event_name == MODULE_CONNECTION_STATUS_CHANGED and isinstance(payload, dict):
+            self._spawn(
+                self._ingest_module_connection_status(payload),
+                name="gateway.module_connection_status",
+            )
         return None
+
+    async def _ingest_module_connection_status(self, payload: dict[str, Any]) -> None:
+        """Apply SPA ``app:module:connection:status:changed`` payloads per devid."""
+        if not self._ws_session_up:
+            return
+        wanted = set(self.modules)
+        for raw_devid, body in payload.items():
+            devid = str(raw_devid or "")
+            if not devid or devid not in wanted or not isinstance(body, dict):
+                continue
+            connected_raw = body.get("connectedAt", body.get("connected_at", 0))
+            try:
+                connected_at = int(connected_raw or 0)
+            except (TypeError, ValueError):
+                connected_at = 0
+            gateway_raw = body.get("gateway")
+            gateway = dict(gateway_raw) if isinstance(gateway_raw, dict) else None
+            await self._apply_connectivity(
+                devid=devid,
+                online=module_connected_at_means_online(connected_at),
+                source="ws",
+                connected_at=connected_at,
+                gateway=gateway,
+            )
 
     # ------------------------- Helpers -------------------------
 

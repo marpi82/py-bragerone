@@ -30,6 +30,10 @@ class ModuleConnectivity:
     for Home Assistant compatibility). Consumers register
     ``BragerOneGateway.on_module_connectivity`` or poll
     :meth:`BragerOneGateway.module_online`.
+
+    Mirrors the SPA module card / connection modal: online iff ``connectedAt`` is
+    truthy (upstream uses ``0`` as offline). Live updates arrive on Socket.IO
+    ``app:module:connection:status:changed`` with ``{devid: {connectedAt, gateway}}``.
     """
 
     devid: str
@@ -37,9 +41,11 @@ class ModuleConnectivity:
     online: bool
     #: ``True`` when the module is connected to the cloud and this gateway session is up.
     source: Literal["rest", "ws", "derived"]
-    #: Where the transition was observed (REST poll, WS session, or combined).
+    #: Where the transition was observed (REST poll, WS push, session drop, or derived).
     connected_at: int | None = None
-    #: Raw REST ``connectedAt`` epoch seconds when known (``0`` means offline upstream).
+    #: Raw ``connectedAt`` epoch seconds when known (``0`` means offline upstream).
+    gateway: dict[str, Any] | None = None
+    #: Optional gateway blob from REST/WS (``address``, ``interface``, ``version``).
     ts: float = field(default_factory=time.time)
     #: Timestamp when this signal was produced.
 

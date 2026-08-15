@@ -86,9 +86,27 @@ Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so exist
    # gateway.module_online(devid) -> True | False | None
    # gateway.module_connected_at(devid) -> int | None  # REST connectedAt
 
-The gateway polls ``GET /v1/modules`` (``connectedAt != 0`` means online upstream)
-and forces offline while the client Socket.IO session is down. Background poll
-interval defaults to 60s (``connectivity_poll_interval=0`` disables it).
+The gateway primes from ``GET /v1/modules`` (``connectedAt != 0`` means online —
+same truthiness check as the SPA card/modal) and listens for the official Socket.IO
+push ``app:module:connection:status:changed`` (payload
+``{devid: {connectedAt, gateway}}``, applied by Layout / ObjectsLayout in the web
+app). While the client Socket.IO session is down, subscribed modules are forced
+offline. A background REST poll (default 60s; ``connectivity_poll_interval=0``
+disables it) remains as a fallback.
+
+Connection **labels** are not hardcoded: resolve them from the live ``module``
+i18n namespace (same keys the SPA uses):
+
+.. code-block:: python
+
+   from pybragerone.models.i18n import I18nResolver
+
+   labels = await I18nResolver(assets).resolve_module_connection_labels(lang="pl")
+   # labels["serverConnection"], labels["connection.status"],
+   # labels["connection.connected"], labels["connection.notConnected"], ...
+
+Stable grouping key for a future HA "connection" child device: ``module.connection``
+(i18n namespace path — **not** a menu-router route).
 
 .. important::
    **After WebSocket reconnect:** Always re-fetch parameters via REST!

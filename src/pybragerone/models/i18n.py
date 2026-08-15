@@ -68,6 +68,31 @@ class I18nResolver:
         val = params.get(symbol)
         return val if isinstance(val, str) else None
 
+    async def resolve_module_connection_labels(self, *, lang: str | None = None) -> dict[str, str]:
+        """Return SPA connection-panel labels from the ``module`` i18n namespace.
+
+        These are the same keys the official web UI uses for the module card and
+        connection modal (``Index-*.js`` / ``ModuleStateModal``), for example:
+
+        - ``serverConnection`` — card field title
+        - ``connection.status`` / ``connection.connected`` / ``connection.notConnected``
+        - ``connection.index`` — modal title (stable grouping key for HA #165)
+
+        Labels come from live assets only — never hardcoded.
+        """
+        module = await self.get_namespace("module", lang=lang)
+        out: dict[str, str] = {}
+        for key in ("serverConnection", "noConnection", "authorizationStatus", "authorized", "notAuthorized"):
+            val = module.get(key)
+            if isinstance(val, str) and val.strip():
+                out[key] = val.strip()
+        connection = module.get("connection")
+        if isinstance(connection, Mapping):
+            for key, raw in connection.items():
+                if isinstance(key, str) and isinstance(raw, str) and raw.strip():
+                    out[f"connection.{key}"] = raw.strip()
+        return out
+
     async def resolve_unit(self, unit_code: Any, *, lang: str | None = None) -> str | dict[str, str] | None:
         """Resolve unit metadata to a human-readable label or enumeration mapping."""
         normalized_direct = self.normalize_unit_value(unit_code)
