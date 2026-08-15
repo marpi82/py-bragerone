@@ -38,7 +38,7 @@ _UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
 _MENU_TITLE_TOKEN_RE = re.compile(r"^(?:MAINMENU|MENUSERWIS|MENUPALNIKA|MENU)_[A-Z0-9_]+$")
 
 # Installer / service module-item routes that are not everyday web-UI panels.
-# ``MENUSERWIS_*`` title tokens are handled separately via prefix match.
+# Everyday panels may still use ``MENUSERWIS_*`` title tokens (e.g. buffer settings).
 _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES: frozenset[str] = frozenset(
     {
         "modules.menu.dev",
@@ -624,21 +624,18 @@ class ParamResolver:
     ) -> bool:
         """Return whether a module-item route belongs on the everyday web UI.
 
-        Distinct from account permissions: a normal user may hold
-        ``DISPLAY_PARAMETER_LEVEL_1`` (which also unlocks ``MENUSERWIS_*`` service
-        panels) and still not see installer menus such as ``modules.menu.dev``.
+        Mirrors SPA ``isRouteVisible`` side-menu gating in ``index-*.js``:
 
-        Rules (all must pass):
-
-        - Not a ``MENUSERWIS_*`` service title token.
-        - Not in the known installer/service ``modules.menu.*`` exclusion set.
         - ``meta.isVisibleOnSideMenu`` is not ``False`` on the route.
         - No ancestor has ``isVisibleOnSideMenu is False`` (parent gates children).
+
+        Additionally drops known installer-only ``modules.menu.*`` routes that are
+        never everyday panels. ``MENUSERWIS_*`` title tokens are **not** excluded:
+        everyday UI panels such as buffer settings use that prefix
+        (``MENUSERWIS_USTAWIENIA_BUFORU``).
         """
         raw_name = getattr(route, "name", None)
         name = raw_name.strip() if isinstance(raw_name, str) else ""
-        if name.startswith("MENUSERWIS_"):
-            return False
         if name in _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES:
             return False
 
@@ -649,9 +646,7 @@ class ParamResolver:
 
         for ancestor in ancestors:
             ancestor_meta = getattr(ancestor, "meta", None)
-            ancestor_side = (
-                getattr(ancestor_meta, "is_visible_on_side_menu", None) if ancestor_meta is not None else None
-            )
+            ancestor_side = getattr(ancestor_meta, "is_visible_on_side_menu", None) if ancestor_meta is not None else None
             if ancestor_side is False:
                 return False
         return True
@@ -738,9 +733,11 @@ class ParamResolver:
         When ``all_panels`` is enabled, every non-empty module-item route becomes a
         panel. Otherwise, only the canonical Boiler/DHW/Valve1 groups are returned.
 
-        When ``web_ui_only`` is enabled, installer/service routes are dropped
-        (:meth:`_route_is_end_user_web_ui`) so the result matches everyday web-UI
-        panels rather than the full permission-visible menu.
+        When ``web_ui_only`` is enabled, installer routes and side-menu-hidden
+        routes are dropped (:meth:`_route_is_end_user_web_ui`) so the panel set
+        matches everyday web-UI navigation. Per-parameter SPA visibility
+        (``isParameterVisible`` / status bits) is applied by callers such as HA
+        bootstrap UI filter mode.
         """
         routes_meta: list[tuple[str, str, str, set[str], tuple[Any, ...], Any]] = []
         for route, ancestors in cls._iter_routes_with_ancestors(menu.routes):
@@ -1751,11 +1748,14 @@ class ParamResolver:
         for condition, entries in raw_status.items():
             if not isinstance(entries, list):
                 continue
+            # Normalize ``ParameterStatus['INVISIBLE']`` / ``[t.INVISIBLE]`` to ``INVISIBLE``
+            # so visibility matches the SPA ``status.invisible`` flag name.
+            condition_name = ParamResolver._clean_symbolic_tag(condition) or str(condition)
             for entry in entries:
                 if not isinstance(entry, Mapping):
                     continue
                 row = dict(entry)
-                row.setdefault("condition", condition)
+                row["condition"] = condition_name
                 status_paths.append(row)
         return status_paths
 
@@ -1813,6 +1813,13 @@ class ParamResolver:
         return []
 
     @classmethod
+    def _status_condition_name(cls, condition: Any) -> str:
+        """Return the public status flag name for a path/raw condition token."""
+        if not isinstance(condition, str):
+            return ""
+        return (cls._clean_symbolic_tag(condition) or condition).strip()
+
+    @classmethod
     def _status_flag_value(
         cls,
         *,
@@ -1821,10 +1828,13 @@ class ParamResolver:
         flat_values: Mapping[str, Any],
     ) -> bool | None:
         explicit_else: bool | None = None
+        wanted = cls._status_condition_name(flag_condition).casefold()
+        if not wanted:
+            return None
 
         for status in status_paths:
-            condition = str(status.get("condition") or "")
-            if condition != flag_condition:
+            condition = cls._status_condition_name(status.get("condition")).casefold()
+            if condition != wanted:
                 continue
 
             group = status.get("group")
@@ -1872,14 +1882,20 @@ class ParamResolver:
     ) -> tuple[bool, str]:
         """Return visibility using the same status semantics as the official app.
 
-        Rules mirrored from frontend filtering:
-        - `status.invisible` / `t.INVISIBLE` must not be true,
-        - when present, `status.device_available` must not be false.
+        Mirrors SPA ``isParameterVisible`` status checks in ``index-*.js``:
+
+        - when ``status.invisible`` is present, it must be ``0`` / false;
+        - when ``status.device_available`` is present, it must be ``1`` / true.
+
+        Condition tokens are normalized (``ParameterStatus['INVISIBLE']``,
+        ``[t.INVISIBLE]``, ``INVISIBLE``) before comparison.
 
         Notes:
         - Missing current value does not automatically hide a parameter. Some
           write/control entries (e.g. command-like params) are visible in UI
-          even without a direct live value.
+          even without a direct live value. Callers that want the SPA
+          ``parameter.value !== undefined`` gate apply it separately (HA bootstrap
+          already drops ``no_display_value`` before this check).
         """
         values = flat_values if flat_values is not None else self._store.flatten()
 
@@ -1895,17 +1911,15 @@ class ParamResolver:
         if not status_paths:
             return True, "visible:no-paths"
 
-        invisible = self._status_flag_value(status_paths=status_paths, flag_condition="[u.INVISIBLE]", flat_values=values)
-        if invisible is None:
-            invisible = self._status_flag_value(status_paths=status_paths, flag_condition="[t.INVISIBLE]", flat_values=values)
-        if invisible is None:
-            invisible = self._status_flag_value(status_paths=status_paths, flag_condition="[r.INVISIBLE]", flat_values=values)
+        # SPA stores ParameterStatus.INVISIBLE as ``'invisible'``; catalog/paths keep
+        # the public member ``INVISIBLE``. Match either spelling after cleanup.
+        invisible = self._status_flag_value(status_paths=status_paths, flag_condition="INVISIBLE", flat_values=values)
         if invisible is True:
             return False, "hidden:invisible"
 
         device_available = self._status_flag_value(
             status_paths=status_paths,
-            flag_condition="[o.DEVICE_AVAILABLE]",
+            flag_condition="DEVICE_AVAILABLE",
             flat_values=values,
         )
         if device_available is False:

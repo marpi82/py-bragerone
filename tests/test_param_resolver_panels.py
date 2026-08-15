@@ -135,8 +135,8 @@ def test_build_panel_groups_all_panels_includes_mainmenu_parameter_routes() -> N
     assert by_name["routes.modules.menu.modules"]["reason"] == "rejected:not-module-item"
 
 
-def test_build_panel_groups_web_ui_only_excludes_service_and_hidden_side_menu() -> None:
-    """web_ui_only drops MENUSERWIS_*, installer menus, and isVisibleOnSideMenu=False."""
+def test_build_panel_groups_web_ui_only_excludes_installer_and_hidden_side_menu() -> None:
+    """web_ui_only keeps MENUSERWIS_* everyday panels; drops installer + hidden side menu."""
     menu = MenuResult.model_validate(
         {
             "routes": [
@@ -151,12 +151,12 @@ def test_build_panel_groups_web_ui_only_excludes_service_and_hidden_side_menu() 
                     },
                 },
                 {
-                    "path": "ignition",
-                    "name": "MENUSERWIS_USTAWIENIA_ROZPALANIA",
+                    "path": "buffer",
+                    "name": "MENUSERWIS_USTAWIENIA_BUFORU",
                     "meta": {
-                        "displayName": "Ignition service",
+                        "displayName": "Buffer settings",
                         "parameters": {
-                            "write": [{"parameter": "E(A.WRITE,'PARAM_135')"}],
+                            "write": [{"parameter": "E(A.WRITE,'PARAM_69')"}],
                         },
                     },
                 },
@@ -196,15 +196,16 @@ def test_build_panel_groups_web_ui_only_excludes_service_and_hidden_side_menu() 
     )
 
     groups = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True, web_ui_only=True)
-    assert set(groups) == {"Boiler settings", "DHW"}
+    assert set(groups) == {"Boiler settings", "Buffer settings", "DHW"}
     assert groups["Boiler settings"] == ["PARAM_12"]
+    assert groups["Buffer settings"] == ["PARAM_69"]
     assert groups["DHW"] == ["PARAM_50"]
 
     diagnostics = ParamResolver.panel_route_diagnostics_from_menu(menu, all_panels=True, web_ui_only=True)
     by_name = {row["name"]: row for row in diagnostics}
     assert by_name["MAINMENU_USTAWIENIA_KOTLA"]["accepted"] is True
+    assert by_name["MENUSERWIS_USTAWIENIA_BUFORU"]["accepted"] is True
     assert by_name["modules.menu.dhw"]["accepted"] is True
-    assert by_name["MENUSERWIS_USTAWIENIA_ROZPALANIA"]["reason"] == "rejected:not-web-ui"
     assert by_name["modules.menu.dev"]["reason"] == "rejected:not-web-ui"
     assert by_name["modules.menu.sensorsCorrections"]["reason"] == "rejected:not-web-ui"
 

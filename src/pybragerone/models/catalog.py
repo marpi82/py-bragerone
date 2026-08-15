@@ -2003,7 +2003,9 @@ class LiveAssetsCatalog:
             flat: list[dict[str, Any]] = []
             if isinstance(value, Mapping):
                 for raw_key, entries in value.items():
-                    key_str = str(raw_key)
+                    # Resolve ``ParameterStatus['INVISIBLE']`` / ``_0x…['ENABLED']`` to the
+                    # public flag name the SPA stores on ``parameter.status.<flag>``.
+                    key_str = _normalize_identifier(raw_key) or str(raw_key)
                     normalized_entries = _ensure_mapping_list(entries)
                     if not normalized_entries:
                         continue

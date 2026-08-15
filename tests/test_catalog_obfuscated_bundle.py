@@ -572,7 +572,9 @@ def test_parameter_factory_builders_expand_to_param_maps() -> None:
     assert built.raw["name"] == "parameters.PARAM_P11_1"
     assert built.paths["value"] == [{"group": "P11", "number": 1, "use": "v"}]
     assert built.status_conditions is not None
-    assert next(iter(built.status_conditions.values()))[0]["bit"] == 7
+    assert list(built.status_conditions) == ["INVISIBLE"]
+    assert built.status_conditions["INVISIBLE"][0]["bit"] == 7
+    assert "INVISIBLE" in (built.raw.get("status") or {})
     # `useComponent: void 0x0` is undefined, not a component name.
     assert built.component_type is None
     override = catalog._build_param_map_from_obj(dict(maps["PARAM_P11_9"]), "PARAM_P11_9", "test")

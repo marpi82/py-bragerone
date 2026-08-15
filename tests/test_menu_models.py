@@ -9,6 +9,9 @@ def test_menu_parameter_obfuscated_subscript_permission() -> None:
 
     assert js_public_member_name("_0x521864['DISPLAY_PARAMETER_LEVEL_1']") == "DISPLAY_PARAMETER_LEVEL_1"
     assert js_public_member_name("[_0x4d7e32['INVISIBLE']]") == "INVISIBLE"
+    assert js_public_member_name("ParameterStatus['INVISIBLE']") == "INVISIBLE"
+    assert js_public_member_name("[ParameterStatus['DEVICE_AVAILABLE']]") == "DEVICE_AVAILABLE"
+    assert js_public_member_name("ClauseOperation['equalTo']") is None
     assert js_public_member_name("A.DISPLAY_MENU_DHW") is None
     assert js_public_member_name("arr['map']") is None
     assert js_public_member_name("Math['floor']") is None

@@ -298,7 +298,7 @@ def test_status_paths_for_visibility_prefers_paths_then_raw_then_branch() -> Non
         {"raw": {"status": {"t.INVISIBLE": [{"group": "P2", "number": 1, "use": "s"}]}}},
         {},
     )
-    assert from_raw[0]["condition"] == "t.INVISIBLE"
+    assert from_raw[0]["condition"] == "INVISIBLE"
 
     from_branch = ParamResolver._status_paths_for_visibility(
         {
