@@ -548,13 +548,48 @@ async def test_gateway_reconnect_skips_stale_generation_refresh() -> None:
     calls_before = api.get_modules_calls
 
     async def _slow_resubscribe() -> None:
-        gw._on_ws_disconnected()
+        await gw._on_ws_disconnected()
         return None
 
     gw.resubscribe = _slow_resubscribe  # type: ignore[method-assign]
     await gw._on_ws_connected()
     assert api.get_modules_calls == calls_before
     await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_cloud_session_callbacks_are_detectable() -> None:
+    """Library↔cloud session flips notify on_cloud_session without touching module online."""
+    from pybragerone.models.events import CloudSessionConnectivity
+
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    sessions: list[CloudSessionConnectivity] = []
+    gw.on_cloud_session(sessions.append)
+
+    await gw.start()
+    assert gw.ws_session_up() is True
+    assert [(e.up, e.source) for e in sessions] == [(True, "connect")]
+    assert gw.module_online("M1") is True
+
+    sessions.clear()
+    await ws.trigger_disconnected()
+    assert gw.ws_session_up() is False
+    assert [(e.up, e.source) for e in sessions] == [(False, "disconnect")]
+    assert gw.module_online("M1") is True
+
+    sessions.clear()
+    await gw._on_ws_connected()
+    assert gw.ws_session_up() is True
+    assert sessions[0].up is True
+    assert sessions[0].source == "connect"
+
+    sessions.clear()
+    await gw.stop()
+    assert gw.ws_session_up() is False
+    assert [(e.up, e.source) for e in sessions] == [(False, "stop")]
 
 
 @pytest.mark.asyncio

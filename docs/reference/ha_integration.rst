@@ -71,20 +71,32 @@ At runtime, use lightweight mode for best performance.
 Module connectivity
 -------------------
 
+Two layers — do not conflate them:
+
+1. **Module ↔ cloud** (SPA ``connectedAt``) — plant gateway reachability. Observe
+   and wait when offline; the client cannot repair it.
+2. **Library ↔ cloud** (Socket.IO client session) — must be **detectable** and
+   **self-healing** (transport reset, reconnect, REST re-prime while down).
+
 Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so existing
 ``bus.subscribe()`` loops stay typed and unbroken). Use the dedicated gateway API:
 
 .. code-block:: python
 
-   from pybragerone.models.events import ModuleConnectivity
+   from pybragerone.models.events import CloudSessionConnectivity, ModuleConnectivity
 
-   def on_connectivity(event: ModuleConnectivity) -> None:
+   def on_module(event: ModuleConnectivity) -> None:
        print(event.devid, "online" if event.online else "offline", event.source)
 
-   gateway.on_module_connectivity(on_connectivity)
+   def on_session(event: CloudSessionConnectivity) -> None:
+       print("cloud session", "up" if event.up else "down", event.source)
+
+   gateway.on_module_connectivity(on_module)
+   gateway.on_cloud_session(on_session)
    # After start / refresh:
    # gateway.module_online(devid) -> True | False | None
    # gateway.module_connected_at(devid) -> int | None  # REST connectedAt
+   # gateway.ws_session_up() -> bool  # library↔cloud Socket.IO
 
 The gateway primes from ``GET /v1/modules`` (``connectedAt != 0`` means online —
 same truthiness check as the SPA card/modal) and listens for the official Socket.IO

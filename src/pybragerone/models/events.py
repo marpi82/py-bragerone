@@ -24,7 +24,7 @@ class FeatureChanged:
 
 @dataclass(frozen=True)
 class ModuleConnectivity:
-    """Per-module cloud connectivity signal for gateway consumers.
+    """Module ↔ Brager cloud connectivity (SPA ``connectedAt``).
 
     This is **not** published on :class:`EventBus` (which stays ``ParamUpdate``-only
     for Home Assistant compatibility). Consumers register
@@ -35,8 +35,9 @@ class ModuleConnectivity:
     truthy (upstream uses ``0`` as offline). Live updates arrive on Socket.IO
     ``app:module:connection:status:changed`` with ``{devid: {connectedAt, gateway}}``.
 
-    The client's own Socket.IO session is **not** folded into ``online`` — a local
-    transport blip must not look like the module dropped off the cloud.
+    When the module is offline there is nothing the client can repair — observe and
+    wait. The library's own Socket.IO session is a **separate** layer
+    (:class:`CloudSessionConnectivity`) and must never be folded into ``online``.
     """
 
     devid: str
@@ -53,6 +54,28 @@ class ModuleConnectivity:
     #: ``True`` when the online bit flipped versus the previous cache.
     metadata_changed: bool = False
     #: ``True`` when ``connected_at`` and/or ``gateway`` changed without an online flip.
+    ts: float = field(default_factory=time.time)
+    #: Timestamp when this signal was produced.
+
+
+@dataclass(frozen=True)
+class CloudSessionConnectivity:
+    """Library ↔ Brager cloud Socket.IO session (client transport health).
+
+    Distinct from :class:`ModuleConnectivity` (module ↔ cloud ``connectedAt``).
+    When this session drops the gateway **self-heals**: Engine.IO reset on connect
+    timeout, supervisor reconnect, resubscribe + REST prime, and REST re-prime on
+    the connectivity poll while the socket is still down. Consumers register
+    ``BragerOneGateway.on_cloud_session`` or poll :meth:`BragerOneGateway.ws_session_up`
+    so an outage is detectable without looking like a plant module going offline.
+    """
+
+    up: bool
+    #: ``True`` while this gateway's Socket.IO client session is connected.
+    source: Literal["connect", "disconnect", "stop"]
+    #: Why the session bit was updated.
+    changed: bool = True
+    #: ``True`` when ``up`` flipped versus the previous cache.
     ts: float = field(default_factory=time.time)
     #: Timestamp when this signal was produced.
 

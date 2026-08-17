@@ -7,6 +7,13 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Added
+
+- Expose library↔cloud Socket.IO health as :class:`CloudSessionConnectivity` via
+  ``BragerOneGateway.on_cloud_session`` (distinct from module↔cloud
+  ``connectedAt`` / :class:`ModuleConnectivity`). Session drops stay detectable
+  and self-heal; module offline remains observe-only (#319).
+
 ### Fixed
 
 - Tolerate degraded ``GET /v1/modules`` rows (empty ``gateway``, ``connectedAt:
