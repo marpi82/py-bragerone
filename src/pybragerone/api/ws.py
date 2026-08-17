@@ -312,6 +312,12 @@ class RealtimeManager:
 
         task.add_done_callback(_supervisor_done)
 
+    async def _reset_transport(self) -> None:
+        """Drop a half-open Engine.IO session so the next ``connect()`` is clean."""
+        self._connected.clear()
+        with suppress(Exception):
+            await self._sio.disconnect()
+
     async def _resolve_token(self) -> str:
         """Return a token for the next connect attempt, refreshing via the provider if set."""
         if self._token_provider is None:
@@ -333,6 +339,9 @@ class RealtimeManager:
         async with self._connect_lock:
             if self._sio.connected and self._connected.is_set():
                 return
+            # Engine.IO abort / connect timeout can leave ``connected=True`` without a
+            # namespace join. A second ``connect()`` then hangs or no-ops — drop first.
+            await self._reset_transport()
             token = await self._resolve_token()
             headers = {
                 "Authorization": f"Bearer {token}",
@@ -354,7 +363,7 @@ class RealtimeManager:
                     timeout=self._connect_timeout_s,
                 )
             except Exception:
-                self._connected.clear()
+                await self._reset_transport()
                 if initial:
                     raise
                 log.warning("WS supervisor reconnect failed", exc_info=True)

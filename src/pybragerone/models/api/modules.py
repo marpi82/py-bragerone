@@ -5,19 +5,19 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class ModuleGateway(BaseModel):
     """Gateway information for a module."""
 
-    address: str
-    interface: str
-    version: str
+    address: str = ""
+    interface: str = ""
+    version: str = ""
 
-    @field_validator("interface", mode="before")
+    @field_validator("address", "interface", "version", mode="before")
     @classmethod
-    def _coerce_optional_interface(cls, value: Any) -> Any:
+    def _coerce_optional_str(cls, value: Any) -> Any:
         if value is None:
             return ""
         return value
@@ -36,30 +36,45 @@ class Module(BaseModel):
 
     devid: str
     name: str
-    gateway: ModuleGateway
+    gateway: ModuleGateway = Field(default_factory=ModuleGateway)
     deviceMenu: int
     deviceLanguageVariant: int
     devices: list[Any]
     services: list[Any]
     permissions: list[str]
     acceptedAt: int
-    connectedAt: int
+    connectedAt: int = 0
     moduleAlarms: int
     parameterSchemas: list[ModuleParameterSchema]
     id: int
-    moduleAddress: str
-    moduleInterface: str
-    moduleVersion: str
+    moduleAddress: str = ""
+    moduleInterface: str = ""
+    moduleVersion: str = ""
     moduleServices: list[Any]
     moduleTitle: str
     isAcceptedAt: datetime
-    isConnectedAt: datetime
+    isConnectedAt: datetime | None = None
 
-    @field_validator("moduleInterface", mode="before")
+    @field_validator("moduleAddress", "moduleInterface", "moduleVersion", mode="before")
     @classmethod
-    def _coerce_optional_module_interface(cls, value: Any) -> Any:
+    def _coerce_optional_str(cls, value: Any) -> Any:
         if value is None:
             return ""
+        return value
+
+    @field_validator("connectedAt", mode="before")
+    @classmethod
+    def _coerce_null_connected_at(cls, value: Any) -> Any:
+        """Upstream sends ``null`` for disconnected / placeholder module rows."""
+        if value is None:
+            return 0
+        return value
+
+    @field_validator("gateway", mode="before")
+    @classmethod
+    def _coerce_empty_gateway(cls, value: Any) -> Any:
+        if value is None:
+            return {}
         return value
 
 

@@ -12,11 +12,12 @@ Install from PyPI:
 
    pip install py-bragerone
 
-Or install from TestPyPI for pre-release versions:
+Pre-releases (``aN`` / ``bN`` / ``rcN`` tags) are published to the **same** PyPI
+index — pin an exact version when needed:
 
 .. code-block:: bash
 
-   pip install -i https://test.pypi.org/simple/ py-bragerone
+   pip install "py-bragerone==2026.8.9rc1"
 
 Optional Extras
 ~~~~~~~~~~~~~~~

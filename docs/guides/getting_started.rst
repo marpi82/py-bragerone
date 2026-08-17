@@ -83,9 +83,9 @@ Stable (PyPI)::
 
   pip install py-bragerone
 
-Pre-release (TestPyPI)::
+Pre-release (PyPI, exact pin)::
 
-  pip install -i https://test.pypi.org/simple/ py-bragerone
+  pip install "py-bragerone==2026.8.9rc1"
 
 Optional extras::
 

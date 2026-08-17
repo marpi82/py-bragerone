@@ -7,6 +7,30 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Changed
+
+- Publish pre-release tags (``aN`` / ``bN`` / ``rcN``) to **PyPI** instead of
+  TestPyPI, so Home Assistant and other consumers can pin
+  ``py-bragerone==YYYY.M.NrcN`` from the primary index. GitHub Releases for those
+  tags are marked ``prerelease=true``.
+
+### Added
+
+- Expose library↔cloud Socket.IO health as :class:`CloudSessionConnectivity` via
+  ``BragerOneGateway.on_cloud_session`` (distinct from module↔cloud
+  ``connectedAt`` / :class:`ModuleConnectivity`). Session drops stay detectable
+  and self-heal; module offline remains observe-only (#319).
+
+### Fixed
+
+- Tolerate degraded ``GET /v1/modules`` rows (empty ``gateway``, ``connectedAt:
+  null``) so connectivity refresh can mark the module offline instead of skipping
+  the listing and leaving Home Assistant on a stale **Connected** state (#319).
+- Reset leftover Engine.IO sessions after a connect timeout so the supervisor
+  does not retry ``connect()`` on a half-open client (#319).
+- REST-prime parameters from the connectivity poll while the Socket.IO session
+  is down, so push consumers keep receiving snapshots until WS reconnects (#319).
+
 ## [2026.8.8] - 2026-08-15
 
 ### Fixed

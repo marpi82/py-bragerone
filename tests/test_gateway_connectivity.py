@@ -28,6 +28,7 @@ class FakeApiClient:
         self.module_rows: list[Any] = []
         self.get_modules_calls = 0
         self.get_modules_error: Exception | None = None
+        self.prime_params_calls = 0
         self.closed = False
 
     @property
@@ -47,6 +48,7 @@ class FakeApiClient:
 
     async def modules_parameters_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
         """Return an empty successful prime."""
+        self.prime_params_calls += 1
         if not return_data:
             return True
         return 200, {}
@@ -546,13 +548,48 @@ async def test_gateway_reconnect_skips_stale_generation_refresh() -> None:
     calls_before = api.get_modules_calls
 
     async def _slow_resubscribe() -> None:
-        gw._on_ws_disconnected()
+        await gw._on_ws_disconnected()
         return None
 
     gw.resubscribe = _slow_resubscribe  # type: ignore[method-assign]
     await gw._on_ws_connected()
     assert api.get_modules_calls == calls_before
     await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_cloud_session_callbacks_are_detectable() -> None:
+    """Library↔cloud session flips notify on_cloud_session without touching module online."""
+    from pybragerone.models.events import CloudSessionConnectivity
+
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    sessions: list[CloudSessionConnectivity] = []
+    gw.on_cloud_session(sessions.append)
+
+    await gw.start()
+    assert gw.ws_session_up() is True
+    assert [(e.up, e.source) for e in sessions] == [(True, "connect")]
+    assert gw.module_online("M1") is True
+
+    sessions.clear()
+    await ws.trigger_disconnected()
+    assert gw.ws_session_up() is False
+    assert [(e.up, e.source) for e in sessions] == [(False, "disconnect")]
+    assert gw.module_online("M1") is True
+
+    sessions.clear()
+    await gw._on_ws_connected()
+    assert gw.ws_session_up() is True
+    assert sessions[0].up is True
+    assert sessions[0].source == "connect"
+
+    sessions.clear()
+    await gw.stop()
+    assert gw.ws_session_up() is False
+    assert [(e.up, e.source) for e in sessions] == [(False, "stop")]
 
 
 @pytest.mark.asyncio
@@ -564,4 +601,58 @@ async def test_gateway_refresh_with_empty_module_list() -> None:
     gw = BragerOneGateway(api=api, object_id=1, modules=[], ws=ws, connectivity_poll_interval=0)
     await gw.start()
     await gw.refresh_module_connectivity()
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_reprimes_parameters_while_ws_session_is_down() -> None:
+    """While Socket.IO is down, the connectivity poll REST-primes so sensors can move."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+    )
+    await gw.start()
+    primes_after_start = api.prime_params_calls
+    assert primes_after_start >= 1
+
+    await ws.trigger_disconnected()
+    assert gw.ws_session_up() is False
+    await _wait_until(lambda: api.prime_params_calls > primes_after_start)
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_logs_reprime_failure_while_ws_down() -> None:
+    """REST re-prime exceptions while WS is down must not tear down the poll loop."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+    )
+    await gw.start()
+    await ws.trigger_disconnected()
+    assert gw.ws_session_up() is False
+
+    hits = 0
+
+    async def _boom_prime(tries: int = 3) -> tuple[bool, bool]:
+        nonlocal hits
+        _ = tries
+        hits += 1
+        raise RuntimeError("prime failed")
+
+    gw._prime_with_retry = _boom_prime  # type: ignore[method-assign]
+    await _wait_until(lambda: hits >= 1)
+    assert gw._started is True
     await gw.stop()

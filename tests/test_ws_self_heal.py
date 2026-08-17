@@ -20,6 +20,7 @@ class FakeAsyncClient:
         self.sid: str | None = "ENG-SID"
         self._handlers: dict[tuple[str, str], Any] = {}
         self.connect_calls = 0
+        self.disconnect_calls = 0
         self.reconnect_event = asyncio.Event()
 
     def on(self, event: str, handler: Any, namespace: str) -> None:
@@ -40,6 +41,7 @@ class FakeAsyncClient:
 
     async def disconnect(self) -> None:
         """Simulate socket disconnect."""
+        self.disconnect_calls += 1
         self.connected = False
 
     async def emit(self, *args: Any, **kwargs: Any) -> None:
@@ -226,5 +228,55 @@ async def test_hanging_token_provider_falls_back_to_static_token(monkeypatch: py
     await asyncio.wait_for(manager.connect(), timeout=1.0)
 
     assert captured[0] == "Bearer last-known"
+
+    await manager.disconnect()
+
+
+class ZombieAfterTimeoutClient(FakeAsyncClient):
+    """Fake that leaves ``connected=True`` when connect times out (Engine.IO leftover)."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize with a fail-next flag."""
+        super().__init__(*args, **kwargs)
+        self.fail_next = False
+        self.reset_after_timeout = asyncio.Event()
+
+    async def connect(self, *args: Any, **kwargs: Any) -> None:
+        """Succeed, or set connected and raise TimeoutError like a cancelled handshake."""
+        if self.fail_next:
+            self.connect_calls += 1
+            self.connected = True
+            raise TimeoutError("simulated connect timeout")
+        await super().connect(*args, **kwargs)
+
+    async def disconnect(self) -> None:
+        """Record leftover teardown after a timed-out connect."""
+        was_connected = self.connected
+        await super().disconnect()
+        if was_connected and self.connect_calls >= 2:
+            self.reset_after_timeout.set()
+
+
+async def test_timed_out_connect_resets_leftover_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Connect timeout must disconnect leftover ``connected=True`` before the next retry."""
+    fake = ZombieAfterTimeoutClient()
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    manager._supervisor_interval_s = 0.01
+
+    await manager.connect()
+    fake.fail_next = True
+    fake.connected = False
+    await manager._on_disconnect()
+
+    await asyncio.wait_for(fake.reset_after_timeout.wait(), timeout=1.0)
+    leftover_cleared = fake.connected
+    assert leftover_cleared is False
+    assert fake.disconnect_calls >= 2
+
+    fake.fail_next = False
+    await asyncio.wait_for(fake.reconnect_event.wait(), timeout=1.0)
+    assert fake.connected is True
 
     await manager.disconnect()

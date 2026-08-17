@@ -3,9 +3,10 @@
 Maintains the WS connection and emits ParamUpdate events on the EventBus.
 Does not contain heavy logic (such as mapping) internally — this is the role of ParamStore/HA.
 
-Also tracks per-module cloud connectivity (REST ``connectedAt`` + WS session) via a
-dedicated callback path — not the ParamUpdate EventBus — so Home Assistant can keep
-iterating ``bus.subscribe()`` unchanged.
+Connectivity is two layers, both off the ParamUpdate EventBus:
+
+* **Module ↔ cloud** — SPA ``connectedAt`` via ``on_module_connectivity`` (observe/wait).
+* **Library ↔ cloud** — Socket.IO session via ``on_cloud_session`` (detect + self-heal).
 """
 
 from __future__ import annotations
@@ -18,7 +19,13 @@ from typing import Any, Literal, Protocol
 
 from .api import BragerOneApiClient, RealtimeManager, ServerConfig
 from .models.api.modules import Module
-from .models.events import MODULE_CONNECTION_STATUS_CHANGED, EventBus, ModuleConnectivity, ParamUpdate
+from .models.events import (
+    MODULE_CONNECTION_STATUS_CHANGED,
+    CloudSessionConnectivity,
+    EventBus,
+    ModuleConnectivity,
+    ParamUpdate,
+)
 
 LOG = logging.getLogger(__name__)
 
@@ -26,12 +33,14 @@ LOG = logging.getLogger(__name__)
 _DEFAULT_CONNECTIVITY_POLL_INTERVAL_S = 60.0
 
 ConnectivitySource = Literal["rest", "ws", "derived"]
+CloudSessionSource = Literal["connect", "disconnect", "stop"]
 
 # Callback signatures
 ParametersCb = Callable[[str, dict[str, Any]], Awaitable[None] | None]  # (event_name, payload)
 SnapshotCb = Callable[[dict[str, Any]], Awaitable[None] | None]
 GenericCb = Callable[[str, Any], Awaitable[None] | None]
 ModuleConnectivityCb = Callable[[ModuleConnectivity], Awaitable[None] | None]
+CloudSessionCb = Callable[[CloudSessionConnectivity], Awaitable[None] | None]
 
 
 def module_connected_at_means_online(connected_at: int) -> bool:
@@ -144,7 +153,8 @@ class BragerOneGateway:
       4) "prime" (REST snapshot of parameters + activity quantities)
       5) EventBus emits ParamUpdate for consumers (ParamStore/HA/CLI)
       6) Background REST poll of ``get_modules`` diffs ``connectedAt`` and
-         notifies ``on_module_connectivity`` (separate from EventBus)
+         notifies ``on_module_connectivity`` (module↔cloud; separate from EventBus)
+      7) Socket.IO up/down notifies ``on_cloud_session`` (library↔cloud; self-healing)
     """
 
     def __init__(
@@ -192,9 +202,10 @@ class BragerOneGateway:
         self._on_snapshot: list[SnapshotCb] = []
         self._on_any: list[GenericCb] = []
         self._on_module_connectivity: list[ModuleConnectivityCb] = []
+        self._on_cloud_session: list[CloudSessionCb] = []
 
-        # Per-module cloud connectivity (REST/WS connectedAt). Client WS session is tracked
-        # separately and does not force module offline (SPA parity).
+        # Module↔cloud (REST/WS connectedAt) vs library↔cloud (Socket.IO session).
+        # The session bit never forces module offline (SPA parity).
         self._ws_session_up = False
         self._ws_hooks_registered = False
         self._connectivity_generation = 0
@@ -264,12 +275,22 @@ class BragerOneGateway:
         self._on_any.append(cb)
 
     def on_module_connectivity(self, cb: ModuleConnectivityCb) -> None:
-        """Register callback for per-module online/offline transitions.
+        """Register callback for module↔cloud online/offline (SPA ``connectedAt``).
 
         Callbacks receive :class:`ModuleConnectivity`. This path is intentionally
         separate from :attr:`bus` so ``ParamUpdate`` subscribers stay unchanged.
+        Offline modules are observed only — the client cannot repair plant↔cloud links.
         """
         self._on_module_connectivity.append(cb)
+
+    def on_cloud_session(self, cb: CloudSessionCb) -> None:
+        """Register callback for library↔cloud Socket.IO session up/down.
+
+        Callbacks receive :class:`CloudSessionConnectivity`. Distinct from
+        :meth:`on_module_connectivity`: a dropped client session must self-heal and
+        stay detectable without looking like a module went offline.
+        """
+        self._on_cloud_session.append(cb)
 
     def module_online(self, devid: str) -> bool | None:
         """Return current online state for *devid*, or ``None`` if not yet known."""
@@ -285,11 +306,11 @@ class BragerOneGateway:
         return dict(gateway) if isinstance(gateway, dict) else None
 
     def ws_session_up(self) -> bool:
-        """Return whether this gateway's Socket.IO client session is currently up."""
+        """Return whether this gateway's Socket.IO (library↔cloud) session is up."""
         return self._ws_session_up
 
     async def refresh_module_connectivity(self) -> None:
-        """Refresh connectivity from REST ``get_modules`` (works with WS up or down)."""
+        """Refresh module↔cloud connectivity from REST ``get_modules``."""
         await self._refresh_module_connectivity(source="rest")
 
     async def start(self) -> None:
@@ -316,7 +337,7 @@ class BragerOneGateway:
             raise RuntimeError("RealtimeManager is not initialized")
         ws.on_event(self._ws_dispatch)
         await ws.connect()
-        self._ws_session_up = True
+        await self._set_ws_session_up(True, source="connect")
         if not self._ws_hooks_registered:
             ws.add_on_connected(self._on_ws_connected)
             ws.add_on_disconnected(self._on_ws_disconnected)
@@ -372,7 +393,7 @@ class BragerOneGateway:
         except Exception:
             LOG.exception("Error while disconnecting WS")
         finally:
-            self._ws_session_up = False
+            await self._set_ws_session_up(False, source="stop")
 
         # 2) Cancel background tasks (including anything spawned by disconnect).
         try:
@@ -404,11 +425,23 @@ class BragerOneGateway:
         await api.ensure_auth()
         return api.access_token
 
+    async def _set_ws_session_up(self, up: bool, *, source: CloudSessionSource) -> None:
+        """Update library↔cloud session cache and notify listeners on flips."""
+        previous = self._ws_session_up
+        self._ws_session_up = up
+        changed = previous is not up
+        if not changed:
+            return
+        event = CloudSessionConnectivity(up=up, source=source, changed=True)
+        LOG.info("Cloud session: up=%s source=%s", up, source)
+        if self._on_cloud_session:
+            await self._invoke_list(self._on_cloud_session, event)
+
     async def _on_ws_connected(self) -> None:
         """Re-bind modules after WS reconnect, then refresh connectedAt from REST."""
         if not self._started:
             return
-        self._ws_session_up = True
+        await self._set_ws_session_up(True, source="connect")
         generation = self._connectivity_generation
         try:
             await self.resubscribe()
@@ -418,14 +451,18 @@ class BragerOneGateway:
             if self._started and generation == self._connectivity_generation:
                 await self._refresh_module_connectivity(source="rest")
 
-    def _on_ws_disconnected(self) -> None:
-        """Track client Socket.IO down without forcing module offline (SPA parity)."""
-        self._ws_session_up = False
+    async def _on_ws_disconnected(self) -> None:
+        """Mark library↔cloud Socket.IO down without forcing module offline.
+
+        During :meth:`stop` (``_started`` already cleared) leave the session bit
+        for the ``source="stop"`` notification so consumers still see a down event.
+        """
         if not self._started:
             return
         # Bump generation so any stale disconnect work cannot clobber a reconnect.
         self._connectivity_generation += 1
         # Keep last connectedAt; REST poll / reconnect refresh remains authoritative.
+        await self._set_ws_session_up(False, source="disconnect")
 
     async def resubscribe(self) -> None:
         """Call after WS reconnect to re-bind modules + prime again."""
@@ -476,6 +513,14 @@ class BragerOneGateway:
                 await self._refresh_module_connectivity(source="rest")
             except Exception:
                 LOG.exception("Connectivity poll tick failed")
+            # ParamUpdates are WS deltas; while the socket is down REST-prime so HA
+            # (and other consumers) do not freeze on the last snapshot.
+            if not self._started or self._ws_session_up:
+                continue
+            try:
+                await self._prime_with_retry()
+            except Exception:
+                LOG.exception("REST re-prime while WebSocket is down failed")
 
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource) -> None:
         """Pull ``get_modules`` and apply online state for subscribed devids.
