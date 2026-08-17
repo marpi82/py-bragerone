@@ -42,6 +42,8 @@ Best Practices
 - Treat **401/403** as token/session problems → refresh/login and retry once.
 - For prime calls add a small retry with backoff (e.g. 200→500→800 ms).
 - WS reconnect should **always** re-run prime via REST (no WS snapshot available).
+- While the Socket.IO session is down, the gateway REST-primes on the connectivity
+  poll interval so consumers are not stuck on the last WS delta.
 - In EventBus consumers (e.g., :class:`ParamStore`), **never** let exceptions kill the task:
   catch and log, continue processing.
 

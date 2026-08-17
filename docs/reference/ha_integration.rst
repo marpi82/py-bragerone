@@ -94,6 +94,12 @@ app). The client's own Socket.IO session is tracked separately and does **not**
 force modules offline (SPA parity). A background REST poll (default 60s;
 ``connectivity_poll_interval=0`` disables it) continues even while WS is down.
 Failed or empty ``get_modules`` responses never wipe every module to offline.
+Degraded rows (empty ``gateway``, null ``connectedAt``) parse as offline
+(``connectedAt == 0``) instead of being dropped from the listing.
+
+While the client's Socket.IO session is down, the same poll **REST-primes**
+parameters so Home Assistant entities keep receiving ``ParamUpdate`` events (WS
+deltas only resume after reconnect + resubscribe + prime).
 
 Connection **labels** are not hardcoded: resolve them from the live ``module``
 i18n namespace (same keys the SPA uses):

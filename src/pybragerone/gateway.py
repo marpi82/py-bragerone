@@ -476,6 +476,14 @@ class BragerOneGateway:
                 await self._refresh_module_connectivity(source="rest")
             except Exception:
                 LOG.exception("Connectivity poll tick failed")
+            # ParamUpdates are WS deltas; while the socket is down REST-prime so HA
+            # (and other consumers) do not freeze on the last snapshot.
+            if not self._started or self._ws_session_up:
+                continue
+            try:
+                await self._prime_with_retry()
+            except Exception:
+                LOG.exception("REST re-prime while WebSocket is down failed")
 
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource) -> None:
         """Pull ``get_modules`` and apply online state for subscribed devids.

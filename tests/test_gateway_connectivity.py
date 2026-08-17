@@ -28,6 +28,7 @@ class FakeApiClient:
         self.module_rows: list[Any] = []
         self.get_modules_calls = 0
         self.get_modules_error: Exception | None = None
+        self.prime_params_calls = 0
         self.closed = False
 
     @property
@@ -47,6 +48,7 @@ class FakeApiClient:
 
     async def modules_parameters_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
         """Return an empty successful prime."""
+        self.prime_params_calls += 1
         if not return_data:
             return True
         return 200, {}
@@ -564,4 +566,27 @@ async def test_gateway_refresh_with_empty_module_list() -> None:
     gw = BragerOneGateway(api=api, object_id=1, modules=[], ws=ws, connectivity_poll_interval=0)
     await gw.start()
     await gw.refresh_module_connectivity()
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_reprimes_parameters_while_ws_session_is_down() -> None:
+    """While Socket.IO is down, the connectivity poll REST-primes so sensors can move."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+    )
+    await gw.start()
+    primes_after_start = api.prime_params_calls
+    assert primes_after_start >= 1
+
+    await ws.trigger_disconnected()
+    assert gw.ws_session_up() is False
+    await _wait_until(lambda: api.prime_params_calls > primes_after_start)
     await gw.stop()
