@@ -7,6 +7,13 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Changed
+
+- Publish pre-release tags (``aN`` / ``bN`` / ``rcN``) to **PyPI** instead of
+  TestPyPI, so Home Assistant and other consumers can pin
+  ``py-bragerone==YYYY.M.NrcN`` from the primary index. GitHub Releases for those
+  tags are marked ``prerelease=true``.
+
 ### Added
 
 - Expose library↔cloud Socket.IO health as :class:`CloudSessionConnectivity` via
