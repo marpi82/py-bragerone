@@ -625,3 +625,34 @@ async def test_gateway_reprimes_parameters_while_ws_session_is_down() -> None:
     assert gw.ws_session_up() is False
     await _wait_until(lambda: api.prime_params_calls > primes_after_start)
     await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_logs_reprime_failure_while_ws_down() -> None:
+    """REST re-prime exceptions while WS is down must not tear down the poll loop."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+    )
+    await gw.start()
+    await ws.trigger_disconnected()
+    assert gw.ws_session_up() is False
+
+    hits = 0
+
+    async def _boom_prime(tries: int = 3) -> tuple[bool, bool]:
+        nonlocal hits
+        _ = tries
+        hits += 1
+        raise RuntimeError("prime failed")
+
+    gw._prime_with_retry = _boom_prime  # type: ignore[method-assign]
+    await _wait_until(lambda: hits >= 1)
+    assert gw._started is True
+    await gw.stop()

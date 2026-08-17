@@ -108,3 +108,36 @@ def test_module_model_tolerates_degraded_disconnected_row() -> None:
     assert module.moduleAddress == ""
     assert module.moduleVersion == ""
     assert module.isConnectedAt is None
+
+
+def test_module_model_tolerates_null_gateway_object() -> None:
+    """``gateway: null`` coerces to an empty ModuleGateway (not a validation error)."""
+    payload: dict[str, object] = {
+        "devid": "[REDACTED]",
+        "name": "Module name",
+        "gateway": None,
+        "deviceMenu": 0,
+        "deviceLanguageVariant": 0,
+        "devices": [],
+        "services": [],
+        "permissions": [],
+        "acceptedAt": 0,
+        "connectedAt": None,
+        "moduleAlarms": 0,
+        "parameterSchemas": [],
+        "id": 1,
+        "moduleAddress": None,
+        "moduleInterface": None,
+        "moduleVersion": None,
+        "moduleServices": [],
+        "moduleTitle": "HT DasPell GL 37kW",
+        "isAcceptedAt": "2026-04-06T00:00:00Z",
+        "isConnectedAt": None,
+    }
+
+    module = Module.model_validate(payload)
+
+    assert module.gateway.address == ""
+    assert module.gateway.interface == ""
+    assert module.gateway.version == ""
+    assert module.connectedAt == 0
