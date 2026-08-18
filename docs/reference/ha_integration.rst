@@ -97,6 +97,7 @@ Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so exist
    # gateway.module_online(devid) -> True | False | None
    # gateway.module_connected_at(devid) -> int | None  # REST connectedAt
    # gateway.ws_session_up() -> bool  # library↔cloud Socket.IO
+   # gateway.last_param_update_age_s() -> float | None
 
 The gateway primes from ``GET /v1/modules`` (``connectedAt != 0`` means online —
 same truthiness check as the SPA card/modal) and listens for the official Socket.IO
@@ -111,7 +112,12 @@ Degraded rows (empty ``gateway``, null ``connectedAt``) parse as offline
 
 While the client's Socket.IO session is down, the same poll **REST-primes**
 parameters so Home Assistant entities keep receiving ``ParamUpdate`` events (WS
-deltas only resume after reconnect + resubscribe + prime).
+deltas only resume after reconnect + resubscribe + prime). An Engine.IO abort
+that skips the Socket.IO disconnect callback still marks the session down before
+reconnect, so that REST-prime path can run. If the session still reports up but
+no ``ParamUpdate`` is published for 180s (zombie transport), the poll REST-primes
+anyway. ``BragerOneGateway.last_param_update_age_s()`` returns that gap for
+diagnostics.
 
 Connection **labels** are not hardcoded: resolve them from the live ``module``
 i18n namespace (same keys the SPA uses):

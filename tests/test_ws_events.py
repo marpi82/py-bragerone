@@ -175,7 +175,7 @@ async def test_lifecycle_handlers_and_connect_callbacks(monkeypatch: pytest.Monk
     disc.clear()
     await manager._on_disconnect()
     await _drain_spawned()
-    assert "disc" in disc
+    assert disc == []
     await manager._on_reconnect()
     await manager._on_reconnect_attempt(2)
     await manager._on_reconnect_error("err")

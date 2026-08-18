@@ -64,8 +64,9 @@ class CloudSessionConnectivity:
 
     Distinct from :class:`ModuleConnectivity` (module ↔ cloud ``connectedAt``).
     When this session drops the gateway **self-heals**: Engine.IO reset on connect
-    timeout, supervisor reconnect, resubscribe + REST prime, and REST re-prime on
-    the connectivity poll while the socket is still down. Consumers register
+    timeout, supervisor reconnect, resubscribe + REST prime, REST re-prime on
+    the connectivity poll while the socket is still down, and REST re-prime when
+    ParamUpdates go stale while the session still reports up. Consumers register
     ``BragerOneGateway.on_cloud_session`` or poll :meth:`BragerOneGateway.ws_session_up`
     so an outage is detectable without looking like a plant module going offline.
     """

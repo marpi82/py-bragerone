@@ -31,6 +31,8 @@ LOG = logging.getLogger(__name__)
 
 # Default REST poll interval for module connectedAt refresh (seconds).
 _DEFAULT_CONNECTIVITY_POLL_INTERVAL_S = 60.0
+# REST-prime when no ParamUpdate has been published for this long while WS claims up.
+_DEFAULT_STALE_PRIME_AFTER_S = 180.0
 
 ConnectivitySource = Literal["rest", "ws", "derived"]
 CloudSessionSource = Literal["connect", "disconnect", "stop"]
@@ -166,6 +168,7 @@ class BragerOneGateway:
         ws: RealtimeManagerClient | None = None,
         owns_api: bool = False,
         connectivity_poll_interval: float = _DEFAULT_CONNECTIVITY_POLL_INTERVAL_S,
+        stale_prime_after_s: float = _DEFAULT_STALE_PRIME_AFTER_S,
     ) -> None:
         """Initialize the gateway but do not start it yet.
 
@@ -178,6 +181,9 @@ class BragerOneGateway:
             connectivity_poll_interval: Seconds between REST ``get_modules`` connectivity
                 refreshes. Use ``0`` to disable the background poll (manual
                 :meth:`refresh_module_connectivity` / WS hooks still work).
+            stale_prime_after_s: Seconds without a published ``ParamUpdate`` after which
+                the poll REST-primes even if Socket.IO still reports up (zombie session).
+                Use ``0`` to disable stale-session priming.
         """
         self.object_id = int(object_id)
         self.modules = sorted(set(modules))
@@ -188,6 +194,8 @@ class BragerOneGateway:
 
         self._owns_api = owns_api
         self._connectivity_poll_interval = float(connectivity_poll_interval)
+        self._stale_prime_after_s = float(stale_prime_after_s)
+        self._last_param_publish_monotonic: float | None = None
 
         self._tasks: set[asyncio.Task[Any]] = set()
         self._started = False
@@ -308,6 +316,19 @@ class BragerOneGateway:
     def ws_session_up(self) -> bool:
         """Return whether this gateway's Socket.IO (library↔cloud) session is up."""
         return self._ws_session_up
+
+    def last_param_update_age_s(self) -> float | None:
+        """Return seconds since the last published ``ParamUpdate``, or ``None`` if never."""
+        stamped = self._last_param_publish_monotonic
+        if stamped is None:
+            return None
+        return time.monotonic() - stamped
+
+    def _touch_param_publish(self, count: int) -> None:
+        """Record that ``count`` parameter events were published."""
+        if count <= 0:
+            return
+        self._last_param_publish_monotonic = time.monotonic()
 
     async def refresh_module_connectivity(self) -> None:
         """Refresh module↔cloud connectivity from REST ``get_modules``."""
@@ -459,6 +480,8 @@ class BragerOneGateway:
         """
         if not self._started:
             return
+        if not self._ws_session_up:
+            return
         # Bump generation so any stale disconnect work cannot clobber a reconnect.
         self._connectivity_generation += 1
         # Keep last connectedAt; REST poll / reconnect refresh remains authoritative.
@@ -513,14 +536,25 @@ class BragerOneGateway:
                 await self._refresh_module_connectivity(source="rest")
             except Exception:
                 LOG.exception("Connectivity poll tick failed")
-            # ParamUpdates are WS deltas; while the socket is down REST-prime so HA
-            # (and other consumers) do not freeze on the last snapshot.
-            if not self._started or self._ws_session_up:
+            # ParamUpdates are WS deltas. REST-prime when the socket is down, or when
+            # the session still reports up but no parameter events have arrived (zombie
+            # Engine.IO abort that skipped the Socket.IO disconnect callback).
+            if not self._started:
                 continue
+            age = self.last_param_update_age_s()
+            stale_after = self._stale_prime_after_s
+            session_up = self._ws_session_up
+            if session_up:
+                if stale_after <= 0 or age is None or age < stale_after:
+                    continue
+                LOG.warning(
+                    "No ParamUpdate for %.0fs while Socket.IO reports up; REST-priming",
+                    age,
+                )
             try:
                 await self._prime_with_retry()
             except Exception:
-                LOG.exception("REST re-prime while WebSocket is down failed")
+                LOG.exception("REST re-prime (socket down or stale ParamUpdates) failed")
 
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource) -> None:
         """Pull ``get_modules`` and apply online state for subscribed devids.
@@ -681,6 +715,7 @@ class BragerOneGateway:
     async def ingest_prime_parameters(self, data: dict[str, Any]) -> None:
         """Treat /modules/parameters prime as "cold snapshot" and publish all pairs."""
         pairs = list(self.flatten_parameters(data, source="prime"))
+        self._touch_param_publish(len(pairs))
 
         async def _pub_all() -> None:
             for upd in pairs:
@@ -716,6 +751,7 @@ class BragerOneGateway:
         # snapshot
         if event_name == "snapshot" and isinstance(payload, dict):
             pairs = list(self.flatten_parameters(payload, source="snapshot"))
+            self._touch_param_publish(len(pairs))
 
             async def _pub_all() -> None:
                 for upd in pairs:
@@ -733,6 +769,7 @@ class BragerOneGateway:
         # parameters:change
         if event_name.endswith("parameters:change") and isinstance(payload, dict):
             pairs = list(self.flatten_parameters(payload, source="ws"))
+            self._touch_param_publish(len(pairs))
 
             async def _pub_all() -> None:
                 for upd in pairs:
