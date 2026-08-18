@@ -480,6 +480,8 @@ class BragerOneGateway:
         """
         if not self._started:
             return
+        if not self._ws_session_up:
+            return
         # Bump generation so any stale disconnect work cannot clobber a reconnect.
         self._connectivity_generation += 1
         # Keep last connectedAt; REST poll / reconnect refresh remains authoritative.

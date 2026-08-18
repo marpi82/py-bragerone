@@ -593,6 +593,22 @@ async def test_gateway_cloud_session_callbacks_are_detectable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gateway_duplicate_disconnect_does_not_bump_generation() -> None:
+    """A second session-down while already down must not bump connectivity generation."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    await ws.trigger_disconnected()
+    assert gw.ws_session_up() is False
+    generation = gw._connectivity_generation
+    await ws.trigger_disconnected()
+    assert gw._connectivity_generation == generation
+    await gw.stop()
+
+
+@pytest.mark.asyncio
 async def test_gateway_refresh_with_empty_module_list() -> None:
     """Empty subscription list skips derived-offline warnings."""
     api = FakeApiClient()

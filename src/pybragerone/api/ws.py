@@ -117,7 +117,7 @@ class RealtimeManager:
         self._supervisor_running = False
         self._supervisor_interval_s = 15.0
         # Cap leftover Engine.IO teardown so an aborted websocket cannot wedge reconnect.
-        self._disconnect_timeout_s = min(5.0, float(connect_timeout_s))
+        self._disconnect_timeout_s = max(0.05, min(5.0, float(connect_timeout_s)))
         # True until the first successful connect, then after each disconnect notify.
         self._disconnect_notified = True
 
@@ -152,7 +152,7 @@ class RealtimeManager:
     async def _on_disconnect(self) -> None:
         log.info("WS disconnected")
         self._connected.clear()
-        self._notify_disconnected(force=True)
+        self._notify_disconnected()
 
     async def _on_connect_error(self, data: Any | None = None) -> None:
         log.warning("WS connect_error: %s", data)
@@ -165,9 +165,9 @@ class RealtimeManager:
         """Invoke disconnect callbacks (sync or async).
 
         Args:
-            force: When True, notify even if a previous drop was already reported
-                (Socket.IO ``disconnect`` after ``connect_error``). Supervisor
-                reconnect loops pass False so a wedged client does not spam.
+            force: When True, notify even if a previous drop was already reported.
+                The supervisor reconnect loop and Socket.IO ``disconnect`` pass False
+                so a wedged client does not spam session-down callbacks.
         """
         if self._disconnect_notified and not force:
             return

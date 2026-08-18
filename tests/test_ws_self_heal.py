@@ -493,3 +493,13 @@ async def test_abandon_client_and_notify_edge_paths(monkeypatch: pytest.MonkeyPa
     manager._notify_disconnected(force=True)
     assert calls == [1]
     await manager.disconnect()
+
+
+def test_disconnect_timeout_is_clamped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Zero/huge connect timeouts must not produce a non-positive disconnect wait."""
+    fake = FakeAsyncClient()
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+    too_small = RealtimeManager(token="tkn", connect_timeout_s=0)
+    assert too_small._disconnect_timeout_s == 0.05
+    too_large = RealtimeManager(token="tkn", connect_timeout_s=30)
+    assert too_large._disconnect_timeout_s == 5.0
