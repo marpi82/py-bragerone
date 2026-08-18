@@ -592,7 +592,6 @@ async def test_gateway_cloud_session_callbacks_are_detectable() -> None:
     assert [(e.up, e.source) for e in sessions] == [(False, "stop")]
 
 
-@pytest.mark.asyncio
 async def test_gateway_duplicate_disconnect_does_not_bump_generation() -> None:
     """A second session-down while already down must not bump connectivity generation."""
     api = FakeApiClient()
@@ -674,7 +673,6 @@ async def test_gateway_logs_reprime_failure_while_ws_down() -> None:
     await gw.stop()
 
 
-@pytest.mark.asyncio
 async def test_gateway_reprimes_when_param_updates_stale_while_session_up() -> None:
     """A silent zombie session (up, no ParamUpdates) must REST-prime from the poll."""
     api = FakeApiClient()
@@ -699,7 +697,6 @@ async def test_gateway_reprimes_when_param_updates_stale_while_session_up() -> N
     await gw.stop()
 
 
-@pytest.mark.asyncio
 async def test_gateway_poll_skips_prime_when_stopped_or_stale_disabled() -> None:
     """Poll must not REST-prime after stop, or when stale-prime is disabled and WS is up."""
     api = FakeApiClient()
@@ -726,7 +723,6 @@ async def test_gateway_poll_skips_prime_when_stopped_or_stale_disabled() -> None
     await gw.stop()
 
 
-@pytest.mark.asyncio
 async def test_gateway_touch_param_publish_and_age() -> None:
     """Publishing parameter events stamps last_param_update_age_s."""
     api = FakeApiClient()
