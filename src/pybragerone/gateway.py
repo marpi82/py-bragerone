@@ -541,10 +541,10 @@ class BragerOneGateway:
                 continue
             age = self.last_param_update_age_s()
             stale_after = self._stale_prime_after_s
-            params_stale = stale_after > 0 and age is not None and age >= stale_after
-            if self._ws_session_up and not params_stale:
-                continue
-            if params_stale and self._ws_session_up and age is not None:
+            session_up = self._ws_session_up
+            if session_up:
+                if stale_after <= 0 or age is None or age < stale_after:
+                    continue
                 LOG.warning(
                     "No ParamUpdate for %.0fs while Socket.IO reports up; REST-priming",
                     age,
