@@ -116,67 +116,16 @@ class RealtimeManager:
         self._supervisor_task: asyncio.Task[None] | None = None
         self._supervisor_running = False
         self._supervisor_interval_s = 15.0
+        # Cap leftover Engine.IO teardown so an aborted websocket cannot wedge reconnect.
+        self._disconnect_timeout_s = min(5.0, float(connect_timeout_s))
+        # True until the first successful connect, then after each disconnect notify.
+        self._disconnect_notified = True
 
         # Reconnection is owned exclusively by our supervisor loop (with fresh-token
         # resolution and a hard connect timeout); the built-in socket.io reconnect
         # loop would bypass both and race with the supervisor, so it stays disabled.
-        self._sio: socketio.AsyncClient = socketio.AsyncClient(
-            reconnection=False,
-            logger=sio_log,  # pyright: ignore[reportArgumentType] # route socket.io logs to a sub-logger
-            engineio_logger=eio_log,  # route engine.io logs to a sub-logger
-        )
-
-        ns = self._namespace
-        # Register built-in event handlers.
-        self._sio.on("connect", self._on_connect, namespace=ns)
-        self._sio.on("disconnect", self._on_disconnect, namespace=ns)
-        self._sio.on("connect_error", self._on_connect_error, namespace=ns)
-        self._sio.on("reconnect", self._on_reconnect, namespace=ns)
-        self._sio.on("reconnect_attempt", self._on_reconnect_attempt, namespace=ns)
-        self._sio.on("reconnect_error", self._on_reconnect_error, namespace=ns)
-        self._sio.on("error", self._on_error, namespace=ns)
-        self._sio.on("message", self._on_message, namespace=ns)
-        # Register key domain event handlers.
-        self._sio.on("snapshot", self._on_snapshot, namespace=ns)
-        self._sio.on(
-            "app:modules:parameters:change",
-            self._on_app_modules_parameters_change,
-            namespace=ns,
-        )
-        self._sio.on(
-            "modules:parameters:change",  # fallback alt name
-            self._on_modules_parameters_change,
-            namespace=ns,
-        )
-        self._sio.on(
-            "parameters:change",
-            self._on_parameters_change,
-            namespace=ns,
-        )
-        self._sio.on(
-            "app:module:task:created",
-            self._on_app_modules_task_created,
-            namespace=ns,
-        )
-        self._sio.on(
-            "app:module:task:status:changed",
-            self._on_app_modules_task_status_changed,
-            namespace=ns,
-        )
-        self._sio.on(
-            "app:module:task:completed",
-            self._on_app_modules_task_completed,
-            namespace=ns,
-        )
-        self._sio.on(
-            MODULE_CONNECTION_STATUS_CHANGED,
-            self._on_app_module_connection_status_changed,
-            namespace=ns,
-        )
-        # Numeric fallbacks observed in some builds
-        self._sio.on("60", self._on_ev60, namespace=ns)
-        self._sio.on("61", self._on_ev61, namespace=ns)
-        self._sio.on("63", self._on_ev63, namespace=ns)
+        self._sio: socketio.AsyncClient = self._make_sio()
+        self._register_sio_handlers()
 
     # ---- Built-in handlers ----
     async def _on_connect(self) -> None:
@@ -197,12 +146,13 @@ class RealtimeManager:
             except Exception:
                 log.exception("Error in on_connected callback")
 
+        self._disconnect_notified = False
         self._connected.set()
 
     async def _on_disconnect(self) -> None:
         log.info("WS disconnected")
         self._connected.clear()
-        self._notify_disconnected()
+        self._notify_disconnected(force=True)
 
     async def _on_connect_error(self, data: Any | None = None) -> None:
         log.warning("WS connect_error: %s", data)
@@ -211,8 +161,17 @@ class RealtimeManager:
         if was_connected:
             self._notify_disconnected()
 
-    def _notify_disconnected(self) -> None:
-        """Invoke disconnect callbacks (sync or async)."""
+    def _notify_disconnected(self, *, force: bool = False) -> None:
+        """Invoke disconnect callbacks (sync or async).
+
+        Args:
+            force: When True, notify even if a previous drop was already reported
+                (Socket.IO ``disconnect`` after ``connect_error``). Supervisor
+                reconnect loops pass False so a wedged client does not spam.
+        """
+        if self._disconnect_notified and not force:
+            return
+        self._disconnect_notified = True
         for cb in list(self._on_disconnected):
             try:
                 res = cb()
@@ -312,11 +271,108 @@ class RealtimeManager:
 
         task.add_done_callback(_supervisor_done)
 
+    def _make_sio(self) -> socketio.AsyncClient:
+        """Create a Socket.IO client with library reconnect disabled."""
+        return socketio.AsyncClient(
+            reconnection=False,
+            logger=sio_log,  # pyright: ignore[reportArgumentType] # route socket.io logs to a sub-logger
+            engineio_logger=eio_log,  # route engine.io logs to a sub-logger
+        )
+
+    def _register_sio_handlers(self) -> None:
+        """Bind namespace handlers on the current Socket.IO client."""
+        ns = self._namespace
+        self._sio.on("connect", self._on_connect, namespace=ns)
+        self._sio.on("disconnect", self._on_disconnect, namespace=ns)
+        self._sio.on("connect_error", self._on_connect_error, namespace=ns)
+        self._sio.on("reconnect", self._on_reconnect, namespace=ns)
+        self._sio.on("reconnect_attempt", self._on_reconnect_attempt, namespace=ns)
+        self._sio.on("reconnect_error", self._on_reconnect_error, namespace=ns)
+        self._sio.on("error", self._on_error, namespace=ns)
+        self._sio.on("message", self._on_message, namespace=ns)
+        self._sio.on("snapshot", self._on_snapshot, namespace=ns)
+        self._sio.on(
+            "app:modules:parameters:change",
+            self._on_app_modules_parameters_change,
+            namespace=ns,
+        )
+        self._sio.on(
+            "modules:parameters:change",  # fallback alt name
+            self._on_modules_parameters_change,
+            namespace=ns,
+        )
+        self._sio.on(
+            "parameters:change",
+            self._on_parameters_change,
+            namespace=ns,
+        )
+        self._sio.on(
+            "app:module:task:created",
+            self._on_app_modules_task_created,
+            namespace=ns,
+        )
+        self._sio.on(
+            "app:module:task:status:changed",
+            self._on_app_modules_task_status_changed,
+            namespace=ns,
+        )
+        self._sio.on(
+            "app:module:task:completed",
+            self._on_app_modules_task_completed,
+            namespace=ns,
+        )
+        self._sio.on(
+            MODULE_CONNECTION_STATUS_CHANGED,
+            self._on_app_module_connection_status_changed,
+            namespace=ns,
+        )
+        self._sio.on("60", self._on_ev60, namespace=ns)
+        self._sio.on("61", self._on_ev61, namespace=ns)
+        self._sio.on("63", self._on_ev63, namespace=ns)
+
+    def _abandon_client(self, old: socketio.AsyncClient) -> None:
+        """Best-effort abort of a wedged Engine.IO client without blocking reconnect."""
+        eio = getattr(old, "eio", None)
+        disconnect = getattr(eio, "disconnect", None) if eio is not None else None
+        if not callable(disconnect):
+            return
+        try:
+            result = disconnect(abort=True)
+        except TypeError:
+            try:
+                result = disconnect()
+            except Exception:
+                log.exception("Failed to abort leftover Engine.IO client")
+                return
+        except Exception:
+            log.exception("Failed to abort leftover Engine.IO client")
+            return
+        if asyncio.iscoroutine(result):
+            spawn(result, "eio_abort_disconnect", log)
+
+    def _replace_client(self) -> None:
+        """Swap in a fresh Socket.IO client after a hung/aborted transport."""
+        old = self._sio
+        self._sio = self._make_sio()
+        self._register_sio_handlers()
+        self._abandon_client(old)
+
     async def _reset_transport(self) -> None:
-        """Drop a half-open Engine.IO session so the next ``connect()`` is clean."""
+        """Drop a half-open Engine.IO session so the next ``connect()`` is clean.
+
+        Engine.IO abort (``WSMsgType.CLOSED``) can deadlock ``disconnect()`` waiting
+        for read/write loops. Bound that wait, then replace the client if it is still
+        wedged so the supervisor can reconnect.
+        """
         self._connected.clear()
-        with suppress(Exception):
-            await self._sio.disconnect()
+        try:
+            await asyncio.wait_for(self._sio.disconnect(), timeout=self._disconnect_timeout_s)
+        except TimeoutError:
+            log.warning("WS transport disconnect timed out; replacing Socket.IO client")
+            self._replace_client()
+        except Exception:
+            log.warning("WS transport disconnect failed; replacing Socket.IO client", exc_info=True)
+            self._replace_client()
 
     async def _resolve_token(self) -> str:
         """Return a token for the next connect attempt, refreshing via the provider if set."""
@@ -375,6 +431,10 @@ class RealtimeManager:
                 if self._sio.connected and self._connected.is_set():
                     continue
                 log.warning("WS disconnected state detected; forcing reconnect")
+                # Engine.IO abort often skips the Socket.IO disconnect callback.
+                # Notify now so CloudSession goes down and REST-prime can run even if
+                # leftover disconnect() is still wedged.
+                self._notify_disconnected()
                 try:
                     await self._ensure_connected(initial=False)
                 except Exception:

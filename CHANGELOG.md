@@ -23,6 +23,15 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- Engine.IO abort (aiohttp ``WSMsgType.CLOSED``) can skip the Socket.IO
+  ``disconnect`` callback and deadlock leftover ``disconnect()``. The supervisor
+  now notifies ``CloudSessionConnectivity(up=False)`` immediately, bounds
+  transport teardown, and replaces the Socket.IO client when disconnect hangs so
+  reconnect and REST-prime can proceed.
+- REST-prime when no ``ParamUpdate`` has been published for 180s even if Socket.IO
+  still reports up (zombie session). ``BragerOneGateway.last_param_update_age_s()``
+  exposes the gap for Home Assistant diagnostics.
+
 - Tolerate degraded ``GET /v1/modules`` rows (empty ``gateway``, ``connectedAt:
   null``) so connectivity refresh can mark the module offline instead of skipping
   the listing and leaving Home Assistant on a stale **Connected** state (#319).

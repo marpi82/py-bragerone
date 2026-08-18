@@ -22,6 +22,7 @@ class FakeAsyncClient:
         self.connect_calls = 0
         self.disconnect_calls = 0
         self.reconnect_event = asyncio.Event()
+        self.eio: Any = None
 
     def on(self, event: str, handler: Any, namespace: str) -> None:
         """Register an event handler under namespace/event key."""
@@ -279,4 +280,216 @@ async def test_timed_out_connect_resets_leftover_client(monkeypatch: pytest.Monk
     await asyncio.wait_for(fake.reconnect_event.wait(), timeout=1.0)
     assert fake.connected is True
 
+    await manager.disconnect()
+
+
+class HangingDisconnectClient(FakeAsyncClient):
+    """Fake whose disconnect hangs forever (Engine.IO read/write deadlock after abort)."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize hang tracking."""
+        super().__init__(*args, **kwargs)
+        self.disconnect_started = asyncio.Event()
+
+    async def disconnect(self) -> None:
+        """Block until cancelled, simulating a wedged Engine.IO teardown."""
+        self.disconnect_calls += 1
+        self.disconnect_started.set()
+        await asyncio.Event().wait()
+
+
+async def test_supervisor_notifies_disconnect_when_engineio_aborts_without_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Engine.IO abort that skips Socket.IO disconnect must still notify session-down."""
+    fake = FakeAsyncClient()
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    manager._supervisor_interval_s = 0.01
+    notified = asyncio.Event()
+    manager.add_on_disconnected(notified.set)
+
+    await manager.connect()
+    assert fake.connect_calls == 1
+    # Abort path: transport looks dead, but ``_on_disconnect`` never ran.
+    fake.connected = False
+    manager._connected.clear()
+
+    await asyncio.wait_for(notified.wait(), timeout=1.0)
+    await asyncio.wait_for(fake.reconnect_event.wait(), timeout=1.0)
+    assert fake.connect_calls >= 2
+
+    await manager.disconnect()
+
+
+async def test_hanging_disconnect_is_replaced_so_supervisor_can_reconnect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deadlocked ``disconnect()`` must not wedge reconnect; replace the client."""
+    clients: list[FakeAsyncClient] = []
+
+    def _factory(**kwargs: Any) -> FakeAsyncClient:
+        del kwargs
+        if not clients:
+            first = HangingDisconnectClient()
+            clients.append(first)
+            return first
+        nxt = FakeAsyncClient()
+        clients.append(nxt)
+        return nxt
+
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", _factory)
+
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    manager._supervisor_interval_s = 0.01
+    notified = asyncio.Event()
+    manager.add_on_disconnected(notified.set)
+
+    await manager.connect()
+    first = clients[0]
+    assert isinstance(first, HangingDisconnectClient)
+    first.connected = False
+    manager._connected.clear()
+
+    await asyncio.wait_for(notified.wait(), timeout=1.0)
+    await asyncio.wait_for(first.disconnect_started.wait(), timeout=1.0)
+    await asyncio.wait_for(_wait_for_reconnect(clients), timeout=1.0)
+    assert len(clients) >= 2
+    assert clients[-1].connect_calls >= 1
+    assert manager._sio is clients[-1]
+
+    await manager.disconnect()
+
+
+async def _wait_for_reconnect(clients: list[FakeAsyncClient]) -> None:
+    """Spin until a replacement client has connected."""
+    while True:
+        if len(clients) >= 2 and clients[-1].connect_calls >= 1:
+            return
+        await asyncio.sleep(0)
+
+
+class RaisingDisconnectClient(FakeAsyncClient):
+    """Fake whose disconnect raises, forcing a client replace."""
+
+    async def disconnect(self) -> None:
+        """Raise instead of closing cleanly."""
+        self.disconnect_calls += 1
+        raise RuntimeError("teardown exploded")
+
+
+async def test_failed_disconnect_replaces_client_and_reconnects(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A raising ``disconnect()`` must replace the client so reconnect can proceed."""
+    clients: list[FakeAsyncClient] = []
+
+    def _factory(**kwargs: Any) -> FakeAsyncClient:
+        del kwargs
+        if not clients:
+            first = RaisingDisconnectClient()
+            clients.append(first)
+            return first
+        nxt = FakeAsyncClient()
+        clients.append(nxt)
+        return nxt
+
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", _factory)
+
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    manager._supervisor_interval_s = 0.01
+
+    await manager.connect()
+    clients[0].connected = False
+    manager._connected.clear()
+
+    await asyncio.wait_for(_wait_for_reconnect(clients), timeout=1.0)
+    assert len(clients) >= 2
+    await manager.disconnect()
+
+
+class _FakeEio:
+    """Minimal Engine.IO stub used when abandoning a wedged client."""
+
+    def __init__(self) -> None:
+        """Track abort disconnect calls."""
+        self.abort_calls = 0
+
+    async def disconnect(self, abort: bool = False) -> None:
+        """Record an abort-style disconnect."""
+        if abort:
+            self.abort_calls += 1
+
+
+class EioAbortClient(FakeAsyncClient):
+    """Fake that exposes an Engine.IO ``disconnect(abort=True)`` hook."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Attach a stub Engine.IO client."""
+        super().__init__(*args, **kwargs)
+        self.eio = _FakeEio()
+
+
+async def test_replace_client_aborts_leftover_engineio(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replacing a hung transport should fire Engine.IO disconnect(abort=True)."""
+    fake = EioAbortClient()
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    manager._replace_client()
+    await asyncio.sleep(0)
+    assert fake.eio.abort_calls == 1
+    await manager.disconnect()
+
+
+async def test_abandon_client_and_notify_edge_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Abandon/notify helpers must swallow leftover-client failures and skip duplicate notifies."""
+    fake = FakeAsyncClient()
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+
+    manager._abandon_client(fake)  # no eio
+
+    class _NoDisconnect:
+        """Engine.IO stub without a disconnect method."""
+
+    fake.eio = _NoDisconnect()
+    manager._abandon_client(fake)
+
+    class _SyncOk:
+        def disconnect(self, abort: bool = False) -> None:
+            _ = abort
+
+    fake.eio = _SyncOk()
+    manager._abandon_client(fake)
+
+    class _NoAbortKwarg:
+        def disconnect(self) -> None:
+            return None
+
+    fake.eio = _NoAbortKwarg()
+    manager._abandon_client(fake)
+
+    class _TypeThenBoom:
+        def disconnect(self, *args: Any, **kwargs: Any) -> None:
+            if kwargs.get("abort"):
+                raise TypeError("abort not supported")
+            raise RuntimeError("fallback failed")
+
+    fake.eio = _TypeThenBoom()
+    manager._abandon_client(fake)
+
+    class _BoomAbort:
+        def disconnect(self, abort: bool = False) -> None:
+            _ = abort
+            raise RuntimeError("abort exploded")
+
+    fake.eio = _BoomAbort()
+    manager._abandon_client(fake)
+
+    calls: list[int] = []
+    manager.add_on_disconnected(lambda: calls.append(1))
+    manager._disconnect_notified = True
+    manager._notify_disconnected()
+    assert calls == []
+    manager._notify_disconnected(force=True)
+    assert calls == [1]
     await manager.disconnect()

@@ -47,6 +47,13 @@ Best Practices
   (``on_cloud_session`` / ``ws_session_up``).
 - While the Socket.IO session is down, the gateway REST-primes on the connectivity
   poll interval so consumers are not stuck on the last WS delta.
+- Engine.IO abort (for example aiohttp ``WSMsgType.CLOSED`` / packet type 257) can
+  skip the Socket.IO ``disconnect`` callback and deadlock ``disconnect()``. The
+  supervisor notifies session-down immediately, bounds leftover teardown, and
+  replaces the client if disconnect hangs.
+- If no ``ParamUpdate`` arrives for 180s while the session still reports up, the
+  same poll REST-primes (zombie socket). ``last_param_update_age_s()`` exposes the
+  gap for diagnostics.
 - In EventBus consumers (e.g., :class:`ParamStore`), **never** let exceptions kill the task:
   catch and log, continue processing.
 

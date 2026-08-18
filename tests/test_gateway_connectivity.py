@@ -656,3 +656,50 @@ async def test_gateway_logs_reprime_failure_while_ws_down() -> None:
     await _wait_until(lambda: hits >= 1)
     assert gw._started is True
     await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_reprimes_when_param_updates_stale_while_session_up() -> None:
+    """A silent zombie session (up, no ParamUpdates) must REST-prime from the poll."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+        stale_prime_after_s=0.05,
+    )
+    await gw.start()
+    primes_after_start = api.prime_params_calls
+    assert gw.ws_session_up() is True
+    assert gw.last_param_update_age_s() is None
+
+    gw._last_param_publish_monotonic = 0.0
+    await _wait_until(lambda: api.prime_params_calls > primes_after_start)
+    assert gw.ws_session_up() is True
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_touch_param_publish_and_age() -> None:
+    """Publishing parameter events stamps last_param_update_age_s."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    assert gw.last_param_update_age_s() is None
+    gw._touch_param_publish(0)
+    assert gw.last_param_update_age_s() is None
+    gw._touch_param_publish(1)
+    age = gw.last_param_update_age_s()
+    assert age is not None
+    assert age >= 0.0
+    await gw.ingest_prime_parameters({"M1": {"P1": {"v0": {"value": 1}}}})
+    await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 2}}}})
+    await ws.emit("snapshot", {"M1": {"P1": {"v0": {"value": 3}}}})
+    assert gw.last_param_update_age_s() is not None
+    await gw.stop()
