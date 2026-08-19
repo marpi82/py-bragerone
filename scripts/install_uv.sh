@@ -66,8 +66,8 @@ install_uv_pinned() {
   local uvx_bin="${tmpdir}/uvx"
   if [[ ! -f "${uv_bin}" ]]; then
     # uv >= 0.12.x release tarballs ship binaries in a top-level arch directory.
-    uv_bin="$(find "${tmpdir}" -maxdepth 2 -type f -name uv | head -1)"
-    uvx_bin="$(find "${tmpdir}" -maxdepth 2 -type f -name uvx | head -1)"
+    uv_bin="$(find "${tmpdir}" -maxdepth 2 -type f -name uv -print -quit)"
+    uvx_bin="$(find "${tmpdir}" -maxdepth 2 -type f -name uvx -print -quit)"
   fi
   if [[ ! -f "${uv_bin}" ]]; then
     echo "uv binary not found after extracting ${tarball}" >&2
