@@ -61,9 +61,23 @@ install_uv_pinned() {
 
   mkdir -p "${dest_dir}"
   tar -xzf "${archive}" -C "${tmpdir}"
-  install -m 0755 "${tmpdir}/uv" "${dest_dir}/uv"
-  if [[ -f "${tmpdir}/uvx" ]]; then
-    install -m 0755 "${tmpdir}/uvx" "${dest_dir}/uvx"
+
+  local uv_bin="${tmpdir}/uv"
+  local uvx_bin="${tmpdir}/uvx"
+  if [[ ! -f "${uv_bin}" ]]; then
+    # uv >= 0.12.x release tarballs ship binaries in a top-level arch directory.
+    uv_bin="$(find "${tmpdir}" -maxdepth 2 -type f -name uv | head -1)"
+    uvx_bin="$(find "${tmpdir}" -maxdepth 2 -type f -name uvx | head -1)"
+  fi
+  if [[ ! -f "${uv_bin}" ]]; then
+    echo "uv binary not found after extracting ${tarball}" >&2
+    rm -rf "${tmpdir}"
+    return 1
+  fi
+
+  install -m 0755 "${uv_bin}" "${dest_dir}/uv"
+  if [[ -n "${uvx_bin}" && -f "${uvx_bin}" ]]; then
+    install -m 0755 "${uvx_bin}" "${dest_dir}/uvx"
   fi
   rm -rf "${tmpdir}"
 

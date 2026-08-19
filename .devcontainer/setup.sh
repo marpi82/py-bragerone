@@ -30,9 +30,14 @@ fi
 echo "📦 Installing uv (hash-pinned ${UV_VERSION})..."
 install_uv_pinned "${HOME}/.local/bin"
 export PATH="${HOME}/.local/bin:${PATH}"
+export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
+export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-.venv}"
+export PRE_COMMIT_HOME="${PRE_COMMIT_HOME:-${ROOT_DIR}/.cache/pre-commit}"
 
 # Fix permissions for mounted volumes (they may be owned by root)
 echo "🔧 Fixing volume permissions..."
+mkdir -p "${PRE_COMMIT_HOME}"
+sudo chown -R vscode:vscode "${PRE_COMMIT_HOME}" 2>/dev/null || true
 if [ -d "$HOME/.cache/uv" ]; then
     sudo chown -R vscode:vscode "$HOME/.cache/uv" 2>/dev/null || true
 fi
