@@ -85,7 +85,7 @@ dev container was created on a Wayland session but you are now on X11 (or the so
 path changed). Remove the stale container and reopen:
 
 ```bash
-docker ps -a --filter label=devcontainer.local_folder="$PWD" -q | xargs -r docker rm
+docker ps -a --filter label=devcontainer.local_folder="$PWD" -q | xargs docker rm 2>/dev/null || true
 ```
 
 Then in Cursor: **Dev Containers: Reopen in Container** (or rebuild if prompted).
