@@ -8,12 +8,16 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from httpx import ReadTimeout, TimeoutException
 
+from pybragerone.api.client import ApiError
 from pybragerone.gateway import (
     ApiClient,
     BragerOneGateway,
     RealtimeManagerClient,
     _gateway_as_dict,
+    _is_api_dispatch_timeout,
+    _is_http_timeout_error,
     _parse_connected_at,
     module_connected_at_means_online,
 )
@@ -255,6 +259,52 @@ async def test_gateway_connectivity_poll_loop_and_get_modules_error() -> None:
     await _wait_until(lambda: api.get_modules_calls > calls_before_error)
     assert gw.module_online("M1") is False
     await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_connectivity_timeout_errors_are_warn_only(caplog: pytest.LogCaptureFixture) -> None:
+    """Expected timeout-like failures should not emit full traceback spam."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+
+    with caplog.at_level("WARNING"):
+        api.get_modules_error = ReadTimeout("read timeout")
+        await gw.refresh_module_connectivity()
+    assert "get_modules timeout during connectivity refresh" in caplog.text
+    assert not any(record.exc_info for record in caplog.records)
+
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        api.get_modules_error = ApiError(
+            408,
+            {"status": "E_DISPATCH_EVENT_TIMEOUT", "message": "upstream timeout"},
+            {},
+        )
+        await gw.refresh_module_connectivity()
+    assert "get_modules timeout during connectivity refresh" in caplog.text
+    assert not any(record.exc_info for record in caplog.records)
+
+    await gw.stop()
+
+
+def test_gateway_timeout_error_helpers() -> None:
+    """Timeout helpers classify only expected timeout-like exceptions."""
+    assert _is_http_timeout_error(ReadTimeout("t")) is True
+    assert _is_http_timeout_error(TimeoutException("t")) is True
+
+    class ForeignReadTimeout(Exception):
+        __module__ = "other"
+
+    assert _is_http_timeout_error(ForeignReadTimeout()) is False
+    assert _is_http_timeout_error(RuntimeError("no")) is False
+
+    assert _is_api_dispatch_timeout(ApiError(408, {"status": "E_DISPATCH_EVENT_TIMEOUT"}, {})) is True
+    assert _is_api_dispatch_timeout(ApiError(408, {"status": "OTHER"}, {})) is False
+    assert _is_api_dispatch_timeout(ApiError(408, "not-a-dict", {})) is False
+    assert _is_api_dispatch_timeout(ApiError(500, {"status": "E_DISPATCH_EVENT_TIMEOUT"}, {})) is False
 
 
 @pytest.mark.asyncio

@@ -18,6 +18,7 @@ from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from typing import Any, Literal, Protocol
 
 from .api import BragerOneApiClient, RealtimeManager, ServerConfig
+from .api.client import ApiError
 from .models.api.modules import Module
 from .models.events import (
     MODULE_CONNECTION_STATUS_CHANGED,
@@ -75,6 +76,31 @@ def _gateway_as_dict(gateway_obj: Any) -> dict[str, Any] | None:
     if isinstance(gateway_obj, dict):
         return dict(gateway_obj)
     return None
+
+
+def _is_http_timeout_error(err: Exception) -> bool:
+    """Return whether *err* is an HTTP timeout surfaced by httpx/httpcore."""
+    module = getattr(type(err), "__module__", "")
+    if not (module.startswith("httpx") or module.startswith("httpcore")):
+        return False
+    return err.__class__.__name__ in {
+        "TimeoutException",
+        "ReadTimeout",
+        "ConnectTimeout",
+        "WriteTimeout",
+        "PoolTimeout",
+    }
+
+
+def _is_api_dispatch_timeout(err: Exception) -> bool:
+    """Return whether *err* is an upstream API timeout response."""
+    if not isinstance(err, ApiError) or err.status != 408:
+        return False
+    data = err.data
+    if not isinstance(data, dict):
+        return False
+    status = data.get("status")
+    return isinstance(status, str) and status == "E_DISPATCH_EVENT_TIMEOUT"
 
 
 class ApiClient(Protocol):
@@ -566,8 +592,16 @@ class BragerOneGateway:
             return
         try:
             rows = await self.api.get_modules(self.object_id)
-        except Exception:
-            LOG.exception("get_modules failed during connectivity refresh")
+        except Exception as err:
+            if _is_http_timeout_error(err) or _is_api_dispatch_timeout(err):
+                # Upstream hiccups are expected from time to time; keep last known
+                # module states and avoid flooding logs with traceback noise.
+                LOG.warning(
+                    "get_modules timeout during connectivity refresh; keeping previous module state (source=%s)",
+                    source,
+                )
+            else:
+                LOG.exception("get_modules failed during connectivity refresh")
             return
 
         rows_list = list(rows)
