@@ -8,7 +8,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from httpx import ReadTimeout
 
+from pybragerone.api.client import ApiError
 from pybragerone.gateway import (
     ApiClient,
     BragerOneGateway,
@@ -254,6 +256,35 @@ async def test_gateway_connectivity_poll_loop_and_get_modules_error() -> None:
     api.get_modules_error = RuntimeError("modules down")
     await _wait_until(lambda: api.get_modules_calls > calls_before_error)
     assert gw.module_online("M1") is False
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_connectivity_timeout_errors_are_warn_only(caplog: pytest.LogCaptureFixture) -> None:
+    """Expected timeout-like failures should not emit full traceback spam."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+
+    with caplog.at_level("WARNING"):
+        api.get_modules_error = ReadTimeout("read timeout")
+        await gw.refresh_module_connectivity()
+    assert "get_modules timeout during connectivity refresh" in caplog.text
+    assert "Traceback" not in caplog.text
+
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        api.get_modules_error = ApiError(
+            408,
+            {"status": "E_DISPATCH_EVENT_TIMEOUT", "message": "upstream timeout"},
+            {},
+        )
+        await gw.refresh_module_connectivity()
+    assert "get_modules timeout during connectivity refresh" in caplog.text
+    assert "Traceback" not in caplog.text
+
     await gw.stop()
 
 
