@@ -80,7 +80,16 @@ def _gateway_as_dict(gateway_obj: Any) -> dict[str, Any] | None:
 
 def _is_http_timeout_error(err: Exception) -> bool:
     """Return whether *err* is an HTTP timeout surfaced by httpx/httpcore."""
-    return err.__class__.__name__ in {"ReadTimeout", "ConnectTimeout", "WriteTimeout", "PoolTimeout"}
+    module = getattr(type(err), "__module__", "")
+    if not (module.startswith("httpx") or module.startswith("httpcore")):
+        return False
+    return err.__class__.__name__ in {
+        "TimeoutException",
+        "ReadTimeout",
+        "ConnectTimeout",
+        "WriteTimeout",
+        "PoolTimeout",
+    }
 
 
 def _is_api_dispatch_timeout(err: Exception) -> bool:
