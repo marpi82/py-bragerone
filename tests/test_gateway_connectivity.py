@@ -16,6 +16,8 @@ from pybragerone.gateway import (
     BragerOneGateway,
     RealtimeManagerClient,
     _gateway_as_dict,
+    _is_api_dispatch_timeout,
+    _is_http_timeout_error,
     _parse_connected_at,
     module_connected_at_means_online,
 )
@@ -286,6 +288,17 @@ async def test_gateway_connectivity_timeout_errors_are_warn_only(caplog: pytest.
     assert "Traceback" not in caplog.text
 
     await gw.stop()
+
+
+def test_gateway_timeout_error_helpers() -> None:
+    """Timeout helpers classify only expected timeout-like exceptions."""
+    assert _is_http_timeout_error(ReadTimeout("t")) is True
+    assert _is_http_timeout_error(RuntimeError("no")) is False
+
+    assert _is_api_dispatch_timeout(ApiError(408, {"status": "E_DISPATCH_EVENT_TIMEOUT"}, {})) is True
+    assert _is_api_dispatch_timeout(ApiError(408, {"status": "OTHER"}, {})) is False
+    assert _is_api_dispatch_timeout(ApiError(408, "not-a-dict", {})) is False
+    assert _is_api_dispatch_timeout(ApiError(500, {"status": "E_DISPATCH_EVENT_TIMEOUT"}, {})) is False
 
 
 @pytest.mark.asyncio
