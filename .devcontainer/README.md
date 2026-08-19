@@ -78,6 +78,18 @@ If you see `Remote Extension host terminated unexpectedly 3 times within the las
 
 Ensure Docker/Podman is running and you have internet connectivity.
 
+### `wayland-0` bind mount error on container start
+
+If Docker reports `bind source path does not exist: /run/user/1000/wayland-0`, an old
+dev container was created on a Wayland session but you are now on X11 (or the socket
+path changed). Remove the stale container and reopen:
+
+```bash
+docker ps -a --filter label=devcontainer.local_folder="$PWD" -q | xargs docker rm 2>/dev/null || true
+```
+
+Then in Cursor: **Dev Containers: Reopen in Container** (or rebuild if prompted).
+
 ### Permission issues with files
 
 The container runs as user `vscode` (non-root). File ownership is automatically adjusted during setup.
