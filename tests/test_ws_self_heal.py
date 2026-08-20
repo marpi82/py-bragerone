@@ -503,3 +503,34 @@ def test_disconnect_timeout_is_clamped(monkeypatch: pytest.MonkeyPatch) -> None:
     assert too_small._disconnect_timeout_s == 0.05
     too_large = RealtimeManager(token="tkn", connect_timeout_s=30)
     assert too_large._disconnect_timeout_s == 5.0
+
+
+async def test_supervisor_reconnect_503_is_warn_only(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Expected upstream 503 during reconnect must not attach full exc_info."""
+    from pybragerone.api.client import ApiError
+
+    class _FailThenOk(FakeAsyncClient):
+        async def connect(self, *args: Any, **kwargs: Any) -> None:
+            next_call = self.connect_calls + 1
+            if next_call == 2:
+                self.connect_calls = next_call
+                raise ApiError(503, "<html>Service Unavailable</html>", {})
+            await super().connect(*args, **kwargs)
+
+    fake = _FailThenOk()
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    manager._supervisor_interval_s = 0.01
+    await manager.connect()
+
+    with caplog.at_level("WARNING"):
+        fake.connected = False
+        await manager._on_disconnect()
+        await asyncio.wait_for(fake.reconnect_event.wait(), timeout=1.0)
+
+    assert any("expected upstream/transient" in record.getMessage() for record in caplog.records)
+    assert not any(record.exc_info for record in caplog.records if "reconnect failed" in record.getMessage())
+    await manager.disconnect()

@@ -17,11 +17,29 @@ import socketio
 
 from ..models.events import MODULE_CONNECTION_STATUS_CHANGED
 from ..utils import spawn
+from .client import is_expected_upstream_unavailable
 from .constants import IO_BASE, ONE_BASE, SOCK_PATH, WS_NAMESPACE
 
 log = logging.getLogger(__name__)
 sio_log = logging.getLogger(__name__ + ".sio")
 eio_log = logging.getLogger(__name__ + ".eio")
+
+
+def _is_expected_ws_reconnect_failure(err: BaseException) -> bool:
+    """Return whether a reconnect failure is an expected upstream/transient error."""
+    if is_expected_upstream_unavailable(err):
+        return True
+    if isinstance(err, TimeoutError):
+        return True
+    current: BaseException | None = err
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        module = getattr(type(current), "__module__", "") or ""
+        if isinstance(current, ConnectionError) and (module.startswith("socketio") or module.startswith("engineio")):
+            return True
+        current = current.__cause__ or (current.__context__ if current.__context__ is not current.__cause__ else None)
+    return False
 
 
 # Signature for a generic event handler used by the gateway.
@@ -418,11 +436,14 @@ class RealtimeManager:
                     ),
                     timeout=self._connect_timeout_s,
                 )
-            except Exception:
+            except Exception as err:
                 await self._reset_transport()
                 if initial:
                     raise
-                log.warning("WS supervisor reconnect failed", exc_info=True)
+                if _is_expected_ws_reconnect_failure(err):
+                    log.warning("WS supervisor reconnect failed (expected upstream/transient): %s", err)
+                else:
+                    log.warning("WS supervisor reconnect failed", exc_info=True)
 
     async def _connection_supervisor(self) -> None:
         try:
