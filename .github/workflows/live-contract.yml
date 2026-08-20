@@ -74,6 +74,7 @@ jobs:
           WATCH_RUN_URL: ${{ github.event.client_payload.watch_run_url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const title = '[live-contract] BragerOne structural catalog contract';
             const seeded = process.env.SEEDED || '';
@@ -139,13 +140,18 @@ jobs:
               }
             }
 
-            const issues = await github.paginate(github.rest.issues.listForRepo, {
+            // Match previous gh --limit 50: one page only, skip PRs (listForRepo includes them).
+            const { data: issues } = await github.rest.issues.listForRepo({
               owner,
               repo,
               state: 'open',
               per_page: 50,
+              sort: 'created',
+              direction: 'desc',
             });
-            const existing = issues.find((issue) => issue.title === title);
+            const existing = issues.find(
+              (issue) => !issue.pull_request && issue.title === title,
+            );
             if (existing) {
               await github.rest.issues.createComment({
                 owner,
