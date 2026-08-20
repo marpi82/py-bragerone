@@ -23,7 +23,7 @@ uv run --group dev --group test poe validate   # fmt + lint + typecheck + securi
 uv build                          # wheel + sdist
 ```
 
-Pre-commit hooks exist; a coverage gate (`--cov-fail-under=80`) runs on pre-push. CI uploads `coverage.xml` to Codecov (`codecov-commenter` on PRs). Patch coverage target is 100%; project coverage is informational — the 80% floor stays on pre-push. Coverage omits CLI entrypoints (`cli.py`, `__main__.py`); those are not the library runtime used by Home Assistant.
+Pre-commit hooks exist; a coverage gate (`--cov-fail-under=80`) runs on pre-push. CI uploads `coverage.xml` to Codecov (`codecov-commenter` on PRs). Patch coverage target is 100% on pull requests only (`only_pulls` in `codecov.yml` — avoids false failures on main merge commits with a bad compare base); project coverage is informational — the 80% floor stays on pre-push. Coverage omits CLI entrypoints (`cli.py`, `__main__.py`); those are not the library runtime used by Home Assistant.
 
 ## Architecture in one paragraph
 

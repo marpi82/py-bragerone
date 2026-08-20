@@ -2,8 +2,11 @@ coverage:
   status:
     patch:
       default:
+        # Enforce 100% patch on PRs only. Push/merge commits on main often get a
+        # wrong Codecov compare base, which fails patch even when the PR was green.
         target: 100%
         threshold: 0%
+        only_pulls: true
     project:
       default:
         informational: true

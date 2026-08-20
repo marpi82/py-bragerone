@@ -273,7 +273,7 @@ async def test_gateway_connectivity_timeout_errors_are_warn_only(caplog: pytest.
     with caplog.at_level("WARNING"):
         api.get_modules_error = ReadTimeout("read timeout")
         await gw.refresh_module_connectivity()
-    assert "get_modules timeout during connectivity refresh" in caplog.text
+    assert "get_modules unavailable/timeout during connectivity refresh" in caplog.text
     assert not any(record.exc_info for record in caplog.records)
 
     caplog.clear()
@@ -284,8 +284,27 @@ async def test_gateway_connectivity_timeout_errors_are_warn_only(caplog: pytest.
             {},
         )
         await gw.refresh_module_connectivity()
-    assert "get_modules timeout during connectivity refresh" in caplog.text
+    assert "get_modules unavailable/timeout during connectivity refresh" in caplog.text
     assert not any(record.exc_info for record in caplog.records)
+
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_connectivity_503_errors_are_warn_only(caplog: pytest.LogCaptureFixture) -> None:
+    """Expected 503 upstream outages should not emit full traceback spam."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+
+    with caplog.at_level("WARNING"):
+        api.get_modules_error = ApiError(503, "<html>Service Unavailable</html>", {})
+        await gw.refresh_module_connectivity()
+    assert "get_modules unavailable/timeout during connectivity refresh" in caplog.text
+    assert not any(record.exc_info for record in caplog.records)
+    assert gw.module_online("M1") is True
 
     await gw.stop()
 
@@ -719,6 +738,36 @@ async def test_gateway_logs_reprime_failure_while_ws_down() -> None:
 
     gw._prime_with_retry = _boom_prime  # type: ignore[method-assign]
     await _wait_until(lambda: hits >= 1)
+    assert gw._started is True
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_logs_reprime_503_as_warn_only(caplog: pytest.LogCaptureFixture) -> None:
+    """Expected 503 during REST re-prime should warn without traceback spam."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+    )
+    await gw.start()
+    await ws.trigger_disconnected()
+
+    async def _boom_prime(tries: int = 3) -> tuple[bool, bool]:
+        _ = tries
+        raise ApiError(503, "<html>Service Unavailable</html>", {})
+
+    gw._prime_with_retry = _boom_prime  # type: ignore[method-assign]  # test double replaces async method
+    with caplog.at_level("WARNING"):
+        await _wait_until(lambda: "REST re-prime failed due to expected upstream outage/timeout" in caplog.text)
+    assert not any(record.exc_info for record in caplog.records)
+    assert "ApiError(status=503)" in caplog.text
+    assert "<html>" not in caplog.text
     assert gw._started is True
     await gw.stop()
 

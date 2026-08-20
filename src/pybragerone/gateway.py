@@ -18,7 +18,7 @@ from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from typing import Any, Literal, Protocol
 
 from .api import BragerOneApiClient, RealtimeManager, ServerConfig
-from .api.client import ApiError
+from .api.client import ApiError, format_expected_failure_reason, is_expected_upstream_unavailable
 from .models.api.modules import Module
 from .models.events import (
     MODULE_CONNECTION_STATUS_CHANGED,
@@ -579,8 +579,14 @@ class BragerOneGateway:
                 )
             try:
                 await self._prime_with_retry()
-            except Exception:
-                LOG.exception("REST re-prime (socket down or stale ParamUpdates) failed")
+            except Exception as err:
+                if _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err):
+                    LOG.warning(
+                        "REST re-prime failed due to expected upstream outage/timeout; will retry (reason=%s)",
+                        format_expected_failure_reason(err),
+                    )
+                else:
+                    LOG.exception("REST re-prime (socket down or stale ParamUpdates) failed")
 
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource) -> None:
         """Pull ``get_modules`` and apply online state for subscribed devids.
@@ -593,12 +599,14 @@ class BragerOneGateway:
         try:
             rows = await self.api.get_modules(self.object_id)
         except Exception as err:
-            if _is_http_timeout_error(err) or _is_api_dispatch_timeout(err):
+            if _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err):
                 # Upstream hiccups are expected from time to time; keep last known
                 # module states and avoid flooding logs with traceback noise.
                 LOG.warning(
-                    "get_modules timeout during connectivity refresh; keeping previous module state (source=%s)",
+                    "get_modules unavailable/timeout during connectivity refresh; "
+                    "keeping previous module state (source=%s, reason=%s)",
                     source,
+                    format_expected_failure_reason(err),
                 )
             else:
                 LOG.exception("get_modules failed during connectivity refresh")

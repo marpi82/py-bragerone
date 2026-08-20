@@ -71,6 +71,66 @@ class ApiError(RuntimeError):
         self.headers = headers or {}
 
 
+_UPSTREAM_UNAVAILABLE_STATUSES = frozenset({502, 503, 504})
+
+
+def _iter_exception_chain(err: BaseException) -> list[BaseException]:
+    """Flatten cause/context chains and nested ``ExceptionGroup`` members."""
+    seen: set[int] = set()
+    out: list[BaseException] = []
+    stack: list[BaseException] = [err]
+    while stack:
+        current = stack.pop()
+        ident = id(current)
+        if ident in seen:
+            continue
+        seen.add(ident)
+        out.append(current)
+        if current.__cause__ is not None:
+            stack.append(current.__cause__)
+        if current.__context__ is not None and current.__context__ is not current.__cause__:
+            stack.append(current.__context__)
+        if isinstance(current, BaseExceptionGroup):
+            stack.extend(list(current.exceptions))
+    return out
+
+
+def is_expected_upstream_unavailable(err: BaseException) -> bool:
+    """Return whether *err* is an expected upstream capacity/maintenance failure.
+
+    Matches ``ApiError`` / aiohttp response errors with HTTP 502/503/504, including
+    when wrapped in ``ExceptionGroup`` or ``__cause__`` / ``__context__`` chains.
+    """
+    for item in _iter_exception_chain(err):
+        if isinstance(item, ApiError) and item.status in _UPSTREAM_UNAVAILABLE_STATUSES:
+            return True
+        status = getattr(item, "status", None)
+        if isinstance(status, int) and status in _UPSTREAM_UNAVAILABLE_STATUSES:
+            return True
+        code = getattr(item, "code", None)
+        if isinstance(code, int) and code in _UPSTREAM_UNAVAILABLE_STATUSES:
+            return True
+    return False
+
+
+def format_expected_failure_reason(err: BaseException) -> str:
+    """Return a compact log reason: exception type plus HTTP status when known.
+
+    Avoids ``ApiError``'s default ``data!r`` message, which often embeds large
+    upstream HTML bodies and would spam logs during extended outages.
+    """
+    for item in _iter_exception_chain(err):
+        if isinstance(item, ApiError):
+            return f"ApiError(status={item.status})"
+        status = getattr(item, "status", None)
+        if isinstance(status, int):
+            return f"{type(item).__name__}(status={status})"
+        code = getattr(item, "code", None)
+        if isinstance(code, int):
+            return f"{type(item).__name__}(code={code})"
+    return type(err).__name__
+
+
 class HttpCache:
     """Simple HTTP cache using ETag/Last-Modified headers with in-memory body storage.
 
