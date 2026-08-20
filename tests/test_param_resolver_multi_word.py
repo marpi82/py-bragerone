@@ -264,6 +264,64 @@ def test_compose_mapping_register_value_falls_back_to_raw_when_paths_empty() -> 
     assert result == 38063
 
 
+def test_compose_mapping_register_value_falls_back_to_raw_when_paths_not_mapping() -> None:
+    """Non-mapping ``paths`` (None / omitted) must not block the ``raw['value']`` fallback."""
+    store = ParamStore()
+    store.upsert("P4.v59", 42)
+
+    raw_only = {
+        "raw": {
+            "value": [
+                {"group": "P4", "number": 59, "use": "v"},
+            ]
+        },
+    }
+    assert ParamResolver.compose_mapping_register_value(store, raw_only) == 42
+
+    paths_none = {
+        "paths": None,
+        "raw": {
+            "value": [
+                {"group": "P4", "number": 59, "use": "v"},
+            ]
+        },
+    }
+    assert ParamResolver.compose_mapping_register_value(store, paths_none) == 42
+
+
+def test_compose_mapping_register_value_returns_float_for_fractional_times() -> None:
+    """Non-integer ``times`` multipliers must keep a float composed value."""
+    store = ParamStore()
+    store.upsert("P4.v59", 3)
+
+    mapping = {
+        "paths": {
+            "value": [
+                {"group": "P4", "number": 59, "use": "v", "times": 0.5},
+            ]
+        },
+        "raw": {},
+    }
+    result = ParamResolver.compose_mapping_register_value(store, mapping)
+    assert result == 1.5
+
+
+def test_compose_mapping_register_value_ignores_bool_times() -> None:
+    """Boolean ``times`` is excluded (``bool`` subclasses ``int``) and defaults to 1."""
+    store = ParamStore()
+    store.upsert("P4.v59", 7)
+
+    mapping = {
+        "paths": {
+            "value": [
+                {"group": "P4", "number": 59, "use": "v", "times": True},
+            ]
+        },
+        "raw": {},
+    }
+    assert ParamResolver.compose_mapping_register_value(store, mapping) == 7
+
+
 def test_compose_mapping_register_value_skips_malformed_selector_entries() -> None:
     """Non-mapping and malformed selector entries are skipped, valid ones still contribute."""
     store = ParamStore()
@@ -368,6 +426,109 @@ async def test_resolve_value_composes_multi_word_register_value() -> None:
 
     assert resolved.kind == "direct"
     assert resolved.value == 38063
+
+
+@pytest.mark.asyncio
+async def test_resolve_value_composes_and_resolves_string_display(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the numeric transform yields a string, resolve_value must still i18n-resolve it."""
+    store = ParamStore()
+    store.upsert("P4.v59", -27473)
+    store.upsert("P4.v60", 0)
+
+    resolver = _resolver(_multi_word_mapping(), store)
+
+    @classmethod
+    def _string_display(cls: type[Any], raw_value: Any, _raw_expr: Any) -> str:
+        assert raw_value == 38063
+        return "units.202.0"
+
+    async def _resolve_token(_self: ParamResolver, label: str | None) -> str | None:
+        if label == "units.202.0":
+            return "Off"
+        if isinstance(label, str) and label.strip():
+            return label.strip()
+        return None
+
+    monkeypatch.setattr(ParamResolver, "_apply_numeric_transform", _string_display)
+    monkeypatch.setattr(ParamResolver, "_resolve_units_value_token", _resolve_token)
+
+    resolved = await resolver.resolve_value("PARAM_P4_59")
+    assert resolved.kind == "direct"
+    assert resolved.value == "Off"
+
+
+@pytest.mark.asyncio
+async def test_resolve_value_compose_miss_falls_through_to_direct(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compose returning None must fall through to the primary-register direct path."""
+    store = ParamStore()
+    store.upsert("P4.v59", 11)
+
+    mapping = ParamMap(
+        key="PARAM_P4_59",
+        group="P4",
+        paths={"value": [{"group": "P4", "number": 59, "use": "v"}]},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"name": "parameters.PARAM_P4_59", "value": [{"group": "P4", "number": 59, "use": "v"}]},
+    )
+    resolver = _resolver(mapping, store)
+
+    monkeypatch.setattr(
+        ParamResolver,
+        "compose_mapping_register_value",
+        classmethod(lambda cls, _store, _mapping: None),
+    )
+
+    resolved = await resolver.resolve_value("PARAM_P4_59")
+    assert resolved.kind == "direct"
+    assert resolved.value == 11
+
+
+@pytest.mark.asyncio
+async def test_resolve_value_without_mapping_skips_compose_block() -> None:
+    """Symbols with no ParamMap must skip the multi-word compose branch entirely."""
+    store = ParamStore()
+    store.upsert("P4.v59", 5)
+    # Assets stub only knows PARAM_P4_59; ask for a different symbol so mapping is None.
+    resolver = _resolver(_multi_word_mapping(), store)
+    resolved = await resolver.resolve_value("PARAM_UNKNOWN")
+    assert resolved.kind == "direct"
+    assert resolved.value is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_value_string_display_keeps_value_when_token_unresolved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If token resolution returns None, the transformed string display is kept as-is."""
+    store = ParamStore()
+    store.upsert("P4.v59", 1)
+    store.upsert("P4.v60", 0)
+
+    resolver = _resolver(_multi_word_mapping(convert=None), store)
+
+    @classmethod
+    def _string_display(cls: type[Any], raw_value: Any, _raw_expr: Any) -> str:
+        return "literal-display"
+
+    async def _resolve_token(_self: ParamResolver, label: str | None) -> str | None:
+        return None
+
+    monkeypatch.setattr(ParamResolver, "_apply_numeric_transform", _string_display)
+    monkeypatch.setattr(ParamResolver, "_resolve_units_value_token", _resolve_token)
+
+    resolved = await resolver.resolve_value("PARAM_P4_59")
+    assert resolved.kind == "direct"
+    assert resolved.value == "literal-display"
 
 
 @pytest.mark.asyncio
