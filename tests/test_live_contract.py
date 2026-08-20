@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -13,57 +14,17 @@ _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "live_contract.py"
 
 
 class _LiveContractScript(Protocol):
-    """Subset of ``live_contract`` used by tests."""
+    """Subset of ``live_contract`` used by tests (attribute callables — no Ellipsis bodies)."""
 
-    def parse_modules(self, raw: str | None) -> list[str]:
-        """Parse modules env."""
-        ...
-
-    def classify_path_kind(self, entries: Any) -> str:
-        """Classify path channel."""
-        ...
-
-    def normalize_selector(self, entry: dict[str, Any]) -> dict[str, Any]:
-        """Normalize selector."""
-        ...
-
-    def symbol_contract(
-        self,
-        mapping: ParamMap,
-        *,
-        units_i18n_ok: bool | None = None,
-        units_descriptor_ok: bool | None = None,
-    ) -> dict[str, Any]:
-        """Build symbol entry."""
-        ...
-
-    def build_contract(
-        self,
-        *,
-        lang: str,
-        object_id: int,
-        modules: list[str],
-        fingerprint: str | None,
-        symbols: dict[str, dict[str, Any]],
-    ) -> dict[str, Any]:
-        """Build top-level contract."""
-        ...
-
-    def compare_contracts(self, baseline: dict[str, Any], current: dict[str, Any]) -> list[str]:
-        """Diff contracts."""
-        ...
-
-    def collect_symbol_tokens(self, assets_by_basename: dict[str, object], inline_tokens: list[str]) -> list[str]:
-        """Collect tokens."""
-        ...
-
-    def write_json(self, path: Path, payload: dict[str, Any]) -> None:
-        """Write JSON."""
-        ...
-
-    def read_json(self, path: Path) -> dict[str, Any]:
-        """Read JSON."""
-        ...
+    parse_modules: Callable[[str | None], list[str]]
+    classify_path_kind: Callable[[Any], str]
+    normalize_selector: Callable[[Mapping[str, Any]], dict[str, Any]]
+    symbol_contract: Callable[..., dict[str, Any]]
+    build_contract: Callable[..., dict[str, Any]]
+    compare_contracts: Callable[[Mapping[str, Any], Mapping[str, Any]], list[str]]
+    collect_symbol_tokens: Callable[[Mapping[str, object], Sequence[str]], list[str]]
+    write_json: Callable[[Path, Mapping[str, Any]], None]
+    read_json: Callable[[Path], dict[str, Any]]
 
 
 def _load() -> _LiveContractScript:

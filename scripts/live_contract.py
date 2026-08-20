@@ -241,8 +241,6 @@ def _diff_values(path: str, left: Any, right: Any, out: list[str]) -> None:
                 _diff_values(child, left[key], right[key], out)
         return
     if isinstance(left, list) and isinstance(right, list):
-        if left == right:
-            return
         max_len = max(len(left), len(right))
         if len(left) != len(right):
             out.append(f"~ {path} length {len(left)} -> {len(right)}")
