@@ -9,6 +9,7 @@ Utility scripts for development and system setup.
 - `setup_host_env.sh` - Configure development environment (installs uv, sets up git hooks)
 - `perf_bench.py` - Local wall-time micro-benchmarks, baseline compare, and real startup timing
 - `check_upstream_assets.py` - Unauthenticated probe of BragerOne `/system/version` + live `index-*.js` (used by the scheduled Upstream assets workflow). When the fingerprint changes (or `--always-parse`), the probe also requires a non-empty language config, units descriptor table, and `units` i18n namespace.
+- `live_contract.py` - Authenticated structural catalog contract for the self-hosted `bragerone-live` runner. Seeds `/var/lib/gha/baselines/live_contract.json` on first success; later runs compare structure only (no live register values).
 
 CPU-bound dispatch/catalog cases also live as pytest tests in `tests/test_bench_micro.py`
 (`uv run --group dev --group test poe bench` / `pytest --codspeed`). This script remains the
@@ -73,6 +74,12 @@ uv run --group dev python scripts/perf_bench.py run \
 # Public catalog watch (no login). Parses the live index when the fingerprint is new.
 uv run python scripts/check_upstream_assets.py
 uv run python scripts/check_upstream_assets.py --always-parse
+
+# Live structural contract (needs PYBO_* on the process; self-hosted bragerone-live).
+# First run with an empty baseline dir seeds live_contract.json and exits 0.
+uv run python scripts/live_contract.py --write-current reports/live/contract.json
+# Optional override:
+# PYBO_BASELINE_DIR=/var/lib/gha/baselines uv run python scripts/live_contract.py
 ```
 
 ## Note
