@@ -534,3 +534,51 @@ async def test_supervisor_reconnect_503_is_warn_only(
     assert any("expected upstream/transient" in record.getMessage() for record in caplog.records)
     assert not any(record.exc_info for record in caplog.records if "reconnect failed" in record.getMessage())
     await manager.disconnect()
+
+
+async def test_initial_connect_failure_is_reraised(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Initial ``_ensure_connected`` failures must propagate to the caller."""
+
+    class _AlwaysFail(FakeAsyncClient):
+        async def connect(self, *args: Any, **kwargs: Any) -> None:
+            self.connect_calls += 1
+            raise RuntimeError("initial handshake failed")
+
+    fake = _AlwaysFail()
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    with pytest.raises(RuntimeError, match="initial handshake failed"):
+        await manager.connect()
+    assert fake.connect_calls >= 1
+
+
+async def test_supervisor_reconnect_unexpected_logs_exc_info(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Unexpected reconnect errors must keep full ``exc_info`` in the warning."""
+
+    class _FailUnexpectedThenOk(FakeAsyncClient):
+        async def connect(self, *args: Any, **kwargs: Any) -> None:
+            next_call = self.connect_calls + 1
+            if next_call == 2:
+                self.connect_calls = next_call
+                raise RuntimeError("unexpected reconnect boom")
+            await super().connect(*args, **kwargs)
+
+    fake = _FailUnexpectedThenOk()
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    manager._supervisor_interval_s = 0.01
+    await manager.connect()
+
+    with caplog.at_level("WARNING"):
+        fake.connected = False
+        await manager._on_disconnect()
+        await asyncio.wait_for(fake.reconnect_event.wait(), timeout=1.0)
+
+    reconnect_logs = [record for record in caplog.records if "WS supervisor reconnect failed" in record.getMessage()]
+    assert reconnect_logs
+    assert any(record.exc_info for record in reconnect_logs)
+    assert not any("expected upstream/transient" in record.getMessage() for record in reconnect_logs)
+    await manager.disconnect()

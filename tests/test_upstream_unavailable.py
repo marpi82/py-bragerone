@@ -34,6 +34,37 @@ def test_is_expected_upstream_unavailable_walks_cause_chain() -> None:
     assert is_expected_upstream_unavailable(wrapped) is True
 
 
+def test_is_expected_upstream_unavailable_walks_context_chain() -> None:
+    """``__context__`` (without ``__cause__``) must still classify as expected."""
+    root = ApiError(503, "down", {})
+    wrapped = RuntimeError("wrapper")
+    wrapped.__context__ = root
+    assert is_expected_upstream_unavailable(wrapped) is True
+
+
+def test_is_expected_upstream_unavailable_skips_exception_cycles() -> None:
+    """Cyclic ``__cause__`` graphs must not loop forever and still classify."""
+    a = RuntimeError("cycle-a")
+    b = RuntimeError("cycle-b")
+    a.__cause__ = b
+    b.__cause__ = a
+    assert is_expected_upstream_unavailable(a) is False
+    a.__context__ = ApiError(503, "down", {})
+    assert is_expected_upstream_unavailable(a) is True
+
+
+def test_is_expected_upstream_unavailable_for_code_attribute() -> None:
+    """Errors exposing HTTP status via ``code`` (not ``status``) must match."""
+
+    class _CodedError(Exception):
+        def __init__(self, code: int) -> None:
+            super().__init__(f"code={code}")
+            self.code = code
+
+    assert is_expected_upstream_unavailable(_CodedError(503)) is True
+    assert is_expected_upstream_unavailable(_CodedError(500)) is False
+
+
 def test_is_expected_upstream_unavailable_for_aiohttp_handshake() -> None:
     """Aiohttp WS handshake 503 must classify as expected unavailable."""
     req = type("RI", (), {"real_url": URL("wss://example.test/socket.io/")})()
@@ -55,5 +86,9 @@ def test_is_expected_ws_reconnect_failure_covers_timeout_and_sio() -> None:
     class _SioConnectionError(ConnectionError):
         __module__ = "socketio.exceptions"
 
+    class _EioConnectionError(ConnectionError):
+        __module__ = "engineio.exceptions"
+
     assert _is_expected_ws_reconnect_failure(_SioConnectionError("Connection error")) is True
+    assert _is_expected_ws_reconnect_failure(_EioConnectionError("engine down")) is True
     assert _is_expected_ws_reconnect_failure(RuntimeError("guard me")) is False
