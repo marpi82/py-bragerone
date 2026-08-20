@@ -762,10 +762,12 @@ async def test_gateway_logs_reprime_503_as_warn_only(caplog: pytest.LogCaptureFi
         _ = tries
         raise ApiError(503, "<html>Service Unavailable</html>", {})
 
-    gw._prime_with_retry = _boom_prime  # type: ignore[method-assign]
+    gw._prime_with_retry = _boom_prime  # type: ignore[method-assign]  # test double replaces async method
     with caplog.at_level("WARNING"):
         await _wait_until(lambda: "REST re-prime failed due to expected upstream outage/timeout" in caplog.text)
     assert not any(record.exc_info for record in caplog.records)
+    assert "ApiError(status=503)" in caplog.text
+    assert "<html>" not in caplog.text
     assert gw._started is True
     await gw.stop()
 

@@ -17,7 +17,7 @@ import socketio
 
 from ..models.events import MODULE_CONNECTION_STATUS_CHANGED
 from ..utils import spawn
-from .client import is_expected_upstream_unavailable
+from .client import format_expected_failure_reason, is_expected_upstream_unavailable
 from .constants import IO_BASE, ONE_BASE, SOCK_PATH, WS_NAMESPACE
 
 log = logging.getLogger(__name__)
@@ -441,7 +441,10 @@ class RealtimeManager:
                 if initial:
                     raise
                 if _is_expected_ws_reconnect_failure(err):
-                    log.warning("WS supervisor reconnect failed (expected upstream/transient): %s", err)
+                    log.warning(
+                        "WS supervisor reconnect failed (expected upstream/transient): %s",
+                        format_expected_failure_reason(err),
+                    )
                 else:
                     log.warning("WS supervisor reconnect failed", exc_info=True)
 

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from aiohttp.client_exceptions import WSServerHandshakeError
-from multidict import CIMultiDict, CIMultiDictProxy
-from yarl import URL
-
-from pybragerone.api.client import ApiError, is_expected_upstream_unavailable
+from pybragerone.api.client import (
+    ApiError,
+    format_expected_failure_reason,
+    is_expected_upstream_unavailable,
+)
 from pybragerone.api.ws import _is_expected_ws_reconnect_failure
 
 
@@ -65,17 +65,32 @@ def test_is_expected_upstream_unavailable_for_code_attribute() -> None:
     assert is_expected_upstream_unavailable(_CodedError(500)) is False
 
 
-def test_is_expected_upstream_unavailable_for_aiohttp_handshake() -> None:
-    """Aiohttp WS handshake 503 must classify as expected unavailable."""
-    req = type("RI", (), {"real_url": URL("wss://example.test/socket.io/")})()
-    err = WSServerHandshakeError(
-        request_info=req,
-        history=(),
-        status=503,
-        message="Invalid response status",
-        headers=CIMultiDictProxy(CIMultiDict()),
-    )
-    assert is_expected_upstream_unavailable(err) is True
+def test_is_expected_upstream_unavailable_for_status_attribute() -> None:
+    """Errors exposing HTTP status via ``status`` (e.g. aiohttp handshake) must match."""
+
+    class _StatusError(Exception):
+        def __init__(self, status: int) -> None:
+            super().__init__(f"status={status}")
+            self.status = status
+
+    assert is_expected_upstream_unavailable(_StatusError(503)) is True
+    assert is_expected_upstream_unavailable(_StatusError(500)) is False
+
+
+def test_format_expected_failure_reason_omits_response_bodies() -> None:
+    """Compact reasons must include type/status without embedding response bodies."""
+    html = "<html>" + ("x" * 2000) + "</html>"
+    reason = format_expected_failure_reason(ApiError(503, html, {}))
+    assert reason == "ApiError(status=503)"
+    assert html not in reason
+    assert format_expected_failure_reason(TimeoutError()) == "TimeoutError"
+
+    class _StatusError(Exception):
+        def __init__(self, status: int) -> None:
+            super().__init__("ignored body")
+            self.status = status
+
+    assert format_expected_failure_reason(_StatusError(504)) == "_StatusError(status=504)"
 
 
 def test_is_expected_ws_reconnect_failure_covers_timeout_and_sio() -> None:

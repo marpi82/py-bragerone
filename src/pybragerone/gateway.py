@@ -18,7 +18,7 @@ from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from typing import Any, Literal, Protocol
 
 from .api import BragerOneApiClient, RealtimeManager, ServerConfig
-from .api.client import ApiError, is_expected_upstream_unavailable
+from .api.client import ApiError, format_expected_failure_reason, is_expected_upstream_unavailable
 from .models.api.modules import Module
 from .models.events import (
     MODULE_CONNECTION_STATUS_CHANGED,
@@ -583,7 +583,7 @@ class BragerOneGateway:
                 if _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err):
                     LOG.warning(
                         "REST re-prime failed due to expected upstream outage/timeout; will retry (reason=%s)",
-                        err,
+                        format_expected_failure_reason(err),
                     )
                 else:
                     LOG.exception("REST re-prime (socket down or stale ParamUpdates) failed")
@@ -606,7 +606,7 @@ class BragerOneGateway:
                     "get_modules unavailable/timeout during connectivity refresh; "
                     "keeping previous module state (source=%s, reason=%s)",
                     source,
-                    err,
+                    format_expected_failure_reason(err),
                 )
             else:
                 LOG.exception("get_modules failed during connectivity refresh")

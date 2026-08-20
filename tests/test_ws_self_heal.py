@@ -532,6 +532,8 @@ async def test_supervisor_reconnect_503_is_warn_only(
         await asyncio.wait_for(fake.reconnect_event.wait(), timeout=1.0)
 
     assert any("expected upstream/transient" in record.getMessage() for record in caplog.records)
+    assert any("ApiError(status=503)" in record.getMessage() for record in caplog.records)
+    assert not any("<html>" in record.getMessage() for record in caplog.records)
     assert not any(record.exc_info for record in caplog.records if "reconnect failed" in record.getMessage())
     await manager.disconnect()
 

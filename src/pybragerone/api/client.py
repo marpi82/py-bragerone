@@ -113,6 +113,24 @@ def is_expected_upstream_unavailable(err: BaseException) -> bool:
     return False
 
 
+def format_expected_failure_reason(err: BaseException) -> str:
+    """Return a compact log reason: exception type plus HTTP status when known.
+
+    Avoids ``ApiError``'s default ``data!r`` message, which often embeds large
+    upstream HTML bodies and would spam logs during extended outages.
+    """
+    for item in _iter_exception_chain(err):
+        if isinstance(item, ApiError):
+            return f"ApiError(status={item.status})"
+        status = getattr(item, "status", None)
+        if isinstance(status, int):
+            return f"{type(item).__name__}(status={status})"
+        code = getattr(item, "code", None)
+        if isinstance(code, int):
+            return f"{type(item).__name__}(code={code})"
+    return type(err).__name__
+
+
 class HttpCache:
     """Simple HTTP cache using ETag/Last-Modified headers with in-memory body storage.
 
