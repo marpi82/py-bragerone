@@ -90,7 +90,13 @@ def test_format_expected_failure_reason_omits_response_bodies() -> None:
             super().__init__("ignored body")
             self.status = status
 
+    class _CodedError(Exception):
+        def __init__(self, code: int) -> None:
+            super().__init__("ignored body")
+            self.code = code
+
     assert format_expected_failure_reason(_StatusError(504)) == "_StatusError(status=504)"
+    assert format_expected_failure_reason(_CodedError(502)) == "_CodedError(code=502)"
 
 
 def test_is_expected_ws_reconnect_failure_covers_timeout_and_sio() -> None:
