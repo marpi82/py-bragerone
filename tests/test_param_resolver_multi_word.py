@@ -52,8 +52,9 @@ class _StubAssets:
     def __init__(self, mapping: ParamMap) -> None:
         self.mapping = mapping
 
-    async def get_param_mapping(self, tokens: Any) -> dict[str, ParamMap | None]:
-        return {token: (self.mapping if token == self.mapping.key else None) for token in tokens}
+    async def get_param_mapping(self, tokens: Any) -> dict[str, ParamMap]:
+        # Match AssetsProtocol: omit unresolved tokens rather than mapping them to None.
+        return {token: self.mapping for token in tokens if token == self.mapping.key}
 
     async def get_module_menu(self, device_menu: int, permissions: Any = None, *, debug_mode: bool = False) -> Any:
         raise NotImplementedError

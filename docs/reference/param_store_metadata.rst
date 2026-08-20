@@ -191,7 +191,8 @@ public classmethod::
 
    value = ParamResolver.compose_mapping_register_value(store, descriptor["mapping"])
 
-Each selector reads ``P{group}.{use[0]}{number}`` from the store; when
+Each selector reads ``{group}.{use[0]}{number}`` from the store
+(``group`` already includes the ``P`` prefix, e.g. ``P4.v59``); when
 ``convert`` is present (any truthy identifier — the minified name varies per
 SPA build) the raw word is coerced to unsigned 16-bit (``int(raw) & 0xFFFF``)
 before multiplying by ``times`` (default ``1``) and summing across selectors.

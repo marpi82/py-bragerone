@@ -1322,7 +1322,8 @@ class ParamResolver:
                 {"group": "P4", "number": 60, "use": "v", "convert": "_0x35dce1", "times": 65536},
             ]
 
-        Each selector reads ``P{group}.{use[0]}{number}`` from *store*. Minified
+        Each selector reads ``{group}.{use[0]}{number}`` from *store*
+        (``group`` already includes the ``P`` prefix, e.g. ``P4.v59``). Minified
         SPA bundles emit a different ``convert`` helper identifier per build, so
         this only checks *presence* of a truthy ``convert`` value rather than
         matching a specific name: presence means the register word must be
