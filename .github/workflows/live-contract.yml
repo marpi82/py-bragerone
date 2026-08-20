@@ -58,10 +58,11 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Self-hosted bragerone-live has no gh/jq; use the Actions API client instead.
       - name: Signal live contract result
         if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SEEDED: ${{ steps.contract.outputs.seeded }}
           MATCHED: ${{ steps.contract.outputs.matched }}
           SYMBOL_COUNT: ${{ steps.contract.outputs.symbol_count }}
@@ -72,61 +73,95 @@ jobs:
           UPSTREAM_PREV: ${{ github.event.client_payload.previous }}
           WATCH_RUN_URL: ${{ github.event.client_payload.watch_run_url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          command -v gh >/dev/null || { echo "gh is required on the bragerone-live runner" >&2; exit 1; }
-          command -v jq >/dev/null || { echo "jq is required on the bragerone-live runner" >&2; exit 1; }
-          TITLE='[live-contract] BragerOne structural catalog contract'
-          # Prefer structured script outputs over step outcome: drift exits 1 but still
-          # publishes matched=false / diff_count>0 for this message.
-          if [ "$SEEDED" = "true" ]; then
-            STATUS_LINE='Live catalog contract seeded a new baseline (first success or --seed-only).'
-          elif [ "$MATCHED" = "false" ]; then
-            STATUS_LINE='Live catalog contract reported structural drift against the baseline.'
-          elif [ "$MATCHED" = "true" ]; then
-            STATUS_LINE='Live catalog contract matched the baseline (no structural drift).'
-          elif [ "$CONTRACT_OK" != "success" ]; then
-            STATUS_LINE='Live catalog contract failed (missing env, catalog error, or runner fault).'
-          else
-            STATUS_LINE='Live catalog contract finished without structured seed/match outputs.'
-          fi
-          TABLE_ROWS=$(cat <<EOF
-          | trigger | \`$EVENT_NAME\` |
-          | outcome | \`$CONTRACT_OK\` |
-          | seeded | ${SEEDED:-n/a} |
-          | matched | ${MATCHED:-n/a} |
-          | symbols | ${SYMBOL_COUNT:-n/a} |
-          | diffs | ${DIFF_COUNT:-n/a} |
-          EOF
-          )
-          if [ -n "$UPSTREAM_FP" ]; then
-            TABLE_ROWS+=$'\n'"| upstream fingerprint | \`$UPSTREAM_FP\` |"
-          fi
-          if [ -n "$UPSTREAM_PREV" ]; then
-            TABLE_ROWS+=$'\n'"| upstream previous | \`$UPSTREAM_PREV\` |"
-          fi
-          BODY=$(cat <<EOF
-          $STATUS_LINE
+        with:
+          script: |
+            const title = '[live-contract] BragerOne structural catalog contract';
+            const seeded = process.env.SEEDED || '';
+            const matched = process.env.MATCHED || '';
+            const contractOk = process.env.CONTRACT_OK || '';
+            let statusLine;
+            // Prefer structured script outputs over step outcome: drift exits 1 but still
+            // publishes matched=false / diff_count>0 for this message.
+            if (seeded === 'true') {
+              statusLine = 'Live catalog contract seeded a new baseline (first success or --seed-only).';
+            } else if (matched === 'false') {
+              statusLine = 'Live catalog contract reported structural drift against the baseline.';
+            } else if (matched === 'true') {
+              statusLine = 'Live catalog contract matched the baseline (no structural drift).';
+            } else if (contractOk !== 'success') {
+              statusLine = 'Live catalog contract failed (missing env, catalog error, or runner fault).';
+            } else {
+              statusLine = 'Live catalog contract finished without structured seed/match outputs.';
+            }
 
-          | Field | Value |
-          | --- | --- |
-          $TABLE_ROWS
+            const rows = [
+              `| trigger | \`${process.env.EVENT_NAME}\` |`,
+              `| outcome | \`${contractOk}\` |`,
+              `| seeded | ${seeded || 'n/a'} |`,
+              `| matched | ${matched || 'n/a'} |`,
+              `| symbols | ${process.env.SYMBOL_COUNT || 'n/a'} |`,
+              `| diffs | ${process.env.DIFF_COUNT || 'n/a'} |`,
+            ];
+            if (process.env.UPSTREAM_FP) {
+              rows.push(`| upstream fingerprint | \`${process.env.UPSTREAM_FP}\` |`);
+            }
+            if (process.env.UPSTREAM_PREV) {
+              rows.push(`| upstream previous | \`${process.env.UPSTREAM_PREV}\` |`);
+            }
 
-          Run: $RUN_URL
-          EOF
-          )
-          if [ -n "$WATCH_RUN_URL" ]; then
-            BODY+=$'\n'"Upstream watch: $WATCH_RUN_URL"
-          fi
-          BODY+=$'\n\n'"Baseline lives on the runner at \`/var/lib/gha/baselines/live_contract.json\` (not in git). This issue is separate from \`[upstream-assets]\`."
-          gh label create live-contract --description "Rolling notice for self-hosted live catalog contract runs" --color 5319E7 || true
-          NUMBER=$(gh issue list --state open --limit 50 --json number,title \
-            | jq -r --arg title "$TITLE" '.[] | select(.title == $title) | .number' \
-            | head -n 1)
-          if [ -z "$NUMBER" ]; then
-            gh issue create --title "$TITLE" --label live-contract --body "$BODY"
-          else
-            gh issue comment "$NUMBER" --body "$BODY"
-          fi
+            let body = [
+              statusLine,
+              '',
+              '| Field | Value |',
+              '| --- | --- |',
+              ...rows,
+              '',
+              `Run: ${process.env.RUN_URL}`,
+            ].join('\n');
+            if (process.env.WATCH_RUN_URL) {
+              body += `\nUpstream watch: ${process.env.WATCH_RUN_URL}`;
+            }
+            body +=
+              '\n\nBaseline lives on the runner at `/var/lib/gha/baselines/live_contract.json` (not in git). This issue is separate from `[upstream-assets]`.';
+
+            const { owner, repo } = context.repo;
+            try {
+              await github.rest.issues.createLabel({
+                owner,
+                repo,
+                name: 'live-contract',
+                color: '5319E7',
+                description: 'Rolling notice for self-hosted live catalog contract runs',
+              });
+            } catch (err) {
+              if (err.status !== 422) {
+                throw err;
+              }
+            }
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 50,
+            });
+            const existing = issues.find((issue) => issue.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                labels: ['live-contract'],
+                body,
+              });
+            }
 
       - name: Upload contract JSON
         if: always()
