@@ -1,0 +1,67 @@
+name: Live contract
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [upstream-catalog-changed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-contract
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    name: live catalog contract
+    if: github.repository == 'marpi82/py-bragerone'
+    runs-on: [self-hosted, Linux, X64, bragerone-live]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Install dependencies
+        run: uv sync --locked --group test --python 3.13
+
+      - name: Run live contract
+        id: contract
+        run: |
+          mkdir -p reports/live
+          uv run python scripts/live_contract.py \
+            --write-current reports/live/contract.json
+
+      - name: Summarize
+        if: always() && steps.contract.outputs.symbol_count != ''
+        env:
+          SEEDED: ${{ steps.contract.outputs.seeded }}
+          MATCHED: ${{ steps.contract.outputs.matched }}
+          SYMBOL_COUNT: ${{ steps.contract.outputs.symbol_count }}
+          DIFF_COUNT: ${{ steps.contract.outputs.diff_count }}
+        run: |
+          {
+            echo "## Live contract"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| seeded | $SEEDED |"
+            echo "| matched | $MATCHED |"
+            echo "| symbols | $SYMBOL_COUNT |"
+            echo "| diffs | $DIFF_COUNT |"
+            if [ -n "${{ github.event.client_payload.fingerprint }}" ]; then
+              echo "| upstream fingerprint | \`${{ github.event.client_payload.fingerprint }}\` |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload contract JSON
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: live-contract
+          path: reports/live/contract.json
+          if-no-files-found: ignore
+          retention-days: 30

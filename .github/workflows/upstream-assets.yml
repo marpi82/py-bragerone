@@ -6,8 +6,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   issues: write
+  actions: write
 
 concurrency:
   group: upstream-assets
@@ -136,6 +137,37 @@ jobs:
           else
             gh issue comment "$NUMBER" --body "$BODY"
           fi
+
+      - name: Dispatch live contract
+        if: success() && steps.probe.outputs.changed == 'true' && steps.probe.outputs.previous != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FINGERPRINT: ${{ steps.probe.outputs.fingerprint }}
+          PREVIOUS: ${{ steps.probe.outputs.previous }}
+          API_VERSION: ${{ steps.probe.outputs.api_version }}
+          INDEX_ASSET: ${{ steps.probe.outputs.index_asset }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          jq -n \
+            --arg fingerprint "$FINGERPRINT" \
+            --arg previous "$PREVIOUS" \
+            --arg api_version "$API_VERSION" \
+            --arg index_asset "$INDEX_ASSET" \
+            --arg watch_run_url "$RUN_URL" \
+            '{
+              event_type: "upstream-catalog-changed",
+              client_payload: {
+                fingerprint: $fingerprint,
+                previous: $previous,
+                api_version: $api_version,
+                index_asset: $index_asset,
+                watch_run_url: $watch_run_url
+              }
+            }' | gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${{ github.repository }}/dispatches" \
+              --input -
 
       - name: Save fingerprint
         if: success()
