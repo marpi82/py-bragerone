@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: live-contract
@@ -56,6 +57,70 @@ jobs:
               echo "| upstream fingerprint | \`${{ github.event.client_payload.fingerprint }}\` |"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Signal live contract result
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SEEDED: ${{ steps.contract.outputs.seeded }}
+          MATCHED: ${{ steps.contract.outputs.matched }}
+          SYMBOL_COUNT: ${{ steps.contract.outputs.symbol_count }}
+          DIFF_COUNT: ${{ steps.contract.outputs.diff_count }}
+          CONTRACT_OK: ${{ steps.contract.outcome }}
+          EVENT_NAME: ${{ github.event_name }}
+          UPSTREAM_FP: ${{ github.event.client_payload.fingerprint }}
+          UPSTREAM_PREV: ${{ github.event.client_payload.previous }}
+          WATCH_RUN_URL: ${{ github.event.client_payload.watch_run_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TITLE='[live-contract] BragerOne structural catalog contract'
+          if [ "$CONTRACT_OK" != "success" ]; then
+            STATUS_LINE='Live catalog contract failed (structural drift, missing env, or catalog error).'
+          elif [ "$SEEDED" = "true" ]; then
+            STATUS_LINE='Live catalog contract seeded a new baseline (first success or --seed-only).'
+          elif [ "$MATCHED" = "true" ]; then
+            STATUS_LINE='Live catalog contract matched the baseline (no structural drift).'
+          else
+            STATUS_LINE='Live catalog contract reported structural drift against the baseline.'
+          fi
+          TABLE_ROWS=$(cat <<EOF
+          | trigger | \`$EVENT_NAME\` |
+          | outcome | \`$CONTRACT_OK\` |
+          | seeded | ${SEEDED:-n/a} |
+          | matched | ${MATCHED:-n/a} |
+          | symbols | ${SYMBOL_COUNT:-n/a} |
+          | diffs | ${DIFF_COUNT:-n/a} |
+          EOF
+          )
+          if [ -n "$UPSTREAM_FP" ]; then
+            TABLE_ROWS+=$'\n'"| upstream fingerprint | \`$UPSTREAM_FP\` |"
+          fi
+          if [ -n "$UPSTREAM_PREV" ]; then
+            TABLE_ROWS+=$'\n'"| upstream previous | \`$UPSTREAM_PREV\` |"
+          fi
+          BODY=$(cat <<EOF
+          $STATUS_LINE
+
+          | Field | Value |
+          | --- | --- |
+          $TABLE_ROWS
+
+          Run: $RUN_URL
+          EOF
+          )
+          if [ -n "$WATCH_RUN_URL" ]; then
+            BODY+=$'\n'"Upstream watch: $WATCH_RUN_URL"
+          fi
+          BODY+=$'\n\n'"Baseline lives on the runner at \`/var/lib/gha/baselines/live_contract.json\` (not in git). This issue is separate from \`[upstream-assets]\`."
+          gh label create live-contract --description "Rolling notice for self-hosted live catalog contract runs" --color 5319E7 || true
+          NUMBER=$(gh issue list --state open --limit 50 --json number,title \
+            | jq -r --arg title "$TITLE" '.[] | select(.title == $title) | .number' \
+            | head -n 1)
+          if [ -z "$NUMBER" ]; then
+            gh issue create --title "$TITLE" --label live-contract --body "$BODY"
+          else
+            gh issue comment "$NUMBER" --body "$BODY"
+          fi
 
       - name: Upload contract JSON
         if: always()
