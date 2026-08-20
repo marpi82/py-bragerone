@@ -439,8 +439,7 @@ async def test_resolve_value_composes_and_resolves_string_display(
 
     resolver = _resolver(_multi_word_mapping(), store)
 
-    @classmethod
-    def _string_display(cls: type[Any], raw_value: Any, _raw_expr: Any) -> str:
+    def _string_display(_self_or_cls: object, raw_value: Any, _raw_expr: Any) -> str:
         assert raw_value == 38063
         return "units.202.0"
 
@@ -482,11 +481,10 @@ async def test_resolve_value_compose_miss_falls_through_to_direct(
     )
     resolver = _resolver(mapping, store)
 
-    monkeypatch.setattr(
-        ParamResolver,
-        "compose_mapping_register_value",
-        classmethod(lambda cls, _store, _mapping: None),
-    )
+    def _compose_none(_cls: type[Any], _store: ParamStore, _mapping: Any) -> None:
+        return None
+
+    monkeypatch.setattr(ParamResolver, "compose_mapping_register_value", classmethod(_compose_none))
 
     resolved = await resolver.resolve_value("PARAM_P4_59")
     assert resolved.kind == "direct"
@@ -516,11 +514,10 @@ async def test_resolve_value_string_display_keeps_value_when_token_unresolved(
 
     resolver = _resolver(_multi_word_mapping(convert=None), store)
 
-    @classmethod
-    def _string_display(cls: type[Any], raw_value: Any, _raw_expr: Any) -> str:
+    def _string_display(_self_or_cls: object, _raw_value: Any, _raw_expr: Any) -> str:
         return "literal-display"
 
-    async def _resolve_token(_self: ParamResolver, label: str | None) -> str | None:
+    async def _resolve_token(_self: ParamResolver, _label: str | None) -> str | None:
         return None
 
     monkeypatch.setattr(ParamResolver, "_apply_numeric_transform", _string_display)
