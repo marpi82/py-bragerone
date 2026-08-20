@@ -173,3 +173,25 @@ Usage guidelines
   before issuing the matching ``command`` with its ``value``.
 * Preserve ``raw`` when caching data for offline analysis – upstream asset
   changes can be re-parsed without fetching everything again.
+
+Multi-register (multi-word) values
+-----------------------------------
+
+Some parameters split a value across more than one register instead of a
+single value channel — ``paths["value"]`` / ``raw["value"]`` then holds a list
+of ``{group, number, use[, convert, times]}`` address selectors rather than a
+single entry (for example ``PARAM_P4_59`` "Czas pracy podajnika", #327). This
+is distinct from STATUS ``if``/``elseif``/``then``/``else`` rule lists, which
+share the same slot but describe computed enum/boolean values instead.
+
+``ParamResolver.resolve_value()`` detects address-selector lists and composes
+them automatically. Callers holding a cached descriptor dict (the shape above,
+as persisted by Home Assistant) can call the same logic directly via the
+public classmethod::
+
+   value = ParamResolver.compose_mapping_register_value(store, descriptor["mapping"])
+
+Each selector reads ``P{group}.{use[0]}{number}`` from the store; when
+``convert`` is present (any truthy identifier — the minified name varies per
+SPA build) the raw word is coerced to unsigned 16-bit (``int(raw) & 0xFFFF``)
+before multiplying by ``times`` (default ``1``) and summing across selectors.
