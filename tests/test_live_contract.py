@@ -111,6 +111,23 @@ def test_normalize_selector_converts_helper_to_bool() -> None:
     }
 
 
+def test_normalize_selector_collapses_integer_valued_floats() -> None:
+    """Integer-valued floats must not churn baselines as float vs int."""
+    normalize = _load().normalize_selector
+    assert normalize({"group": "P4", "number": 59.0, "use": "v", "times": 65536.0}) == {
+        "group": "P4",
+        "number": 59,
+        "use": "v",
+        "times": 65536,
+    }
+    assert normalize({"group": "P4", "number": 1, "use": "v", "times": 1.5}) == {
+        "group": "P4",
+        "number": 1,
+        "use": "v",
+        "times": 1.5,
+    }
+
+
 def test_symbol_contract_multi_word_and_flags() -> None:
     """Multi-word compose mappings expose structural flags without live values."""
     module = _load()

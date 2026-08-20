@@ -67,27 +67,34 @@ def classify_path_kind(entries: Any) -> str:
     return "other"
 
 
+def _stable_number(value: Any) -> int | float | None:
+    """Return a JSON-stable number, collapsing integer-valued floats to ``int``."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else value
+    return None
+
+
 def normalize_selector(entry: Mapping[str, Any]) -> dict[str, Any]:
     """Return a stable address-selector shape (``convert`` as bool, no live values)."""
     out: dict[str, Any] = {}
     group = entry.get("group")
-    number = entry.get("number")
     use = entry.get("use")
     if isinstance(group, str) and group:
         out["group"] = group
-    if isinstance(number, int):
+    number = _stable_number(entry.get("number"))
+    if number is not None:
         out["number"] = number
-    elif isinstance(number, float) and number.is_integer():
-        out["number"] = int(number)
     if isinstance(use, str) and use:
         out["use"] = use
     convert = entry.get("convert")
     if convert:
         out["convert"] = True
-    times = entry.get("times")
-    if isinstance(times, bool):
-        pass
-    elif isinstance(times, int | float) and not isinstance(times, bool):
+    times = _stable_number(entry.get("times"))
+    if times is not None:
         out["times"] = times
     return out
 
