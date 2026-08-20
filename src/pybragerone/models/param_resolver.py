@@ -1254,7 +1254,49 @@ class ParamResolver:
         return f"{pool}.{chan}{idx}"
 
     @staticmethod
-    def _mapping_has_computed_rules(mapping: ParamMap | None) -> bool:
+    def _is_status_rule_entry(entry: Any) -> bool:
+        """Return whether *entry* looks like a STATUS ``if``/``elseif``/``then``/``else`` rule."""
+        return isinstance(entry, Mapping) and any(key in entry for key in ("if", "elseif", "then", "else"))
+
+    @classmethod
+    def _is_status_rule_list(cls, entries: Any) -> bool:
+        """Return whether *entries* is a non-empty list containing STATUS rule dicts."""
+        return isinstance(entries, list) and bool(entries) and any(cls._is_status_rule_entry(entry) for entry in entries)
+
+    @staticmethod
+    def _is_address_selector_entry(entry: Any) -> bool:
+        """Return whether *entry* is a ``{group, number, use[, convert, times]}`` register selector."""
+        if not isinstance(entry, Mapping):
+            return False
+        group = entry.get("group")
+        number = entry.get("number")
+        use = entry.get("use")
+        return isinstance(group, str) and bool(group) and isinstance(number, int) and isinstance(use, str) and bool(use)
+
+    @classmethod
+    def _is_address_selector_list(cls, entries: Any) -> bool:
+        """Return whether *entries* is a non-empty list of register address selectors.
+
+        Distinguishes multi-register address lists (#327) — e.g. ``[{"group": "P4",
+        "number": 59, "use": "v", "convert": "..."}, {..., "times": 65536}]`` — from
+        STATUS-style ``if``/``elseif``/``then``/``else`` rule lists, which happen to
+        share the same ``raw["value"]`` / ``paths["value"]`` slot.
+        """
+        if not isinstance(entries, list) or not entries:
+            return False
+        if cls._is_status_rule_list(entries):
+            return False
+        return any(cls._is_address_selector_entry(entry) for entry in entries)
+
+    @classmethod
+    def _mapping_has_computed_rules(cls, mapping: ParamMap | None) -> bool:
+        """Return whether *mapping* carries STATUS-style rule-based computed values.
+
+        Only ``if``/``elseif``/``then``/``else`` rule lists count as computed.
+        Address-selector lists describing multi-register values (``group``/``number``/
+        ``use`` [+ ``convert``/``times``]) are excluded — those are composed via
+        :meth:`compose_mapping_register_value` instead (#327).
+        """
         if mapping is None:
             return False
         raw = mapping.raw
@@ -1262,17 +1304,101 @@ class ParamResolver:
             any_rules = raw.get("any")
             if isinstance(any_rules, list) and any_rules:
                 return True
-            value_rules = raw.get("value")
-            if isinstance(value_rules, list) and value_rules:
+            if cls._is_status_rule_list(raw.get("value")):
                 return True
         paths = mapping.paths
+        return isinstance(paths, Mapping) and cls._is_status_rule_list(paths.get("value"))
+
+    @classmethod
+    def compose_mapping_register_value(cls, store: ParamStore, mapping: Any) -> int | float | None:
+        """Compose a multi-register (multi-word) parameter value from live register words.
+
+        Some SPA parameters address more than one register as *address selectors*
+        rather than a single value channel — e.g. ``PARAM_P4_59`` ("Czas pracy
+        podajnika", #327)::
+
+            [
+                {"group": "P4", "number": 59, "use": "v", "convert": "_0x35dce1"},
+                {"group": "P4", "number": 60, "use": "v", "convert": "_0x35dce1", "times": 65536},
+            ]
+
+        Each selector reads ``{group}.{use[0]}{number}`` from *store*
+        (``group`` already includes the ``P`` prefix, e.g. ``P4.v59``). Minified
+        SPA bundles emit a different ``convert`` helper identifier per build, so
+        this only checks *presence* of a truthy ``convert`` value rather than
+        matching a specific name: presence means the register word must be
+        coerced with ``int(raw) & 0xFFFF`` (unsigned 16-bit) before multiplying by
+        ``times`` (default ``1``) and summing across selectors. Words without a
+        ``convert`` entry keep their raw (possibly signed) value.
+
+        Args:
+            store: Live parameter store to read register words from.
+            mapping: A :class:`ParamMap`, or a plain dict with ``paths``/``raw``
+                (and, optionally, ``channels``) keys — the shape of the cached
+                entity descriptors Home Assistant persists in ``entry.data``.
+
+        Returns:
+            The composed value as ``int`` when the sum is a whole number,
+            otherwise ``float``. Returns ``None`` when *mapping* does not carry
+            an address-selector value list, or when none of the selectors have a
+            live value in *store*.
+        """
+        raw: Any
+        paths: Any
+        if isinstance(mapping, ParamMap):
+            raw = mapping.raw
+            paths = mapping.paths
+        elif isinstance(mapping, Mapping):
+            raw = mapping.get("raw")
+            paths = mapping.get("paths")
+        else:
+            return None
+
+        entries: list[Any] | None = None
         if isinstance(paths, Mapping):
-            v = paths.get("value")
-            if isinstance(v, list) and any(
-                isinstance(entry, Mapping) and any(key in entry for key in ("if", "elseif", "then", "else")) for entry in v
-            ):
-                return True
-        return False
+            candidate = paths.get("value")
+            if cls._is_address_selector_list(candidate):
+                entries = candidate
+        if entries is None and isinstance(raw, Mapping):
+            candidate = raw.get("value")
+            if cls._is_address_selector_list(candidate):
+                entries = candidate
+        if entries is None:
+            return None
+
+        total = 0.0
+        found_any = False
+        for selector in entries:
+            if not isinstance(selector, Mapping):
+                continue
+            group = selector.get("group")
+            number = selector.get("number")
+            use = selector.get("use")
+            if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
+                continue
+            fam = store.get_family(group, number)
+            if fam is None:
+                continue
+            raw_word = fam.get(use[0])
+            if raw_word is None:
+                continue
+            try:
+                word_int = int(raw_word)
+            except (TypeError, ValueError):
+                continue
+
+            found_any = True
+            word_value: int | float = word_int
+            if selector.get("convert"):
+                word_value = word_int & 0xFFFF
+
+            times_raw = selector.get("times")
+            multiplier: int | float = times_raw if isinstance(times_raw, (int, float)) and not isinstance(times_raw, bool) else 1
+            total += word_value * multiplier
+
+        if not found_any:
+            return None
+        return int(total) if float(total).is_integer() else total
 
     @staticmethod
     def _mapping_has_simple_direct_value_path(mapping: ParamMap | None) -> bool:
@@ -2039,6 +2165,27 @@ class ParamResolver:
                 value_label=computed_value_label,
                 unit=unit,
             )
+
+        if mapping is not None:
+            composed = self.compose_mapping_register_value(self._store, mapping)
+            if composed is not None:
+                display_val = self._apply_numeric_transform(
+                    composed, unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
+                )
+                if isinstance(display_val, str):
+                    resolved_display = await self._resolve_units_value_token(display_val)
+                    if isinstance(resolved_display, str):
+                        display_val = resolved_display
+                return ResolvedValue(
+                    symbol=symbol,
+                    kind="direct",
+                    address=address_key,
+                    value=display_val,
+                    value_label=await self._resolve_units_value_token(
+                        self._unit_mapping_value_label(unit_value_labels, display_val)
+                    ),
+                    unit=unit,
+                )
 
         val = None
         if addr_tuple is not None:

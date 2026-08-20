@@ -23,6 +23,14 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- Multi-register parameters (e.g. ``PARAM_P4_59`` "Czas pracy podajnika") whose
+  SPA mapping addresses more than one register as ``{group, number, use[,
+  convert, times]}`` selectors were misclassified as STATUS computed rules and
+  fell back to reading only the primary register, yielding a signed int16 word
+  (``-27473``) instead of the web UI's composed unsigned value (``38063``).
+  ``ParamResolver`` now tells address-selector lists apart from STATUS
+  ``if``/``elseif`` rule lists and exposes the composition as the public
+  ``ParamResolver.compose_mapping_register_value()`` classmethod (#327).
 - Engine.IO abort (aiohttp ``WSMsgType.CLOSED``) can skip the Socket.IO
   ``disconnect`` callback and deadlock leftover ``disconnect()``. The supervisor
   now notifies ``CloudSessionConnectivity(up=False)`` immediately, bounds
