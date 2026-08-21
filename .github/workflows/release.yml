@@ -45,7 +45,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main "+refs/heads/release/*:refs/remotes/origin/release/*"
+          # Explicit refspecs refresh origin/main and origin/release/* (not only FETCH_HEAD).
+          git fetch --prune origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/release/*:refs/remotes/origin/release/*"
 
           on_main=false
           on_release=false

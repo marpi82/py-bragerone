@@ -258,7 +258,7 @@ The project uses GitHub Actions for automation (`.github/workflows/`):
 
 - **ci.yml**: Lint (ruff), typecheck (mypy), tests (pytest), secrets scan (gitleaks)
 - **upstream-assets.yml**: Scheduled public catalog watch (no login; not a PR gate)
-- **release.yml**: Automated releases with CalVer tags; stable and pre-release tags publish to PyPI (Trusted Publishing); GitHub Release marked prerelease for ``aN``/``bN``/``rcN``
+- **release.yml**: Automated releases with CalVer tags; stable and pre-release tags publish to PyPI (Trusted Publishing); GitHub Release marked prerelease for ``aN``/``bN``/``rcN``. Stable tags are refused unless the tagged commit is on ``origin/main``; pre-releases (``aN``/``bN``/``rcN``) must be on ``origin/main`` or ``origin/release/*`` trains (``release/YYYY.M`` or ``release/YYYY.M.N``). See ``.github/branch-protection-checklist.md``.
 - **docs.yml**: Sphinx documentation build and deployment to GitHub Pages
 
 **Dynamic versioning**: Version comes from git tags via `hatch-vcs`. No extra CI setup is required beyond installing Hatch/uv.
