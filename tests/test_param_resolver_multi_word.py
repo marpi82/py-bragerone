@@ -306,6 +306,50 @@ def test_compose_mapping_register_value_skips_plain_single_selector() -> None:
     assert ParamResolver._address_selectors_need_compose(mapping["paths"]["value"]) is False
 
 
+def test_address_selectors_need_compose_empty_and_single_convert() -> None:
+    """Zero selectors skip compose; a lone convert selector still needs it."""
+    assert ParamResolver._address_selectors_need_compose([]) is False
+    assert ParamResolver._address_selectors_need_compose([{"not": "a-selector"}]) is False
+    assert (
+        ParamResolver._address_selectors_need_compose(
+            [{"group": "P4", "number": 59, "use": "v", "convert": "_0x35dce1"}],
+        )
+        is True
+    )
+
+
+def test_compose_mapping_register_value_single_convert_selector() -> None:
+    """Single-selector maps with convert still uint16-coerce the register word."""
+    store = ParamStore()
+    store.upsert("P4.v59", -27473)
+
+    mapping = {
+        "paths": {
+            "value": [
+                {"group": "P4", "number": 59, "use": "v", "convert": "_0x35dce1"},
+            ]
+        },
+        "raw": {},
+    }
+    assert ParamResolver.compose_mapping_register_value(store, mapping) == 38063
+
+
+def test_compose_mapping_register_value_preserves_fractional_word_without_convert() -> None:
+    """Without convert, fractional store words stay floats under a times multiplier."""
+    store = ParamStore()
+    store.upsert("P4.v59", 3.5)
+
+    mapping = {
+        "paths": {
+            "value": [
+                {"group": "P4", "number": 59, "use": "v", "times": 2},
+            ]
+        },
+        "raw": {},
+    }
+    assert ParamResolver.compose_mapping_register_value(store, mapping) == 7.0
+
+
 def test_compose_mapping_register_value_returns_float_for_fractional_times() -> None:
     """Non-integer ``times`` multipliers must keep a float composed value."""
     store = ParamStore()
