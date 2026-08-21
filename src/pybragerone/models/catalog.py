@@ -664,6 +664,10 @@ def _eval_js_binary(operator: str, left: Any, right: Any) -> tuple[bool, Any]:
         return False, None
     if operator == "??":
         return True, right if _is_js_nullish(left) else left
+    if operator == "||":
+        return True, left if _js_truthy(left) else right
+    if operator == "&&":
+        return True, right if _js_truthy(left) else left
     if operator in {"===", "=="}:
         return True, _js_nullish_aware_equal(left, right)
     if operator in {"!==", "!="}:
@@ -1054,6 +1058,7 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
     if t == "subscript_expression":
         obj_node = node.child_by_field_name("object")
         index_node = node.child_by_field_name("index")
+        optional = any(child.type == "optional_chain" for child in node.children)
         if index_node is not None and _is_string(index_node):
             public = _string_value(_node_text(code, index_node))
             # Import aliases: ``_0x521864['DISPLAY_MENU_DHW']``. Leave ``arr['map']`` and
@@ -1064,7 +1069,14 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
                     obj_val = bindings[obj_name]
                     if isinstance(obj_val, Mapping) and public in obj_val:
                         return obj_val[public]
+                    # Optional chain on a missing / nullish binding → undefined.
+                    if optional and _is_js_nullish(obj_val):
+                        return None
                 if obj_name.startswith("_0x"):
+                    # ``_0x?.['minValue']`` with no binding is undefined (SPA fallback
+                    # via ``|| […]``), not the public name used for import aliases.
+                    if optional:
+                        return None
                     return public
         leftover = _node_text(code, node)
         public_leftover = js_public_member_name(leftover)
