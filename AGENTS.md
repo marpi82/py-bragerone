@@ -8,6 +8,7 @@ Async Python library for the BragerOne cloud/realtime API (REST + Socket.IO), de
 - **Python**: `>=3.13.2,<3.15` (CI tests on 3.13).
 - **Dependencies**: **uv** (`uv.lock` committed). Groups: `dev` (includes security tools: bandit, pip-audit), `test`, `docs`, `fuzz`.
 - **Build**: hatchling + **hatch-vcs** — version is CalVer derived from git tags; never hardcode a version in `pyproject.toml`.
+- **Releases**: tag push → `.github/workflows/release.yml` (PyPI + GitHub Release). `main` may cut stable or `aN`/`bN`/`rcN`; `release/YYYY.M` (or `…M.N`) trains may cut pre-releases only — stable tags fail unless the commit is on `origin/main`. Ruleset checklist: `.github/branch-protection-checklist.md`.
 
 ## Common commands
 

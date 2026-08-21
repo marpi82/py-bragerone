@@ -43,8 +43,10 @@ Trust boundaries
    intended surface; internal modules are not re-exported.
 3. **Repository/CI ↔ package publishing** — PyPI publishes only from the
    tag-triggered release workflow via OIDC trusted publishing (no stored
-   PyPI token); separately, the docs workflow may deploy GitHub Pages
-   (``pages: write`` scoped to documentation).
+   PyPI token). Stable CalVer tags are refused unless the tagged commit is
+   on ``origin/main``; pre-releases (``aN`` / ``bN`` / ``rcN``) may also be
+   cut from ``release/*`` trains. Separately, the docs workflow may deploy
+   GitHub Pages (``pages: write`` scoped to documentation).
 
 Secure design principles applied
 --------------------------------

@@ -36,6 +36,48 @@ jobs:
           fi
           echo "Detected tag: ${TAG}"
 
+      # Stable tags require the tagged commit on origin/main.
+      # Pre-releases require the commit on origin/main or origin/release/*.
+      - name: Enforce release channel
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Explicit refspecs refresh origin/main and origin/release/* (not only FETCH_HEAD).
+          git fetch --prune origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/release/*:refs/remotes/origin/release/*"
+
+          on_main=false
+          on_release=false
+          if git merge-base --is-ancestor HEAD origin/main; then
+            on_main=true
+          fi
+          while IFS= read -r ref; do
+            if git merge-base --is-ancestor HEAD "$ref"; then
+              on_release=true
+              break
+            fi
+          done < <(git for-each-ref --format="%(refname)" "refs/remotes/origin/release")
+
+          if [[ "$PRERELEASE" == "true" ]]; then
+            if [[ "$on_main" == "true" || "$on_release" == "true" ]]; then
+              echo "Pre-release tag ${TAG}: commit is on main or release/*"
+              exit 0
+            fi
+            echo "::error::Pre-release tag ${TAG} is not on origin/main or origin/release/*. Cut pre-releases from main or a release train only."
+            exit 1
+          fi
+
+          if [[ "$on_main" == "true" ]]; then
+            echo "Stable tag ${TAG}: commit is on origin/main"
+            exit 0
+          fi
+          echo "::error::Stable tag ${TAG} is not on origin/main. Cut stables from main after merging; from release/* use aN/bN/rcN only."
+          exit 1
+
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
