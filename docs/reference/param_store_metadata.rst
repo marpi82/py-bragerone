@@ -184,12 +184,18 @@ single entry (for example ``PARAM_P4_59`` "Czas pracy podajnika", #327). This
 is distinct from STATUS ``if``/``elseif``/``then``/``else`` rule lists, which
 share the same slot but describe computed enum/boolean values instead.
 
-``ParamResolver.resolve_value()`` detects address-selector lists and composes
-them automatically. Callers holding a cached descriptor dict (the shape above,
-as persisted by Home Assistant) can call the same logic directly via the
-public classmethod::
+``ParamResolver.resolve_value()`` detects address-selector lists that need
+composition (two or more selectors, or a selector with ``convert`` / a
+non-default ``times``) and composes them automatically. Plain single
+``{group, number, use}`` paths are left to a direct store read so half-degree
+floats are preserved. Callers holding a cached descriptor dict (the shape
+above, as persisted by Home Assistant) can call the same logic directly via
+the public classmethod::
 
    value = ParamResolver.compose_mapping_register_value(store, descriptor["mapping"])
+
+``compose_mapping_register_value`` returns ``None`` for those plain
+single-selector mappings (callers should fall back to ``pool``/``chan``/``idx``).
 
 Each selector reads ``{group}.{use[0]}{number}`` from the store
 (``group`` already includes the ``P`` prefix, e.g. ``P4.v59``); when

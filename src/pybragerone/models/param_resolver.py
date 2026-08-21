@@ -1289,6 +1289,28 @@ class ParamResolver:
         return any(cls._is_address_selector_entry(entry) for entry in entries)
 
     @classmethod
+    def _address_selectors_need_compose(cls, entries: list[Any]) -> bool:
+        """Return whether address selectors require multi-register composition.
+
+        Ordinary SPA parameters use a *single* ``{group, number, use}`` selector with
+        no ``convert`` / non-default ``times``. Those must not go through
+        :meth:`compose_mapping_register_value`: composition is only for multi-word /
+        converted / scaled selector lists. Plain single-selector mappings return
+        ``None`` so callers fall back to a direct store read (preserving the live
+        value type, including half-degree floats such as ``40.5``).
+        """
+        selectors = [entry for entry in entries if cls._is_address_selector_entry(entry)]
+        if len(selectors) >= 2:
+            return True
+        if len(selectors) != 1:
+            return False
+        entry = selectors[0]
+        if entry.get("convert"):
+            return True
+        times = entry.get("times")
+        return isinstance(times, (int, float)) and not isinstance(times, bool) and float(times) != 1.0
+
+    @classmethod
     def _mapping_has_computed_rules(cls, mapping: ParamMap | None) -> bool:
         """Return whether *mapping* carries STATUS-style rule-based computed values.
 
@@ -1340,8 +1362,9 @@ class ParamResolver:
         Returns:
             The composed value as ``int`` when the sum is a whole number,
             otherwise ``float``. Returns ``None`` when *mapping* does not carry
-            an address-selector value list, or when none of the selectors have a
-            live value in *store*.
+            a multi-register / ``convert`` / non-default-``times`` selector list
+            (plain single ``{group, number, use}`` paths fall through to a direct
+            store read), or when none of the selectors have a live value in *store*.
         """
         raw: Any
         paths: Any
@@ -1363,7 +1386,7 @@ class ParamResolver:
             candidate = raw.get("value")
             if cls._is_address_selector_list(candidate):
                 entries = candidate
-        if entries is None:
+        if entries is None or not cls._address_selectors_need_compose(entries):
             return None
 
         total = 0.0
@@ -1383,14 +1406,17 @@ class ParamResolver:
             if raw_word is None:
                 continue
             try:
-                word_int = int(raw_word)
+                word_float = float(raw_word)
             except (TypeError, ValueError):
                 continue
 
             found_any = True
-            word_value: int | float = word_int
             if selector.get("convert"):
-                word_value = word_int & 0xFFFF
+                word_value: int | float = int(word_float) & 0xFFFF
+            elif word_float.is_integer():
+                word_value = int(word_float)
+            else:
+                word_value = word_float
 
             times_raw = selector.get("times")
             multiplier: int | float = times_raw if isinstance(times_raw, (int, float)) and not isinstance(times_raw, bool) else 1

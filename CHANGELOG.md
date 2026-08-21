@@ -23,6 +23,12 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- ``compose_mapping_register_value`` no longer rewrites ordinary single-register
+  SPA value paths (``[{group, number, use}]``). That path always coerced words
+  with ``int()``, truncating half-degree temperatures (``40.5`` → ``40``) after
+  Home Assistant started preferring compose for every address-selector mapping
+  (#327 / ha-bragerone#215). Composition now runs only for multi-selector lists
+  or selectors that carry ``convert`` / a non-default ``times``.
 - Zombie Socket.IO sessions (``connected=True`` but no ``ParamUpdate`` deltas) now
   force a hard WS restart after two consecutive REST-prime-only cycles, matching
   the SPA recovery path (``connect`` → ``ModulesService.connect`` + REST

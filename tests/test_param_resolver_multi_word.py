@@ -266,28 +266,88 @@ def test_compose_mapping_register_value_falls_back_to_raw_when_paths_empty() -> 
 
 
 def test_compose_mapping_register_value_falls_back_to_raw_when_paths_not_mapping() -> None:
-    """Non-mapping ``paths`` (None / omitted) must not block the ``raw['value']`` fallback."""
+    """Non-mapping ``paths`` must not block ``raw['value']`` multi-register compose."""
     store = ParamStore()
-    store.upsert("P4.v59", 42)
+    store.upsert("P4.v59", -27473)
+    store.upsert("P4.v60", 0)
 
     raw_only = {
         "raw": {
             "value": [
-                {"group": "P4", "number": 59, "use": "v"},
+                {"group": "P4", "number": 59, "use": "v", "convert": "_0x35dce1"},
+                {"group": "P4", "number": 60, "use": "v", "convert": "_0x35dce1", "times": 65536},
             ]
         },
     }
-    assert ParamResolver.compose_mapping_register_value(store, raw_only) == 42
+    assert ParamResolver.compose_mapping_register_value(store, raw_only) == 38063
 
     paths_none = {
         "paths": None,
         "raw": {
             "value": [
-                {"group": "P4", "number": 59, "use": "v"},
+                {"group": "P4", "number": 59, "use": "v", "convert": "_0x35dce1"},
+                {"group": "P4", "number": 60, "use": "v", "convert": "_0x35dce1", "times": 65536},
             ]
         },
     }
-    assert ParamResolver.compose_mapping_register_value(store, paths_none) == 42
+    assert ParamResolver.compose_mapping_register_value(store, paths_none) == 38063
+
+
+def test_compose_mapping_register_value_skips_plain_single_selector() -> None:
+    """Plain single ``{group,number,use}`` paths must not compose (preserves float halves)."""
+    store = ParamStore()
+    store.upsert("P7.v12", 40.5)
+
+    mapping = {
+        "paths": {"value": [{"group": "P7", "number": 12, "use": "v"}]},
+        "raw": {},
+    }
+    assert ParamResolver.compose_mapping_register_value(store, mapping) is None
+    assert ParamResolver._address_selectors_need_compose(mapping["paths"]["value"]) is False
+
+
+def test_address_selectors_need_compose_empty_and_single_convert() -> None:
+    """Zero selectors skip compose; a lone convert selector still needs it."""
+    assert ParamResolver._address_selectors_need_compose([]) is False
+    assert ParamResolver._address_selectors_need_compose([{"not": "a-selector"}]) is False
+    assert (
+        ParamResolver._address_selectors_need_compose(
+            [{"group": "P4", "number": 59, "use": "v", "convert": "_0x35dce1"}],
+        )
+        is True
+    )
+
+
+def test_compose_mapping_register_value_single_convert_selector() -> None:
+    """Single-selector maps with convert still uint16-coerce the register word."""
+    store = ParamStore()
+    store.upsert("P4.v59", -27473)
+
+    mapping = {
+        "paths": {
+            "value": [
+                {"group": "P4", "number": 59, "use": "v", "convert": "_0x35dce1"},
+            ]
+        },
+        "raw": {},
+    }
+    assert ParamResolver.compose_mapping_register_value(store, mapping) == 38063
+
+
+def test_compose_mapping_register_value_preserves_fractional_word_without_convert() -> None:
+    """Without convert, fractional store words are multiplied; whole totals stay int."""
+    store = ParamStore()
+    store.upsert("P4.v59", 3.5)
+
+    mapping = {
+        "paths": {
+            "value": [
+                {"group": "P4", "number": 59, "use": "v", "times": 2},
+            ]
+        },
+        "raw": {},
+    }
+    assert ParamResolver.compose_mapping_register_value(store, mapping) == 7
 
 
 def test_compose_mapping_register_value_returns_float_for_fractional_times() -> None:
@@ -308,7 +368,7 @@ def test_compose_mapping_register_value_returns_float_for_fractional_times() -> 
 
 
 def test_compose_mapping_register_value_ignores_bool_times() -> None:
-    """Boolean ``times`` is excluded (``bool`` subclasses ``int``) and defaults to 1."""
+    """Boolean ``times`` does not trigger compose (``bool`` subclasses ``int``)."""
     store = ParamStore()
     store.upsert("P4.v59", 7)
 
@@ -320,21 +380,23 @@ def test_compose_mapping_register_value_ignores_bool_times() -> None:
         },
         "raw": {},
     }
-    assert ParamResolver.compose_mapping_register_value(store, mapping) == 7
+    assert ParamResolver.compose_mapping_register_value(store, mapping) is None
 
 
 def test_compose_mapping_register_value_skips_malformed_selector_entries() -> None:
     """Non-mapping and malformed selector entries are skipped, valid ones still contribute."""
     store = ParamStore()
-    store.upsert("P4.v59", 38063)
+    store.upsert("P4.v59", -27473)
+    store.upsert("P4.v60", 0)
 
     mapping = {
         "paths": {
             "value": [
-                {"group": "P4", "number": 59, "use": "v"},
+                {"group": "P4", "number": 59, "use": "v", "convert": "_0x35dce1"},
                 "not-a-dict",
                 {"group": "P4", "use": "v"},  # missing number
                 {"group": 4, "number": 60, "use": "v"},  # group not a string
+                {"group": "P4", "number": 60, "use": "v", "convert": "_0x35dce1", "times": 65536},
             ]
         },
         "raw": {},
