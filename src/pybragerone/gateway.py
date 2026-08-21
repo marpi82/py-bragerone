@@ -22,6 +22,7 @@ from .api.client import ApiError, format_expected_failure_reason, is_expected_up
 from .models.api.modules import Module
 from .models.events import (
     MODULE_CONNECTION_STATUS_CHANGED,
+    MODULE_MEMORY_UPDATED,
     CloudSessionConnectivity,
     EventBus,
     ModuleConnectivity,
@@ -34,6 +35,9 @@ LOG = logging.getLogger(__name__)
 _DEFAULT_CONNECTIVITY_POLL_INTERVAL_S = 60.0
 # REST-prime when no ParamUpdate has been published for this long while WS claims up.
 _DEFAULT_STALE_PRIME_AFTER_S = 180.0
+# After this many consecutive zombie REST-primes, force a hard WS restart (SPA-style
+# reconnect → modules.connect + REST parameters). ``0`` disables hard restart.
+_DEFAULT_ZOMBIE_HARD_RESTART_AFTER = 2
 
 ConnectivitySource = Literal["rest", "ws", "derived"]
 CloudSessionSource = Literal["connect", "disconnect", "stop"]
@@ -170,6 +174,9 @@ class RealtimeManagerClient(Protocol):
     async def subscribe(self, modules: list[str]) -> None:  # noqa: D102
         raise NotImplementedError
 
+    async def force_reconnect(self) -> None:  # noqa: D102
+        raise NotImplementedError
+
 
 class BragerOneGateway:
     """High-level orchestrator for BragerOne realtime data.
@@ -195,6 +202,7 @@ class BragerOneGateway:
         owns_api: bool = False,
         connectivity_poll_interval: float = _DEFAULT_CONNECTIVITY_POLL_INTERVAL_S,
         stale_prime_after_s: float = _DEFAULT_STALE_PRIME_AFTER_S,
+        zombie_hard_restart_after: int = _DEFAULT_ZOMBIE_HARD_RESTART_AFTER,
     ) -> None:
         """Initialize the gateway but do not start it yet.
 
@@ -210,6 +218,9 @@ class BragerOneGateway:
             stale_prime_after_s: Seconds without a published ``ParamUpdate`` after which
                 the poll REST-primes even if Socket.IO still reports up (zombie session).
                 Use ``0`` to disable stale-session priming.
+            zombie_hard_restart_after: Consecutive zombie REST-primes before forcing a
+                hard Socket.IO restart (SPA parity: reconnect then ``modules.connect`` +
+                REST parameters). Use ``0`` to only REST-prime without tearing down WS.
         """
         self.object_id = int(object_id)
         self.modules = sorted(set(modules))
@@ -221,6 +232,8 @@ class BragerOneGateway:
         self._owns_api = owns_api
         self._connectivity_poll_interval = float(connectivity_poll_interval)
         self._stale_prime_after_s = float(stale_prime_after_s)
+        self._zombie_hard_restart_after = int(zombie_hard_restart_after)
+        self._zombie_prime_streak = 0
         self._last_param_publish_monotonic: float | None = None
 
         self._tasks: set[asyncio.Task[Any]] = set()
@@ -350,11 +363,20 @@ class BragerOneGateway:
             return None
         return time.monotonic() - stamped
 
-    def _touch_param_publish(self, count: int) -> None:
-        """Record that ``count`` parameter events were published."""
+    def _touch_param_publish(self, count: int, *, live: bool = False) -> None:
+        """Record that ``count`` parameter events were published.
+
+        Args:
+            count: Number of ``ParamUpdate`` events published.
+            live: When ``True`` (WS snapshot / parameters:change), clear the zombie
+                REST-prime streak. REST primes leave the streak intact so consecutive
+                silent cycles can still trigger a hard WS restart.
+        """
         if count <= 0:
             return
         self._last_param_publish_monotonic = time.monotonic()
+        if live:
+            self._zombie_prime_streak = 0
 
     async def refresh_module_connectivity(self) -> None:
         """Refresh module↔cloud connectivity from REST ``get_modules``."""
@@ -564,7 +586,10 @@ class BragerOneGateway:
                 LOG.exception("Connectivity poll tick failed")
             # ParamUpdates are WS deltas. REST-prime when the socket is down, or when
             # the session still reports up but no parameter events have arrived (zombie
-            # Engine.IO abort that skipped the Socket.IO disconnect callback).
+            # Engine.IO abort that skipped the Socket.IO disconnect callback). After
+            # several consecutive zombie primes, force a hard WS restart — the SPA
+            # recovers via Socket.IO reconnect then ModulesService.connect + REST
+            # parameters; our supervisor only reconnects when ``connected`` looks down.
             if not self._started:
                 continue
             age = self.last_param_update_age_s()
@@ -573,10 +598,25 @@ class BragerOneGateway:
             if session_up:
                 if stale_after <= 0 or age is None or age < stale_after:
                     continue
+                self._zombie_prime_streak += 1
                 LOG.warning(
-                    "No ParamUpdate for %.0fs while Socket.IO reports up; REST-priming",
+                    "No ParamUpdate for %.0fs while Socket.IO reports up; REST-priming (zombie_streak=%s)",
                     age,
+                    self._zombie_prime_streak,
                 )
+                hard_after = self._zombie_hard_restart_after
+                if hard_after > 0 and self._zombie_prime_streak >= hard_after:
+                    LOG.warning(
+                        "Zombie session persists after %s REST-primes; forcing WS hard reconnect",
+                        self._zombie_prime_streak,
+                    )
+                    self._zombie_prime_streak = 0
+                    ws = self.ws
+                    if ws is not None:
+                        try:
+                            await ws.force_reconnect()
+                        except Exception:
+                            LOG.exception("WS hard reconnect (zombie session) failed")
             try:
                 await self._prime_with_retry()
             except Exception as err:
@@ -765,6 +805,19 @@ class BragerOneGateway:
 
         await _pub_all()
 
+    async def _prime_devids(self, devids: list[str]) -> bool:
+        """REST-prime parameters for a subset of subscribed modules (SPA memory-updated)."""
+        wanted = sorted({devid for devid in devids if devid in set(self.modules)})
+        if not wanted:
+            return False
+        res = await self.api.modules_parameters_prime(wanted, return_data=True)
+        if isinstance(res, tuple) and len(res) == 2:
+            status, data = res
+            if status in (200, 204) and isinstance(data, dict):
+                await self.ingest_prime_parameters(data)
+                return True
+        return False
+
     async def ingest_activity_quantity(self, data: dict[str, Any] | None) -> None:
         """Ingest /modules/activity/quantity prime (optional)."""
         if isinstance(data, dict):
@@ -793,7 +846,7 @@ class BragerOneGateway:
         # snapshot
         if event_name == "snapshot" and isinstance(payload, dict):
             pairs = list(self.flatten_parameters(payload, source="snapshot"))
-            self._touch_param_publish(len(pairs))
+            self._touch_param_publish(len(pairs), live=True)
 
             async def _pub_all() -> None:
                 for upd in pairs:
@@ -811,7 +864,7 @@ class BragerOneGateway:
         # parameters:change
         if event_name.endswith("parameters:change") and isinstance(payload, dict):
             pairs = list(self.flatten_parameters(payload, source="ws"))
-            self._touch_param_publish(len(pairs))
+            self._touch_param_publish(len(pairs), live=True)
 
             async def _pub_all() -> None:
                 for upd in pairs:
@@ -823,6 +876,28 @@ class BragerOneGateway:
                     self._invoke_list(self._on_parameters_change, event_name, payload),
                     name="gateway.on_parameters_change",
                 )
+            return None
+
+        # SPA Layout/ObjectsLayout: EventChannel 0x16 → REST /modules/parameters for devid.
+        if event_name == MODULE_MEMORY_UPDATED and isinstance(payload, dict):
+            devid = payload.get("devid")
+            if isinstance(devid, str) and devid:
+
+                async def _memory_updated_prime() -> None:
+                    try:
+                        ok = await self._prime_devids([devid])
+                        LOG.debug("memory-updated REST prime devid=%s ok=%s", devid, ok)
+                    except Exception as err:
+                        if _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err):
+                            LOG.warning(
+                                "memory-updated REST prime failed (expected): devid=%s reason=%s",
+                                devid,
+                                format_expected_failure_reason(err),
+                            )
+                        else:
+                            LOG.exception("memory-updated REST prime failed for devid=%s", devid)
+
+                self._spawn(_memory_updated_prime(), name="gateway.memory_updated_prime")
             return None
 
         # SPA Layout handler: Object.entries(payload) → module.connectedAt / gateway

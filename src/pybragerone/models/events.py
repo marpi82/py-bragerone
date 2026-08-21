@@ -65,8 +65,9 @@ class CloudSessionConnectivity:
     Distinct from :class:`ModuleConnectivity` (module ↔ cloud ``connectedAt``).
     When this session drops the gateway **self-heals**: Engine.IO reset on connect
     timeout, supervisor reconnect, resubscribe + REST prime, REST re-prime on
-    the connectivity poll while the socket is still down, and REST re-prime when
-    ParamUpdates go stale while the session still reports up. Consumers register
+    the connectivity poll while the socket is still down, and after repeated
+    stale-ParamUpdate cycles a hard WS restart (SPA parity: ``connect`` →
+    ``ModulesService.connect`` + REST parameters). Consumers register
     ``BragerOneGateway.on_cloud_session`` or poll :meth:`BragerOneGateway.ws_session_up`
     so an outage is detectable without looking like a plant module going offline.
     """
@@ -83,6 +84,9 @@ class CloudSessionConnectivity:
 
 # Official SPA Layout / ObjectsLayout event name.
 MODULE_CONNECTION_STATUS_CHANGED = "app:module:connection:status:changed"
+# SPA EventChannel.SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED (0x16). Payload ``{devid}``;
+# Layout/ObjectsLayout respond with REST ``POST /modules/parameters`` for that module.
+MODULE_MEMORY_UPDATED = "22"
 
 
 @dataclass(frozen=True)

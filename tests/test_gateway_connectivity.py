@@ -86,6 +86,7 @@ class FakeRealtimeManager:
         self.group_id: int | None = None
         self.connect_calls = 0
         self.subscribe_calls: list[list[str]] = []
+        self.force_reconnect_calls = 0
 
     def on_event(self, cb: Callable[[str, Any], Awaitable[None] | None]) -> None:
         """Store the event callback."""
@@ -122,6 +123,15 @@ class FakeRealtimeManager:
     async def subscribe(self, modules: Iterable[str]) -> None:
         """Record a subscribe call."""
         self.subscribe_calls.append(list(modules))
+
+    async def force_reconnect(self) -> None:
+        """Simulate SPA-style hard reconnect: disconnect hooks then connect hooks."""
+        self.force_reconnect_calls += 1
+        await self.trigger_disconnected()
+        for cb in list(self._on_connected):
+            res = cb()
+            if asyncio.iscoroutine(res):
+                _ = await res
 
     async def trigger_disconnected(self) -> None:
         """Invoke disconnect callbacks."""
@@ -784,6 +794,7 @@ async def test_gateway_reprimes_when_param_updates_stale_while_session_up() -> N
         ws=ws,
         connectivity_poll_interval=0.05,
         stale_prime_after_s=0.05,
+        zombie_hard_restart_after=0,
     )
     await gw.start()
     primes_after_start = api.prime_params_calls
@@ -793,6 +804,48 @@ async def test_gateway_reprimes_when_param_updates_stale_while_session_up() -> N
     gw._last_param_publish_monotonic = 0.0
     await _wait_until(lambda: api.prime_params_calls > primes_after_start)
     assert gw.ws_session_up() is True
+    assert ws.force_reconnect_calls == 0
+    await gw.stop()
+
+
+async def test_gateway_hard_restarts_ws_after_zombie_prime_streak() -> None:
+    """After N consecutive zombie REST-primes, force SPA-style hard WS reconnect."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+        stale_prime_after_s=0.05,
+        zombie_hard_restart_after=2,
+    )
+    await gw.start()
+    primes_after_start = api.prime_params_calls
+    gw._last_param_publish_monotonic = 0.0
+
+    await _wait_until(lambda: ws.force_reconnect_calls >= 1)
+    assert api.prime_params_calls > primes_after_start
+    # Live WS parameter traffic clears the streak again.
+    await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
+    assert gw._zombie_prime_streak == 0
+    await gw.stop()
+
+
+async def test_gateway_memory_updated_event_reprimes_module() -> None:
+    """SPA EventChannel 0x16 (``22``) must REST-prime the named module."""
+    from pybragerone.models.events import MODULE_MEMORY_UPDATED
+
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    primes_after_start = api.prime_params_calls
+    await ws.emit(MODULE_MEMORY_UPDATED, {"devid": "M1"})
+    await _wait_until(lambda: api.prime_params_calls > primes_after_start)
     await gw.stop()
 
 

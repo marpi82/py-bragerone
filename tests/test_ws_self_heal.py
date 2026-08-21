@@ -584,3 +584,35 @@ async def test_supervisor_reconnect_unexpected_logs_exc_info(
     assert any(record.exc_info for record in reconnect_logs)
     assert not any("expected upstream/transient" in record.getMessage() for record in reconnect_logs)
     await manager.disconnect()
+
+
+async def test_force_reconnect_notifies_and_reconnects(monkeypatch: pytest.MonkeyPatch) -> None:
+    """force_reconnect must drop a still-up session and open a fresh Socket.IO client."""
+    fake = FakeAsyncClient()
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    downs: list[bool] = []
+    ups: list[bool] = []
+
+    def _on_down() -> None:
+        downs.append(True)
+
+    def _on_up() -> None:
+        ups.append(True)
+
+    manager.add_on_disconnected(_on_down)
+    manager.add_on_connected(_on_up)
+    await manager.connect()
+    assert downs == []
+    assert ups == [True]
+    connect_calls_after_start = fake.connect_calls
+
+    # Session still reports connected (zombie); force_reconnect must tear it down.
+    assert fake.connected is True
+    await manager.force_reconnect()
+    await asyncio.wait_for(fake.reconnect_event.wait(), timeout=1.0)
+
+    assert downs == [True]
+    assert ups == [True, True]
+    assert fake.connect_calls > connect_calls_after_start
+    await manager.disconnect()

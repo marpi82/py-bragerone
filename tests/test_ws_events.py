@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from pybragerone.api.ws import RealtimeManager
+from pybragerone.models.events import MODULE_MEMORY_UPDATED
 from pybragerone.utils import bg_tasks
 
 
@@ -102,6 +103,7 @@ async def test_domain_handlers_dispatch_and_survive_callback_errors(
         await manager._on_app_modules_task_status_changed({"k": 6})
         await manager._on_app_modules_task_completed({"k": 7})
         await manager._on_app_module_connection_status_changed({"M1": {"connectedAt": 1}})
+        await manager._on_module_memory_updated({"devid": "M1"})
         await manager._on_ev60({"k": 8})
         await manager._on_ev61({"k": 9})
         await manager._on_ev63({"k": 10})
@@ -116,6 +118,7 @@ async def test_domain_handlers_dispatch_and_survive_callback_errors(
         "app:module:task:status:changed",
         "app:module:task:completed",
         "app:module:connection:status:changed",
+        MODULE_MEMORY_UPDATED,
         "app:module:task:status:changed",
         "app:module:task:created",
         "app:module:task:completed",
