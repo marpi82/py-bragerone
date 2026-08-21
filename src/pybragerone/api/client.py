@@ -32,6 +32,10 @@ from .endpoints import (
     module_command_raw_url,
     module_command_url,
     modules_activity_quantity_url,
+    modules_activity_url,
+    modules_alarms_history_url,
+    modules_alarms_quantity_url,
+    modules_alarms_url,
     modules_connect_url,
     modules_parameters_url,
     modules_url,
@@ -921,6 +925,94 @@ class BragerOneApiClient:
         payload = {"modules": modules}
         status, data, _ = await self._req("POST", modules_activity_quantity_url(api_base=self._api_base), json=payload)
         # log_json_payload(LOG, "prime.modules.activity.quantity", summarize_top_level(data))
+        return (status, data) if return_data else (status in (200, 204))
+
+    async def modules_activity(
+        self,
+        modules: list[str],
+        *,
+        page: int = 1,
+        limit: int = 20,
+        return_data: bool = False,
+    ) -> tuple[int, Any] | bool:
+        """Fetch a page of module activity rows (SPA Aktywność list).
+
+        Args:
+            modules: Module device identifiers.
+            page: 1-based page index (SPA default).
+            limit: Page size (SPA default ``20``).
+            return_data: When true, return ``(status, data)``.
+
+        Returns:
+            Success flag, or ``(status, payload)`` when ``return_data`` is set.
+        """
+        payload: dict[str, Any] = {"modules": modules, "page": page, "limit": limit}
+        status, data, _ = await self._req("POST", modules_activity_url(api_base=self._api_base), json=payload)
+        return (status, data) if return_data else (status in (200, 204))
+
+    async def modules_alarms_quantity(
+        self,
+        modules: list[str],
+        *,
+        return_data: bool = False,
+    ) -> tuple[int, Any] | bool:
+        """Fetch per-module active alarm badge counts.
+
+        Args:
+            modules: Module device identifiers.
+            return_data: When true, return ``(status, data)``.
+
+        Returns:
+            Success flag, or ``(status, payload)`` when ``return_data`` is set.
+        """
+        payload = {"modules": modules}
+        status, data, _ = await self._req("POST", modules_alarms_quantity_url(api_base=self._api_base), json=payload)
+        return (status, data) if return_data else (status in (200, 204))
+
+    async def modules_alarms(
+        self,
+        modules: list[str],
+        *,
+        page: int = 1,
+        limit: int = 20,
+        return_data: bool = False,
+    ) -> tuple[int, Any] | bool:
+        """Fetch active module alarms (SPA Aktualne alarmy).
+
+        Args:
+            modules: Module device identifiers.
+            page: 1-based page index.
+            limit: Page size.
+            return_data: When true, return ``(status, data)``.
+
+        Returns:
+            Success flag, or ``(status, payload)`` when ``return_data`` is set.
+        """
+        payload: dict[str, Any] = {"modules": modules, "page": page, "limit": limit}
+        status, data, _ = await self._req("POST", modules_alarms_url(api_base=self._api_base), json=payload)
+        return (status, data) if return_data else (status in (200, 204))
+
+    async def modules_alarms_history(
+        self,
+        modules: list[str],
+        *,
+        page: int = 1,
+        limit: int = 20,
+        return_data: bool = False,
+    ) -> tuple[int, Any] | bool:
+        """Fetch finished/historical module alarms (SPA Historia alarmów).
+
+        Args:
+            modules: Module device identifiers.
+            page: 1-based page index.
+            limit: Page size.
+            return_data: When true, return ``(status, data)``.
+
+        Returns:
+            Success flag, or ``(status, payload)`` when ``return_data`` is set.
+        """
+        payload: dict[str, Any] = {"modules": modules, "page": page, "limit": limit}
+        status, data, _ = await self._req("POST", modules_alarms_history_url(api_base=self._api_base), json=payload)
         return (status, data) if return_data else (status in (200, 204))
 
     async def module_command(
