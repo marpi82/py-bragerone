@@ -891,7 +891,8 @@ async def test_gateway_zombie_hard_restart_handles_ws_none_and_errors(
     finally:
         poll.cancel()
         with contextlib.suppress(asyncio.CancelledError):
-            await poll
+            # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
+            _ = await poll
     await gw2.stop()
 
 
