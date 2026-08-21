@@ -1294,9 +1294,10 @@ class ParamResolver:
 
         Ordinary SPA parameters use a *single* ``{group, number, use}`` selector with
         no ``convert`` / non-default ``times``. Those must not go through
-        :meth:`compose_mapping_register_value`: that path coerces words with ``int()``,
-        which truncates half-degree floats (``40.5`` → ``40``) that Home Assistant and
-        the direct store read otherwise preserve.
+        :meth:`compose_mapping_register_value`: composition is only for multi-word /
+        converted / scaled selector lists. Plain single-selector mappings return
+        ``None`` so callers fall back to a direct store read (preserving the live
+        value type, including half-degree floats such as ``40.5``).
         """
         selectors = [entry for entry in entries if cls._is_address_selector_entry(entry)]
         if len(selectors) >= 2:

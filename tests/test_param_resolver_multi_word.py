@@ -335,7 +335,7 @@ def test_compose_mapping_register_value_single_convert_selector() -> None:
 
 
 def test_compose_mapping_register_value_preserves_fractional_word_without_convert() -> None:
-    """Without convert, fractional store words stay floats under a times multiplier."""
+    """Without convert, fractional store words are multiplied; whole totals stay int."""
     store = ParamStore()
     store.upsert("P4.v59", 3.5)
 
@@ -347,7 +347,7 @@ def test_compose_mapping_register_value_preserves_fractional_word_without_conver
         },
         "raw": {},
     }
-    assert ParamResolver.compose_mapping_register_value(store, mapping) == 7.0
+    assert ParamResolver.compose_mapping_register_value(store, mapping) == 7
 
 
 def test_compose_mapping_register_value_returns_float_for_fractional_times() -> None:
