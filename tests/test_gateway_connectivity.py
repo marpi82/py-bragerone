@@ -847,7 +847,7 @@ async def test_gateway_zombie_hard_restart_handles_ws_none_and_errors(
     async def _boom() -> None:
         raise RuntimeError("force failed")
 
-    ws.force_reconnect = _boom  # type: ignore[method-assign]
+    ws.force_reconnect = _boom  # type: ignore[method-assign]  # test double replaces async method
     gw = BragerOneGateway(
         api=api,
         object_id=1,
@@ -886,6 +886,8 @@ async def test_gateway_zombie_hard_restart_handles_ws_none_and_errors(
     gw2._connectivity_poll_interval = 0.01
     poll = asyncio.create_task(gw2._connectivity_poll_loop())
     try:
+        with caplog.at_level("WARNING"):
+            await _wait_until(lambda: "no WS client, REST-priming only" in caplog.text)
         await _wait_until(lambda: api2.prime_params_calls > primes_after_start)
     finally:
         poll.cancel()
@@ -940,11 +942,11 @@ async def test_gateway_prime_devids_edge_and_memory_updated_errors(
     async def _non_dict_body(*_a: Any, **_k: Any) -> tuple[int, Any]:
         return 200, "not-a-dict"
 
-    gw.api.modules_parameters_prime = _bad_shape  # type: ignore[method-assign]
+    gw.api.modules_parameters_prime = _bad_shape  # type: ignore[method-assign]  # test double replaces async method
     assert await gw._prime_devids(["M1"]) is False
-    gw.api.modules_parameters_prime = _bad_status  # type: ignore[method-assign]
+    gw.api.modules_parameters_prime = _bad_status  # type: ignore[method-assign]  # test double replaces async method
     assert await gw._prime_devids(["M1"]) is False
-    gw.api.modules_parameters_prime = _non_dict_body  # type: ignore[method-assign]
+    gw.api.modules_parameters_prime = _non_dict_body  # type: ignore[method-assign]  # test double replaces async method
     assert await gw._prime_devids(["M1"]) is False
 
     async def _timeout_prime(*_a: Any, **_k: Any) -> tuple[int, Any]:
@@ -953,13 +955,13 @@ async def test_gateway_prime_devids_edge_and_memory_updated_errors(
     async def _boom_prime(*_a: Any, **_k: Any) -> tuple[int, Any]:
         raise RuntimeError("prime exploded")
 
-    gw.api.modules_parameters_prime = _timeout_prime  # type: ignore[method-assign]
+    gw.api.modules_parameters_prime = _timeout_prime  # type: ignore[method-assign]  # test double replaces async method
     with caplog.at_level("WARNING"):
         await ws.emit(MODULE_MEMORY_UPDATED, {"devid": "M1"})
         await _wait_until(lambda: "memory-updated REST prime failed (expected)" in caplog.text)
 
     caplog.clear()
-    gw.api.modules_parameters_prime = _boom_prime  # type: ignore[method-assign]
+    gw.api.modules_parameters_prime = _boom_prime  # type: ignore[method-assign]  # test double replaces async method
     with caplog.at_level("ERROR"):
         await ws.emit(MODULE_MEMORY_UPDATED, {"devid": "M1"})
         await _wait_until(lambda: "memory-updated REST prime failed for devid=M1" in caplog.text)

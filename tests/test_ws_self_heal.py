@@ -632,7 +632,7 @@ async def test_force_reconnect_survives_ensure_connected_exception(
         _ = initial
         raise RuntimeError("ensure exploded")
 
-    manager._ensure_connected = _exploding  # type: ignore[method-assign]
+    manager._ensure_connected = _exploding  # type: ignore[method-assign]  # test double replaces async method
     with caplog.at_level("ERROR"):
         await manager.force_reconnect()
     assert "WS force reconnect failed unexpectedly" in caplog.text

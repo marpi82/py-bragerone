@@ -606,17 +606,23 @@ class BragerOneGateway:
                 )
                 hard_after = self._zombie_hard_restart_after
                 if hard_after > 0 and self._zombie_prime_streak >= hard_after:
-                    LOG.warning(
-                        "Zombie session persists after %s REST-primes; forcing WS hard reconnect",
-                        self._zombie_prime_streak,
-                    )
+                    streak = self._zombie_prime_streak
                     self._zombie_prime_streak = 0
                     ws = self.ws
                     if ws is not None:
+                        LOG.warning(
+                            "Zombie session persists after %s REST-primes; forcing WS hard reconnect",
+                            streak,
+                        )
                         try:
                             await ws.force_reconnect()
                         except Exception:
                             LOG.exception("WS hard reconnect (zombie session) failed")
+                    else:
+                        LOG.warning(
+                            "Zombie session persists after %s REST-primes; no WS client, REST-priming only",
+                            streak,
+                        )
             try:
                 await self._prime_with_retry()
             except Exception as err:
@@ -807,7 +813,8 @@ class BragerOneGateway:
 
     async def _prime_devids(self, devids: list[str]) -> bool:
         """REST-prime parameters for a subset of subscribed modules (SPA memory-updated)."""
-        wanted = sorted({devid for devid in devids if devid in set(self.modules)})
+        subscribed = set(self.modules)
+        wanted = sorted({devid for devid in devids if devid in subscribed})
         if not wanted:
             return False
         res = await self.api.modules_parameters_prime(wanted, return_data=True)
