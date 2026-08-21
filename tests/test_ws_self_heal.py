@@ -616,3 +616,24 @@ async def test_force_reconnect_notifies_and_reconnects(monkeypatch: pytest.Monke
     assert ups == [True, True]
     assert fake.connect_calls > connect_calls_after_start
     await manager.disconnect()
+
+
+async def test_force_reconnect_survives_ensure_connected_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """force_reconnect must log and continue if ``_ensure_connected`` raises."""
+    fake = FakeAsyncClient()
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    await manager.connect()
+
+    async def _exploding(*, initial: bool) -> None:
+        _ = initial
+        raise RuntimeError("ensure exploded")
+
+    manager._ensure_connected = _exploding  # type: ignore[method-assign]
+    with caplog.at_level("ERROR"):
+        await manager.force_reconnect()
+    assert "WS force reconnect failed unexpectedly" in caplog.text
+    await manager.disconnect()
