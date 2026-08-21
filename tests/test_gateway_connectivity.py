@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from collections.abc import Awaitable, Callable, Iterable
 from types import SimpleNamespace
 from typing import Any
@@ -890,9 +889,7 @@ async def test_gateway_zombie_hard_restart_handles_ws_none_and_errors(
         await _wait_until(lambda: api2.prime_params_calls > primes_after_start)
     finally:
         poll.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
-            _ = await poll
+        await asyncio.gather(poll, return_exceptions=True)
     await gw2.stop()
 
 
