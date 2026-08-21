@@ -36,6 +36,25 @@ jobs:
           fi
           echo "Detected tag: ${TAG}"
 
+      # Stable tags (no a/b/rc suffix) require the tagged commit on origin/main.
+      # Pre-releases may be cut from main or release/* trains.
+      - name: Enforce release channel
+        shell: bash
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          PRERELEASE="${{ steps.meta.outputs.prerelease }}"
+          if [[ "$PRERELEASE" == "true" ]]; then
+            echo "Pre-release tag ${TAG}: allowed from main or release/*"
+            exit 0
+          fi
+          git fetch origin main
+          if git merge-base --is-ancestor HEAD origin/main; then
+            echo "Stable tag ${TAG}: commit is on origin/main"
+            exit 0
+          fi
+          echo "::error::Stable tag ${TAG} is not on origin/main. Cut stables from main after merging; from release/* use aN/bN/rcN only."
+          exit 1
+
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:

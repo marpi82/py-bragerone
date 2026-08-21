@@ -269,6 +269,13 @@ Release flow (suggestion)::
   2. The release workflow builds, attests, and publishes to PyPI
   3. GitHub Release is created with dists, ``SHA256SUMS`` and an SBOM
 
+``main`` may cut both stable tags (``2026.9.0``) and pre-releases
+(``2026.9.0a1`` / ``b1`` / ``rc1``). For work that should not land on ``main``
+yet, use a release train branch ``release/YYYY.M`` or ``release/YYYY.M.N`` and
+tag only pre-releases from that tip. The release workflow refuses a stable tag
+unless the tagged commit is on ``origin/main`` (merge the train first). See
+``.github/branch-protection-checklist.md`` for ruleset hardening.
+
 Verifying releases
 ------------------
 
