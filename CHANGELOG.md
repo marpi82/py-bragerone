@@ -23,6 +23,11 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- Zombie Socket.IO sessions (``connected=True`` but no ``ParamUpdate`` deltas) now
+  force a hard WS restart after two consecutive REST-prime-only cycles, matching
+  the SPA recovery path (``connect`` → ``ModulesService.connect`` + REST
+  ``/modules/parameters``). Also REST-prime a module when numeric event ``22``
+  (``SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED``) arrives, as Layout/ObjectsLayout do.
 - Multi-register parameters (e.g. ``PARAM_P4_59`` "Czas pracy podajnika") whose
   SPA mapping addresses more than one register as ``{group, number, use[,
   convert, times]}`` selectors were misclassified as STATUS computed rules and

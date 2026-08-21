@@ -15,7 +15,7 @@ from typing import (
 
 import socketio
 
-from ..models.events import MODULE_CONNECTION_STATUS_CHANGED
+from ..models.events import MODULE_CONNECTION_STATUS_CHANGED, MODULE_MEMORY_UPDATED
 from ..utils import spawn
 from .client import format_expected_failure_reason, is_expected_upstream_unavailable
 from .constants import IO_BASE, ONE_BASE, SOCK_PATH, WS_NAMESPACE
@@ -261,6 +261,10 @@ class RealtimeManager:
         log.debug("WS EVENT 63 → %s", p)
         self._dispatch("app:module:task:completed", p)
 
+    async def _on_module_memory_updated(self, p: Any) -> None:
+        log.debug("WS EVENT %s → %s", MODULE_MEMORY_UPDATED, p)
+        self._dispatch(MODULE_MEMORY_UPDATED, p)
+
     # ---------------- Public API ----------------
 
     async def connect(self) -> None:
@@ -270,6 +274,27 @@ class RealtimeManager:
         await self._connected.wait()
         await asyncio.sleep(0.1)
         self._start_supervisor()
+
+    async def force_reconnect(self) -> None:
+        """Tear down a still-"connected" Socket.IO session and reconnect.
+
+        Used when ParamUpdates go silent while the client still reports up
+        (zombie Engine.IO that skipped disconnect callbacks). The SPA recovers
+        via built-in Socket.IO reconnect then ``connect`` →
+        ``ModulesService.connect`` + REST ``/modules/parameters``; our supervisor
+        only acts when ``connected`` looks down, so this forces that same path
+        (``on_connected`` → gateway resubscribe + prime).
+        """
+        log.warning("Forcing WS hard reconnect (zombie session recovery)")
+        self._notify_disconnected(force=True)
+        # Clear the namespace-joined bit so ``_ensure_connected`` does not treat a
+        # wedged ``sio.connected=True`` session as healthy.
+        self._connected.clear()
+        try:
+            await self._ensure_connected(initial=False)
+        except Exception:
+            # Defensive: callers (gateway poll) must keep running after a failed force.
+            log.exception("WS force reconnect failed unexpectedly")
 
     def _start_supervisor(self) -> None:
         if self._supervisor_task is not None and not self._supervisor_task.done():
@@ -342,6 +367,11 @@ class RealtimeManager:
         self._sio.on(
             MODULE_CONNECTION_STATUS_CHANGED,
             self._on_app_module_connection_status_changed,
+            namespace=ns,
+        )
+        self._sio.on(
+            MODULE_MEMORY_UPDATED,
+            self._on_module_memory_updated,
             namespace=ns,
         )
         self._sio.on("60", self._on_ev60, namespace=ns)

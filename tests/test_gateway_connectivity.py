@@ -86,6 +86,7 @@ class FakeRealtimeManager:
         self.group_id: int | None = None
         self.connect_calls = 0
         self.subscribe_calls: list[list[str]] = []
+        self.force_reconnect_calls = 0
 
     def on_event(self, cb: Callable[[str, Any], Awaitable[None] | None]) -> None:
         """Store the event callback."""
@@ -122,6 +123,15 @@ class FakeRealtimeManager:
     async def subscribe(self, modules: Iterable[str]) -> None:
         """Record a subscribe call."""
         self.subscribe_calls.append(list(modules))
+
+    async def force_reconnect(self) -> None:
+        """Simulate SPA-style hard reconnect: disconnect hooks then connect hooks."""
+        self.force_reconnect_calls += 1
+        await self.trigger_disconnected()
+        for cb in list(self._on_connected):
+            res = cb()
+            if asyncio.iscoroutine(res):
+                _ = await res
 
     async def trigger_disconnected(self) -> None:
         """Invoke disconnect callbacks."""
@@ -473,6 +483,8 @@ async def test_protocol_stubs_raise_not_implemented() -> None:
         await ApiClient.get_modules(probe, 1)  # type: ignore[arg-type]
     with pytest.raises(NotImplementedError):
         RealtimeManagerClient.add_on_disconnected(probe, lambda: None)  # type: ignore[arg-type]
+    with pytest.raises(NotImplementedError):
+        await RealtimeManagerClient.force_reconnect(probe)  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio
@@ -784,6 +796,7 @@ async def test_gateway_reprimes_when_param_updates_stale_while_session_up() -> N
         ws=ws,
         connectivity_poll_interval=0.05,
         stale_prime_after_s=0.05,
+        zombie_hard_restart_after=0,
     )
     await gw.start()
     primes_after_start = api.prime_params_calls
@@ -793,6 +806,165 @@ async def test_gateway_reprimes_when_param_updates_stale_while_session_up() -> N
     gw._last_param_publish_monotonic = 0.0
     await _wait_until(lambda: api.prime_params_calls > primes_after_start)
     assert gw.ws_session_up() is True
+    assert ws.force_reconnect_calls == 0
+    await gw.stop()
+
+
+async def test_gateway_hard_restarts_ws_after_zombie_prime_streak() -> None:
+    """After N consecutive zombie REST-primes, force SPA-style hard WS reconnect."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+        stale_prime_after_s=0.05,
+        zombie_hard_restart_after=2,
+    )
+    await gw.start()
+    primes_after_start = api.prime_params_calls
+    gw._last_param_publish_monotonic = 0.0
+
+    await _wait_until(lambda: ws.force_reconnect_calls >= 1)
+    assert api.prime_params_calls > primes_after_start
+    # Live WS parameter traffic clears the streak again.
+    await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
+    assert gw._zombie_prime_streak == 0
+    await gw.stop()
+
+
+async def test_gateway_zombie_hard_restart_handles_ws_none_and_errors(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Hard-restart path must tolerate a missing WS client and force_reconnect errors."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+
+    async def _boom() -> None:
+        raise RuntimeError("force failed")
+
+    ws.force_reconnect = _boom  # type: ignore[method-assign]  # test double replaces async method
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+        stale_prime_after_s=0.05,
+        zombie_hard_restart_after=1,
+    )
+    await gw.start()
+    gw._last_param_publish_monotonic = 0.0
+    with caplog.at_level("ERROR"):
+        await _wait_until(lambda: "WS hard reconnect (zombie session) failed" in caplog.text)
+    await gw.stop()
+
+    # Controlled single-tick coverage for ``ws is None`` during hard restart.
+    api2 = FakeApiClient()
+    api2.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws2 = FakeRealtimeManager()
+    gw2 = BragerOneGateway(
+        api=api2,
+        object_id=1,
+        modules=["M1"],
+        ws=ws2,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=0.01,
+        zombie_hard_restart_after=1,
+    )
+    await gw2.start()
+    primes_after_start = api2.prime_params_calls
+    # Cancel nothing — poll disabled. Drive one loop iteration via a short-lived task.
+    gw2.ws = None
+    gw2._ws_session_up = True
+    gw2._zombie_prime_streak = 0
+    gw2._last_param_publish_monotonic = 0.0
+    gw2._connectivity_poll_interval = 0.01
+    poll = asyncio.create_task(gw2._connectivity_poll_loop())
+    try:
+        with caplog.at_level("WARNING"):
+            await _wait_until(lambda: "no WS client, REST-priming only" in caplog.text)
+        await _wait_until(lambda: api2.prime_params_calls > primes_after_start)
+    finally:
+        poll.cancel()
+        await asyncio.gather(poll, return_exceptions=True)
+    await gw2.stop()
+
+
+async def test_gateway_memory_updated_event_reprimes_module() -> None:
+    """SPA EventChannel 0x16 (``22``) must REST-prime the named module."""
+    from pybragerone.models.events import MODULE_MEMORY_UPDATED
+
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    primes_after_start = api.prime_params_calls
+    await ws.emit(MODULE_MEMORY_UPDATED, {"devid": "M1"})
+    await _wait_until(lambda: api.prime_params_calls > primes_after_start)
+
+    # Unknown / empty devid is ignored; non-dict payload is ignored.
+    primes_mid = api.prime_params_calls
+    await ws.emit(MODULE_MEMORY_UPDATED, {"devid": "OTHER"})
+    await ws.emit(MODULE_MEMORY_UPDATED, {"devid": ""})
+    await ws.emit(MODULE_MEMORY_UPDATED, {"devid": 123})
+    await ws.emit(MODULE_MEMORY_UPDATED, "not-a-dict")
+    await asyncio.sleep(0.05)
+    assert api.prime_params_calls == primes_mid
+    await gw.stop()
+
+
+async def test_gateway_prime_devids_edge_and_memory_updated_errors(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Cover ``_prime_devids`` failure shapes and memory-updated exception paths."""
+    from pybragerone.models.events import MODULE_MEMORY_UPDATED
+
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+
+    assert await gw._prime_devids(["OTHER"]) is False
+
+    async def _bad_shape(*_a: Any, **_k: Any) -> bool:
+        return False
+
+    async def _bad_status(*_a: Any, **_k: Any) -> tuple[int, Any]:
+        return 500, {"M1": {}}
+
+    async def _non_dict_body(*_a: Any, **_k: Any) -> tuple[int, Any]:
+        return 200, "not-a-dict"
+
+    gw.api.modules_parameters_prime = _bad_shape  # type: ignore[method-assign]  # test double replaces async method
+    assert await gw._prime_devids(["M1"]) is False
+    gw.api.modules_parameters_prime = _bad_status  # type: ignore[method-assign]  # test double replaces async method
+    assert await gw._prime_devids(["M1"]) is False
+    gw.api.modules_parameters_prime = _non_dict_body  # type: ignore[method-assign]  # test double replaces async method
+    assert await gw._prime_devids(["M1"]) is False
+
+    async def _timeout_prime(*_a: Any, **_k: Any) -> tuple[int, Any]:
+        raise ApiError(503, "<html>Service Unavailable</html>", {})
+
+    async def _boom_prime(*_a: Any, **_k: Any) -> tuple[int, Any]:
+        raise RuntimeError("prime exploded")
+
+    gw.api.modules_parameters_prime = _timeout_prime  # type: ignore[method-assign]  # test double replaces async method
+    with caplog.at_level("WARNING"):
+        await ws.emit(MODULE_MEMORY_UPDATED, {"devid": "M1"})
+        await _wait_until(lambda: "memory-updated REST prime failed (expected)" in caplog.text)
+
+    caplog.clear()
+    gw.api.modules_parameters_prime = _boom_prime  # type: ignore[method-assign]  # test double replaces async method
+    with caplog.at_level("ERROR"):
+        await ws.emit(MODULE_MEMORY_UPDATED, {"devid": "M1"})
+        await _wait_until(lambda: "memory-updated REST prime failed for devid=M1" in caplog.text)
     await gw.stop()
 
 

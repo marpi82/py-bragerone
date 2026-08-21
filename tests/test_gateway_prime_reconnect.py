@@ -125,6 +125,11 @@ class FakeRealtimeManager:
         """Record a subscribe call."""
         self.subscribe_calls.append(list(modules))
 
+    async def force_reconnect(self) -> None:
+        """Simulate hard reconnect used by zombie-session recovery."""
+        await self.trigger_disconnected()
+        await self.trigger_connected()
+
     async def trigger_connected(self) -> None:
         """Trigger all registered on_connected callbacks."""
         tasks: list[asyncio.Task[None]] = []

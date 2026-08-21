@@ -116,7 +116,10 @@ deltas only resume after reconnect + resubscribe + prime). An Engine.IO abort
 that skips the Socket.IO disconnect callback still marks the session down before
 reconnect, so that REST-prime path can run. If the session still reports up but
 no ``ParamUpdate`` is published for 180s (zombie transport), the poll REST-primes
-anyway. ``BragerOneGateway.last_param_update_age_s()`` returns that gap for
+anyway; after two consecutive zombie primes it forces a hard Socket.IO restart
+(SPA parity: ``connect`` → ``ModulesService.connect`` + REST parameters). Numeric
+event ``22`` (``SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED``) also triggers a
+per-module REST prime. ``BragerOneGateway.last_param_update_age_s()`` returns that gap for
 diagnostics.
 
 Connection **labels** are not hardcoded: resolve them from the live ``module``

@@ -111,6 +111,10 @@ class FakeRealtimeManager:
         """Record a subscribe call."""
         self.subscribe_calls.append(list(modules))
 
+    async def force_reconnect(self) -> None:
+        """No-op hard reconnect for protocol compatibility."""
+        return None
+
 
 def _gateway(
     *, sid: str | None = "NS-SID", owns_api: bool = False
