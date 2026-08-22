@@ -15,6 +15,8 @@ _ALARM_NAME_PAIR_RE = re.compile(
     )
     """
 )
+# Obfuscated SPA enum chunks: ``obj['ERROR_FOO']=0x26`` (hex or decimal).
+_ALARM_NAME_BRACKET_ASSIGN_RE = re.compile(r"""\[\s*['"](?P<name>ERROR_[A-Z0-9_]+)['"]\s*\]\s*=\s*(?P<code>0x[0-9a-fA-F]+|\d+)""")
 
 
 def parse_alarm_name_enum(source: str | bytes | bytearray) -> dict[int, str]:
@@ -34,6 +36,11 @@ def parse_alarm_name_enum(source: str | bytes | bytearray) -> dict[int, str]:
             out[int(match.group("code_a"))] = match.group("name_a")
         elif match.group("name_b") is not None and match.group("code_b") is not None:
             out[int(match.group("code_b"))] = match.group("name_b")
+    for match in _ALARM_NAME_BRACKET_ASSIGN_RE.finditer(text):
+        name = match.group("name")
+        code_raw = match.group("code")
+        if name is not None and code_raw is not None:
+            out[int(code_raw, 0)] = name
     return out
 
 

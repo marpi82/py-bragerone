@@ -71,6 +71,19 @@ def test_parse_alarm_name_enum_name_a_and_name_b_patterns() -> None:
     assert parse_alarm_name_enum('12: "ERROR_RIGHT"') == {12: "ERROR_RIGHT"}
 
 
+def test_parse_alarm_name_enum_obfuscated_bracket_assignments() -> None:
+    """Obfuscated SPA chunks use ``obj['ERROR_*']=0xNN`` enum assignments."""
+    source = """
+    _0xabc=>{return _0xabc[_0xabc['ERROR_TEMPERATURA_KOTLA']=0x0]='ERROR_TEMPERATURA_KOTLA',
+    _0xabc['ERROR_BRAK_PALIWA']=0x26,
+    _0xabc["ERROR_PELLET_NIEUDANE_ROZPALANIE"]=54]}
+    """
+    names = parse_alarm_name_enum(source)
+    assert names[0] == "ERROR_TEMPERATURA_KOTLA"
+    assert names[0x26] == "ERROR_BRAK_PALIWA"
+    assert names[54] == "ERROR_PELLET_NIEUDANE_ROZPALANIE"
+
+
 def test_resolve_alarm_label_uses_errors_i18n() -> None:
     """Labels come from ``errors.*``; missing keys stay unresolved."""
     names = {38: "ERROR_BRAK_PALIWA"}
