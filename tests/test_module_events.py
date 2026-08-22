@@ -65,12 +65,20 @@ def test_parse_alarm_name_enum_accepts_bytearray_source() -> None:
     assert parse_alarm_name_enum(bytearray(b'8:"ERROR_FROM_BYTEARRAY"')) == {8: "ERROR_FROM_BYTEARRAY"}
 
 
+def test_parse_alarm_name_enum_name_a_and_name_b_patterns() -> None:
+    """Each regex alternative is exercised in isolation."""
+    assert parse_alarm_name_enum("ERROR_LEFT: 11") == {11: "ERROR_LEFT"}
+    assert parse_alarm_name_enum('12: "ERROR_RIGHT"') == {12: "ERROR_RIGHT"}
+
+
 def test_resolve_alarm_label_uses_errors_i18n() -> None:
     """Labels come from ``errors.*``; missing keys stay unresolved."""
     names = {38: "ERROR_BRAK_PALIWA"}
     assert resolve_alarm_label(38, alarm_names=names, errors_i18n={"ERROR_BRAK_PALIWA": "Brak paliwa"}) == "Brak paliwa"
     assert resolve_alarm_label(38, alarm_names=names, errors_i18n={}) is None
     assert resolve_alarm_label(99, alarm_names=names, errors_i18n={"ERROR_BRAK_PALIWA": "Brak paliwa"}) is None
+    assert resolve_alarm_label(38, alarm_names=names, errors_i18n={"ERROR_BRAK_PALIWA": "  "}) is None
+    assert resolve_alarm_label(38, alarm_names=names, errors_i18n={"ERROR_BRAK_PALIWA": 42}) is None
 
 
 def test_module_alarm_activity_dto_aliases() -> None:
