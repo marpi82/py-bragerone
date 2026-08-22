@@ -843,6 +843,15 @@ def test_logical_or_short_circuits_truthy_left_operand() -> None:
     assert _node_to_python(code, node) == "kept"
 
 
+def test_logical_and_short_circuits_falsy_left_operand() -> None:
+    """``&&`` must not evaluate the right operand when the left is falsy."""
+    catalog = _catalog()
+    code = b"const x = null && right_side;"
+    tree = catalog._ts.parse(code)
+    node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(code, node) is None
+
+
 def test_optional_chain_nullish_binding_returns_none() -> None:
     """Optional chain on a nullish binding yields undefined, not the public key."""
     catalog = _catalog()
