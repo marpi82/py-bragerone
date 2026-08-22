@@ -84,6 +84,18 @@ def test_parse_alarm_name_enum_obfuscated_bracket_assignments() -> None:
     assert names[54] == "ERROR_PELLET_NIEUDANE_ROZPALANIE"
 
 
+def test_resolve_alarm_label_after_obfuscated_enum_parse() -> None:
+    """Bracket-parsed ``ERROR_*`` keys resolve via ``errors.*`` i18n — never shown raw."""
+    source = "_0xabc['ERROR_BRAK_PALIWA']=0x26,_0xabc['ERROR_PELLET_NIEUDANE_ROZPALANIE']=54"
+    names = parse_alarm_name_enum(source)
+    errors = {
+        "ERROR_BRAK_PALIWA": "Brak paliwa",
+        "ERROR_PELLET_NIEUDANE_ROZPALANIE": "Nieudane rozpalanie",
+    }
+    assert resolve_alarm_label(38, alarm_names=names, errors_i18n=errors) == "Brak paliwa"
+    assert resolve_alarm_label(54, alarm_names=names, errors_i18n=errors) == "Nieudane rozpalanie"
+
+
 def test_resolve_alarm_label_uses_errors_i18n() -> None:
     """Labels come from ``errors.*``; missing keys stay unresolved."""
     names = {38: "ERROR_BRAK_PALIWA"}
