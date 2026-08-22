@@ -140,9 +140,45 @@ def modules_activity_quantity_url(*, api_base: str = API_BASE) -> str:
     """Get URL for modules activity quantity endpoint.
 
     Returns:
-        URL for GET requests to fetch activity quantity statistics.
+        URL for POST requests to fetch activity quantity statistics.
     """
     return f"{_base(api_base)}/modules/activity/quantity"
+
+
+def modules_activity_url(*, api_base: str = API_BASE) -> str:
+    """Get URL for modules activity list endpoint.
+
+    Returns:
+        URL for POST requests to fetch paginated activity rows.
+    """
+    return f"{_base(api_base)}/modules/activity"
+
+
+def modules_alarms_quantity_url(*, api_base: str = API_BASE) -> str:
+    """Get URL for modules alarms quantity endpoint.
+
+    Returns:
+        URL for POST requests to fetch per-module active alarm counts.
+    """
+    return f"{_base(api_base)}/modules/alarms/quantity"
+
+
+def modules_alarms_url(*, api_base: str = API_BASE) -> str:
+    """Get URL for modules active alarms list endpoint.
+
+    Returns:
+        URL for POST requests to fetch active alarms.
+    """
+    return f"{_base(api_base)}/modules/alarms"
+
+
+def modules_alarms_history_url(*, api_base: str = API_BASE) -> str:
+    """Get URL for modules alarms history endpoint.
+
+    Returns:
+        URL for POST requests to fetch finished/historical alarms.
+    """
+    return f"{_base(api_base)}/modules/alarms/history"
 
 
 def module_url(module_id: str, *, api_base: str = API_BASE) -> str:
