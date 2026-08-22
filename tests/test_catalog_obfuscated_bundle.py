@@ -832,3 +832,23 @@ def test_optional_chain_or_fallback_fills_minmax_paths() -> None:
     if alias_expr.type == "expression_statement":
         alias_expr = alias_expr.named_children[0]
     assert _node_to_python(alias_code, alias_expr) == "DISPLAY_MENU_DHW"
+
+
+def test_logical_or_short_circuits_truthy_left_operand() -> None:
+    """``||`` must not evaluate the right operand when the left is truthy."""
+    catalog = _catalog()
+    code = b'const x = "kept" || right_side;'
+    tree = catalog._ts.parse(code)
+    node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(code, node) == "kept"
+
+
+def test_optional_chain_nullish_binding_returns_none() -> None:
+    """Optional chain on a nullish binding yields undefined, not the public key."""
+    catalog = _catalog()
+    code = b"_0x39dd22?.['minValue']"
+    tree = catalog._ts.parse(code)
+    expr = tree.root_node.named_children[0]
+    if expr.type == "expression_statement":
+        expr = expr.named_children[0]
+    assert _node_to_python(code, expr, {"_0x39dd22": None}) is None

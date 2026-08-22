@@ -1095,9 +1095,15 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         right_node = node.child_by_field_name("right")
         if operator is None or left_node is None or right_node is None:  # pragma: no cover
             return _node_text(code, node)
+        op_text = _node_text(code, operator)
+        left_val = _node_to_python(code, left_node, bindings)
+        if op_text == "||":
+            return left_val if _js_truthy(left_val) else _node_to_python(code, right_node, bindings)
+        if op_text == "&&":
+            return left_val if not _js_truthy(left_val) else _node_to_python(code, right_node, bindings)
         handled, result = _eval_js_binary(
-            _node_text(code, operator),
-            _node_to_python(code, left_node, bindings),
+            op_text,
+            left_val,
             _node_to_python(code, right_node, bindings),
         )
         if handled:
