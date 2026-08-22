@@ -10,7 +10,7 @@ from typing import Any
 _ALARM_NAME_PAIR_RE = re.compile(
     r"""(?x)
     (?:
-        (?P<name_a>ERROR_[A-Z0-9_]+)\s*:\s*(?P<code_a>\d+)
+        ['"]?(?P<name_a>ERROR_[A-Z0-9_]+)['"]?\s*:\s*(?P<code_a>\d+)
       | (?P<code_b>\d+)\s*:\s*['"]?(?P<name_b>ERROR_[A-Z0-9_]+)['"]?
     )
     """

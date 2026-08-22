@@ -44,13 +44,20 @@ def test_parse_alarm_name_enum_bidirectional() -> None:
     const AlarmName = {
       0: "ERROR_TEMPERATURA_KOTLA",
       ERROR_BRAK_PALIWA: 38,
+      "ERROR_QUOTED_KEY": 12,
       54: 'ERROR_PELLET_NIEUDANE_ROZPALANIE',
     };
     """
     names = parse_alarm_name_enum(source)
     assert names[0] == "ERROR_TEMPERATURA_KOTLA"
     assert names[38] == "ERROR_BRAK_PALIWA"
+    assert names[12] == "ERROR_QUOTED_KEY"
     assert names[54] == "ERROR_PELLET_NIEUDANE_ROZPALANIE"
+
+
+def test_parse_alarm_name_enum_accepts_bytes_source() -> None:
+    """Bytes chunks decode before regex extraction."""
+    assert parse_alarm_name_enum(b'7:"ERROR_FROM_BYTES"') == {7: "ERROR_FROM_BYTES"}
 
 
 def test_resolve_alarm_label_uses_errors_i18n() -> None:

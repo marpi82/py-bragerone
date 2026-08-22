@@ -935,7 +935,7 @@ class BragerOneApiClient:
         limit: int = 20,
         return_data: bool = False,
     ) -> tuple[int, Any] | bool:
-        """Fetch a page of module activity rows (SPA Aktywność list).
+        """Fetch a page of module activity rows (SPA activity list).
 
         Args:
             modules: Module device identifiers.
@@ -977,7 +977,7 @@ class BragerOneApiClient:
         limit: int = 20,
         return_data: bool = False,
     ) -> tuple[int, Any] | bool:
-        """Fetch active module alarms (SPA Aktualne alarmy).
+        """Fetch active module alarms (SPA current-alarms list).
 
         Args:
             modules: Module device identifiers.
@@ -1000,7 +1000,7 @@ class BragerOneApiClient:
         limit: int = 20,
         return_data: bool = False,
     ) -> tuple[int, Any] | bool:
-        """Fetch finished/historical module alarms (SPA Historia alarmów).
+        """Fetch finished/historical module alarms (SPA alarm-history list).
 
         Args:
             modules: Module device identifiers.
