@@ -17,7 +17,7 @@ _ALARM_NAME_PAIR_RE = re.compile(
 )
 
 
-def parse_alarm_name_enum(source: str | bytes) -> dict[int, str]:
+def parse_alarm_name_enum(source: str | bytes | bytearray) -> dict[int, str]:
     """Extract ``{alarm_type_id: ERROR_*}`` from an Alarms chunk / enum blob.
 
     Args:

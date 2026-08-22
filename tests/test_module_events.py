@@ -60,6 +60,11 @@ def test_parse_alarm_name_enum_accepts_bytes_source() -> None:
     assert parse_alarm_name_enum(b'7:"ERROR_FROM_BYTES"') == {7: "ERROR_FROM_BYTES"}
 
 
+def test_parse_alarm_name_enum_accepts_bytearray_source() -> None:
+    """Bytearray chunks decode like bytes before regex extraction."""
+    assert parse_alarm_name_enum(bytearray(b'8:"ERROR_FROM_BYTEARRAY"')) == {8: "ERROR_FROM_BYTEARRAY"}
+
+
 def test_resolve_alarm_label_uses_errors_i18n() -> None:
     """Labels come from ``errors.*``; missing keys stay unresolved."""
     names = {38: "ERROR_BRAK_PALIWA"}
