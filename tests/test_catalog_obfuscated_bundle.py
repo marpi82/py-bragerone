@@ -636,6 +636,11 @@ def test_js_nullish_ternary_and_equality_helpers() -> None:
     assert _eval_js_binary("+", [], {}) == (False, None)
     assert _eval_js_binary("??", None, "fallback") == (True, "fallback")
     assert _eval_js_binary("??", "kept", "fallback") == (True, "kept")
+    assert _eval_js_binary("||", None, "fallback") == (True, "fallback")
+    assert _eval_js_binary("||", "", "fallback") == (True, "fallback")
+    assert _eval_js_binary("||", "kept", "fallback") == (True, "kept")
+    assert _eval_js_binary("&&", "kept", "right") == (True, "right")
+    assert _eval_js_binary("&&", None, "right") == (True, None)
     assert _eval_js_binary("===", None, None) == (True, True)
     assert _eval_js_binary("==", "x", "x") == (True, True)
     assert _eval_js_binary("!==", None, 1) == (True, True)
@@ -796,3 +801,63 @@ def test_string_concat_declines_non_primitive_operands() -> None:
     tree = _catalog()._ts.parse(code)
     node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
     assert _node_to_python(code, node) == "[1]+2"
+
+
+def test_optional_chain_or_fallback_fills_minmax_paths() -> None:
+    """Issue #329: ``_0x?.['minValue']||[{…}]`` must become paths.min / paths.max."""
+    catalog = _catalog()
+    code = b"""
+    const map = {
+      PARAM_TEST: {
+        value: [{group: 'P6', number: 1, use: 'v'}],
+        minValue: _0x39dd22?.['minValue']||[{group: 'P6', number: 42, use: 'n'}],
+        maxValue: _0x39dd22?.['maxValue']||[{group: 'P6', number: 42, use: 'x'}],
+      }
+    };
+    """
+    tree = catalog._ts.parse(code)
+    obj_node = next(n for n in _walk(tree.root_node) if n.type == "object" and b"PARAM_TEST" in code[n.start_byte : n.end_byte])
+    root = _node_to_python(code, obj_node)
+    assert isinstance(root, dict)
+    param_obj = root["PARAM_TEST"]
+    assert isinstance(param_obj, dict)
+    built = catalog._build_param_map_from_obj(param_obj, "PARAM_TEST", "test")
+    assert built is not None
+    assert built.paths["min"] == [{"group": "P6", "number": 42, "use": "n"}]
+    assert built.paths["max"] == [{"group": "P6", "number": 42, "use": "x"}]
+    # Non-optional ``_0x['KEY']`` remains an import-alias public name.
+    alias_code = b"_0x521864['DISPLAY_MENU_DHW']"
+    alias_tree = catalog._ts.parse(alias_code)
+    alias_expr = alias_tree.root_node.named_children[0]
+    if alias_expr.type == "expression_statement":
+        alias_expr = alias_expr.named_children[0]
+    assert _node_to_python(alias_code, alias_expr) == "DISPLAY_MENU_DHW"
+
+
+def test_logical_or_short_circuits_truthy_left_operand() -> None:
+    """``||`` must not evaluate the right operand when the left is truthy."""
+    catalog = _catalog()
+    code = b'const x = "kept" || right_side;'
+    tree = catalog._ts.parse(code)
+    node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(code, node) == "kept"
+
+
+def test_logical_and_short_circuits_falsy_left_operand() -> None:
+    """``&&`` must not evaluate the right operand when the left is falsy."""
+    catalog = _catalog()
+    code = b"const x = null && right_side;"
+    tree = catalog._ts.parse(code)
+    node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(code, node) is None
+
+
+def test_optional_chain_nullish_binding_returns_none() -> None:
+    """Optional chain on a nullish binding yields undefined, not the public key."""
+    catalog = _catalog()
+    code = b"_0x39dd22?.['minValue']"
+    tree = catalog._ts.parse(code)
+    expr = tree.root_node.named_children[0]
+    if expr.type == "expression_statement":
+        expr = expr.named_children[0]
+    assert _node_to_python(code, expr, {"_0x39dd22": None}) is None
