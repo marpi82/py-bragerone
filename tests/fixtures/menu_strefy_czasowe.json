@@ -1,0 +1,28 @@
+{
+  "routes": [
+    {
+      "path": "timezones",
+      "name": "MAINMENU_STREFY_CZASOWE",
+      "meta": {
+        "displayName": "MAINMENU_STREFY_CZASOWE",
+        "icon": "SCHEDULES",
+        "permissionModule": "DISPLAY_PARAMETER_LEVEL_1",
+        "parameters": {
+          "read": [],
+          "write": [],
+          "status": [],
+          "special": []
+        },
+        "displayDropdown": "!![]"
+      },
+      "component": null,
+      "children": []
+    }
+  ],
+  "static_route_symbols": {
+    "timezones": ["PARAM_177", "PARAM_178", "PARAM_390"]
+  },
+  "routes_i18n": {
+    "MAINMENU_STREFY_CZASOWE": "Strefy czasowe"
+  }
+}
