@@ -49,6 +49,7 @@ API Models
 
    pybragerone.models.api.auth
    pybragerone.models.api.common
+   pybragerone.models.api.module_events
    pybragerone.models.api.modules
    pybragerone.models.api.objects
    pybragerone.models.api.system
