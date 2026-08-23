@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .auth import AuthResponse, LoginRequest
 from .common import ApiResponse, Permission
-from .module_events import ModuleActivity, ModuleAlarm
+from .module_events import ModuleActivity, ModuleActivityUser, ModuleAlarm
 from .modules import (
     Module,
     ModuleCard,
@@ -25,6 +25,7 @@ __all__ = [
     "LoginRequest",
     "Module",
     "ModuleActivity",
+    "ModuleActivityUser",
     "ModuleAlarm",
     "ModuleCard",
     "ModuleGateway",
