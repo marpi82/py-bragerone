@@ -23,7 +23,15 @@ class ModuleAlarm(BaseModel):
 
 
 class ModuleActivity(BaseModel):
-    """One module activity (parameter change / remote action) row."""
+    """One module activity (parameter change / remote action) row.
+
+    Live ``POST /v1/modules/activity`` rows typically include:
+
+    - ``prevValue`` (camelCase): scalar previous value — mapped to ``prev_value``
+    - ``prev_value`` (snake_case): nested param snapshot ``{P*: {n: {v, u}}}`` — kept in
+      ``model_extra`` when both keys are present
+    - ``user``: either a username string or ``{"id": int, "name": str}``
+    """
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -36,5 +44,5 @@ class ModuleActivity(BaseModel):
     prev_value: Any = Field(default=None, validation_alias="prevValue")
     state: str = ""
     created_at: str | None = None
-    user: str | None = None
+    user: Any = None
     user_id: int | None = None

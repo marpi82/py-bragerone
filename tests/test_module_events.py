@@ -112,10 +112,19 @@ def test_module_alarm_activity_dto_aliases() -> None:
     assert alarm.id == 38
     assert alarm.model_extra is not None
     activity = ModuleActivity.model_validate(
-        {"id": 1, "name": "parameters.PARAM_1", "prevValue": 2, "state": "success", "user": "u"}
+        {
+            "id": 1,
+            "name": "parameters.PARAM_1",
+            "prevValue": 2,
+            "prev_value": {"P6": {"219": {"v": 2, "u": 38}}},
+            "state": "success",
+            "user": {"name": "u", "id": 9},
+        }
     )
     assert activity.prev_value == 2
-    assert activity.user == "u"
+    assert activity.user == {"name": "u", "id": 9}
+    assert activity.model_extra is not None
+    assert activity.model_extra.get("prev_value") == {"P6": {"219": {"v": 2, "u": 38}}}
 
 
 @pytest.mark.asyncio
