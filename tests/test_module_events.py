@@ -11,7 +11,7 @@ from pytest_httpx import HTTPXMock
 from pybragerone.api.client import BragerOneApiClient
 from pybragerone.models import Token
 from pybragerone.models.alarm_names import parse_alarm_name_enum, resolve_alarm_label
-from pybragerone.models.api import ModuleActivity, ModuleAlarm
+from pybragerone.models.api import ModuleActivity, ModuleActivityUser, ModuleAlarm
 
 API = "https://io.brager.pl"
 
@@ -122,9 +122,21 @@ def test_module_alarm_activity_dto_aliases() -> None:
         }
     )
     assert activity.prev_value == 2
-    assert activity.user == {"name": "u", "id": 9}
+    assert isinstance(activity.user, ModuleActivityUser)
+    assert activity.user.id == 9
+    assert activity.user.name == "u"
     assert activity.model_extra is not None
     assert activity.model_extra.get("prev_value") == {"P6": {"219": {"v": 2, "u": 38}}}
+
+
+def test_module_activity_user_accepts_string_or_object() -> None:
+    """``user`` may be a legacy username string or a ``{id, name}`` object."""
+    as_string = ModuleActivity.model_validate({"id": 1, "user": "marpi82", "state": "success"})
+    assert as_string.user == "marpi82"
+
+    as_object = ModuleActivity.model_validate({"id": 2, "user": {"id": 861, "name": "marpi82"}, "state": "success"})
+    assert isinstance(as_object.user, ModuleActivityUser)
+    assert as_object.user.model_dump() == {"id": 861, "name": "marpi82"}
 
 
 @pytest.mark.asyncio
