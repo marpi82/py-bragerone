@@ -36,6 +36,8 @@ _UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
 # Bare menu-title i18n namespaces (``MAINMENU_*``, ``MENUSERWIS_*``, ``MENU_*``, …).
 # Require the known prefixes so abbreviations like ``DHW`` do not trigger asset fetches.
 _MENU_TITLE_TOKEN_RE = re.compile(r"^(?:MAINMENU|MENUSERWIS|MENUPALNIKA|MENU)_[A-Z0-9_]+$")
+# ParamStore flat keys referenced by SPA ``displayDropdown`` (e.g. ``P6.v219``).
+_ROUTE_DROPDOWN_VALUE_KEY_RE = re.compile(r"^P\d+\.[a-z]\d+$", re.IGNORECASE)
 
 # Installer / service module-item route *suffixes* (after optional ``companies.``).
 # Compared case-insensitively. Everyday panels may still use ``MENUSERWIS_*`` titles.
@@ -826,6 +828,18 @@ class ParamResolver:
         return isinstance(raw_name, str) and _MENU_TITLE_TOKEN_RE.fullmatch(raw_name.strip()) is not None
 
     @classmethod
+    def _dropdown_param_truthy(cls, raw: Any) -> bool:
+        """Return whether a ParamStore value should keep a dropdown-gated route visible."""
+        if isinstance(raw, bool):
+            return raw
+        if isinstance(raw, int | float) and not isinstance(raw, bool):
+            return raw != 0
+        if isinstance(raw, str):
+            stripped = raw.strip()
+            return bool(stripped) and stripped.casefold() not in {"0", "false"}
+        return bool(raw)
+
+    @classmethod
     def _route_display_dropdown_visibility(
         cls,
         route: Any,
@@ -843,6 +857,12 @@ class ParamResolver:
         token = dropdown.strip()
         if not token:
             return True, "visible:no-dropdown"
+        if _ROUTE_DROPDOWN_VALUE_KEY_RE.fullmatch(token):
+            raw = flat_values.get(token)
+            if raw is None:
+                return False, "hidden:dropdown-missing-value"
+            visible = cls._dropdown_param_truthy(raw)
+            return visible, "visible:dropdown-value" if visible else "hidden:dropdown-value"
         lowered = token.casefold()
         if lowered in {"!![]", "true", "1"}:
             return True, "visible:dropdown-always"
@@ -907,6 +927,8 @@ class ParamResolver:
         dropdown_visible, dropdown_reason = cls._route_display_dropdown_visibility(route, values)
         if not dropdown_visible:
             return False, dropdown_reason
+        if dropdown_reason not in {"visible:no-dropdown", "visible:default"}:
+            return True, dropdown_reason
         return True, "visible:default"
 
     @classmethod
@@ -951,10 +973,6 @@ class ParamResolver:
         """
         routes_meta: list[tuple[str, str, str, set[str], tuple[Any, ...], Any]] = []
         for route, ancestors in cls._iter_routes_with_ancestors(menu.routes):
-            if all_panels and not cls._route_allowed_in_module_item(route):
-                continue
-            if web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
-                continue
             route_visible, _ = cls.route_visibility_diagnostics(
                 route,
                 ancestors=ancestors,
