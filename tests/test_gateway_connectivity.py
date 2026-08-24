@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Iterable
 from types import SimpleNamespace
 from typing import Any
@@ -33,6 +34,7 @@ class FakeApiClient:
         self.get_modules_calls = 0
         self.get_modules_error: Exception | None = None
         self.prime_params_calls = 0
+        self.modules_connect_calls = 0
         self.closed = False
 
     @property
@@ -48,6 +50,7 @@ class FakeApiClient:
         engine_sid: str | None = None,
     ) -> bool:
         """Return success without side effects."""
+        self.modules_connect_calls += 1
         return True
 
     async def modules_parameters_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
@@ -85,6 +88,7 @@ class FakeRealtimeManager:
         self._on_event: Callable[[str, Any], Awaitable[None] | None] | None = None
         self.group_id: int | None = None
         self.connect_calls = 0
+        self.disconnect_calls = 0
         self.subscribe_calls: list[list[str]] = []
         self.force_reconnect_calls = 0
 
@@ -98,6 +102,7 @@ class FakeRealtimeManager:
 
     async def disconnect(self) -> None:
         """Invoke disconnect callbacks like a real socket drop."""
+        self.disconnect_calls += 1
         for cb in list(self._on_disconnected):
             res = cb()
             if asyncio.iscoroutine(res):
@@ -825,14 +830,17 @@ async def test_gateway_hard_restarts_ws_after_zombie_prime_streak() -> None:
         zombie_hard_restart_after=2,
     )
     await gw.start()
+    connect_calls_after_start = api.modules_connect_calls
     primes_after_start = api.prime_params_calls
-    gw._last_param_publish_monotonic = 0.0
+    gw._last_live_param_publish_monotonic = 0.0
 
     await _wait_until(lambda: ws.force_reconnect_calls >= 1)
     assert api.prime_params_calls > primes_after_start
+    assert api.modules_connect_calls > connect_calls_after_start
     # Live WS parameter traffic clears the streak again.
     await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
     assert gw._zombie_prime_streak == 0
+    assert gw._zombie_hard_restart_streak == 0
     await gw.stop()
 
 
@@ -882,7 +890,7 @@ async def test_gateway_zombie_hard_restart_handles_ws_none_and_errors(
     gw2.ws = None
     gw2._ws_session_up = True
     gw2._zombie_prime_streak = 0
-    gw2._last_param_publish_monotonic = 0.0
+    gw2._last_live_param_publish_monotonic = 0.0
     gw2._connectivity_poll_interval = 0.01
     poll = asyncio.create_task(gw2._connectivity_poll_loop())
     try:
@@ -965,6 +973,80 @@ async def test_gateway_prime_devids_edge_and_memory_updated_errors(
     with caplog.at_level("ERROR"):
         await ws.emit(MODULE_MEMORY_UPDATED, {"devid": "M1"})
         await _wait_until(lambda: "memory-updated REST prime failed for devid=M1" in caplog.text)
+    await gw.stop()
+
+
+async def test_gateway_zombie_uses_live_age_after_first_ws_update() -> None:
+    """REST-only snapshots must not mask a dead WS push stream once live traffic existed."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+    )
+    await gw.start()
+    await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
+    assert gw.last_live_param_update_age_s() is not None
+
+    gw._last_live_param_publish_monotonic = 0.0
+    gw._last_param_publish_monotonic = time.monotonic()
+    zombie_age = gw._zombie_param_update_age_s()
+    assert zombie_age is not None
+    assert zombie_age > 1000.0
+    param_age = gw.last_param_update_age_s()
+    assert param_age is not None
+    assert param_age < 1.0
+    await gw.stop()
+
+
+async def test_gateway_skips_zombie_hard_restart_when_modules_offline() -> None:
+    """Do not hammer WS recovery while every subscribed module is known offline."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+        stale_prime_after_s=0.05,
+        zombie_hard_restart_after=1,
+    )
+    await gw.start()
+    primes_after_start = api.prime_params_calls
+    await gw._refresh_module_connectivity(source="rest")
+    gw._last_live_param_publish_monotonic = 0.0
+    await _wait_until(lambda: api.prime_params_calls > primes_after_start)
+    assert ws.force_reconnect_calls == 0
+    await gw.stop()
+
+
+async def test_gateway_recycles_realtime_after_repeated_hard_restarts() -> None:
+    """Escalate to full disconnect → connect → resubscribe after repeated failed hard restarts."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+        stale_prime_after_s=0.05,
+        zombie_hard_restart_after=1,
+        zombie_full_recycle_after=2,
+    )
+    await gw.start()
+    assert ws.connect_calls == 1
+    gw._last_live_param_publish_monotonic = 0.0
+    await _wait_until(lambda: ws.force_reconnect_calls >= 2)
+    await _wait_until(lambda: ws.disconnect_calls >= 1)
+    assert ws.connect_calls >= 2
     await gw.stop()
 
 
