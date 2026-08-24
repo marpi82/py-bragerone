@@ -17,7 +17,7 @@ ignore:
   - "docs/**/*"
   - "fuzz/**/*"
   - "examples/**/*"
-  - ".github/**/*"
+  - ".github/**"
   - "pyproject.toml"
   - "uv.lock"
   - "codecov.yml"
