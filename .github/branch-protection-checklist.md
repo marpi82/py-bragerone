@@ -63,3 +63,56 @@ commits not on `main`.
 
 Re-run the **Security Checks** workflow so Scorecard re-evaluates
 BranchProtection / CodeReview.
+
+## BragerOne triage bot (issues, PRs, user project)
+
+Workflows: `bragerone-triage.yml`, `pull-request-labeler.yml`, `label-sync.yml`
+(reusable triage logic lives in `bragerone-triage-reusable.yml`).
+
+### One-time setup
+
+1. **Project number** — from `https://github.com/users/marpi82/projects/<N>`.
+2. **Field IDs** — after `gh auth refresh -s read:project,project`:
+
+   ```bash
+   ./scripts/github_project_setup.sh marpi82 <N>
+   ```
+
+3. **Repository variables** (Settings → Actions → Variables) in **both**
+   `py-bragerone` and `ha-bragerone`:
+
+   - `BRAGERONE_PROJECT_NUMBER` — integer from the project URL (`…/projects/2` → `2`)
+   - `BRAGERONE_STATUS_FIELD_ID` — opaque string (for example `PVTSSF_lAHOB…`)
+   - `BRAGERONE_STATUS_TODO_OPTION_ID` — maps to board **Backlog** (opaque string)
+   - `BRAGERONE_STATUS_READY_OPTION_ID` — board **Ready** (dependency bots)
+   - `BRAGERONE_STATUS_IN_PROGRESS_OPTION_ID` — board **In progress**
+   - `BRAGERONE_STATUS_IN_REVIEW_OPTION_ID` — board **In review**
+   - `BRAGERONE_STATUS_DONE_OPTION_ID` — board **Done**
+
+   Status option IDs are **not** numeric counters — GitHub Projects v2 uses opaque
+   strings. The board UI only shows names (Backlog, Ready, …); IDs come from
+   `./scripts/github_project_setup.sh marpi82 2` or `--set-vars`.
+
+   If status variables are omitted, the workflow resolves option names via GraphQL
+   (`Backlog`, `Ready`, `In progress`, `In review`, `Done`).
+
+4. **Project access (user-owned project)** — **cannot** link repositories in
+   project Manage access (that UI is for organization projects only). Create a
+   **classic PAT** ([tokens (classic)](https://github.com/settings/tokens)) with
+   scopes **`project`** and **`repo`** (the token is used for both Project Status
+   updates and issue/PR labels). Fine-grained PATs **cannot** access user-owned
+   Projects v2. Add the token as secret **`PROJECTS_TOKEN`** in both repos.
+
+5. **Workflow permissions** — each repo → Actions → General → Read and write.
+
+### Behaviour
+
+- Issues: template type labels + `py-bragerone`; project Status **Backlog** (closed → **Done**).
+- PRs: path labels (`documentation`, `python`, …) + type from linked issue or title
+  prefix (`bug:`, `feat:`, `docs:`) + repo label; draft / `converted_to_draft` → **Backlog**,
+  open → **In progress**, `ready_for_review` → **In review**, merged → **Done**;
+  Dependabot/Renovate → **Ready**.
+- Skips rolling `[upstream-assets]` / `[live-contract]` issues.
+
+`ha-bragerone` calls `marpi82/py-bragerone/.github/workflows/bragerone-triage-reusable.yml@main`
+— merge triage workflows to `main` before HA triage runs on `main`.

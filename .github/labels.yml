@@ -1,0 +1,86 @@
+---
+# Labels names are important as they are used by Release Drafter (ha-bragerone) and triage bots.
+#
+# The repository labels will be automatically configured using this file and
+# the GitHub Action https://github.com/marketplace/actions/github-labeler.
+- name: breaking
+  description: Breaking Changes
+  color: bfd4f2
+- name: bug
+  description: Something isn't working
+  color: d73a4a
+- name: build
+  description: Build System and Dependencies
+  color: bfdadc
+- name: ci
+  description: Continuous Integration
+  color: 4a97d6
+- name: dependencies
+  description: Pull requests that update a dependency file
+  color: 0366d6
+- name: deps
+  description: Dependency updates (legacy alias)
+  color: 0366d6
+- name: documentation
+  description: Improvements or additions to documentation
+  color: 0075ca
+- name: duplicate
+  description: This issue or pull request already exists
+  color: cfd3d7
+- name: enhancement
+  description: New feature or request
+  color: a2eeef
+- name: github_actions
+  description: Pull requests that update Github_actions code
+  color: "000000"
+- name: good first issue
+  description: Good for newcomers
+  color: 7057ff
+- name: ha-bragerone
+  description: ha-bragerone repository (BragerOne triage)
+  color: 1d76db
+- name: help wanted
+  description: Extra attention is needed
+  color: 008672
+- name: invalid
+  description: This doesn't seem right
+  color: e4e669
+- name: live-contract
+  description: Rolling notice for self-hosted live catalog contract runs
+  color: 5319e7
+- name: performance
+  description: Performance
+  color: "016175"
+- name: py-bragerone
+  description: py-bragerone repository (BragerOne triage)
+  color: 1d76db
+- name: python
+  description: Pull requests that update Python code
+  color: 2b67c6
+- name: python:uv
+  description: uv lockfile or Python tooling updates
+  color: 2b67c6
+- name: question
+  description: Further information is requested
+  color: d876e3
+- name: refactoring
+  description: Refactoring
+  color: ef67c4
+- name: removal
+  description: Removals and Deprecations
+  color: 9ae7ea
+- name: renovate
+  description: Renovate dependency updates
+  color: 1d76db
+- name: style
+  description: Style
+  color: c120e5
+- name: testing
+  description: Testing
+  color: b1fc6f
+- name: upstream-assets
+  description: Rolling notice for upstream BragerOne catalog fingerprint changes
+  color: fbca04
+- name: wontfix
+  description: This will not be worked on
+  color: ffffff
