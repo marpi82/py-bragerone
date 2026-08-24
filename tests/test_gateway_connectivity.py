@@ -992,11 +992,12 @@ async def test_gateway_zombie_uses_live_age_after_first_ws_update() -> None:
     await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
     assert gw.last_live_param_update_age_s() is not None
 
-    gw._last_live_param_publish_monotonic = 0.0
+    stale_live_s = 500.0
+    gw._last_live_param_publish_monotonic = time.monotonic() - stale_live_s
     gw._last_param_publish_monotonic = time.monotonic()
     zombie_age = gw._zombie_param_update_age_s()
     assert zombie_age is not None
-    assert zombie_age > 1000.0
+    assert stale_live_s - 1.0 <= zombie_age <= stale_live_s + 1.0
     param_age = gw.last_param_update_age_s()
     assert param_age is not None
     assert param_age < 1.0
