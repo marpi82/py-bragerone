@@ -1,0 +1,48 @@
+name: BragerOne triage
+
+on:
+  issues:
+    types: [opened, reopened, closed]
+  pull_request:
+    types: [opened, reopened, ready_for_review, closed]
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+  projects: write
+
+jobs:
+  triage-issue:
+    name: Triage issue
+    if: github.event_name == 'issues'
+    uses: ./.github/workflows/bragerone-triage-reusable.yml
+    secrets: inherit
+    with:
+      repo_label: py-bragerone
+      content_type: issue
+      content_number: ${{ github.event.issue.number }}
+      content_node_id: ${{ github.event.issue.node_id }}
+      title: ${{ github.event.issue.title }}
+      body: ${{ github.event.issue.body || '' }}
+      action: ${{ github.event.action }}
+      labels_json: ${{ toJSON(github.event.issue.labels) }}
+      actor: ${{ github.event.issue.user.login }}
+
+  triage-pull-request:
+    name: Triage pull request
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/bragerone-triage-reusable.yml
+    secrets: inherit
+    with:
+      repo_label: py-bragerone
+      content_type: pull_request
+      content_number: ${{ github.event.pull_request.number }}
+      content_node_id: ${{ github.event.pull_request.node_id }}
+      title: ${{ github.event.pull_request.title }}
+      body: ${{ github.event.pull_request.body || '' }}
+      action: ${{ github.event.action }}
+      is_draft: ${{ github.event.pull_request.draft }}
+      merged: ${{ github.event.pull_request.merged }}
+      labels_json: ${{ toJSON(github.event.pull_request.labels) }}
+      actor: ${{ github.event.pull_request.user.login }}
