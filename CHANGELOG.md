@@ -34,6 +34,13 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   the SPA recovery path (``connect`` → ``ModulesService.connect`` + REST
   ``/modules/parameters``). Also REST-prime a module when numeric event ``22``
   (``SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED``) arrives, as Layout/ObjectsLayout do.
+- After repeated hard reconnects still fail to restore **live** WS ``ParamUpdate``
+  traffic, ``BragerOneGateway`` escalates to a full realtime recycle
+  (disconnect → connect → ``modules.connect`` + subscribe + prime). Hard reconnect
+  now **awaits** ``resubscribe()`` so ``modules.connect`` completes before the next
+  poll tick. Zombie detection uses live WS age once any live traffic was seen —
+  REST-only snapshots no longer mask a dead push stream. Recovery is skipped while
+  every subscribed module is known offline (``connectedAt == 0``).
 - Multi-register parameters (e.g. ``PARAM_P4_59`` "Czas pracy podajnika") whose
   SPA mapping addresses more than one register as ``{group, number, use[,
   convert, times]}`` selectors were misclassified as STATUS computed rules and
@@ -47,9 +54,9 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   now notifies ``CloudSessionConnectivity(up=False)`` immediately, bounds
   transport teardown, and replaces the Socket.IO client when disconnect hangs so
   reconnect and REST-prime can proceed.
-- REST-prime when no ``ParamUpdate`` has been published for 180s even if Socket.IO
-  still reports up (zombie session). ``BragerOneGateway.last_param_update_age_s()``
-  exposes the gap for Home Assistant diagnostics.
+- REST-prime when no **live** ``ParamUpdate`` has been published for 180s even if
+  Socket.IO still reports up (zombie session). ``BragerOneGateway.last_param_update_age_s()``
+  and ``last_live_param_update_age_s()`` expose the gaps for Home Assistant diagnostics.
 
 - Tolerate degraded ``GET /v1/modules`` rows (empty ``gateway``, ``connectedAt:
   null``) so connectivity refresh can mark the module offline instead of skipping

@@ -51,12 +51,16 @@ Best Practices
   skip the Socket.IO ``disconnect`` callback and deadlock ``disconnect()``. The
   supervisor notifies session-down immediately, bounds leftover teardown, and
   replaces the client if disconnect hangs.
-- If no ``ParamUpdate`` arrives for 180s while the session still reports up, the
+- If no **live** ``ParamUpdate`` arrives for 180s while the session still reports up, the
   same poll REST-primes (zombie socket). After two consecutive zombie primes the
   gateway forces a hard Socket.IO restart (SPA parity: reconnect →
-  ``ModulesService.connect`` + REST ``/modules/parameters``). Numeric Socket.IO
+  ``ModulesService.connect`` + REST ``/modules/parameters``), awaiting
+  ``resubscribe()``. After repeated failed hard restarts it recycles the realtime
+  session (full disconnect → connect → resubscribe). Recovery is skipped while every
+  subscribed module is known offline. Numeric Socket.IO
   event ``22`` (``SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED``) also REST-primes
-  that module. ``last_param_update_age_s()`` exposes the gap for diagnostics.
+  that module. ``last_param_update_age_s()`` and ``last_live_param_update_age_s()``
+  expose the gaps for diagnostics.
 - In EventBus consumers (e.g., :class:`ParamStore`), **never** let exceptions kill the task:
   catch and log, continue processing.
 

@@ -38,6 +38,9 @@ _DEFAULT_STALE_PRIME_AFTER_S = 180.0
 # After this many consecutive zombie REST-primes, force a hard WS restart (SPA-style
 # reconnect → modules.connect + REST parameters). ``0`` disables hard restart.
 _DEFAULT_ZOMBIE_HARD_RESTART_AFTER = 2
+# After this many hard restarts without live WS ``ParamUpdate`` traffic, drop and
+# reopen the Socket.IO session (full disconnect → connect → resubscribe). ``0`` disables.
+_DEFAULT_ZOMBIE_FULL_RECYCLE_AFTER = 3
 
 ConnectivitySource = Literal["rest", "ws", "derived"]
 CloudSessionSource = Literal["connect", "disconnect", "stop"]
@@ -203,6 +206,7 @@ class BragerOneGateway:
         connectivity_poll_interval: float = _DEFAULT_CONNECTIVITY_POLL_INTERVAL_S,
         stale_prime_after_s: float = _DEFAULT_STALE_PRIME_AFTER_S,
         zombie_hard_restart_after: int = _DEFAULT_ZOMBIE_HARD_RESTART_AFTER,
+        zombie_full_recycle_after: int = _DEFAULT_ZOMBIE_FULL_RECYCLE_AFTER,
     ) -> None:
         """Initialize the gateway but do not start it yet.
 
@@ -221,6 +225,9 @@ class BragerOneGateway:
             zombie_hard_restart_after: Consecutive zombie REST-primes before forcing a
                 hard Socket.IO restart (SPA parity: reconnect then ``modules.connect`` +
                 REST parameters). Use ``0`` to only REST-prime without tearing down WS.
+            zombie_full_recycle_after: Consecutive hard restarts without live WS
+                ``ParamUpdate`` traffic before a full disconnect → connect → resubscribe
+                cycle. Use ``0`` to never escalate beyond hard restart.
         """
         self.object_id = int(object_id)
         self.modules = sorted(set(modules))
@@ -233,8 +240,11 @@ class BragerOneGateway:
         self._connectivity_poll_interval = float(connectivity_poll_interval)
         self._stale_prime_after_s = float(stale_prime_after_s)
         self._zombie_hard_restart_after = int(zombie_hard_restart_after)
+        self._zombie_full_recycle_after = int(zombie_full_recycle_after)
         self._zombie_prime_streak = 0
+        self._zombie_hard_restart_streak = 0
         self._last_param_publish_monotonic: float | None = None
+        self._last_live_param_publish_monotonic: float | None = None
 
         self._tasks: set[asyncio.Task[Any]] = set()
         self._started = False
@@ -356,6 +366,10 @@ class BragerOneGateway:
         """Return whether this gateway's Socket.IO (library↔cloud) session is up."""
         return self._ws_session_up
 
+    def _is_running(self) -> bool:
+        """Return whether the gateway lifecycle is active (not stopped)."""
+        return self._started
+
     def last_param_update_age_s(self) -> float | None:
         """Return seconds since the last published ``ParamUpdate``, or ``None`` if never."""
         stamped = self._last_param_publish_monotonic
@@ -363,20 +377,48 @@ class BragerOneGateway:
             return None
         return time.monotonic() - stamped
 
+    def last_live_param_update_age_s(self) -> float | None:
+        """Return seconds since the last live (WS) ``ParamUpdate``, or ``None`` if never."""
+        stamped = self._last_live_param_publish_monotonic
+        if stamped is None:
+            return None
+        return time.monotonic() - stamped
+
+    def _zombie_param_update_age_s(self) -> float | None:
+        """Age used for zombie-session detection.
+
+        After the first live WS publish, REST-only snapshots no longer mask a dead
+        push stream. Before any live traffic, fall back to any published update age.
+        """
+        live_age = self.last_live_param_update_age_s()
+        if live_age is not None:
+            return live_age
+        return self.last_param_update_age_s()
+
+    def _any_subscribed_module_online(self) -> bool:
+        """Return whether recovery should run (unknown connectivity counts as online)."""
+        known = [self._module_online.get(devid) for devid in self.modules if devid in self._module_online]
+        if not known:
+            return True
+        return any(known)
+
     def _touch_param_publish(self, count: int, *, live: bool = False) -> None:
         """Record that ``count`` parameter events were published.
 
         Args:
             count: Number of ``ParamUpdate`` events published.
-            live: When ``True`` (WS snapshot / parameters:change), clear the zombie
-                REST-prime streak. REST primes leave the streak intact so consecutive
-                silent cycles can still trigger a hard WS restart.
+            live: When ``True`` (WS snapshot / parameters:change), clear zombie recovery
+                streaks. REST primes update the overall age for diagnostics but must not
+                mask a silent WS push stream once live traffic has been observed.
         """
         if count <= 0:
             return
-        self._last_param_publish_monotonic = time.monotonic()
+        now = time.monotonic()
+        self._last_param_publish_monotonic = now
         if live:
+            self._last_live_param_publish_monotonic = now
             self._zombie_prime_streak = 0
+            self._zombie_hard_restart_streak = 0
 
     async def refresh_module_connectivity(self) -> None:
         """Refresh module↔cloud connectivity from REST ``get_modules``."""
@@ -592,37 +634,29 @@ class BragerOneGateway:
             # parameters; our supervisor only reconnects when ``connected`` looks down.
             if not self._started:
                 continue
-            age = self.last_param_update_age_s()
+            age = self._zombie_param_update_age_s()
             stale_after = self._stale_prime_after_s
             session_up = self._ws_session_up
             if session_up:
                 if stale_after <= 0 or age is None or age < stale_after:
                     continue
-                self._zombie_prime_streak += 1
-                LOG.warning(
-                    "No ParamUpdate for %.0fs while Socket.IO reports up; REST-priming (zombie_streak=%s)",
-                    age,
-                    self._zombie_prime_streak,
-                )
-                hard_after = self._zombie_hard_restart_after
-                if hard_after > 0 and self._zombie_prime_streak >= hard_after:
-                    streak = self._zombie_prime_streak
-                    self._zombie_prime_streak = 0
-                    ws = self.ws
-                    if ws is not None:
-                        LOG.warning(
-                            "Zombie session persists after %s REST-primes; forcing WS hard reconnect",
-                            streak,
-                        )
-                        try:
-                            await ws.force_reconnect()
-                        except Exception:
-                            LOG.exception("WS hard reconnect (zombie session) failed")
-                    else:
-                        LOG.warning(
-                            "Zombie session persists after %s REST-primes; no WS client, REST-priming only",
-                            streak,
-                        )
+                if not self._any_subscribed_module_online():
+                    LOG.debug(
+                        "Skipping zombie WS recovery while all subscribed modules are offline (age=%.0fs)",
+                        age,
+                    )
+                else:
+                    self._zombie_prime_streak += 1
+                    LOG.warning(
+                        "No live ParamUpdate for %.0fs while Socket.IO reports up; REST-priming (zombie_streak=%s)",
+                        age,
+                        self._zombie_prime_streak,
+                    )
+                    hard_after = self._zombie_hard_restart_after
+                    if hard_after > 0 and self._zombie_prime_streak >= hard_after:
+                        streak = self._zombie_prime_streak
+                        self._zombie_prime_streak = 0
+                        await self._recover_zombie_session(streak)
             try:
                 await self._prime_with_retry()
             except Exception as err:
@@ -633,6 +667,60 @@ class BragerOneGateway:
                     )
                 else:
                     LOG.exception("REST re-prime (socket down or stale ParamUpdates) failed")
+
+    async def _recover_zombie_session(self, rest_prime_streak: int) -> None:
+        """Escalate zombie-session recovery: hard reconnect, then full recycle."""
+        ws = self.ws
+        if ws is None:
+            LOG.warning(
+                "Zombie session persists after %s REST-primes; no WS client, REST-priming only",
+                rest_prime_streak,
+            )
+            return
+
+        full_recycle_after = self._zombie_full_recycle_after
+        if full_recycle_after > 0 and self._zombie_hard_restart_streak >= full_recycle_after:
+            await self._recycle_realtime_session(rest_prime_streak)
+            return
+
+        self._zombie_hard_restart_streak += 1
+        LOG.warning(
+            "Zombie session persists after %s REST-primes; forcing WS hard reconnect (hard_streak=%s)",
+            rest_prime_streak,
+            self._zombie_hard_restart_streak,
+        )
+        try:
+            await ws.force_reconnect()
+            # ``force_reconnect`` may spawn ``on_connected`` work; await resubscribe so
+            # ``modules.connect`` + subscribe + prime finish before the next poll tick.
+            await self.resubscribe()
+        except Exception:
+            LOG.exception("WS hard reconnect (zombie session) failed")
+
+    async def _recycle_realtime_session(self, rest_prime_streak: int) -> None:
+        """Drop and reopen Socket.IO after repeated failed hard reconnects."""
+        ws = self.ws
+        if ws is None or not self._is_running():
+            return
+        LOG.warning(
+            "Zombie session persists after %s REST-primes and %s hard reconnect(s) "
+            "without live ParamUpdates; recycling realtime session",
+            rest_prime_streak,
+            self._zombie_hard_restart_streak,
+        )
+        self._zombie_hard_restart_streak = 0
+        self._zombie_prime_streak = 0
+        try:
+            await ws.disconnect()
+        except Exception:
+            LOG.exception("WS disconnect during realtime recycle failed")
+        if not self._is_running():
+            return
+        try:
+            await ws.connect()
+            await self.resubscribe()
+        except Exception:
+            LOG.exception("WS recycle (connect/resubscribe) failed")
 
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource) -> None:
         """Pull ``get_modules`` and apply online state for subscribed devids.
