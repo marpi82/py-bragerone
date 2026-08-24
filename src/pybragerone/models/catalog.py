@@ -85,6 +85,8 @@ class AssetIndex:
     assets_by_basename: dict[str, list[AssetRef]] = field(default_factory=dict)
     # mapping from deviceMenu:int -> BASENAME('module.menu-<hash>.js')
     menu_map: dict[int, str] = field(default_factory=dict)
+    # static side-menu route chunks: path basename -> asset basename (e.g. timezones -> timezones)
+    static_route_map: dict[str, str] = field(default_factory=dict)
     # inline parameter maps detected within index-*.js
     inline_param_candidates: list[tuple[int, int]] = field(default_factory=list)  # (start_byte, end_byte)
     # raw index for potential inline parsing
@@ -1227,6 +1229,7 @@ class LiveAssetsCatalog:
 
         # New menu management system
         self._menu_manager = MenuManager(self._log)
+        self._static_route_tokens_cache: dict[str, set[str]] = {}
 
         # Track auto-discovery attempts to help guard repeated network fetches
         self._index_autoload_attempts = 0
@@ -1422,6 +1425,20 @@ class LiveAssetsCatalog:
         except Exception as regex_e:
             self._log.debug("Regex deviceMenu parsing failed: %s", regex_e)
 
+        static_route_map: dict[str, str] = {}
+        try:
+            static_route_pattern = re.compile(
+                r"deviceMenu/static/([A-Za-z0-9_-]+)\.ts['\"].*?"
+                r"import\s*\(\s*['\"]\./([A-Za-z0-9_.-]+)-([A-Za-z0-9_-]+)\.js['\"]",
+                re.DOTALL,
+            )
+            for match in static_route_pattern.finditer(text):
+                route_path = str(match.group(1))
+                asset_base = str(match.group(2))
+                static_route_map.setdefault(route_path, asset_base)
+        except Exception as static_exc:
+            self._log.debug("Static deviceMenu route parsing failed: %s", static_exc)
+
         # Prepare limited code for AST parsing (needed for inline param candidates)
         ast_limit = min(1000000, len(code))
         limited_code = code[:ast_limit]
@@ -1460,9 +1477,50 @@ class LiveAssetsCatalog:
         return AssetIndex(
             assets_by_basename=assets_by_basename,
             menu_map=menu_map,
+            static_route_map=static_route_map,
             inline_param_candidates=inline_candidates,
             index_bytes=code,
         )
+
+    @staticmethod
+    def _extract_public_tokens_from_js(code: bytes) -> set[str]:
+        """Return PARAM/STATUS/COMMAND tokens referenced in a minified JS chunk."""
+        text = code.decode("utf-8", errors="replace")
+        tokens: set[str] = set()
+        tokens.update(_HELPER_TOKEN_RE.findall(text))
+        tokens.update(_LEFTOVER_QUOTED_TOKEN_RE.findall(text))
+        return tokens
+
+    async def discover_static_route_tokens(self, route_path: str) -> set[str]:
+        """Return parameter tokens declared in a static ``deviceMenu/static/<path>.ts`` chunk.
+
+        Live menus sometimes expose a side-menu route (e.g. ``MAINMENU_STREFY_CZASOWE`` /
+        path ``timezones``) with no ``read``/``write`` parameters in ``module.menu-*.js``.
+        The SPA loads symbols from a separate static route bundle referenced in ``index-*.js``.
+        """
+        path_key = route_path.strip().strip("/")
+        if not path_key or path_key in {".", ".."}:
+            return set()
+        if path_key in self._static_route_tokens_cache:
+            return set(self._static_route_tokens_cache[path_key])
+
+        await self._ensure_index_loaded()
+        asset_base = self._idx.static_route_map.get(path_key)
+        if asset_base is None and path_key in self._idx.assets_by_basename:
+            asset_base = path_key
+
+        tokens: set[str] = set()
+        if asset_base is not None:
+            asset_ref = self._idx.find_asset_for_basename(asset_base)
+            if asset_ref is not None:
+                try:
+                    code = await self._api.get_bytes(asset_ref.url)
+                    tokens = self._extract_public_tokens_from_js(code)
+                except Exception as exc:
+                    self._log.debug("Static route asset fetch failed for %s: %s", path_key, exc)
+
+        self._static_route_tokens_cache[path_key] = tokens
+        return set(tokens)
 
     # ---------- MENU ----------
 

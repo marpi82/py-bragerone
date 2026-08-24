@@ -150,6 +150,24 @@ Stable grouping key for the HA connection child device: ``module.connection``
 Entity Naming
 -------------
 
+Route vs parameter visibility
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Everyday web-UI side-menu routes may be gated separately from individual
+parameters:
+
+- ``ParamResolver.route_visibility_diagnostics`` — static SPA route gates
+  (installer denylist, ``isVisibleOnSideMenu``, ``displayDropdown`` leftovers).
+- ``ParamResolver.parameter_visibility_diagnostics`` — per-parameter status bits
+  (``INVISIBLE``, ``DEVICE_AVAILABLE``).
+
+Static menu shells (e.g. ``MAINMENU_STREFY_CZASOWE`` / path ``timezones``) load
+parameter tokens from ``deviceMenu/static/<path>.ts`` chunks referenced in
+``index-*.js``. Use ``LiveAssetsCatalog.discover_static_route_tokens`` and pass
+``static_route_symbols`` into ``build_panel_groups_from_menu`` (or call
+``build_panel_groups`` with a primed ``ParamStore`` so overlays are resolved
+automatically).
+
 .. code-block:: python
 
    # Recommended unique_id format for HA entities
