@@ -6,16 +6,30 @@
 #
 # Example:
 #   gh auth refresh -s read:project,project
-#   ./scripts/github_project_setup.sh marpi82 2
+#   ./scripts/github_project_setup.sh 2
 #   ./scripts/github_project_setup.sh marpi82 2 --set-vars
 #
 # Status option IDs are opaque strings (for example f75ad846), not integers.
 # The board shows names (Backlog, Ready, …); IDs only appear via this script / API.
 set -euo pipefail
 
-OWNER="${1:-marpi82}"
-PROJECT_NUMBER="${2:?Usage: $0 [owner] project_number [--set-vars]}"
-SET_VARS="${3:-}"
+SET_VARS=""
+if [[ $# -ge 1 && "${!#}" == "--set-vars" ]]; then
+  SET_VARS="--set-vars"
+  set -- "${@:1:$#-1}"
+fi
+
+if [[ $# -eq 1 && "$1" =~ ^[0-9]+$ ]]; then
+  OWNER="marpi82"
+  PROJECT_NUMBER="$1"
+elif [[ $# -eq 2 ]]; then
+  OWNER="$1"
+  PROJECT_NUMBER="$2"
+else
+  echo "Usage: $0 [owner] project_number [--set-vars]" >&2
+  echo "       $0 project_number [--set-vars]  (defaults owner to marpi82)" >&2
+  exit 1
+fi
 
 if [[ "${PROJECT_NUMBER}" == "--set-vars" ]]; then
   echo "Usage: $0 [owner] project_number [--set-vars]" >&2
@@ -143,8 +157,9 @@ echo "${SETUP_OUTPUT}" | sed '/^__VARS__$/,$d'
 echo
 echo "== Project access (user-owned project) =="
 echo "User projects do NOT support linking repositories in Manage access (org projects only)."
-echo "Create a fine-grained PAT with Projects read/write, add it as secret PROJECTS_TOKEN"
-echo "in py-bragerone and ha-bragerone. The triage workflow uses it automatically."
+echo "Create a classic PAT (https://github.com/settings/tokens) with scopes project + repo,"
+echo "add it as secret PROJECTS_TOKEN in py-bragerone and ha-bragerone."
+echo "Fine-grained PATs cannot access user-owned Projects v2."
 echo
 echo "In each repo: Settings → Actions → General → Workflow permissions → Read and write."
 

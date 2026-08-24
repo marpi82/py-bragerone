@@ -98,9 +98,10 @@ Workflows: `bragerone-triage.yml`, `pull-request-labeler.yml`, `label-sync.yml`
 
 4. **Project access (user-owned project)** — **cannot** link repositories in
    project Manage access (that UI is for organization projects only). Create a
-   **fine-grained PAT** scoped to your account with **Projects: Read and write**,
-   then add it as secret **`PROJECTS_TOKEN`** in both repos. The reusable triage
-   workflow uses `PROJECTS_TOKEN` when present, otherwise `GITHUB_TOKEN`.
+   **classic PAT** ([tokens (classic)](https://github.com/settings/tokens)) with
+   scopes **`project`** and **`repo`** (the token is used for both Project Status
+   updates and issue/PR labels). Fine-grained PATs **cannot** access user-owned
+   Projects v2. Add the token as secret **`PROJECTS_TOKEN`** in both repos.
 
 5. **Workflow permissions** — each repo → Actions → General → Read and write.
 
@@ -108,8 +109,9 @@ Workflows: `bragerone-triage.yml`, `pull-request-labeler.yml`, `label-sync.yml`
 
 - Issues: template type labels + `py-bragerone`; project Status **Backlog** (closed → **Done**).
 - PRs: path labels (`documentation`, `python`, …) + type from linked issue or title
-  prefix (`bug:`, `feat:`, `docs:`) + repo label; draft → **Backlog**, open → **In progress**,
-  `ready_for_review` → **In review**, merged → **Done**; Dependabot/Renovate → **Ready**.
+  prefix (`bug:`, `feat:`, `docs:`) + repo label; draft / `converted_to_draft` → **Backlog**,
+  open → **In progress**, `ready_for_review` → **In review**, merged → **Done**;
+  Dependabot/Renovate → **Ready**.
 - Skips rolling `[upstream-assets]` / `[live-contract]` issues.
 
 `ha-bragerone` calls `marpi82/py-bragerone/.github/workflows/bragerone-triage-reusable.yml@main`

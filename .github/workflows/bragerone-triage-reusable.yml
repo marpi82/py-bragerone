@@ -249,8 +249,11 @@ jobs:
               if (action === 'ready_for_review') {
                 return 'In review';
               }
+              if (action === 'converted_to_draft' || isDraft) {
+                return 'Backlog';
+              }
               if (action === 'opened' || action === 'reopened') {
-                return isDraft ? 'Backlog' : 'In progress';
+                return 'In progress';
               }
               return null;
             }
