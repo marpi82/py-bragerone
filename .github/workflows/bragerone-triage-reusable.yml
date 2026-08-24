@@ -1,0 +1,425 @@
+name: BragerOne triage (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      repo_label:
+        description: Repository identity label (py-bragerone or ha-bragerone)
+        required: true
+        type: string
+      content_type:
+        description: issue or pull_request
+        required: true
+        type: string
+      content_number:
+        description: Issue or PR number
+        required: true
+        type: number
+      content_node_id:
+        description: GraphQL node ID of the issue or pull request
+        required: true
+        type: string
+      title:
+        description: Issue or PR title
+        required: true
+        type: string
+      body:
+        description: Issue or PR body
+        required: false
+        type: string
+        default: ""
+      action:
+        description: GitHub event action (opened, reopened, ready_for_review, closed, ...)
+        required: true
+        type: string
+      is_draft:
+        description: Pull request draft flag
+        required: false
+        type: boolean
+        default: false
+      merged:
+        description: Pull request merged flag (on closed)
+        required: false
+        type: boolean
+        default: false
+      labels_json:
+        description: JSON array of current label names
+        required: false
+        type: string
+        default: "[]"
+      actor:
+        description: GitHub actor that opened or updated the item
+        required: false
+        type: string
+        default: ""
+    secrets:
+      PROJECTS_TOKEN:
+        description: Optional PAT with Projects write (fallback when GITHUB_TOKEN cannot update user projects)
+        required: false
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+  projects: write
+
+jobs:
+  triage:
+    name: Triage issue or PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: BragerOne triage
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          TRIAGE_REPO_LABEL: ${{ inputs.repo_label }}
+          TRIAGE_CONTENT_TYPE: ${{ inputs.content_type }}
+          TRIAGE_CONTENT_NUMBER: ${{ inputs.content_number }}
+          TRIAGE_CONTENT_NODE_ID: ${{ inputs.content_node_id }}
+          TRIAGE_TITLE: ${{ inputs.title }}
+          TRIAGE_BODY: ${{ inputs.body }}
+          TRIAGE_ACTION: ${{ inputs.action }}
+          TRIAGE_IS_DRAFT: ${{ inputs.is_draft }}
+          TRIAGE_MERGED: ${{ inputs.merged }}
+          TRIAGE_LABELS_JSON: ${{ inputs.labels_json }}
+          TRIAGE_ACTOR: ${{ inputs.actor }}
+          BRAGERONE_PROJECT_NUMBER: ${{ vars.BRAGERONE_PROJECT_NUMBER }}
+          BRAGERONE_STATUS_FIELD_ID: ${{ vars.BRAGERONE_STATUS_FIELD_ID }}
+          BRAGERONE_STATUS_TODO_OPTION_ID: ${{ vars.BRAGERONE_STATUS_TODO_OPTION_ID }}
+          BRAGERONE_STATUS_READY_OPTION_ID: ${{ vars.BRAGERONE_STATUS_READY_OPTION_ID }}
+          BRAGERONE_STATUS_IN_PROGRESS_OPTION_ID: ${{ vars.BRAGERONE_STATUS_IN_PROGRESS_OPTION_ID }}
+          BRAGERONE_STATUS_IN_REVIEW_OPTION_ID: ${{ vars.BRAGERONE_STATUS_IN_REVIEW_OPTION_ID }}
+          BRAGERONE_STATUS_DONE_OPTION_ID: ${{ vars.BRAGERONE_STATUS_DONE_OPTION_ID }}
+        with:
+          github-token: ${{ secrets.PROJECTS_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const repoLabel = process.env.TRIAGE_REPO_LABEL || '';
+            const contentType = process.env.TRIAGE_CONTENT_TYPE || '';
+            const contentNumber = Number(process.env.TRIAGE_CONTENT_NUMBER || '0');
+            const contentNodeId = process.env.TRIAGE_CONTENT_NODE_ID || '';
+            const title = process.env.TRIAGE_TITLE || '';
+            const body = process.env.TRIAGE_BODY || '';
+            const action = process.env.TRIAGE_ACTION || '';
+            const isDraft = process.env.TRIAGE_IS_DRAFT === 'true';
+            const merged = process.env.TRIAGE_MERGED === 'true';
+            const actor = process.env.TRIAGE_ACTOR || '';
+            const rawLabels = JSON.parse(process.env.TRIAGE_LABELS_JSON || '[]');
+            const labels = rawLabels.map((label) =>
+              typeof label === 'string' ? label : label.name,
+            );
+
+            const SKIP_LABELS = new Set(['upstream-assets', 'live-contract']);
+            const SKIP_TITLE_PREFIXES = ['[upstream-assets]', '[live-contract]'];
+            const TYPE_LABELS = ['bug', 'enhancement', 'documentation', 'question'];
+            const TITLE_PREFIX_MAP = [
+              { prefix: 'bug:', label: 'bug' },
+              { prefix: 'fix:', label: 'bug' },
+              { prefix: 'feat:', label: 'enhancement' },
+              { prefix: 'feature:', label: 'enhancement' },
+              { prefix: 'docs:', label: 'documentation' },
+              { prefix: 'doc:', label: 'documentation' },
+            ];
+            const DEPENDENCY_BOTS = new Set(['dependabot[bot]', 'renovate[bot]']);
+
+            function shouldSkip() {
+              if (labels.some((name) => SKIP_LABELS.has(name))) {
+                return true;
+              }
+              const trimmed = title.trim();
+              return SKIP_TITLE_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
+            }
+
+            async function addLabels(labelNames) {
+              const unique = [...new Set(labelNames.filter(Boolean))];
+              if (unique.length === 0) {
+                return;
+              }
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: contentNumber,
+                labels: unique,
+              });
+            }
+
+            function labelFromTitlePrefix() {
+              const lower = title.trim().toLowerCase();
+              for (const entry of TITLE_PREFIX_MAP) {
+                if (lower.startsWith(entry.prefix)) {
+                  return entry.label;
+                }
+              }
+              return null;
+            }
+
+            function linkedIssueNumbers(text) {
+              const matches = text.matchAll(/(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s+#(\d+)/gi);
+              const numbers = [];
+              for (const match of matches) {
+                numbers.push(Number(match[1]));
+              }
+              return numbers;
+            }
+
+            async function typeLabelFromLinkedIssues() {
+              const numbers = [...new Set([...linkedIssueNumbers(body), ...linkedIssueNumbers(title)])];
+              for (const issueNumber of numbers) {
+                const issue = await github.rest.issues.get({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                });
+                const issueLabels = issue.data.labels.map((label) =>
+                  typeof label === 'string' ? label : label.name,
+                );
+                for (const typeLabel of TYPE_LABELS) {
+                  if (issueLabels.includes(typeLabel)) {
+                    return typeLabel;
+                  }
+                }
+              }
+              return null;
+            }
+
+            async function graphqlRequest(query, variables) {
+              const response = await github.graphql(query, variables);
+              return response;
+            }
+
+            async function resolveProjectId(projectNumber) {
+              const query = `
+                query($login: String!, $number: Int!) {
+                  user(login: $login) {
+                    projectV2(number: $number) { id }
+                  }
+                }
+              `;
+              const data = await graphqlRequest(query, { login: owner, number: projectNumber });
+              return data.user?.projectV2?.id ?? null;
+            }
+
+            async function resolveStatusOptionId(projectId, fieldId, optionName) {
+              const query = `
+                query($projectId: ID!) {
+                  node(id: $projectId) {
+                    ... on ProjectV2 {
+                      field(name: "Status") {
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          options { id name }
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+              const data = await graphqlRequest(query, { projectId });
+              const field = data.node?.field;
+              if (!field?.options) {
+                return null;
+              }
+              const normalized = optionName.trim().toLowerCase();
+              const match = field.options.find(
+                (option) => option.name.trim().toLowerCase() === normalized,
+              );
+              return match?.id ?? null;
+            }
+
+            function statusOptionFromVars(suffix) {
+              const key = `BRAGERONE_STATUS_${suffix}_OPTION_ID`;
+              const value = process.env[key];
+              return value && value.trim() ? value.trim() : null;
+            }
+
+            // Board Status options (BragerOne project): Backlog, Ready, In progress, In review, Done.
+            function resolveTargetStatus() {
+              if (DEPENDENCY_BOTS.has(actor) && contentType === 'pull_request' && action !== 'closed') {
+                return 'Ready';
+              }
+              if (contentType === 'issue') {
+                if (action === 'closed') {
+                  return 'Done';
+                }
+                return 'Backlog';
+              }
+              if (action === 'closed') {
+                return merged ? 'Done' : null;
+              }
+              if (action === 'ready_for_review') {
+                return 'In review';
+              }
+              if (action === 'converted_to_draft' || isDraft) {
+                return 'Backlog';
+              }
+              if (action === 'opened' || action === 'reopened') {
+                return 'In progress';
+              }
+              return null;
+            }
+
+            async function ensureProjectItem(projectId, contentId) {
+              const query = `
+                query($contentId: ID!) {
+                  node(id: $contentId) {
+                    ... on Issue {
+                      projectItems(first: 20) {
+                        nodes {
+                          id
+                          project { id }
+                        }
+                      }
+                    }
+                    ... on PullRequest {
+                      projectItems(first: 20) {
+                        nodes {
+                          id
+                          project { id }
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+              const data = await graphqlRequest(query, { contentId });
+              const items = data.node?.projectItems?.nodes ?? [];
+              const existing = items.find((item) => item.project?.id === projectId);
+              if (existing) {
+                return existing.id;
+              }
+
+              const mutation = `
+                mutation($projectId: ID!, $contentId: ID!) {
+                  addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+                    item { id }
+                  }
+                }
+              `;
+              const added = await graphqlRequest(mutation, { projectId, contentId });
+              return added.addProjectV2ItemById.item.id;
+            }
+
+            async function setProjectStatus(projectId, itemId, statusName) {
+              const fieldId = process.env.BRAGERONE_STATUS_FIELD_ID?.trim();
+              let optionId = null;
+              if (statusName === 'Backlog' || statusName === 'Todo') {
+                optionId = statusOptionFromVars('TODO');
+              } else if (statusName === 'Ready') {
+                optionId = statusOptionFromVars('READY') || statusOptionFromVars('TODO');
+              } else if (statusName === 'In progress' || statusName === 'In Progress') {
+                optionId = statusOptionFromVars('IN_PROGRESS');
+              } else if (statusName === 'In review') {
+                optionId = statusOptionFromVars('IN_REVIEW');
+              } else if (statusName === 'Done') {
+                optionId = statusOptionFromVars('DONE');
+              }
+
+              if (!optionId) {
+                const resolvedFieldId = fieldId || (
+                  await graphqlRequest(
+                    `query($projectId: ID!) {
+                      node(id: $projectId) {
+                        ... on ProjectV2 {
+                          field(name: "Status") { ... on ProjectV2SingleSelectField { id } }
+                        }
+                      }
+                    }`,
+                    { projectId },
+                  )
+                ).node?.field?.id;
+                if (!resolvedFieldId) {
+                  core.warning('BragerOne project Status field not found; skipping status update.');
+                  return;
+                }
+                optionId = await resolveStatusOptionId(projectId, resolvedFieldId, statusName);
+                if (!optionId) {
+                  core.warning(`BragerOne project has no Status option "${statusName}"; skipping status update.`);
+                  return;
+                }
+                await graphqlRequest(
+                  `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                    updateProjectV2ItemFieldValue(
+                      input: {
+                        projectId: $projectId
+                        itemId: $itemId
+                        fieldId: $fieldId
+                        value: { singleSelectOptionId: $optionId }
+                      }
+                    ) { projectV2Item { id } }
+                  }`,
+                  {
+                    projectId,
+                    itemId,
+                    fieldId: resolvedFieldId,
+                    optionId,
+                  },
+                );
+                return;
+              }
+
+              if (!fieldId) {
+                core.warning('BRAGERONE_STATUS_FIELD_ID is not set; skipping status update.');
+                return;
+              }
+
+              await graphqlRequest(
+                `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                  updateProjectV2ItemFieldValue(
+                    input: {
+                      projectId: $projectId
+                      itemId: $itemId
+                      fieldId: $fieldId
+                      value: { singleSelectOptionId: $optionId }
+                    }
+                  ) { projectV2Item { id } }
+                }`,
+                {
+                  projectId,
+                  itemId,
+                  fieldId,
+                  optionId,
+                },
+              );
+            }
+
+            if (shouldSkip()) {
+              core.info('Skipping BragerOne triage for operational rolling issue/PR.');
+              return;
+            }
+
+            const labelsToAdd = [repoLabel];
+            if (contentType === 'pull_request') {
+              const inheritedType = await typeLabelFromLinkedIssues();
+              const prefixType = inheritedType ? null : labelFromTitlePrefix();
+              const typeLabel = inheritedType || prefixType;
+              if (typeLabel) {
+                labelsToAdd.push(typeLabel);
+              }
+            }
+
+            await addLabels(labelsToAdd);
+
+            const projectNumberRaw = process.env.BRAGERONE_PROJECT_NUMBER?.trim();
+            if (!projectNumberRaw) {
+              core.warning('BRAGERONE_PROJECT_NUMBER is not set; skipping project triage.');
+              return;
+            }
+
+            const projectNumber = Number(projectNumberRaw);
+            if (!Number.isFinite(projectNumber)) {
+              core.warning(`BRAGERONE_PROJECT_NUMBER is invalid: ${projectNumberRaw}`);
+              return;
+            }
+
+            const projectId = await resolveProjectId(projectNumber);
+            if (!projectId) {
+              core.warning(`BragerOne project #${projectNumber} not found for ${owner}.`);
+              return;
+            }
+
+            const itemId = await ensureProjectItem(projectId, contentNodeId);
+            const targetStatus = resolveTargetStatus();
+            if (targetStatus) {
+              await setProjectStatus(projectId, itemId, targetStatus);
+              core.info(`BragerOne project status set to "${targetStatus}".`);
+            }

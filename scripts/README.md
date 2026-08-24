@@ -7,6 +7,7 @@ Utility scripts for development and system setup.
 ### Setup
 
 - `setup_host_env.sh` - Configure development environment (installs uv, sets up git hooks)
+- `github_project_setup.sh` - Print BragerOne GitHub Project v2 field/option IDs for Actions repository variables (triage bot)
 - `perf_bench.py` - Local wall-time micro-benchmarks, baseline compare, and real startup timing
 - `check_upstream_assets.py` - Unauthenticated probe of BragerOne `/system/version` + live `index-*.js` (used by the scheduled Upstream assets workflow). When the fingerprint changes (or `--always-parse`), the probe also requires a non-empty language config, units descriptor table, and `units` i18n namespace.
 - `live_contract.py` - Authenticated structural catalog contract for the self-hosted `bragerone-live` runner. Seeds `/var/lib/gha/baselines/live_contract.json` on first success; later runs compare structure only (no live register values).
