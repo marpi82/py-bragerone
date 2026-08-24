@@ -17,6 +17,10 @@ ignore:
   - "docs/**/*"
   - "fuzz/**/*"
   - "examples/**/*"
+  - ".github/**"
+  - "pyproject.toml"
+  - "uv.lock"
+  - "codecov.yml"
   - "**/pybragerone/cli.py"
   - "**/pybragerone/__main__.py"
 
