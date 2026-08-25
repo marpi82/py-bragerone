@@ -55,12 +55,13 @@ Best Practices
   same poll REST-primes (zombie socket). After two consecutive zombie primes the
   gateway forces a hard Socket.IO restart (SPA parity: reconnect →
   ``ModulesService.connect`` + REST ``/modules/parameters``), awaiting
-  ``resubscribe()``. After repeated failed hard restarts it recycles the realtime
-  session (full disconnect → connect → resubscribe). Recovery is skipped while every
-  subscribed module is known offline. Numeric Socket.IO
-  event ``22`` (``SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED``) also REST-primes
-  that module. ``last_param_update_age_s()`` and ``last_live_param_update_age_s()``
-  expose the gaps for diagnostics.
+  ``resubscribe()`` after the namespace join. After repeated failed hard restarts it
+  hard-resets the Socket.IO client; after repeated failed resets it rebuilds
+  ``RealtimeManager`` and backs off with an exponential cooldown (REST primes
+  continue). Recovery is skipped while every subscribed module is known offline.
+  Numeric Socket.IO event ``22`` (``SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED``)
+  also REST-primes that module. ``last_param_update_age_s()`` and
+  ``last_live_param_update_age_s()`` expose the gaps for diagnostics.
 - In EventBus consumers (e.g., :class:`ParamStore`), **never** let exceptions kill the task:
   catch and log, continue processing.
 

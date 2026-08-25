@@ -637,3 +637,84 @@ async def test_force_reconnect_survives_ensure_connected_exception(
         await manager.force_reconnect()
     assert "WS force reconnect failed unexpectedly" in caplog.text
     await manager.disconnect()
+
+
+async def test_force_reconnect_namespace_join_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """force_reconnect returns when the namespace join never completes."""
+    fake = FakeAsyncClient()
+
+    async def _connect_without_namespace(*args: Any, **kwargs: Any) -> None:
+        fake.connect_calls += 1
+        fake.connected = True
+        fake.namespaces = list(kwargs.get("namespaces", ["/ws"]))
+
+    fake.connect = _connect_without_namespace  # type: ignore[method-assign]
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    manager._connected.set()
+    with caplog.at_level("WARNING"):
+        await manager.force_reconnect()
+        assert "namespace join timed out" in caplog.text
+    await manager.disconnect()
+
+
+async def test_hard_reset_replaces_client_and_reconnects(monkeypatch: pytest.MonkeyPatch) -> None:
+    """hard_reset must cancel the supervisor, replace the client, and reconnect."""
+    created: list[FakeAsyncClient] = []
+
+    def _factory(**kwargs: Any) -> FakeAsyncClient:
+        client = FakeAsyncClient(**kwargs)
+        created.append(client)
+        return client
+
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", _factory)
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    manager._supervisor_interval_s = 0.05
+    await manager.connect()
+    assert len(created) == 1
+    first = created[0]
+    await manager.hard_reset()
+    assert len(created) >= 2
+    assert created[-1].connect_calls >= 1
+    assert first.disconnect_calls >= 1
+    await manager.disconnect()
+
+
+async def test_hard_reset_without_running_supervisor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """hard_reset works when no supervisor task is active yet."""
+    fake = FakeAsyncClient()
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", lambda **kwargs: fake)
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    assert manager._supervisor_task is None
+    await manager.hard_reset()
+    assert fake.connect_calls >= 1
+    await manager.disconnect()
+
+
+async def test_hard_reset_ignores_disconnect_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """hard_reset continues after a failing leftover disconnect."""
+    created: list[FakeAsyncClient] = []
+
+    def _factory(**kwargs: Any) -> FakeAsyncClient:
+        client = FakeAsyncClient(**kwargs)
+        created.append(client)
+        return client
+
+    monkeypatch.setattr("pybragerone.api.ws.socketio.AsyncClient", _factory)
+    manager = RealtimeManager(token="tkn", connect_timeout_s=0.05)
+    await manager.connect()
+    first = created[0]
+
+    async def _boom_disconnect() -> None:
+        raise RuntimeError("disconnect boom")
+
+    first.disconnect = _boom_disconnect  # type: ignore[method-assign]
+    await manager.hard_reset()
+    assert len(created) >= 2
+    assert created[-1].connect_calls >= 1
+    await manager.disconnect()

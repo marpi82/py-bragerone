@@ -130,6 +130,11 @@ class FakeRealtimeManager:
         await self.trigger_disconnected()
         await self.trigger_connected()
 
+    async def hard_reset(self) -> None:
+        """Simulate transport replacement used by zombie recycle."""
+        await self.disconnect()
+        await self.connect()
+
     async def trigger_connected(self) -> None:
         """Trigger all registered on_connected callbacks."""
         tasks: list[asyncio.Task[None]] = []

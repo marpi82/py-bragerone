@@ -115,6 +115,10 @@ class FakeRealtimeManager:
         """No-op hard reconnect for protocol compatibility."""
         return None
 
+    async def hard_reset(self) -> None:
+        """No-op transport reset for protocol compatibility."""
+        return None
+
 
 def _gateway(
     *, sid: str | None = "NS-SID", owns_api: bool = False
