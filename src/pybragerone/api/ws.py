@@ -284,6 +284,9 @@ class RealtimeManager:
         ``ModulesService.connect`` + REST ``/modules/parameters``; our supervisor
         only acts when ``connected`` looks down, so this forces that same path
         (``on_connected`` → gateway resubscribe + prime).
+
+        Waits for the namespace join (same as :meth:`connect`) so callers can
+        safely ``sid()`` / ``modules.connect`` immediately afterwards.
         """
         log.warning("Forcing WS hard reconnect (zombie session recovery)")
         self._notify_disconnected(force=True)
@@ -292,9 +295,39 @@ class RealtimeManager:
         self._connected.clear()
         try:
             await self._ensure_connected(initial=False)
+            try:
+                await asyncio.wait_for(self._connected.wait(), timeout=self._connect_timeout_s)
+            except TimeoutError:
+                log.warning("WS force reconnect: namespace join timed out")
+                return
+            await asyncio.sleep(0.1)
         except Exception:
             # Defensive: callers (gateway poll) must keep running after a failed force.
             log.exception("WS force reconnect failed unexpectedly")
+
+    async def hard_reset(self) -> None:
+        """Abandon the Socket.IO client and open a brand-new transport session.
+
+        Stronger than :meth:`force_reconnect`: stops the supervisor, replaces the
+        ``AsyncClient`` (handlers re-bound), then runs a full :meth:`connect`.
+        Used when disconnect/reconnect on the same client fails to restore live
+        ``ParamUpdate`` traffic.
+        """
+        log.warning("Hard-resetting WS transport (zombie session recovery)")
+        self._notify_disconnected(force=True)
+        self._supervisor_running = False
+        task = self._supervisor_task
+        self._supervisor_task = None
+        if task is not None and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        self._connected.clear()
+        try:
+            await asyncio.wait_for(self._sio.disconnect(), timeout=self._disconnect_timeout_s)
+        except Exception:
+            log.debug("WS hard_reset disconnect ignored", exc_info=True)
+        self._replace_client()
+        await self.connect()
 
     def _start_supervisor(self) -> None:
         if self._supervisor_task is not None and not self._supervisor_task.done():

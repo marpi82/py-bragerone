@@ -91,6 +91,7 @@ class FakeRealtimeManager:
         self.disconnect_calls = 0
         self.subscribe_calls: list[list[str]] = []
         self.force_reconnect_calls = 0
+        self.hard_reset_calls = 0
 
     def on_event(self, cb: Callable[[str, Any], Awaitable[None] | None]) -> None:
         """Store the event callback."""
@@ -137,6 +138,12 @@ class FakeRealtimeManager:
             res = cb()
             if asyncio.iscoroutine(res):
                 _ = await res
+
+    async def hard_reset(self) -> None:
+        """Simulate transport replacement: disconnect then connect."""
+        self.hard_reset_calls += 1
+        await self.disconnect()
+        await self.connect()
 
     async def trigger_disconnected(self) -> None:
         """Invoke disconnect callbacks."""
@@ -490,6 +497,8 @@ async def test_protocol_stubs_raise_not_implemented() -> None:
         RealtimeManagerClient.add_on_disconnected(probe, lambda: None)  # type: ignore[arg-type]
     with pytest.raises(NotImplementedError):
         await RealtimeManagerClient.force_reconnect(probe)  # type: ignore[arg-type]
+    with pytest.raises(NotImplementedError):
+        await RealtimeManagerClient.hard_reset(probe)  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio
@@ -1041,12 +1050,14 @@ async def test_gateway_recycles_realtime_after_repeated_hard_restarts() -> None:
         stale_prime_after_s=0.05,
         zombie_hard_restart_after=1,
         zombie_full_recycle_after=2,
+        zombie_rebuild_after=0,
+        zombie_recovery_cooldown_s=0,
     )
     await gw.start()
     assert ws.connect_calls == 1
     gw._last_live_param_publish_monotonic = 0.0
     await _wait_until(lambda: ws.force_reconnect_calls >= 2)
-    await _wait_until(lambda: ws.disconnect_calls >= 1)
+    await _wait_until(lambda: ws.hard_reset_calls >= 1)
     assert ws.connect_calls >= 2
     await gw.stop()
 
@@ -1062,11 +1073,13 @@ async def test_gateway_recover_zombie_session_recycles_when_hard_streak_reached(
         ws=ws,
         connectivity_poll_interval=0,
         zombie_full_recycle_after=2,
+        zombie_rebuild_after=0,
+        zombie_recovery_cooldown_s=0,
     )
     await gw.start()
     gw._zombie_hard_restart_streak = 2
     await gw._recover_zombie_session(2)
-    assert ws.disconnect_calls >= 1
+    assert ws.hard_reset_calls >= 1
     assert ws.connect_calls >= 2
     await gw.stop()
 
@@ -1110,55 +1123,154 @@ async def test_gateway_recycle_realtime_session_ws_none() -> None:
 async def test_gateway_recycle_realtime_session_disconnect_failure(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Recycle must log and continue when disconnect raises."""
+    """Recycle must log and continue when hard_reset raises."""
     api = FakeApiClient()
     ws = FakeRealtimeManager()
 
-    async def _boom_disconnect() -> None:
-        raise RuntimeError("disconnect failed")
+    async def _boom_hard_reset() -> None:
+        raise RuntimeError("hard_reset failed")
 
-    ws.disconnect = _boom_disconnect  # type: ignore[method-assign]
-    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    ws.hard_reset = _boom_hard_reset  # type: ignore[method-assign]
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        zombie_rebuild_after=0,
+        zombie_recovery_cooldown_s=0,
+    )
     await gw.start()
     with caplog.at_level("ERROR"):
         await gw._recycle_realtime_session(2)
-        assert "WS disconnect during realtime recycle failed" in caplog.text
+        assert "WS recycle (hard_reset/connect/resubscribe) failed" in caplog.text
     await gw.stop()
 
 
-async def test_gateway_recycle_realtime_session_stopped_after_disconnect() -> None:
-    """Recycle must not reconnect after the gateway stops during disconnect."""
+async def test_gateway_recycle_realtime_session_stopped_after_hard_reset() -> None:
+    """Recycle must not resubscribe after the gateway stops during hard_reset."""
     api = FakeApiClient()
     ws = FakeRealtimeManager()
-    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        zombie_rebuild_after=0,
+        zombie_recovery_cooldown_s=0,
+    )
     await gw.start()
-    connect_calls_after_start = ws.connect_calls
+    subscribe_calls_after_start = len(ws.subscribe_calls)
 
-    async def _disconnect_then_stop() -> None:
+    async def _hard_reset_then_stop() -> None:
         gw._started = False
 
-    ws.disconnect = _disconnect_then_stop  # type: ignore[method-assign]
+    ws.hard_reset = _hard_reset_then_stop  # type: ignore[method-assign]
     await gw._recycle_realtime_session(2)
-    assert ws.connect_calls == connect_calls_after_start
+    assert len(ws.subscribe_calls) == subscribe_calls_after_start
     await gw.stop()
 
 
 async def test_gateway_recycle_realtime_session_connect_failure(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Recycle must log and continue when connect raises."""
+    """Recycle must log and continue when hard_reset/connect raises."""
     api = FakeApiClient()
     ws = FakeRealtimeManager()
 
-    async def _boom_connect() -> None:
+    async def _boom_hard_reset() -> None:
         raise RuntimeError("connect failed")
 
-    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        zombie_rebuild_after=0,
+        zombie_recovery_cooldown_s=0,
+    )
     await gw.start()
-    ws.connect = _boom_connect  # type: ignore[method-assign]
+    ws.hard_reset = _boom_hard_reset  # type: ignore[method-assign]
     with caplog.at_level("ERROR"):
         await gw._recycle_realtime_session(2)
-        assert "WS recycle (connect/resubscribe) failed" in caplog.text
+        assert "WS recycle (hard_reset/connect/resubscribe) failed" in caplog.text
+    await gw.stop()
+
+
+async def test_gateway_rebuilds_realtime_manager_after_repeated_recycles() -> None:
+    """Owned WS clients escalate from recycle to a full RealtimeManager rebuild."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    rebuilt = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        zombie_rebuild_after=2,
+        zombie_recovery_cooldown_s=0,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign,assignment,return-value]
+    gw._zombie_hard_restart_streak = 3
+    await gw._recycle_realtime_session(2)
+    assert ws.hard_reset_calls >= 1
+    assert gw._zombie_recycle_streak == 1
+    assert gw.ws is ws
+    gw._zombie_hard_restart_streak = 3
+    await gw._recycle_realtime_session(2)
+    assert gw.ws is rebuilt
+    assert rebuilt.connect_calls >= 1
+    assert gw._ws_hooks_registered is True
+    await gw.stop()
+
+
+async def test_gateway_zombie_recovery_cooldown_skips_ws_recovery(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """During cooldown the poll REST-primes but does not hard-reconnect."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+        stale_prime_after_s=0.05,
+        zombie_hard_restart_after=1,
+        zombie_recovery_cooldown_s=60,
+    )
+    await gw.start()
+    gw._last_live_param_publish_monotonic = 0.0
+    gw._zombie_recovery_cooldown_until = time.monotonic() + 60.0
+    primes_after_start = api.prime_params_calls
+    await _wait_until(lambda: api.prime_params_calls > primes_after_start)
+    assert ws.force_reconnect_calls == 0
+    with caplog.at_level("WARNING"):
+        await _wait_until(lambda: "cooldown)" in caplog.text)
+    await gw.stop()
+
+
+async def test_gateway_resubscribe_skips_without_sid(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``resubscribe`` must warn and no-op when the namespace SID is missing."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    ws.sid = lambda: None  # type: ignore[method-assign]
+    connects_after_start = api.modules_connect_calls
+    with caplog.at_level("WARNING"):
+        await gw.resubscribe()
+        assert "no namespace SID after reconnect" in caplog.text
+    assert api.modules_connect_calls == connects_after_start
     await gw.stop()
 
 

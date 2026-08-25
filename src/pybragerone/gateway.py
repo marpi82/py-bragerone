@@ -41,6 +41,15 @@ _DEFAULT_ZOMBIE_HARD_RESTART_AFTER = 2
 # After this many hard restarts without live WS ``ParamUpdate`` traffic, drop and
 # reopen the Socket.IO session (full disconnect → connect → resubscribe). ``0`` disables.
 _DEFAULT_ZOMBIE_FULL_RECYCLE_AFTER = 3
+# After this many recycles without live traffic, rebuild ``RealtimeManager`` (new
+# Socket.IO client + hooks) — mirrors the recovery path of a full HA restart.
+_DEFAULT_ZOMBIE_REBUILD_AFTER = 2
+# Base cooldown after a recycle/rebuild before the next WS recovery attempt.
+_DEFAULT_ZOMBIE_RECOVERY_COOLDOWN_S = 300.0
+# Cap for exponential recovery cooldown.
+_MAX_ZOMBIE_RECOVERY_COOLDOWN_S = 1800.0
+# How long ``resubscribe`` waits for a namespace SID after reconnect.
+_RESUBSCRIBE_SID_WAIT_S = 2.0
 
 ConnectivitySource = Literal["rest", "ws", "derived"]
 CloudSessionSource = Literal["connect", "disconnect", "stop"]
@@ -180,6 +189,9 @@ class RealtimeManagerClient(Protocol):
     async def force_reconnect(self) -> None:  # noqa: D102
         raise NotImplementedError
 
+    async def hard_reset(self) -> None:  # noqa: D102
+        raise NotImplementedError
+
 
 class BragerOneGateway:
     """High-level orchestrator for BragerOne realtime data.
@@ -207,6 +219,8 @@ class BragerOneGateway:
         stale_prime_after_s: float = _DEFAULT_STALE_PRIME_AFTER_S,
         zombie_hard_restart_after: int = _DEFAULT_ZOMBIE_HARD_RESTART_AFTER,
         zombie_full_recycle_after: int = _DEFAULT_ZOMBIE_FULL_RECYCLE_AFTER,
+        zombie_rebuild_after: int = _DEFAULT_ZOMBIE_REBUILD_AFTER,
+        zombie_recovery_cooldown_s: float = _DEFAULT_ZOMBIE_RECOVERY_COOLDOWN_S,
     ) -> None:
         """Initialize the gateway but do not start it yet.
 
@@ -228,12 +242,18 @@ class BragerOneGateway:
             zombie_full_recycle_after: Consecutive hard restarts without live WS
                 ``ParamUpdate`` traffic before a full disconnect → connect → resubscribe
                 cycle. Use ``0`` to never escalate beyond hard restart.
+            zombie_rebuild_after: Consecutive recycles without live traffic before
+                rebuilding ``RealtimeManager`` (new Socket.IO client). Use ``0`` to
+                never escalate beyond recycle.
+            zombie_recovery_cooldown_s: Base seconds to skip WS recovery after a
+                recycle/rebuild (exponential backoff, capped). REST primes still run.
         """
         self.object_id = int(object_id)
         self.modules = sorted(set(modules))
 
         self.api: ApiClient = api
         self.ws: RealtimeManagerClient | None = ws
+        self._owns_ws = ws is None
         self.bus = EventBus()
 
         self._owns_api = owns_api
@@ -241,8 +261,12 @@ class BragerOneGateway:
         self._stale_prime_after_s = float(stale_prime_after_s)
         self._zombie_hard_restart_after = int(zombie_hard_restart_after)
         self._zombie_full_recycle_after = int(zombie_full_recycle_after)
+        self._zombie_rebuild_after = int(zombie_rebuild_after)
+        self._zombie_recovery_cooldown_s = float(zombie_recovery_cooldown_s)
         self._zombie_prime_streak = 0
         self._zombie_hard_restart_streak = 0
+        self._zombie_recycle_streak = 0
+        self._zombie_recovery_cooldown_until: float | None = None
         self._last_param_publish_monotonic: float | None = None
         self._last_live_param_publish_monotonic: float | None = None
 
@@ -419,6 +443,8 @@ class BragerOneGateway:
             self._last_live_param_publish_monotonic = now
             self._zombie_prime_streak = 0
             self._zombie_hard_restart_streak = 0
+            self._zombie_recycle_streak = 0
+            self._zombie_recovery_cooldown_until = None
 
     async def refresh_module_connectivity(self) -> None:
         """Refresh module↔cloud connectivity from REST ``get_modules``."""
@@ -433,16 +459,8 @@ class BragerOneGateway:
 
         # 1) WS connect
         if self.ws is None:
-            if isinstance(self.api, BragerOneApiClient):
-                self.ws = RealtimeManager(
-                    token=self.api.access_token,
-                    token_provider=self._fresh_ws_token,
-                    origin=self.api.one_base,
-                    referer=f"{self.api.one_base}/",
-                    io_base=self.api.io_base,
-                )
-            else:
-                self.ws = RealtimeManager(token=self.api.access_token)
+            self.ws = self._make_realtime_manager()
+            self._owns_ws = True
         ws = self.ws
         if ws is None:
             raise RuntimeError("RealtimeManager is not initialized")
@@ -488,6 +506,18 @@ class BragerOneGateway:
             subscribed_at - modules_connected_at,
             primed_at - subscribed_at,
         )
+
+    def _make_realtime_manager(self) -> RealtimeManager:
+        """Build a new Socket.IO client bound to the current API session."""
+        if isinstance(self.api, BragerOneApiClient):
+            return RealtimeManager(
+                token=self.api.access_token,
+                token_provider=self._fresh_ws_token,
+                origin=self.api.one_base,
+                referer=f"{self.api.one_base}/",
+                io_base=self.api.io_base,
+            )
+        return RealtimeManager(token=self.api.access_token)
 
     async def stop(self) -> None:
         """Gracefully stop the gateway: drop WS and release HTTP resources."""
@@ -582,15 +612,27 @@ class BragerOneGateway:
         ws = self.ws
         if ws is None:
             return
-        sid_ns = ws.sid()
+        sid_ns = await self._wait_for_ws_sid(ws)
         sid_engine = ws.engine_sid()
         if not sid_ns:
+            LOG.warning("WS resubscribe skipped: no namespace SID after reconnect")
             return
         ok = await self.api.modules_connect(sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine)
-        LOG.info("modules.connect (resub): %s", ok)
+        LOG.info("modules.connect (resub): %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
         await ws.subscribe(self.modules)
         okp, oka = await self._prime_with_retry()
         LOG.debug("prime after resubscribe: parameters=%s activity=%s", okp, oka)
+
+    async def _wait_for_ws_sid(self, ws: RealtimeManagerClient, *, timeout_s: float = _RESUBSCRIBE_SID_WAIT_S) -> str | None:
+        """Wait briefly for a namespace SID after connect/reconnect."""
+        deadline = time.monotonic() + max(0.0, timeout_s)
+        while True:
+            sid_ns = ws.sid()
+            if sid_ns:
+                return sid_ns
+            if time.monotonic() >= deadline:
+                return None
+            await asyncio.sleep(0.05)
 
     async def wait_for_prime(self, timeout: float | None = None) -> bool:
         """Wait until the latest prime pass is finished.
@@ -645,6 +687,17 @@ class BragerOneGateway:
                         "Skipping zombie WS recovery while all subscribed modules are offline (age=%.0fs)",
                         age,
                     )
+                elif self._zombie_recovery_in_cooldown():
+                    LOG.debug(
+                        "Skipping zombie WS recovery during cooldown (age=%.0fs)",
+                        age,
+                    )
+                    self._zombie_prime_streak += 1
+                    LOG.warning(
+                        "No live ParamUpdate for %.0fs while Socket.IO reports up; REST-priming (zombie_streak=%s, cooldown)",
+                        age,
+                        self._zombie_prime_streak,
+                    )
                 else:
                     self._zombie_prime_streak += 1
                     LOG.warning(
@@ -667,6 +720,22 @@ class BragerOneGateway:
                     )
                 else:
                     LOG.exception("REST re-prime (socket down or stale ParamUpdates) failed")
+
+    def _zombie_recovery_in_cooldown(self) -> bool:
+        """Return whether WS recovery should pause after a recent recycle/rebuild."""
+        until = self._zombie_recovery_cooldown_until
+        return until is not None and time.monotonic() < until
+
+    def _arm_zombie_recovery_cooldown(self) -> None:
+        """Exponential backoff after recycle/rebuild so recovery does not thrash."""
+        base = max(0.0, self._zombie_recovery_cooldown_s)
+        if base <= 0:
+            self._zombie_recovery_cooldown_until = None
+            return
+        exponent = max(0, self._zombie_recycle_streak - 1)
+        cooldown = min(base * (2**exponent), _MAX_ZOMBIE_RECOVERY_COOLDOWN_S)
+        self._zombie_recovery_cooldown_until = time.monotonic() + cooldown
+        LOG.warning("Zombie WS recovery cooldown armed for %.0fs", cooldown)
 
     async def _recover_zombie_session(self, rest_prime_streak: int) -> None:
         """Escalate zombie-session recovery: hard reconnect, then full recycle."""
@@ -698,29 +767,87 @@ class BragerOneGateway:
             LOG.exception("WS hard reconnect (zombie session) failed")
 
     async def _recycle_realtime_session(self, rest_prime_streak: int) -> None:
-        """Drop and reopen Socket.IO after repeated failed hard reconnects."""
+        """Escalate beyond hard reconnect: transport hard-reset, then rebuild."""
         ws = self.ws
         if ws is None or not self._is_running():
             return
+        self._zombie_recycle_streak += 1
+        rebuild_after = self._zombie_rebuild_after
+        if rebuild_after > 0 and self._zombie_recycle_streak >= rebuild_after and self._owns_ws:
+            await self._rebuild_realtime_manager(rest_prime_streak)
+            return
+
         LOG.warning(
             "Zombie session persists after %s REST-primes and %s hard reconnect(s) "
-            "without live ParamUpdates; recycling realtime session",
+            "without live ParamUpdates; recycling realtime transport (recycle_streak=%s)",
             rest_prime_streak,
             self._zombie_hard_restart_streak,
+            self._zombie_recycle_streak,
         )
         self._zombie_hard_restart_streak = 0
         self._zombie_prime_streak = 0
         try:
-            await ws.disconnect()
+            await self._fresh_ws_token()
         except Exception:
-            LOG.exception("WS disconnect during realtime recycle failed")
+            LOG.exception("Token refresh during realtime recycle failed")
         if not self._is_running():
             return
         try:
-            await ws.connect()
+            hard_reset = getattr(ws, "hard_reset", None)
+            if callable(hard_reset):
+                await hard_reset()
+            else:
+                await ws.disconnect()
+                if not self._is_running():
+                    return
+                await ws.connect()
+            if not self._is_running():
+                return
             await self.resubscribe()
         except Exception:
-            LOG.exception("WS recycle (connect/resubscribe) failed")
+            LOG.exception("WS recycle (hard_reset/connect/resubscribe) failed")
+        self._arm_zombie_recovery_cooldown()
+
+    async def _rebuild_realtime_manager(self, rest_prime_streak: int) -> None:
+        """Replace ``RealtimeManager`` entirely (HA-restart-style recovery)."""
+        if not self._is_running() or not self._owns_ws:
+            return
+        LOG.warning(
+            "Zombie session persists after %s REST-primes and %s recycle(s) without live "
+            "ParamUpdates; rebuilding RealtimeManager",
+            rest_prime_streak,
+            self._zombie_recycle_streak,
+        )
+        self._zombie_hard_restart_streak = 0
+        self._zombie_prime_streak = 0
+        old = self.ws
+        self._ws_hooks_registered = False
+        try:
+            if old is not None:
+                await old.disconnect()
+        except Exception:
+            LOG.exception("WS disconnect during RealtimeManager rebuild failed")
+        if not self._is_running():
+            return
+        try:
+            await self._fresh_ws_token()
+        except Exception:
+            LOG.exception("Token refresh during RealtimeManager rebuild failed")
+        if not self._is_running():
+            return
+        try:
+            self.ws = self._make_realtime_manager()
+            ws = self.ws
+            ws.on_event(self._ws_dispatch)
+            await ws.connect()
+            await self._set_ws_session_up(True, source="connect")
+            ws.add_on_connected(self._on_ws_connected)
+            ws.add_on_disconnected(self._on_ws_disconnected)
+            self._ws_hooks_registered = True
+            await self.resubscribe()
+        except Exception:
+            LOG.exception("RealtimeManager rebuild (connect/resubscribe) failed")
+        self._arm_zombie_recovery_cooldown()
 
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource) -> None:
         """Pull ``get_modules`` and apply online state for subscribed devids.
