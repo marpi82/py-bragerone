@@ -836,14 +836,16 @@ class BragerOneGateway:
         if not self._is_running():
             return
         try:
-            self.ws = self._make_realtime_manager()
-            ws = self.ws
-            ws.on_event(self._ws_dispatch)
-            await ws.connect()
-            await self._set_ws_session_up(True, source="connect")
-            ws.add_on_connected(self._on_ws_connected)
-            ws.add_on_disconnected(self._on_ws_disconnected)
+            # Bind lifecycle hooks *before* connect so a failed handshake still leaves
+            # a recoverable client (supervisor reconnect → on_connected → resubscribe).
+            new_ws = self._make_realtime_manager()
+            new_ws.on_event(self._ws_dispatch)
+            new_ws.add_on_connected(self._on_ws_connected)
+            new_ws.add_on_disconnected(self._on_ws_disconnected)
+            self.ws = new_ws
             self._ws_hooks_registered = True
+            await new_ws.connect()
+            await self._set_ws_session_up(True, source="connect")
             await self.resubscribe()
         except Exception:
             LOG.exception("RealtimeManager rebuild (connect/resubscribe) failed")

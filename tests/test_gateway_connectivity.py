@@ -1226,6 +1226,41 @@ async def test_gateway_rebuilds_realtime_manager_after_repeated_recycles() -> No
     assert gw.ws is rebuilt
     assert rebuilt.connect_calls >= 1
     assert gw._ws_hooks_registered is True
+    assert len(rebuilt._on_connected) >= 1
+    await gw.stop()
+
+
+async def test_gateway_rebuild_registers_hooks_before_failed_connect(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A failed rebuild connect must leave lifecycle hooks on the replacement client."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    rebuilt = FakeRealtimeManager()
+
+    async def _boom_connect() -> None:
+        raise RuntimeError("connect failed")
+
+    rebuilt.connect = _boom_connect  # type: ignore[method-assign]
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        zombie_rebuild_after=1,
+        zombie_recovery_cooldown_s=0,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign,assignment,return-value]
+    with caplog.at_level("ERROR"):
+        await gw._rebuild_realtime_manager(2)
+        assert "RealtimeManager rebuild (connect/resubscribe) failed" in caplog.text
+    assert gw.ws is rebuilt
+    assert gw._ws_hooks_registered is True
+    assert len(rebuilt._on_connected) >= 1
+    assert len(rebuilt._on_disconnected) >= 1
     await gw.stop()
 
 
