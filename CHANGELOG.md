@@ -23,6 +23,12 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- Zombie recovery no longer thrashing forever when hard reconnect + recycle fail
+  to restore live WS ``ParamUpdate`` traffic: ``force_reconnect`` waits for the
+  namespace join before ``resubscribe``; recycle replaces the Socket.IO client via
+  ``RealtimeManager.hard_reset()``; after repeated recycles the gateway rebuilds
+  ``RealtimeManager`` (HA-restart-style); exponential cooldown slows WS recovery
+  while REST primes continue.
 - ``compose_mapping_register_value`` no longer rewrites ordinary single-register
   SPA value paths (``[{group, number, use}]``). That path always coerced words
   with ``int()``, truncating half-degree temperatures (``40.5`` → ``40``) after
