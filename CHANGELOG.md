@@ -7,6 +7,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.8.9] - 2026-08-26
+
 ### Changed
 
 - Publish pre-release tags (``aN`` / ``bN`` / ``rcN``) to **PyPI** instead of
@@ -259,7 +261,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.8...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.9...HEAD
+[2026.8.9]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.9
 [2026.8.8]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.8
 [2026.8.7]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.7
 [2026.8.6]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.6
