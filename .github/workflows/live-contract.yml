@@ -2,6 +2,11 @@ name: Live contract
 
 on:
   workflow_dispatch:
+    inputs:
+      seed_only:
+        description: Overwrite the runner baseline with the current live catalog (reseed)
+        type: boolean
+        default: false
   repository_dispatch:
     types: [upstream-catalog-changed]
 
@@ -31,11 +36,19 @@ jobs:
 
       - name: Run live contract
         id: contract
+        env:
+          # repository_dispatch must never reseed; only an explicit Actions checkbox.
+          SEED_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_only || false }}
         run: |
           mkdir -p reports/live
+          extra=()
+          if [ "$SEED_ONLY" = "true" ]; then
+            extra+=(--seed-only)
+          fi
           uv run python scripts/live_contract.py \
             --write-current reports/live/contract.json \
-            --write-diffs reports/live/diffs.txt
+            --write-diffs reports/live/diffs.txt \
+            "${extra[@]}"
 
       - name: Summarize
         if: always() && steps.contract.outputs.symbol_count != ''
@@ -44,6 +57,7 @@ jobs:
           MATCHED: ${{ steps.contract.outputs.matched }}
           SYMBOL_COUNT: ${{ steps.contract.outputs.symbol_count }}
           DIFF_COUNT: ${{ steps.contract.outputs.diff_count }}
+          SEED_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_only || false }}
         run: |
           {
             echo "## Live contract"
@@ -54,6 +68,7 @@ jobs:
             echo "| matched | $MATCHED |"
             echo "| symbols | $SYMBOL_COUNT |"
             echo "| diffs | $DIFF_COUNT |"
+            echo "| seed_only | $SEED_ONLY |"
             if [ -n "${{ github.event.client_payload.fingerprint }}" ]; then
               echo "| upstream fingerprint | \`${{ github.event.client_payload.fingerprint }}\` |"
             fi
@@ -68,6 +83,7 @@ jobs:
           MATCHED: ${{ steps.contract.outputs.matched }}
           SYMBOL_COUNT: ${{ steps.contract.outputs.symbol_count }}
           DIFF_COUNT: ${{ steps.contract.outputs.diff_count }}
+          SEED_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_only || false }}
           CONTRACT_OK: ${{ steps.contract.outcome }}
           EVENT_NAME: ${{ github.event_name }}
           UPSTREAM_FP: ${{ github.event.client_payload.fingerprint }}
@@ -86,8 +102,10 @@ jobs:
             let statusLine;
             // Prefer structured script outputs over step outcome: drift exits 1 but still
             // publishes matched=false / diff_count>0 for this message.
-            if (seeded === 'true') {
-              statusLine = 'Live catalog contract seeded a new baseline (first success or --seed-only).';
+            if (process.env.SEED_ONLY === 'true') {
+              statusLine = 'Live catalog contract overwrote the runner baseline (manual reseed).';
+            } else if (seeded === 'true') {
+              statusLine = 'Live catalog contract seeded a new baseline (first success).';
             } else if (matched === 'false') {
               statusLine = 'Live catalog contract reported structural drift against the baseline.';
             } else if (matched === 'true') {
@@ -105,6 +123,7 @@ jobs:
               `| matched | ${matched || 'n/a'} |`,
               `| symbols | ${process.env.SYMBOL_COUNT || 'n/a'} |`,
               `| diffs | ${process.env.DIFF_COUNT || 'n/a'} |`,
+              `| seed_only | ${process.env.SEED_ONLY || 'n/a'} |`,
             ];
             if (process.env.UPSTREAM_FP) {
               rows.push(`| upstream fingerprint | \`${process.env.UPSTREAM_FP}\` |`);
