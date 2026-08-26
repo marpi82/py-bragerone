@@ -81,6 +81,8 @@ uv run python scripts/check_upstream_assets.py --always-parse
 uv run python scripts/live_contract.py --write-current reports/live/contract.json
 # On drift, --write-diffs emits a unified listing plus a sibling .md used in the rolling issue comment:
 # uv run python scripts/live_contract.py --write-current reports/live/contract.json --write-diffs reports/live/diffs.txt
+# Overwrite an existing baseline (same as Actions → Live contract → seed_only):
+# uv run python scripts/live_contract.py --seed-only --write-current reports/live/contract.json
 # Optional override:
 # PYBO_BASELINE_DIR=/var/lib/gha/baselines uv run python scripts/live_contract.py
 ```
