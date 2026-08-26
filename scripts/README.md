@@ -79,6 +79,8 @@ uv run python scripts/check_upstream_assets.py --always-parse
 # Live structural contract (needs PYBO_* on the process; self-hosted bragerone-live).
 # First run with an empty baseline dir seeds live_contract.json and exits 0.
 uv run python scripts/live_contract.py --write-current reports/live/contract.json
+# On drift, --write-diffs emits a unified listing plus a sibling .md used in the rolling issue comment:
+# uv run python scripts/live_contract.py --write-current reports/live/contract.json --write-diffs reports/live/diffs.txt
 # Optional override:
 # PYBO_BASELINE_DIR=/var/lib/gha/baselines uv run python scripts/live_contract.py
 ```
