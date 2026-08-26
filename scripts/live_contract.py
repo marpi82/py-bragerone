@@ -34,7 +34,9 @@ DEFAULT_BASELINE_DIR = Path("/var/lib/gha/baselines")
 BASELINE_FILENAME = "live_contract.json"
 _PATH_CHANNELS = ("value", "unit", "status", "command", "min", "max")
 _SYMBOL_TOKEN_RE = re.compile(r"^(?:COMMAND_|URUCHOMIENIE_|PARAM_|STATUS_)[A-Z0-9_]+$")
+_MINIFIED_IDENT_RE = re.compile(r"_0x[0-9a-fA-F]+")
 _TOKEN_CHUNK = 64
+_COMPARE_SKIP_KEYS = frozenset({"fingerprint"})
 
 
 def parse_modules(raw: str | None) -> list[str]:
@@ -130,7 +132,11 @@ def _is_multi_word(paths: Mapping[str, Any]) -> bool:
 
 
 def _command_rule_summaries(rules: Sequence[Any] | None) -> list[dict[str, Any]]:
-    """Extract public command / operation names from command rules."""
+    """Extract public command / operation names from command rules.
+
+    Minified SPA identifiers (``_0xabcd``) are collapsed so asset rebuilds do not
+    churn the baseline.
+    """
     out: list[dict[str, Any]] = []
     if not rules:
         return out
@@ -147,7 +153,7 @@ def _command_rule_summaries(rules: Sequence[Any] | None) -> list[dict[str, Any]]
                 operations.append(operation)
         row: dict[str, Any] = {}
         if isinstance(command, str) and command:
-            row["command"] = command
+            row["command"] = _MINIFIED_IDENT_RE.sub("_0xMINIFIED", command)
         if operations:
             row["operations"] = sorted(set(operations))
         if row:
@@ -264,10 +270,68 @@ def _diff_values(path: str, left: Any, right: Any, out: list[str]) -> None:
 
 
 def compare_contracts(baseline: Mapping[str, Any], current: Mapping[str, Any]) -> list[str]:
-    """Return structural diffs between *baseline* and *current* (empty when equal)."""
+    """Return structural diffs between *baseline* and *current* (empty when equal).
+
+    ``fingerprint`` is recorded in the snapshot but ignored here: an SPA rebuild
+    that does not change catalog structure is not drift.
+    """
     diffs: list[str] = []
-    _diff_values("", dict(baseline), dict(current), diffs)
+    left = {key: value for key, value in dict(baseline).items() if key not in _COMPARE_SKIP_KEYS}
+    right = {key: value for key, value in dict(current).items() if key not in _COMPARE_SKIP_KEYS}
+    _diff_values("", left, right, diffs)
     return diffs
+
+
+# GitHub issue comments are capped at 65536 characters; leave room for the status table.
+_ISSUE_DIFF_CHAR_BUDGET = 48_000
+_UNIFIED_DIFF_HEADER = ("--- baseline", "+++ current")
+
+
+def unified_diff_lines(diffs: Sequence[str]) -> list[str]:
+    """Turn :func:`compare_contracts` lines into a unified-diff-like listing.
+
+    Scalar ``~ path: old -> new`` and list-length rows become a minus/plus pair so
+    GitHub ``diff`` fences highlight them. Added/removed keys stay as ``+`` / ``-``.
+    """
+    out: list[str] = []
+    for item in diffs:
+        if item.startswith("~ "):
+            rest = item[2:]
+            if " length " in rest and ": " not in rest.split(" length ", 1)[0]:
+                path_and_left, right = rest.rsplit(" -> ", 1)
+                path, left = path_and_left.rsplit(" length ", 1)
+                out.append(f"- {path} length: {left}")
+                out.append(f"+ {path} length: {right}")
+                continue
+            if ": " in rest:
+                path, values = rest.split(": ", 1)
+                old, new = values.rsplit(" -> ", 1)
+                out.append(f"- {path}: {old}")
+                out.append(f"+ {path}: {new}")
+                continue
+        out.append(item)
+    return out
+
+
+def format_diff_markdown(diffs: Sequence[str], *, max_chars: int = _ISSUE_DIFF_CHAR_BUDGET) -> str:
+    """Return a GitHub-flavored markdown section with a fenced diff, or ``""``."""
+    if not diffs:
+        return ""
+    heading = f"### Structural diffs ({len(diffs)})\n\n```diff\n" + "\n".join(_UNIFIED_DIFF_HEADER) + "\n"
+
+    def render(source: Sequence[str], omitted: int) -> str:
+        body = "\n".join(unified_diff_lines(source))
+        extra = f"\n… truncated, {omitted} more difference(s); full listing is in the workflow artifact.\n" if omitted else "\n"
+        return f"{heading}{body}{extra}```\n"
+
+    included = list(diffs)
+    omitted = 0
+    text = render(included, omitted)
+    while included and len(text) > max_chars:
+        included.pop()
+        omitted += 1
+        text = render(included, omitted)
+    return text
 
 
 def write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -406,14 +470,18 @@ def write_step_summary(*, seeded: bool, matched: bool, symbol_count: int, diffs:
         "",
     ]
     if diffs:
-        lines.append("### Structural diffs")
-        lines.append("")
-        lines.extend(f"- `{item}`" for item in diffs[:50])
-        if len(diffs) > 50:
-            lines.append(f"- … and {len(diffs) - 50} more")
+        lines.append(format_diff_markdown(diffs).rstrip())
         lines.append("")
     with Path(summary_path).open("a", encoding="utf-8") as handle:
         handle.write("\n".join(lines))
+
+
+def write_diff_files(path: Path, diffs: Sequence[str]) -> None:
+    """Write a full unified listing at *path* and a sibling ``.md`` comment body."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    unified = unified_diff_lines(diffs)
+    path.write_text(("\n".join(unified) + "\n") if unified else "", encoding="utf-8")
+    path.with_suffix(".md").write_text(format_diff_markdown(diffs), encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -430,6 +498,12 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help="Write the current contract JSON here (CI artifact; does not overwrite baseline on drift).",
+    )
+    parser.add_argument(
+        "--write-diffs",
+        type=Path,
+        default=None,
+        help="Write a unified-diff-like listing (full, untruncated) and a sibling .md comment body.",
     )
     parser.add_argument(
         "--seed-only",
@@ -480,6 +554,8 @@ def main(argv: list[str] | None = None) -> int:
             diffs=[],
             baseline=baseline_path,
         )
+        if args.write_diffs is not None:
+            write_diff_files(args.write_diffs, [])
         return 0
 
     baseline = read_json(baseline_path)
@@ -512,6 +588,8 @@ def main(argv: list[str] | None = None) -> int:
         diffs=diffs,
         baseline=baseline_path,
     )
+    if args.write_diffs is not None:
+        write_diff_files(args.write_diffs, diffs)
     if diffs:
         print(f"live contract drift: {len(diffs)} structural difference(s)", file=sys.stderr)
         return 1

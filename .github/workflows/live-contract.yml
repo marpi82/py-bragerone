@@ -34,7 +34,8 @@ jobs:
         run: |
           mkdir -p reports/live
           uv run python scripts/live_contract.py \
-            --write-current reports/live/contract.json
+            --write-current reports/live/contract.json \
+            --write-diffs reports/live/diffs.txt
 
       - name: Summarize
         if: always() && steps.contract.outputs.symbol_count != ''
@@ -73,9 +74,11 @@ jobs:
           UPSTREAM_PREV: ${{ github.event.client_payload.previous }}
           WATCH_RUN_URL: ${{ github.event.client_payload.watch_run_url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DIFF_MARKDOWN: reports/live/diffs.md
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const fs = require('fs');
             const title = '[live-contract] BragerOne structural catalog contract';
             const seeded = process.env.SEEDED || '';
             const matched = process.env.MATCHED || '';
@@ -125,6 +128,22 @@ jobs:
             body +=
               '\n\nBaseline lives on the runner at `/var/lib/gha/baselines/live_contract.json` (not in git). This issue is separate from `[upstream-assets]`.';
 
+            const diffPath = process.env.DIFF_MARKDOWN;
+            const issueBodyMax = 65536;
+            if (matched === 'false' && diffPath && fs.existsSync(diffPath)) {
+              try {
+                const diffMarkdown = fs.readFileSync(diffPath, 'utf8').trimEnd();
+                if (diffMarkdown) {
+                  body += `\n\n${diffMarkdown}`;
+                }
+              } catch (err) {
+                body += `\n\n_(Could not attach structural diff: ${err.message})_`;
+              }
+            }
+            if (body.length > issueBodyMax) {
+              body = `${body.slice(0, issueBodyMax - 48)}\n\n… truncated for GitHub comment limit.`;
+            }
+
             const { owner, repo } = context.repo;
             try {
               await github.rest.issues.createLabel({
@@ -169,11 +188,14 @@ jobs:
               });
             }
 
-      - name: Upload contract JSON
+      - name: Upload contract artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: live-contract
-          path: reports/live/contract.json
+          path: |
+            reports/live/contract.json
+            reports/live/diffs.txt
+            reports/live/diffs.md
           if-no-files-found: ignore
           retention-days: 30
