@@ -50,6 +50,8 @@ _DEFAULT_ZOMBIE_RECOVERY_COOLDOWN_S = 300.0
 _MAX_ZOMBIE_RECOVERY_COOLDOWN_S = 1800.0
 # How long ``resubscribe`` waits for a namespace SID after reconnect.
 _RESUBSCRIBE_SID_WAIT_S = 2.0
+# Debounce module-online → zombie recovery so one get_modules pass cannot rebuild twice.
+_MODULE_ONLINE_RECOVERY_DEBOUNCE_S = 60.0
 
 ConnectivitySource = Literal["rest", "ws", "derived"]
 CloudSessionSource = Literal["connect", "disconnect", "stop"]
@@ -267,6 +269,8 @@ class BragerOneGateway:
         self._zombie_hard_restart_streak = 0
         self._zombie_recycle_streak = 0
         self._zombie_recovery_cooldown_until: float | None = None
+        self._zombie_module_online_recovery_inflight = False
+        self._zombie_last_module_online_recovery_monotonic: float | None = None
         self._last_param_publish_monotonic: float | None = None
         self._last_live_param_publish_monotonic: float | None = None
 
@@ -445,6 +449,7 @@ class BragerOneGateway:
             self._zombie_hard_restart_streak = 0
             self._zombie_recycle_streak = 0
             self._zombie_recovery_cooldown_until = None
+            self._zombie_last_module_online_recovery_monotonic = None
 
     async def refresh_module_connectivity(self) -> None:
         """Refresh module↔cloud connectivity from REST ``get_modules``."""
@@ -565,6 +570,14 @@ class BragerOneGateway:
             return api.access_token
         await api.ensure_auth()
         return api.access_token
+
+    async def _force_fresh_auth(self) -> str:
+        """Force a full re-login so WS recovery does not reuse a wedged cloud session."""
+        api = self.api
+        if isinstance(api, BragerOneApiClient):
+            await api.invalidate_and_reauth()
+            return api.access_token
+        return await self._fresh_ws_token()
 
     async def _set_ws_session_up(self, up: bool, *, source: CloudSessionSource) -> None:
         """Update library↔cloud session cache and notify listeners on flips."""
@@ -787,7 +800,7 @@ class BragerOneGateway:
         self._zombie_hard_restart_streak = 0
         self._zombie_prime_streak = 0
         try:
-            await self._fresh_ws_token()
+            await self._force_fresh_auth()
         except Exception:
             LOG.exception("Token refresh during realtime recycle failed")
         if not self._is_running():
@@ -830,7 +843,7 @@ class BragerOneGateway:
         if not self._is_running():
             return
         try:
-            await self._fresh_ws_token()
+            await self._force_fresh_auth()
         except Exception:
             LOG.exception("Token refresh during RealtimeManager rebuild failed")
         if not self._is_running():
@@ -960,6 +973,53 @@ class BragerOneGateway:
         )
         if self._on_module_connectivity:
             await self._invoke_list(self._on_module_connectivity, event)
+        if online_changed and online and devid in self.modules:
+            await self._maybe_recover_after_module_online(devid)
+
+    async def _maybe_recover_after_module_online(self, devid: str) -> None:
+        """Clear cooldown and escalate recovery when a module returns during a zombie.
+
+        Today's field logs show rebuild+cooldown leaving the push stream dead while the
+        module flaps offline→online; waiting out the cooldown misses that window.
+        """
+        if self._zombie_module_online_recovery_inflight or not self._is_running():
+            return
+        if not self._ws_session_up:
+            return
+        last = self._zombie_last_module_online_recovery_monotonic
+        if last is not None and (time.monotonic() - last) < _MODULE_ONLINE_RECOVERY_DEBOUNCE_S:
+            return
+        age = self._zombie_param_update_age_s()
+        stale_after = self._stale_prime_after_s
+        if stale_after <= 0 or age is None or age < stale_after:
+            return
+
+        was_cooling = self._zombie_recovery_in_cooldown()
+        self._zombie_recovery_cooldown_until = None
+        self._zombie_module_online_recovery_inflight = True
+        self._zombie_last_module_online_recovery_monotonic = time.monotonic()
+        try:
+            LOG.warning(
+                "Module %s came online while zombie (age=%.0fs%s); forcing auth+rebuild recovery",
+                devid,
+                age,
+                ", cleared cooldown" if was_cooling else "",
+            )
+            if self._owns_ws and self._zombie_rebuild_after > 0:
+                self._zombie_recycle_streak = max(self._zombie_recycle_streak, self._zombie_rebuild_after)
+                await self._rebuild_realtime_manager(max(1, self._zombie_prime_streak))
+            elif self._zombie_full_recycle_after > 0:
+                self._zombie_hard_restart_streak = max(
+                    self._zombie_hard_restart_streak,
+                    self._zombie_full_recycle_after,
+                )
+                await self._recycle_realtime_session(max(1, self._zombie_prime_streak))
+            else:
+                await self.resubscribe()
+        except Exception:
+            LOG.exception("Zombie recovery after module online failed")
+        finally:
+            self._zombie_module_online_recovery_inflight = False
 
     # ------------------------- PRIME & ingest -------------------------
 
