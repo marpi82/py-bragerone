@@ -500,6 +500,27 @@ class BragerOneApiClient:
             # 4) classic login
             return await self._post_login(em, pw)
 
+    async def invalidate_and_reauth(self, email: str | None = None, password: str | None = None) -> Token:
+        """Drop the cached token and force a fresh login.
+
+        Used by zombie-session recovery when reconnecting with the existing
+        (still-valid) access token fails to restore live WS ``ParamUpdate`` traffic.
+        Persisted tokens are skipped for this cycle so a stale store cannot undo the
+        invalidation.
+
+        Args:
+            email: Optional email override for the login call.
+            password: Optional password override for the login call.
+
+        Returns:
+            Fresh authentication token from login.
+        """
+        async with self._auth_lock:
+            self._token = None
+            self._validated = False
+            self._skip_load_once = True
+        return await self.ensure_auth(email, password)
+
     @property
     def access_token(self) -> str:
         """Get the current access token.

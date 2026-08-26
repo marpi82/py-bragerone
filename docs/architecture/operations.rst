@@ -57,8 +57,10 @@ Best Practices
   ``ModulesService.connect`` + REST ``/modules/parameters``), awaiting
   ``resubscribe()`` after the namespace join. After repeated failed hard restarts it
   hard-resets the Socket.IO client; after repeated failed resets it rebuilds
-  ``RealtimeManager`` and backs off with an exponential cooldown (REST primes
-  continue). Recovery is skipped while every subscribed module is known offline.
+  ``RealtimeManager`` (with a forced re-login) and backs off with an exponential
+  cooldown (REST primes continue). If a subscribed module returns online while
+  still zombie, cooldown is cleared and recovery runs immediately. Recovery is
+  skipped while every subscribed module is known offline.
   Numeric Socket.IO event ``22`` (``SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED``)
   also REST-primes that module. ``last_param_update_age_s()`` and
   ``last_live_param_update_age_s()`` expose the gaps for diagnostics.

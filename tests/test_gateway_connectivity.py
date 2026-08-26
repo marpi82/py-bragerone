@@ -1617,3 +1617,87 @@ def test_gateway_make_realtime_manager_branches() -> None:
     mgr_real = gw_real._make_realtime_manager()
     assert mgr_real._token == "real-token"
     assert mgr_real._token_provider is not None
+
+
+async def test_gateway_recovers_when_module_comes_online_during_zombie(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Module online during cooldown must clear backoff and force rebuild recovery."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    rebuilt = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=1,
+        zombie_recovery_cooldown_s=1800,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    gw._zombie_recovery_cooldown_until = time.monotonic() + 1800.0
+    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign,assignment,return-value]
+    force_calls = {"n": 0}
+
+    async def _force_auth() -> str:
+        force_calls["n"] += 1
+        return "fresh-token"
+
+    gw._force_fresh_auth = _force_auth  # type: ignore[method-assign]
+    with caplog.at_level("WARNING"):
+        await gw._apply_connectivity(
+            devid="M1",
+            online=True,
+            source="rest",
+            connected_at=123,
+        )
+        assert "came online while zombie" in caplog.text
+        assert "cleared cooldown" in caplog.text
+    assert gw._zombie_recovery_in_cooldown() is True or rebuilt.connect_calls >= 1
+    assert force_calls["n"] >= 1
+    assert rebuilt.connect_calls >= 1
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_skips_when_not_zombie() -> None:
+    """Fresh live traffic must not trigger module-online rebuild."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+    )
+    await gw.start()
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic()
+    rebuild_calls = {"n": 0}
+
+    async def _boom_rebuild(_streak: int) -> None:
+        rebuild_calls["n"] += 1
+
+    gw._rebuild_realtime_manager = _boom_rebuild  # type: ignore[method-assign,assignment]
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=1)
+    assert rebuild_calls["n"] == 0
+    await gw.stop()
+
+
+async def test_gateway_force_fresh_auth_falls_back_for_fake_api() -> None:
+    """Non-BragerOne API clients keep using the soft token path."""
+    api = FakeApiClient()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=FakeRealtimeManager(),
+        connectivity_poll_interval=0,
+    )
+    assert await gw._force_fresh_auth() == "fake-token"

@@ -23,6 +23,10 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- Zombie recovery now **force re-logins** before recycle/rebuild (reuse of a still-valid
+  access token was not restoring live WS traffic), and clears the recovery cooldown when
+  a subscribed module flips back online during a zombie so the push stream is rebound
+  immediately instead of waiting out the backoff window.
 - Zombie recovery no longer thrashing forever when hard reconnect + recycle fail
   to restore live WS ``ParamUpdate`` traffic: ``force_reconnect`` waits for the
   namespace join before ``resubscribe``; recycle replaces the Socket.IO client via
