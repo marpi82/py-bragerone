@@ -1,11 +1,13 @@
 """Tests for BragerOneApiClient authentication functionality."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from pytest_httpx import HTTPXMock
 
 from pybragerone.api import BragerOneApiClient
+from pybragerone.api.client import ApiError
 from pybragerone.models import Token
 
 API = "https://io.brager.pl"
@@ -214,4 +216,108 @@ async def test_revoke_swallows_errors(httpx_mock: HTTPXMock) -> None:
     await client.revoke()
     assert client._token is None
 
+    await client.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
+async def test_req_reauths_when_token_cleared(httpx_mock: HTTPXMock) -> None:
+    """Authenticated ``_req`` must ``ensure_auth`` when ``_token`` is cleared.
+
+    Without this, concurrent invalidate/zombie recovery races raise
+    ``ApiError(... No token)`` instead of waiting for a fresh login.
+    """
+    client = BragerOneApiClient(creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD), validate_on_start=False)
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T1"})
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T2"})
+    httpx_mock.add_response(method="GET", url=f"{API}/v1/user", json={"ok": True})
+
+    await client.ensure_auth()
+    assert client.access_token == "T1"
+    client._token = None
+
+    status, payload, _ = await client._req("GET", f"{API}/v1/user")
+    assert status == 200
+    assert payload == {"ok": True}
+    assert client.access_token == "T2"
+    await client.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
+async def test_req_waits_during_invalidate_and_reauth(httpx_mock: HTTPXMock) -> None:
+    """Concurrent authenticated ``_req`` must wait out ``invalidate_and_reauth``.
+
+    Clears the token then holds login briefly so a racing ``_req`` cannot raise
+    ``No token``; both complete after the fresh login.
+    """
+    client = BragerOneApiClient(creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD), validate_on_start=False)
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T1"})
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T2"})
+    httpx_mock.add_response(method="GET", url=f"{API}/v1/user", json={"ok": True})
+
+    await client.ensure_auth()
+    assert client.access_token == "T1"
+
+    real_post_login = client._post_login
+    login_started = asyncio.Event()
+    login_release = asyncio.Event()
+
+    async def _gated_post_login(email: str, password: str) -> Token:
+        login_started.set()
+        await login_release.wait()
+        return await real_post_login(email, password)
+
+    client._post_login = _gated_post_login  # type: ignore[method-assign]
+
+    reauth_task = asyncio.create_task(client.invalidate_and_reauth())
+    await login_started.wait()
+    assert client._token is None
+
+    req_task = asyncio.create_task(client._req("GET", f"{API}/v1/user"))
+    await asyncio.sleep(0)
+    login_release.set()
+
+    tok = await reauth_task
+    status, payload, _ = await req_task
+    assert tok.access_token == "T2"
+    assert status == 200
+    assert payload == {"ok": True}
+    assert client.access_token == "T2"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_req_raises_no_token_when_ensure_auth_leaves_unusable() -> None:
+    """Authenticated ``_req`` raises ``No token`` if ``ensure_auth`` yields nothing usable.
+
+    Covers the empty-``access_token`` arm of the pre-``ensure_auth`` guard and the
+    post-``ensure_auth`` raise when the token is still missing or blank.
+    """
+    client = BragerOneApiClient(validate_on_start=False)
+    # First guard: ``_token`` present but ``access_token`` empty → call ``ensure_auth``.
+    client._token = Token(access_token="")
+
+    async def _leave_none(*_args: object, **_kwargs: object) -> Token:
+        client._token = None
+        return Token(access_token="")
+
+    client.ensure_auth = _leave_none  # type: ignore[method-assign]
+    with pytest.raises(ApiError) as exc_none:
+        await client._req("GET", f"{API}/v1/user")
+    assert exc_none.value.status == 401
+    assert exc_none.value.data == {"message": "No token"}
+
+    # Same path when ``ensure_auth`` leaves an empty ``access_token``.
+    client._token = Token(access_token="")
+
+    async def _leave_empty(*_args: object, **_kwargs: object) -> Token:
+        client._token = Token(access_token="")
+        return client._token
+
+    client.ensure_auth = _leave_empty  # type: ignore[method-assign]
+    with pytest.raises(ApiError) as exc_empty:
+        await client._req("GET", f"{API}/v1/user")
+    assert exc_empty.value.status == 401
+    assert exc_empty.value.data == {"message": "No token"}
     await client.close()

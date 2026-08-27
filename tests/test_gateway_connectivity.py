@@ -1268,7 +1268,7 @@ async def test_gateway_rebuild_registers_hooks_before_failed_connect(
 async def test_gateway_zombie_recovery_cooldown_skips_ws_recovery(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """During cooldown the poll REST-primes but does not hard-reconnect."""
+    """During cooldown the poll REST-primes but does not hard-reconnect or escalate."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     ws = FakeRealtimeManager()
@@ -1284,13 +1284,35 @@ async def test_gateway_zombie_recovery_cooldown_skips_ws_recovery(
     )
     await gw.start()
     gw._last_live_param_publish_monotonic = 0.0
+    gw._zombie_prime_streak = 0
     gw._zombie_recovery_cooldown_until = time.monotonic() + 60.0
     primes_after_start = api.prime_params_calls
-    await _wait_until(lambda: api.prime_params_calls > primes_after_start)
+    await _wait_until(lambda: api.prime_params_calls > primes_after_start + 1)
     assert ws.force_reconnect_calls == 0
-    with caplog.at_level("WARNING"):
-        await _wait_until(lambda: "cooldown)" in caplog.text)
+    assert gw._zombie_prime_streak == 0
+    with caplog.at_level("DEBUG"):
+        await _wait_until(lambda: "REST-priming during zombie recovery cooldown" in caplog.text)
     await gw.stop()
+
+
+def test_arm_zombie_recovery_cooldown_resets_short_streaks() -> None:
+    """Arming cooldown must clear prime/hard streaks so expiry does not thrash."""
+    api = FakeApiClient()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=FakeRealtimeManager(),
+        connectivity_poll_interval=0,
+        zombie_recovery_cooldown_s=30,
+    )
+    gw._zombie_prime_streak = 11
+    gw._zombie_hard_restart_streak = 3
+    gw._zombie_recycle_streak = 2
+    gw._arm_zombie_recovery_cooldown()
+    assert gw._zombie_prime_streak == 0
+    assert gw._zombie_hard_restart_streak == 0
+    assert gw._zombie_recovery_in_cooldown() is True
 
 
 async def test_gateway_resubscribe_skips_without_sid(
@@ -1307,6 +1329,55 @@ async def test_gateway_resubscribe_skips_without_sid(
         await gw.resubscribe()
         assert "no namespace SID after reconnect" in caplog.text
     assert api.modules_connect_calls == connects_after_start
+    await gw.stop()
+
+
+async def test_gateway_resubscribe_warns_when_modules_connect_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``resubscribe`` must WARNING-log when ``modules_connect`` returns False."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+
+    async def _fail_connect(
+        wsid_ns: str,
+        modules: list[str],
+        group_id: int | None = None,
+        engine_sid: str | None = None,
+    ) -> bool:
+        api.modules_connect_calls += 1
+        return False
+
+    api.modules_connect = _fail_connect  # type: ignore[method-assign]
+    with caplog.at_level("WARNING"):
+        await gw.resubscribe()
+        assert "modules.connect (resub) failed" in caplog.text
+    await gw.stop()
+
+
+async def test_gateway_start_warns_when_modules_connect_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``start`` must WARNING-log when ``modules_connect`` returns False."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+
+    async def _fail_connect(
+        wsid_ns: str,
+        modules: list[str],
+        group_id: int | None = None,
+        engine_sid: str | None = None,
+    ) -> bool:
+        api.modules_connect_calls += 1
+        return False
+
+    api.modules_connect = _fail_connect  # type: ignore[method-assign]
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    with caplog.at_level("WARNING"):
+        await gw.start()
+        assert "modules.connect failed" in caplog.text
     await gw.stop()
 
 
@@ -1750,6 +1821,68 @@ async def test_gateway_recycle_calls_force_fresh_auth_on_real_client(httpx_mock:
     assert api.access_token == "T2"
     await gw.stop()
     await api.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
+async def test_gateway_hard_reconnect_force_fresh_auth_on_real_client(httpx_mock: HTTPXMock) -> None:
+    """Hard reconnect in ``_recover_zombie_session`` must invalidate the real HTTP client."""
+    api = BragerOneApiClient(creds_provider=lambda: ("e@example.com", "secret"), validate_on_start=False)
+    ws = FakeRealtimeManager()
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/auth/user", json={"accessToken": "T1"})
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/auth/user", json={"accessToken": "T2"})
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/connect", status_code=204)
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/parameters", json={"M1": {}})
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/activity/quantity", status_code=204)
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/connect", status_code=204)
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/parameters", json={"M1": {}})
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/activity/quantity", status_code=204)
+    await api.ensure_auth("e@example.com", "secret")
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        zombie_full_recycle_after=0,
+        zombie_recovery_cooldown_s=0,
+    )
+    await gw.start()
+    assert api.access_token == "T1"
+    await gw._recover_zombie_session(2)
+    assert ws.force_reconnect_calls >= 1
+    assert api.access_token == "T2"
+    await gw.stop()
+    await api.close()
+
+
+async def test_gateway_hard_reconnect_continues_when_force_fresh_auth_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Hard reconnect must continue after ``_force_fresh_auth`` raises."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        zombie_full_recycle_after=0,
+        zombie_recovery_cooldown_s=0,
+    )
+    await gw.start()
+    reconnects_after_start = ws.force_reconnect_calls
+
+    async def _boom_auth() -> str:
+        raise RuntimeError("auth boom")
+
+    gw._force_fresh_auth = _boom_auth  # type: ignore[method-assign]
+    with caplog.at_level("ERROR"):
+        await gw._recover_zombie_session(2)
+        assert "Token refresh during WS hard reconnect failed" in caplog.text
+    assert ws.force_reconnect_calls > reconnects_after_start
+    await gw.stop()
 
 
 async def test_gateway_module_online_recovery_uses_recycle_path() -> None:

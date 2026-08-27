@@ -393,6 +393,11 @@ class BragerOneApiClient:
         hdrs = dict(headers or {})
         hdrs["Accept"] = "application/json"
         if auth:
+            # Wait for in-flight ``invalidate_and_reauth`` / login instead of racing a
+            # cleared ``_token`` into a hard ``No token`` failure (field logs during
+            # zombie rebuild). ``ensure_auth`` serializes on ``_auth_lock``.
+            if not self._token or not self._token.access_token:
+                await self.ensure_auth()
             if not self._token or not self._token.access_token:
                 raise ApiError(401, {"message": "No token"}, {})
             hdrs["Authorization"] = f"Bearer {self._token.access_token}"

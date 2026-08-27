@@ -485,7 +485,10 @@ class BragerOneGateway:
             raise RuntimeError("No namespace SID after connecting to WS (Socket.IO).")
 
         ok = await self.api.modules_connect(sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine)
-        LOG.info("modules.connect: %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
+        if ok:
+            LOG.info("modules.connect: %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
+        else:
+            LOG.warning("modules.connect failed (ns_sid=%s, engine_sid=%s)", sid_ns, sid_engine)
         modules_connected_at = time.monotonic()
 
         # 4) WS subscribe + PRIME via REST (in parallel)
@@ -631,7 +634,10 @@ class BragerOneGateway:
             LOG.warning("WS resubscribe skipped: no namespace SID after reconnect")
             return
         ok = await self.api.modules_connect(sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine)
-        LOG.info("modules.connect (resub): %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
+        if ok:
+            LOG.info("modules.connect (resub): %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
+        else:
+            LOG.warning("modules.connect (resub) failed (ns_sid=%s, engine_sid=%s)", sid_ns, sid_engine)
         await ws.subscribe(self.modules)
         okp, oka = await self._prime_with_retry()
         LOG.debug("prime after resubscribe: parameters=%s activity=%s", okp, oka)
@@ -701,15 +707,12 @@ class BragerOneGateway:
                         age,
                     )
                 elif self._zombie_recovery_in_cooldown():
+                    # REST-prime only: do not grow the escalation streak or WARN-spam.
+                    # Field logs showed streak climbing through cooldown so the first
+                    # post-cooldown tick immediately hard-reconnected.
                     LOG.debug(
-                        "Skipping zombie WS recovery during cooldown (age=%.0fs)",
+                        "No live ParamUpdate for %.0fs while Socket.IO reports up; REST-priming during zombie recovery cooldown",
                         age,
-                    )
-                    self._zombie_prime_streak += 1
-                    LOG.warning(
-                        "No live ParamUpdate for %.0fs while Socket.IO reports up; REST-priming (zombie_streak=%s, cooldown)",
-                        age,
-                        self._zombie_prime_streak,
                     )
                 else:
                     self._zombie_prime_streak += 1
@@ -741,6 +744,10 @@ class BragerOneGateway:
 
     def _arm_zombie_recovery_cooldown(self) -> None:
         """Exponential backoff after recycle/rebuild so recovery does not thrash."""
+        # Reset short-cycle streaks so cooldown expiry starts a fresh escalate ladder
+        # instead of an immediate hard reconnect from primes counted during cooldown.
+        self._zombie_prime_streak = 0
+        self._zombie_hard_restart_streak = 0
         base = max(0.0, self._zombie_recovery_cooldown_s)
         if base <= 0:
             self._zombie_recovery_cooldown_until = None
@@ -771,6 +778,12 @@ class BragerOneGateway:
             rest_prime_streak,
             self._zombie_hard_restart_streak,
         )
+        try:
+            # Soft reconnect alone left wedged cloud push sessions in field logs;
+            # force a fresh login before reconnecting (same as recycle/rebuild).
+            await self._force_fresh_auth()
+        except Exception:
+            LOG.exception("Token refresh during WS hard reconnect failed")
         try:
             await ws.force_reconnect()
             # ``force_reconnect`` may spawn ``on_connected`` work; await resubscribe so
