@@ -22,6 +22,9 @@ class _LiveContractScript(Protocol):
     symbol_contract: Callable[..., dict[str, Any]]
     build_contract: Callable[..., dict[str, Any]]
     compare_contracts: Callable[[Mapping[str, Any], Mapping[str, Any]], list[str]]
+    unified_diff_lines: Callable[[Sequence[str]], list[str]]
+    format_diff_markdown: Callable[..., str]
+    write_diff_files: Callable[[Path, Sequence[str]], None]
     collect_symbol_tokens: Callable[[Mapping[str, object], Sequence[str]], list[str]]
     write_json: Callable[[Path, Mapping[str, Any]], None]
     read_json: Callable[[Path], dict[str, Any]]
@@ -176,6 +179,43 @@ def test_compare_contracts_match() -> None:
     assert module.compare_contracts(contract, contract) == []
 
 
+def test_compare_contracts_ignores_fingerprint() -> None:
+    """Index-asset rebuilds are metadata, not structural drift."""
+    module = _load()
+    symbols = {"PARAM_P4_59": module.symbol_contract(_param_map())}
+    left = module.build_contract(
+        lang="en",
+        object_id=1,
+        modules=["MOD"],
+        fingerprint="1.03.07|index-old.js",
+        symbols=symbols,
+    )
+    right = module.build_contract(
+        lang="en",
+        object_id=1,
+        modules=["MOD"],
+        fingerprint="1.03.08|index-new.js",
+        symbols=symbols,
+    )
+    assert module.compare_contracts(left, right) == []
+
+
+def test_command_rules_collapse_minified_idents() -> None:
+    """Minified SPA identifiers in command expressions must not churn the baseline."""
+    module = _load()
+    entry = module.symbol_contract(
+        _param_map(
+            command_rules=[
+                {
+                    "command": "ModuleCommands['TEST_MODE_'+_0x444f82+'_OFF']",
+                    "conditions": [{"operation": "equalTo"}],
+                }
+            ]
+        )
+    )
+    assert entry["command_rules"] == [{"command": "ModuleCommands['TEST_MODE_'+_0xMINIFIED+'_OFF']", "operations": ["equalTo"]}]
+
+
 def test_compare_contracts_detects_removed_symbol_and_times_change() -> None:
     """Removed symbols and times/component_type drift are reported."""
     module = _load()
@@ -257,3 +297,68 @@ def test_status_kind_drift_fails_compare() -> None:
     )
     diffs = module.compare_contracts(baseline, current)
     assert any("path_kinds" in item or "has_status_rules" in item for item in diffs)
+
+
+def test_unified_diff_lines_pairs_scalar_and_length_changes() -> None:
+    """Scalar and list-length rows become minus/plus pairs for GitHub ``diff`` fences."""
+    unified = _load().unified_diff_lines(
+        [
+            "+ symbols.PARAM_NEW",
+            "- symbols.PARAM_OLD",
+            "~ symbols.PARAM_X.component_type: 'number' -> 'text'",
+            "~ symbols.PARAM_X.paths.value length 2 -> 1",
+        ]
+    )
+    assert unified == [
+        "+ symbols.PARAM_NEW",
+        "- symbols.PARAM_OLD",
+        "- symbols.PARAM_X.component_type: 'number'",
+        "+ symbols.PARAM_X.component_type: 'text'",
+        "- symbols.PARAM_X.paths.value length: 2",
+        "+ symbols.PARAM_X.paths.value length: 1",
+    ]
+
+
+def test_format_diff_markdown_empty_and_fence() -> None:
+    """Drift comments wrap a unified listing; equal contracts produce no section."""
+    module = _load()
+    assert module.format_diff_markdown([]) == ""
+    markdown = module.format_diff_markdown(
+        [
+            "+ symbols.PARAM_NEW",
+            "~ symbols.PARAM_X.units_raw: 1 -> 2",
+        ]
+    )
+    assert markdown.startswith("### Structural diffs (2)")
+    assert "```diff" in markdown
+    assert "--- baseline" in markdown
+    assert "+++ current" in markdown
+    assert "+ symbols.PARAM_NEW" in markdown
+    assert "- symbols.PARAM_X.units_raw: 1" in markdown
+    assert "+ symbols.PARAM_X.units_raw: 2" in markdown
+    assert "truncated" not in markdown
+
+
+def test_format_diff_markdown_truncates_to_budget() -> None:
+    """Issue comments stay under GitHub's body cap by dropping trailing diffs."""
+    module = _load()
+    diffs = [f"+ symbols.PARAM_{index:04d}" for index in range(40)]
+    markdown = module.format_diff_markdown(diffs, max_chars=400)
+    assert "truncated" in markdown
+    assert "PARAM_0000" in markdown
+    assert "PARAM_0039" not in markdown
+    assert markdown.endswith("```\n")
+
+
+def test_write_diff_files_writes_listing_and_markdown(tmp_path: Path) -> None:
+    """``--write-diffs`` emits the full listing plus a sibling markdown comment body."""
+    module = _load()
+    listing = tmp_path / "diffs.txt"
+    module.write_diff_files(listing, ["+ symbols.PARAM_NEW", "- symbols.PARAM_OLD"])
+    assert listing.read_text(encoding="utf-8") == "+ symbols.PARAM_NEW\n- symbols.PARAM_OLD\n"
+    markdown = listing.with_suffix(".md").read_text(encoding="utf-8")
+    assert "```diff" in markdown
+    assert "+ symbols.PARAM_NEW" in markdown
+    module.write_diff_files(listing, [])
+    assert listing.read_text(encoding="utf-8") == ""
+    assert listing.with_suffix(".md").read_text(encoding="utf-8") == ""
