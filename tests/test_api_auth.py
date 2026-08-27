@@ -259,6 +259,87 @@ async def test_invalidate_and_reauth_accepts_explicit_credentials(httpx_mock: HT
 
 @pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
 @pytest.mark.asyncio
+async def test_invalidate_and_reauth_honors_explicit_creds_under_race(httpx_mock: HTTPXMock) -> None:
+    """Atomic invalidate+login must not let a provider race steal explicit overrides.
+
+    A concurrent ``ensure_auth()`` waits on ``_auth_lock``; when invalidate holds
+    the lock through ``_post_login``, the forced login still uses the explicit
+    email/password rather than the credential provider.
+    """
+    provider_calls: list[tuple[str, str]] = []
+
+    def _provider() -> tuple[str, str]:
+        pair = ("provider@example.com", "provider-pass")
+        provider_calls.append(pair)
+        return pair
+
+    client = BragerOneApiClient(creds_provider=_provider, validate_on_start=False)
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T1"})
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T2"})
+    await client.ensure_auth()
+    assert provider_calls == [("provider@example.com", "provider-pass")]
+    provider_calls.clear()
+
+    real_post_login = client._post_login
+    login_started = asyncio.Event()
+    login_release = asyncio.Event()
+    login_emails: list[str] = []
+
+    async def _gated_post_login(email: str, password: str) -> Token:
+        login_emails.append(email)
+        login_started.set()
+        await login_release.wait()
+        return await real_post_login(email, password)
+
+    client._post_login = _gated_post_login  # type: ignore[method-assign]
+
+    reauth_task = asyncio.create_task(client.invalidate_and_reauth("explicit@example.com", "explicit-pass"))
+    await login_started.wait()
+    ensure_task = asyncio.create_task(client.ensure_auth())
+    await asyncio.sleep(0)
+    login_release.set()
+
+    tok = await reauth_task
+    ensure_tok = await ensure_task
+    assert tok.access_token == "T2"
+    assert ensure_tok.access_token == "T2"
+    assert login_emails == ["explicit@example.com"]
+    assert provider_calls == []
+    await client.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
+async def test_invalidate_and_reauth_clearer_runs_off_event_loop(httpx_mock: HTTPXMock) -> None:
+    """Token clearer must run via ``asyncio.to_thread`` (not on the event loop)."""
+    import threading
+
+    loop_thread_id = threading.get_ident()
+    clearer_thread_ids: list[int] = []
+
+    class _ThreadProbeStore(_TestTokenStore):
+        def clear(self) -> None:
+            clearer_thread_ids.append(threading.get_ident())
+            super().clear()
+
+    store = _ThreadProbeStore()
+    client = BragerOneApiClient(
+        token_store=store,
+        creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD),
+        validate_on_start=False,
+    )
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T1"})
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T2"})
+    await client.ensure_auth()
+    second = await client.invalidate_and_reauth()
+    assert second.access_token == "T2"
+    assert clearer_thread_ids
+    assert clearer_thread_ids[0] != loop_thread_id
+    await client.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
 async def test_revoke_swallows_errors(httpx_mock: HTTPXMock) -> None:
     """Test that token revoke gracefully handles server errors.
 

@@ -840,15 +840,23 @@ class ParamResolver:
         if isinstance(raw, str):
             stripped = raw.strip()
             return bool(stripped) and stripped.casefold() not in {"0", "false"}
+        # JS treats empty arrays/objects as truthy; ``bool([])`` / ``bool({})`` do not.
+        if isinstance(raw, list | dict):
+            return True
         return bool(raw)
 
     @classmethod
     def _route_display_dropdown_visibility(
         cls,
         route: Any,
-        flat_values: Mapping[str, Any],
+        flat_values: Mapping[str, Any] | None,
     ) -> tuple[bool, str]:
-        """Evaluate SPA ``displayDropdown`` leftovers for route side-menu visibility."""
+        """Evaluate SPA ``displayDropdown`` leftovers for route side-menu visibility.
+
+        When ``flat_values`` is ``None``, ParamStore-key dropdowns are treated as
+        visible (``visible:dropdown-unprimed``) so callers without a primed store
+        do not lose gated panels. An empty mapping still means primed-but-missing.
+        """
         meta = getattr(route, "meta", None)
         dropdown = getattr(meta, "display_dropdown", None) if meta is not None else None
         if dropdown is None:
@@ -861,6 +869,8 @@ class ParamResolver:
         if not token:
             return True, "visible:no-dropdown"
         if _ROUTE_DROPDOWN_VALUE_KEY_RE.fullmatch(token):
+            if flat_values is None:
+                return True, "visible:dropdown-unprimed"
             raw = flat_values.get(token)
             if raw is None:
                 return False, "hidden:dropdown-missing-value"
@@ -936,16 +946,16 @@ class ParamResolver:
             return False, "hidden:not-module-item"
         if web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
             return False, "hidden:not-web-ui"
-        values = flat_values if flat_values is not None else {}
         # SPA hides a leaf when any ancestor ``displayDropdown`` gate is false.
         # Ancestor ``visible:*`` reasons (including ParamStore-true) do not short-circuit;
         # only a hidden ancestor rejects. Leaf keeps the early-return for non-default
-        # visible dropdown reasons.
+        # visible dropdown reasons. ``flat_values is None`` keeps ParamStore gates
+        # visible (unprimed); ``{}`` still means missing-key → hidden.
         for ancestor in ancestors:
-            ancestor_visible, ancestor_reason = cls._route_display_dropdown_visibility(ancestor, values)
+            ancestor_visible, ancestor_reason = cls._route_display_dropdown_visibility(ancestor, flat_values)
             if not ancestor_visible:
                 return False, ancestor_reason
-        dropdown_visible, dropdown_reason = cls._route_display_dropdown_visibility(route, values)
+        dropdown_visible, dropdown_reason = cls._route_display_dropdown_visibility(route, flat_values)
         if not dropdown_visible:
             return False, dropdown_reason
         if dropdown_reason not in {"visible:no-dropdown", "visible:default"}:

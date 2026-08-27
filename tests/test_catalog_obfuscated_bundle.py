@@ -874,6 +874,24 @@ def test_build_asset_index_extracts_static_device_menu_routes() -> None:
     assert assets.static_route_map == {"timezones": "timezones", "schedules": "schedules"}
 
 
+def test_build_asset_index_static_route_skips_entry_without_import() -> None:
+    """A malformed static-route key without its own import must not steal the next."""
+    catalog = _catalog()
+    index = (
+        b"deviceMenu/static/broken.ts', /* no import here */ deviceMenu/static/timezones.ts', import('./timezones-Ab12Cd.js');"
+    )
+    assets = catalog._build_asset_index_from_index_js("https://example/index.js", index)
+    assert assets.static_route_map == {"timezones": "timezones"}
+    assert "broken" not in assets.static_route_map
+
+
+def test_extract_public_tokens_ignores_prefixed_identifiers() -> None:
+    """``DEFAULT_PARAM_177`` must not contribute ``PARAM_177`` to shell overlays."""
+    tokens = LiveAssetsCatalog._extract_public_tokens_from_js(b"const DEFAULT_PARAM_177=1; e(E.READ,'PARAM_178'); STATUS_P9_4;")
+    assert tokens == {"PARAM_178", "STATUS_P9_4"}
+    assert "PARAM_177" not in tokens
+
+
 def test_build_asset_index_static_route_parse_failure_is_non_fatal(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

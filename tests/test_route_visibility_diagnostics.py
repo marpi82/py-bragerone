@@ -135,6 +135,59 @@ def test_route_visibility_diagnostics_hides_when_ancestor_dropdown_missing() -> 
     assert reason == "hidden:dropdown-missing-value"
 
 
+def test_route_visibility_diagnostics_unprimed_flat_values_keeps_dropdown_visible() -> None:
+    """``flat_values is None`` keeps ParamStore-gated routes visible (not primed yet)."""
+    route = _route(path="circulation", name="modules.menu.circulation", meta={"displayDropdown": "P6.v219"})
+    visible, reason = ParamResolver.route_visibility_diagnostics(
+        route,
+        flat_values=None,
+        all_panels=True,
+        web_ui_only=True,
+    )
+    assert visible is True
+    assert reason == "visible:dropdown-unprimed"
+
+
+def test_route_visibility_diagnostics_unprimed_ancestor_does_not_hide() -> None:
+    """Unprimed ancestor ParamStore gates do not hide children."""
+    parent = _route(path="parent", name="modules.menu.parent", meta={"displayDropdown": "P6.v219"})
+    child = _route(path="child", name="modules.menu.child", meta={"displayDropdown": "!![]"})
+    visible, reason = ParamResolver.route_visibility_diagnostics(
+        child,
+        ancestors=(parent,),
+        flat_values=None,
+        all_panels=True,
+    )
+    assert visible is True
+    assert reason == "visible:dropdown-always"
+
+
+def test_build_panel_groups_unprimed_keeps_dropdown_gated_route() -> None:
+    """Omitting ``flat_values`` must not drop ParamStore-gated panels on upgrade."""
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "circulation",
+                    "name": "modules.menu.circulation",
+                    "meta": {
+                        "displayName": "Cyrkulacja",
+                        "displayDropdown": "P6.v219",
+                        "parameters": {"read": [{"parameter": "E(A.READ,'PARAM_1')"}]},
+                    },
+                }
+            ]
+        }
+    )
+    groups = ParamResolver.build_panel_groups_from_menu(
+        menu,
+        all_panels=True,
+        web_ui_only=False,
+        flat_values=None,
+    )
+    assert any("PARAM_1" in symbols for symbols in groups.values())
+
+
 def test_route_visibility_diagnostics_visible_when_ancestor_and_leaf_true() -> None:
     """Ancestor and leaf ParamStore gates that are both true keep the route visible."""
     parent = _route(path="parent", name="modules.menu.parent", meta={"displayDropdown": "P6.v219"})
@@ -582,9 +635,11 @@ def test_route_display_dropdown_visibility_extra_shapes() -> None:
 
 
 def test_dropdown_param_truthy_falls_back_to_bool_cast() -> None:
-    """Non-scalar leftovers still participate in dropdown gating."""
+    """Non-scalar leftovers still participate in dropdown gating (JS truthiness)."""
     assert ParamResolver._dropdown_param_truthy(["active"]) is True
-    assert ParamResolver._dropdown_param_truthy([]) is False
+    assert ParamResolver._dropdown_param_truthy([]) is True
+    assert ParamResolver._dropdown_param_truthy({}) is True
+    assert ParamResolver._dropdown_param_truthy(None) is False
 
 
 def test_route_component_is_panel_shell_matches_marker_substring() -> None:

@@ -35,7 +35,8 @@ _HELPER_ACTIONS = frozenset({"READ", "WRITE", "STATUS"})
 # Only ``PARAM_*`` / ``STATUS_*`` are addressable tokens. Any other quoted upper-case
 # literal in leftover source (``'WRITE'``, ``'DISPLAY_*'``) would be a bogus parameter.
 _PUBLIC_PARAM_PATTERN = r"(?:PARAM|STATUS)_[A-Z0-9_]+"
-_HELPER_TOKEN_RE = re.compile(_PUBLIC_PARAM_PATTERN)
+# Identifier boundaries so ``DEFAULT_PARAM_177`` does not yield ``PARAM_177``.
+_HELPER_TOKEN_RE = re.compile(rf"(?<![A-Z0-9_]){_PUBLIC_PARAM_PATTERN}(?![A-Z0-9_])")
 _LEFTOVER_QUOTED_TOKEN_RE = re.compile(rf"""['"]({_PUBLIC_PARAM_PATTERN})['"]""")
 _OBFUSCATED_IDENTIFIER_RE = re.compile(r"_0x[0-9a-fA-F]*")
 # Minified bundles spell booleans as unary expressions: ``!0``/``!![]`` are true,
@@ -1428,10 +1429,13 @@ class LiveAssetsCatalog:
 
         static_route_map: dict[str, str] = {}
         try:
+            # Bound the gap between the static route key and its import so a
+            # malformed entry without ``import(...)`` cannot steal the next
+            # entry's chunk (DOTALL ``.*?`` previously crossed manifest keys).
             static_route_pattern = re.compile(
-                r"deviceMenu/static/([A-Za-z0-9_-]+)\.ts['\"].*?"
+                r"deviceMenu/static/([A-Za-z0-9_-]+)\.ts['\"]"
+                r"(?:(?!deviceMenu/static/)[\s\S]){0,160}?"
                 r"import\s*\(\s*['\"]\./([A-Za-z0-9_.-]+)-([A-Za-z0-9_-]+)\.js['\"]",
-                re.DOTALL,
             )
             for match in static_route_pattern.finditer(text):
                 route_path = str(match.group(1))

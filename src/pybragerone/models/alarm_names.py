@@ -16,7 +16,9 @@ _ALARM_NAME_PAIR_RE = re.compile(
     """
 )
 # Obfuscated SPA enum chunks: ``obj['ERROR_FOO']=0x26`` (hex or decimal).
-_ALARM_NAME_BRACKET_ASSIGN_RE = re.compile(r"""\[\s*['"](?P<name>ERROR_[A-Z0-9_]+)['"]\s*\]\s*=\s*(?P<code>0x[0-9a-fA-F]+|\d+)""")
+_ALARM_NAME_BRACKET_ASSIGN_RE = re.compile(
+    r"""\[\s*['"](?P<name>ERROR_[A-Z0-9_]+)['"]\s*\]\s*=\s*(?P<code>0[xX][0-9a-fA-F]+|\d+)"""
+)
 
 
 def parse_alarm_name_enum(source: str | bytes | bytearray) -> dict[int, str]:
@@ -49,7 +51,11 @@ def parse_alarm_name_enum(source: str | bytes | bytearray) -> dict[int, str]:
                 out[int(match.group("code_b"))] = match.group("name_b")
         else:
             # Named groups are always present when the bracket pattern matches.
-            out[int(match.group("code"), 0)] = match.group("name")
+            # Prefer explicit bases: ``int(..., 0)`` rejects zero-padded decimals
+            # such as ``=08`` that appear in public SPA bundles.
+            code = match.group("code")
+            base = 16 if code[:2].lower() == "0x" else 10
+            out[int(code, base)] = match.group("name")
     return out
 
 

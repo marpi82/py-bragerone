@@ -459,6 +459,16 @@ class BragerOneApiClient:
 
     # ----------------- AUTH -----------------
 
+    async def _login_unlocked(self, email: str | None = None, password: str | None = None) -> Token:
+        """Resolve credentials and POST login. Caller must hold ``_auth_lock``."""
+        em = email
+        pw = password
+        if (not em or not pw) and self._creds_provider:
+            em, pw = self._creds_provider()
+        if not em or not pw:
+            raise ApiError(401, {"message": "No credentials for (re)login"}, {})
+        return await self._post_login(em, pw)
+
     async def ensure_auth(self, email: str | None = None, password: str | None = None) -> Token:
         """Ensure valid token: use cache + validation, and if missing/expired — login.
 
@@ -494,25 +504,18 @@ class BragerOneApiClient:
                 else:
                     return self._token
 
-            # 3) no token → need credentials
-            em = email
-            pw = password
-            if (not em or not pw) and self._creds_provider:
-                em, pw = self._creds_provider()
-            if not em or not pw:
-                raise ApiError(401, {"message": "No credentials for (re)login"}, {})
-
-            # 4) classic login
-            return await self._post_login(em, pw)
+            # 3) no token → login (credentials from args or provider)
+            return await self._login_unlocked(email, password)
 
     async def invalidate_and_reauth(self, email: str | None = None, password: str | None = None) -> Token:
         """Drop the cached token and force a fresh login.
 
         Used by zombie-session recovery when reconnecting with the existing
         (still-valid) access token fails to restore live WS ``ParamUpdate`` traffic.
-        Under the auth lock this clears RAM state, sets ``_skip_load_once`` so the
-        next ``ensure_auth`` does not reload a wedged token, then clears the
-        persisted store (clear failures propagate — they are not suppressed).
+        Invalidation, optional persisted-store clear, credential selection, and
+        ``_post_login`` all run under one ``_auth_lock`` hold so a racing
+        ``ensure_auth`` cannot interleave a provider login ahead of explicit
+        overrides. The clearer runs via ``asyncio.to_thread`` (keyring/fs I/O).
 
         Args:
             email: Optional email override for the login call.
@@ -526,8 +529,9 @@ class BragerOneApiClient:
             self._validated = False
             self._skip_load_once = True
             if self._token_clearer:
-                self._token_clearer()
-        return await self.ensure_auth(email, password)
+                await asyncio.to_thread(self._token_clearer)
+            # Do not call ``ensure_auth`` here — the lock is non-reentrant.
+            return await self._login_unlocked(email, password)
 
     @property
     def access_token(self) -> str:

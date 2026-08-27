@@ -104,6 +104,14 @@ def test_parse_alarm_name_enum_obfuscated_bracket_assignments() -> None:
     assert names[54] == "ERROR_PELLET_NIEUDANE_ROZPALANIE"
 
 
+def test_parse_alarm_name_enum_zero_padded_decimal_code() -> None:
+    """Zero-padded decimal codes such as ``=08`` parse as base 10 (not ``int(..., 0)``)."""
+    names = parse_alarm_name_enum("obj['ERROR_PADDED']=08")
+    assert names == {8: "ERROR_PADDED"}
+    names_hex = parse_alarm_name_enum("obj['ERROR_HEX']=0X0A")
+    assert names_hex == {10: "ERROR_HEX"}
+
+
 def test_resolve_alarm_label_after_obfuscated_enum_parse() -> None:
     """Bracket-parsed ``ERROR_*`` keys resolve via ``errors.*`` i18n — never shown raw."""
     source = "_0xabc['ERROR_BRAK_PALIWA']=0x26,_0xabc['ERROR_PELLET_NIEUDANE_ROZPALANIE']=54"
