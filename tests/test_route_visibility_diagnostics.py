@@ -424,6 +424,40 @@ def test_route_visibility_dependency_keys_collects_ancestor_dropdown_marker() ->
     assert deps == {"route_dropdown:42"}
 
 
+def test_route_visibility_dependency_keys_ignores_own_non_param_dropdown() -> None:
+    """Own ``displayDropdown`` strings that are not ParamStore keys add no deps."""
+    route = SimpleNamespace(
+        name="modules.menu.shell",
+        path="shell",
+        meta=SimpleNamespace(parameters=None, display_dropdown="!![]"),
+    )
+    assert ParamResolver.route_visibility_dependency_keys(route) == set()
+
+    maybe_route = SimpleNamespace(
+        name="modules.menu.maybe",
+        path="maybe",
+        meta=SimpleNamespace(parameters=None, display_dropdown="maybe"),
+    )
+    assert ParamResolver.route_visibility_dependency_keys(maybe_route) == set()
+
+
+def test_route_visibility_dependency_keys_skips_ancestor_non_str_dropdown() -> None:
+    """Ancestor ``displayDropdown`` values that are not strings are ignored."""
+    parent = SimpleNamespace(meta=SimpleNamespace(display_dropdown=True))
+    route = SimpleNamespace(name="leaf", path="leaf", meta=None)
+    assert ParamResolver.route_visibility_dependency_keys(route, ancestors=(parent,)) == set()
+
+    numeric_parent = SimpleNamespace(meta=SimpleNamespace(display_dropdown=42))
+    assert ParamResolver.route_visibility_dependency_keys(route, ancestors=(numeric_parent,)) == set()
+
+
+def test_route_visibility_dependency_keys_ignores_ancestor_non_key_non_digit() -> None:
+    """Ancestor dropdown strings that are neither ParamStore keys nor digits add nothing."""
+    parent = SimpleNamespace(meta=SimpleNamespace(display_dropdown="!![]"))
+    route = SimpleNamespace(name="leaf", path="leaf", meta=None)
+    assert ParamResolver.route_visibility_dependency_keys(route, ancestors=(parent,)) == set()
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
@@ -593,6 +627,26 @@ def test_panel_route_diagnostics_non_all_panels_rejects_hidden_route() -> None:
     rows = ParamResolver.panel_route_diagnostics_from_menu(menu, all_panels=False, web_ui_only=True)
     assert rows[0]["accepted"] is False
     assert rows[0]["reason"].startswith("rejected:route-hidden:")
+
+
+def test_panel_route_diagnostics_non_all_panels_rejects_no_symbols() -> None:
+    """Legacy grouping rejects empty panel shells with ``rejected:no-symbols``."""
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "empty",
+                    "name": "modules.menu.empty",
+                    "meta": {"displayName": "Empty", "displayDropdown": "!![]"},
+                }
+            ]
+        }
+    )
+    rows = ParamResolver.panel_route_diagnostics_from_menu(menu, all_panels=False, web_ui_only=True)
+    assert len(rows) == 1
+    assert rows[0]["accepted"] is False
+    assert rows[0]["reason"] == "rejected:no-symbols"
+    assert rows[0]["symbol_count"] == 0
 
 
 def test_route_visibility_dependency_keys_accepts_object_status_items() -> None:
