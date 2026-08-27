@@ -861,3 +861,38 @@ def test_optional_chain_nullish_binding_returns_none() -> None:
     if expr.type == "expression_statement":
         expr = expr.named_children[0]
     assert _node_to_python(code, expr, {"_0x39dd22": None}) is None
+
+
+def test_build_asset_index_extracts_static_device_menu_routes() -> None:
+    """Index regex maps ``deviceMenu/static/<path>.ts`` imports to asset basenames."""
+    catalog = _catalog()
+    index = (
+        b"deviceMenu/static/timezones.ts', import('./timezones-Ab12Cd.js');"
+        b"deviceMenu/static/schedules.ts', import('./schedules-Xy99Zz.js');"
+    )
+    assets = catalog._build_asset_index_from_index_js("https://example/index.js", index)
+    assert assets.static_route_map == {"timezones": "timezones", "schedules": "schedules"}
+
+
+def test_build_asset_index_static_route_parse_failure_is_non_fatal(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Static route regex failures leave ``static_route_map`` empty."""
+    import re
+    from unittest.mock import patch
+
+    catalog = _catalog()
+    real_compile = re.compile
+
+    def _compile(pattern: str, flags: int = 0) -> re.Pattern[str]:
+        if "deviceMenu/static" in pattern:
+            raise RuntimeError("regex boom")
+        return real_compile(pattern, flags)
+
+    with patch("pybragerone.models.catalog.re.compile", side_effect=_compile), caplog.at_level(logging.DEBUG):
+        assets = catalog._build_asset_index_from_index_js(
+            "https://example/index.js",
+            b"deviceMenu/static/timezones.ts', import('./timezones-Ab12Cd.js');",
+        )
+    assert assets.static_route_map == {}
+    assert "Static deviceMenu route parsing failed" in caplog.text

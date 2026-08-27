@@ -164,6 +164,18 @@ async def test_modules_alarms_and_activity_list_helpers(api_client: BragerOneApi
     )
     assert await api_client.modules_alarms_history(["D1"]) is True
 
+    httpx_mock.add_response(
+        method="POST",
+        url=history_url,
+        json={"status": True, "alarms": {"data": [{"id": 2, "devid": "D1"}]}},
+    )
+    hist_status, hist_data = _status_payload(await api_client.modules_alarms_history(["D1"], return_data=True))
+    assert hist_status == 200
+    assert isinstance(hist_data, dict)
+
+    httpx_mock.add_response(method="POST", url=alarms_url, json={"status": True, "alarms": []})
+    assert await api_client.modules_alarms(["D1"]) is True
+
     httpx_mock.add_response(method="POST", url=alarms_qty_url, json={"alarmsQuantity": {"D1": 2}})
     qty_status, qty_data = _status_payload(await api_client.modules_alarms_quantity(["D1"], return_data=True))
     assert qty_status == 200

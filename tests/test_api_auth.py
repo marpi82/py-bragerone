@@ -177,6 +177,19 @@ async def test_invalidate_and_reauth_forces_login(httpx_mock: HTTPXMock) -> None
 
 @pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
 @pytest.mark.asyncio
+async def test_invalidate_and_reauth_accepts_explicit_credentials(httpx_mock: HTTPXMock) -> None:
+    """Explicit email/password overrides are forwarded to the forced login."""
+    client = BragerOneApiClient(validate_on_start=False)
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T1"})
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T2"})
+    await client.ensure_auth("old@example.com", "old-pass")
+    second = await client.invalidate_and_reauth("new@example.com", "new-pass")
+    assert second.access_token == "T2"
+    await client.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
 async def test_revoke_swallows_errors(httpx_mock: HTTPXMock) -> None:
     """Test that token revoke gracefully handles server errors.
 
