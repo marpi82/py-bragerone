@@ -1775,6 +1775,29 @@ async def test_gateway_force_fresh_auth_falls_back_for_fake_api() -> None:
     assert await gw._force_fresh_auth() == "fake-token"
 
 
+@pytest.mark.asyncio
+async def test_gateway_force_fresh_auth_without_creds_keeps_token(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Gateway recovery without creds_provider must not erase the only token."""
+    from pybragerone.models.token import Token
+
+    api = BragerOneApiClient(validate_on_start=False)
+    api._token = Token(access_token="keep-me")
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=FakeRealtimeManager(),
+        connectivity_poll_interval=0,
+    )
+    with caplog.at_level("WARNING"):
+        assert await gw._force_fresh_auth() == "keep-me"
+        assert "no credentials available" in caplog.text
+    assert api.access_token == "keep-me"
+    await api.close()
+
+
 @pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
 @pytest.mark.asyncio
 async def test_gateway_force_fresh_auth_invalidates_real_client(httpx_mock: HTTPXMock) -> None:

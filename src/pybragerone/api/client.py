@@ -469,6 +469,15 @@ class BragerOneApiClient:
             raise ApiError(401, {"message": "No credentials for (re)login"}, {})
         return await self._post_login(em, pw)
 
+    def _resolve_login_credentials(self, email: str | None = None, password: str | None = None) -> tuple[str | None, str | None]:
+        """Resolve email/password from explicit args or ``creds_provider`` (no I/O)."""
+        em = email
+        pw = password
+        if (not em or not pw) and self._creds_provider:
+            with contextlib.suppress(Exception):
+                em, pw = self._creds_provider()
+        return em, pw
+
     async def ensure_auth(self, email: str | None = None, password: str | None = None) -> Token:
         """Ensure valid token: use cache + validation, and if missing/expired — login.
 
@@ -488,6 +497,13 @@ class BragerOneApiClient:
                 with contextlib.suppress(Exception):
                     self._token = self._token_loader()
             self._skip_load_once = False
+
+            # Empty/missing access_token is unusable. Clear it before soft validation so
+            # ``_try_validate`` → ``_req`` never re-enters ``ensure_auth`` on the same
+            # non-reentrant ``_auth_lock`` (deadlock with persisted ``Token("")``).
+            if self._token is not None and not self._token.access_token:
+                self._token = None
+                self._validated = False
 
             # 2) if we have token and it's not expired — soft validation (optional) and done
             if self._token and not self._token.is_expired(leeway=self._refresh_leeway):
@@ -512,8 +528,12 @@ class BragerOneApiClient:
 
         Used by zombie-session recovery when reconnecting with the existing
         (still-valid) access token fails to restore live WS ``ParamUpdate`` traffic.
-        Invalidation, optional persisted-store clear, credential selection, and
-        ``_post_login`` all run under one ``_auth_lock`` hold so a racing
+        Credentials are resolved **before** any destructive clear: if neither
+        explicit args nor ``creds_provider`` can supply both email and password,
+        a usable in-memory token is left intact (soft path — log a warning and
+        return it) so reconnect is not left unauthenticated. Only when credentials
+        are available do invalidation, optional persisted-store clear, and
+        ``_post_login`` run under one ``_auth_lock`` hold so a racing
         ``ensure_auth`` cannot interleave a provider login ahead of explicit
         overrides. The clearer runs via ``asyncio.to_thread`` (keyring/fs I/O).
 
@@ -522,16 +542,29 @@ class BragerOneApiClient:
             password: Optional password override for the login call.
 
         Returns:
-            Fresh authentication token from login.
+            Fresh authentication token from login, or the existing token when
+            credentials are unavailable and a usable token is already cached.
+
+        Raises:
+            ApiError: If credentials are missing and there is no usable token.
         """
         async with self._auth_lock:
+            em, pw = self._resolve_login_credentials(email, password)
+            if not em or not pw:
+                if self._token is not None and self._token.access_token:
+                    LOG.warning(
+                        "invalidate_and_reauth: no credentials available; keeping existing access token instead of clearing"
+                    )
+                    return self._token
+                raise ApiError(401, {"message": "No credentials for (re)login"}, {})
+
             self._token = None
             self._validated = False
             self._skip_load_once = True
             if self._token_clearer:
                 await asyncio.to_thread(self._token_clearer)
             # Do not call ``ensure_auth`` here — the lock is non-reentrant.
-            return await self._login_unlocked(email, password)
+            return await self._login_unlocked(em, pw)
 
     @property
     def access_token(self) -> str:

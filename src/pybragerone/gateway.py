@@ -575,7 +575,13 @@ class BragerOneGateway:
         return api.access_token
 
     async def _force_fresh_auth(self) -> str:
-        """Force a full re-login so WS recovery does not reuse a wedged cloud session."""
+        """Force a full re-login so WS recovery does not reuse a wedged cloud session.
+
+        Delegates to ``BragerOneApiClient.invalidate_and_reauth``, which preflights
+        credentials before clearing state. Without email/password (args or
+        ``creds_provider``), the client keeps a usable token rather than wiping it
+        and leaving reconnect unauthenticated.
+        """
         api = self.api
         if isinstance(api, BragerOneApiClient):
             await api.invalidate_and_reauth()

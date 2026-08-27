@@ -177,6 +177,59 @@ async def test_invalidate_and_reauth_forces_login(httpx_mock: HTTPXMock) -> None
     await client.close()
 
 
+@pytest.mark.asyncio
+async def test_invalidate_and_reauth_without_creds_preserves_token() -> None:
+    """Without credentials, invalidate must not wipe a usable in-memory token."""
+    client = BragerOneApiClient(validate_on_start=False)
+    client._token = Token(access_token="keep-me")
+    tok = await client.invalidate_and_reauth()
+    assert tok.access_token == "keep-me"
+    assert client._token is not None
+    assert client._token.access_token == "keep-me"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_invalidate_and_reauth_without_creds_or_token_raises() -> None:
+    """Without credentials and without a usable token, invalidate raises ApiError."""
+    client = BragerOneApiClient(validate_on_start=False)
+    with pytest.raises(ApiError) as exc:
+        await client.invalidate_and_reauth()
+    assert exc.value.status == 401
+    assert exc.value.data == {"message": "No credentials for (re)login"}
+    assert client._token is None
+    await client.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
+async def test_ensure_auth_empty_persisted_token_does_not_deadlock(httpx_mock: HTTPXMock) -> None:
+    """Persisted empty access_token must not deadlock under validate_on_start.
+
+    ``ensure_auth`` holds ``_auth_lock`` while validating; an empty token used to
+    reach ``_req`` → recursive ``ensure_auth`` on the same lock.
+    """
+    store = _TestTokenStore(Token(access_token=""))
+    client = BragerOneApiClient(
+        token_store=store,
+        creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD),
+        validate_on_start=True,
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url=f"{API}/v1/auth/user",
+        json={
+            "accessToken": "T1",
+            "type": "bearer",
+            "expiresAt": (datetime.now(UTC) + timedelta(minutes=10)).isoformat(),
+        },
+    )
+    tok = await asyncio.wait_for(client.ensure_auth(), timeout=2.0)
+    assert tok.access_token == "T1"
+    assert client.access_token == "T1"
+    await client.close()
+
+
 @pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
 @pytest.mark.asyncio
 async def test_invalidate_and_reauth_clears_token_store(httpx_mock: HTTPXMock) -> None:
