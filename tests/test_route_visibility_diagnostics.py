@@ -274,13 +274,13 @@ async def test_discover_static_route_tokens_empty_path() -> None:
 @pytest.mark.asyncio
 async def test_discover_static_route_tokens_missing_asset_ref() -> None:
     """Missing asset refs for a basename yield an empty token set."""
-    api = AsyncMock()
-    catalog = LiveAssetsCatalog(api)
-    catalog._idx = AssetIndex(
-        static_route_map={},
+    catalog = LiveAssetsCatalog(AsyncMock())
+    catalog._idx = SimpleNamespace(  # type: ignore[assignment]
+        static_route_map={"timezones": "timezones"},
         assets_by_basename={"timezones": [AssetRef(url="https://example/tz.js", base="timezones", hash="x")]},
+        index_bytes=b"loaded",
+        find_asset_for_basename=lambda _base: None,
     )
-    catalog._idx.find_asset_for_basename = lambda _base: None  # type: ignore[method-assign,assignment]
     assert await catalog.discover_static_route_tokens("timezones") == set()
 
 
