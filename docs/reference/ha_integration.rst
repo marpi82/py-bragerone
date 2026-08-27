@@ -119,8 +119,9 @@ no **live** ``ParamUpdate`` is published for 180s (zombie transport), the poll R
 anyway; after two consecutive zombie primes it forces a hard Socket.IO restart
 (SPA parity: ``connect`` → ``ModulesService.connect`` + REST parameters), **awaiting**
 namespace join + ``resubscribe()`` so module binding completes. After repeated failed
-hard restarts it hard-resets the Socket.IO client, then rebuilds ``RealtimeManager``
-(with forced re-login) and an exponential recovery cooldown (REST primes continue).
+hard restarts it hard-resets the Socket.IO client, then rebuilds ``RealtimeManager``.
+Hard reconnect, transport recycle, and manager rebuild each force a fresh login
+before proceeding, then apply an exponential recovery cooldown (REST primes continue).
 A subscribed module returning online while still zombie clears the cooldown and
 triggers recovery immediately. Recovery is skipped
 while every subscribed module is known offline. Numeric

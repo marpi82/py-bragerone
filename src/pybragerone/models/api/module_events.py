@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 
 class ModuleAlarm(BaseModel):
@@ -49,8 +47,8 @@ class ModuleActivity(BaseModel):
     module_id: int | None = None
     name: str = ""
     unit: int | None = None
-    value: Any = None
-    prev_value: Any = Field(default=None, validation_alias="prevValue")
+    value: JsonValue = None
+    prev_value: JsonValue = Field(default=None, validation_alias="prevValue")
     state: str = ""
     created_at: str | None = None
     user: ModuleActivityUser | str | None = None

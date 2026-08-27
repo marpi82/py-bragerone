@@ -7,11 +7,12 @@ from collections.abc import Mapping
 from typing import Any
 
 # Bidirectional chunks emit either ``38:"ERROR_…"`` or ``ERROR_…:38`` (quotes optional).
+# Identifier boundaries keep ``NOT_ERROR_FOO: 38`` from matching embedded ``ERROR_FOO``.
 _ALARM_NAME_PAIR_RE = re.compile(
     r"""(?x)
     (?:
-        ['"]?(?P<name_a>ERROR_[A-Z0-9_]+)['"]?\s*:\s*(?P<code_a>\d+)
-      | (?P<code_b>\d+)\s*:\s*['"]?(?P<name_b>ERROR_[A-Z0-9_]+)['"]?
+        (?<![A-Za-z0-9_$])['"]?(?P<name_a>ERROR_[A-Z0-9_]+)['"]?(?![A-Za-z0-9_$])\s*:\s*(?P<code_a>\d+)
+      | (?P<code_b>\d+)\s*:\s*(?<![A-Za-z0-9_$])['"]?(?P<name_b>ERROR_[A-Z0-9_]+)['"]?(?![A-Za-z0-9_$])
     )
     """
 )

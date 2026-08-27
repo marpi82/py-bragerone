@@ -42,7 +42,13 @@ def require_env(name: str) -> str:
     return value
 
 
-def _route_row(route: Any, *, ancestors: tuple[Any, ...], routes_i18n: dict[str, Any]) -> dict[str, Any]:
+def _route_row(
+    route: Any,
+    *,
+    ancestors: tuple[Any, ...],
+    routes_i18n: dict[str, Any],
+    static_route_symbols: dict[str, set[str]] | None = None,
+) -> dict[str, Any]:
     """Build a JSON-serializable route summary for probe output."""
     title = ParamResolver._route_title(route, routes_i18n=routes_i18n)
     panel_title = ParamResolver._panel_title_hierarchical(
@@ -56,8 +62,8 @@ def _route_row(route: Any, *, ancestors: tuple[Any, ...], routes_i18n: dict[str,
     meta = getattr(route, "meta", None)
     side = getattr(meta, "is_visible_on_side_menu", None) if meta is not None else None
     dropdown = getattr(meta, "display_dropdown", None) if meta is not None else None
-    symbols = sorted(ParamResolver._collect_route_symbols(route))
-    shell = ParamResolver._route_is_panel_shell(route)
+    symbols = sorted(ParamResolver._resolve_route_symbols(route, static_route_symbols=static_route_symbols))
+    shell = ParamResolver._route_is_panel_shell(route, static_route_symbols=static_route_symbols)
     return {
         "title": title,
         "panel_title": panel_title,
@@ -135,9 +141,18 @@ async def probe(
                 await asyncio.to_thread(capture_dir.mkdir, parents=True, exist_ok=True)
                 await asyncio.to_thread(menu_path.write_text, menu_payload, encoding="utf-8")
 
+            # Discover static overlays before route rows so ``symbol_count`` /
+            # ``panel_shell`` match panel diagnostics for timezone shells.
+            static_route_symbols = await resolver._static_route_symbols_for_menu(menu)
+
             route_rows: list[dict[str, Any]] = []
             for route, ancestors in ParamResolver._iter_routes_with_ancestors(menu.routes):
-                row = _route_row(route, ancestors=ancestors, routes_i18n=routes_i18n)
+                row = _route_row(
+                    route,
+                    ancestors=ancestors,
+                    routes_i18n=routes_i18n,
+                    static_route_symbols=static_route_symbols,
+                )
                 visible, vis_reason = ParamResolver.route_visibility_diagnostics(
                     route,
                     ancestors=ancestors,
@@ -159,7 +174,6 @@ async def probe(
                 row["route_visibility_deps"] = sorted(ParamResolver.route_visibility_dependency_keys(route, ancestors=ancestors))
                 route_rows.append(row)
 
-            static_route_symbols = await resolver._static_route_symbols_for_menu(menu)
             panel_diag = ParamResolver.panel_route_diagnostics_from_menu(
                 menu,
                 all_panels=True,

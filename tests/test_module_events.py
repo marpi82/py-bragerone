@@ -71,6 +71,14 @@ def test_parse_alarm_name_enum_name_a_and_name_b_patterns() -> None:
     assert parse_alarm_name_enum('12: "ERROR_RIGHT"') == {12: "ERROR_RIGHT"}
 
 
+def test_parse_alarm_name_enum_ignores_embedded_error_prefix() -> None:
+    """``NOT_ERROR_FOO`` must not match as embedded ``ERROR_FOO``."""
+    assert parse_alarm_name_enum("NOT_ERROR_FOO: 38") == {}
+    assert parse_alarm_name_enum("38: NOT_ERROR_FOO") == {}
+    assert parse_alarm_name_enum("ERROR_FOO: 38") == {38: "ERROR_FOO"}
+    assert parse_alarm_name_enum('39: "ERROR_BAR"') == {39: "ERROR_BAR"}
+
+
 def test_parse_alarm_name_enum_mixed_pair_and_bracket_sources() -> None:
     """One blob may contain both pair orientations and bracket assignments."""
     source = '11:"ERROR_A", ERROR_B: 12, obj["ERROR_C"]=0x0D'

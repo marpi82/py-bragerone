@@ -35,8 +35,9 @@ _HELPER_ACTIONS = frozenset({"READ", "WRITE", "STATUS"})
 # Only ``PARAM_*`` / ``STATUS_*`` are addressable tokens. Any other quoted upper-case
 # literal in leftover source (``'WRITE'``, ``'DISPLAY_*'``) would be a bogus parameter.
 _PUBLIC_PARAM_PATTERN = r"(?:PARAM|STATUS)_[A-Z0-9_]+"
-# Identifier boundaries so ``DEFAULT_PARAM_177`` does not yield ``PARAM_177``.
-_HELPER_TOKEN_RE = re.compile(rf"(?<![A-Z0-9_]){_PUBLIC_PARAM_PATTERN}(?![A-Z0-9_])")
+# JS identifier boundaries (``[A-Za-z0-9_$]``) so ``DEFAULT_PARAM_177``,
+# ``default_PARAM_177``, and ``$PARAM_177`` do not yield ``PARAM_177``.
+_HELPER_TOKEN_RE = re.compile(rf"(?<![A-Za-z0-9_$]){_PUBLIC_PARAM_PATTERN}(?![A-Za-z0-9_$])")
 _LEFTOVER_QUOTED_TOKEN_RE = re.compile(rf"""['"]({_PUBLIC_PARAM_PATTERN})['"]""")
 _OBFUSCATED_IDENTIFIER_RE = re.compile(r"_0x[0-9a-fA-F]*")
 # Minified bundles spell booleans as unary expressions: ``!0``/``!![]`` are true,

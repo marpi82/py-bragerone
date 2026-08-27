@@ -57,7 +57,8 @@ Best Practices
   ``ModulesService.connect`` + REST ``/modules/parameters``), awaiting
   ``resubscribe()`` after the namespace join. After repeated failed hard restarts it
   hard-resets the Socket.IO client; after repeated failed resets it rebuilds
-  ``RealtimeManager`` (with a forced re-login) and backs off with an exponential
+  ``RealtimeManager``. Each of those three stages (hard reconnect, transport recycle,
+  and manager rebuild) forces a fresh login first, then backs off with an exponential
   cooldown (REST primes continue). If a subscribed module returns online while
   still zombie, cooldown is cleared and recovery runs immediately. Recovery is
   skipped while every subscribed module is known offline.

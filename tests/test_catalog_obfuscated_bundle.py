@@ -892,6 +892,20 @@ def test_extract_public_tokens_ignores_prefixed_identifiers() -> None:
     assert "PARAM_177" not in tokens
 
 
+def test_extract_public_tokens_uses_js_identifier_boundaries() -> None:
+    """Lowercase / ``$`` prefixes are JS identifier chars and must not strip to ``PARAM_*``."""
+    source = b"const default_PARAM_177=1; const $PARAM_177=2; e(E.READ,'PARAM_178');"
+    tokens = LiveAssetsCatalog._extract_public_tokens_from_js(source)
+    assert tokens == {"PARAM_178"}
+    assert "PARAM_177" not in tokens
+
+
+def test_extract_public_tokens_keeps_quoted_tokens() -> None:
+    """Quoted ``'PARAM_*'`` remains extractable even beside identifier-like neighbors."""
+    tokens = LiveAssetsCatalog._extract_public_tokens_from_js(b"default_'PARAM_177'; foo$('PARAM_178');")
+    assert tokens == {"PARAM_177", "PARAM_178"}
+
+
 def test_build_asset_index_static_route_parse_failure_is_non_fatal(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
