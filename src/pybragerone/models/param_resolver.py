@@ -937,6 +937,14 @@ class ParamResolver:
         if web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
             return False, "hidden:not-web-ui"
         values = flat_values if flat_values is not None else {}
+        # SPA hides a leaf when any ancestor ``displayDropdown`` gate is false.
+        # Ancestor ``visible:*`` reasons (including ParamStore-true) do not short-circuit;
+        # only a hidden ancestor rejects. Leaf keeps the early-return for non-default
+        # visible dropdown reasons.
+        for ancestor in ancestors:
+            ancestor_visible, ancestor_reason = cls._route_display_dropdown_visibility(ancestor, values)
+            if not ancestor_visible:
+                return False, ancestor_reason
         dropdown_visible, dropdown_reason = cls._route_display_dropdown_visibility(route, values)
         if not dropdown_visible:
             return False, dropdown_reason

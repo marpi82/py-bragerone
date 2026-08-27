@@ -1013,7 +1013,7 @@ class BragerOneGateway:
         self._zombie_last_module_online_recovery_monotonic = time.monotonic()
         try:
             LOG.warning(
-                "Module %s came online while zombie (age=%.0fs%s); forcing auth+rebuild recovery",
+                "Module %s came online while zombie (age=%.0fs%s); forcing immediate zombie recovery",
                 devid,
                 age,
                 ", cleared cooldown" if was_cooling else "",

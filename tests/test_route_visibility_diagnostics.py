@@ -107,6 +107,62 @@ def test_route_visibility_diagnostics_evaluates_dropdown_param_key(
     assert reason == expected_reason
 
 
+def test_route_visibility_diagnostics_hides_when_ancestor_dropdown_false() -> None:
+    """Child stays hidden when an ancestor ParamStore ``displayDropdown`` is false."""
+    parent = _route(path="parent", name="modules.menu.parent", meta={"displayDropdown": "P6.v219"})
+    child = _route(path="child", name="modules.menu.child", meta={"displayDropdown": "!![]"})
+    visible, reason = ParamResolver.route_visibility_diagnostics(
+        child,
+        ancestors=(parent,),
+        flat_values={"P6.v219": 0},
+        all_panels=True,
+    )
+    assert visible is False
+    assert reason == "hidden:dropdown-value"
+
+
+def test_route_visibility_diagnostics_hides_when_ancestor_dropdown_missing() -> None:
+    """Missing ancestor dropdown values hide the child like the SPA."""
+    parent = _route(path="parent", name="modules.menu.parent", meta={"displayDropdown": "P6.v219"})
+    child = _route(path="child", name="modules.menu.child", meta={"displayDropdown": "!![]"})
+    visible, reason = ParamResolver.route_visibility_diagnostics(
+        child,
+        ancestors=(parent,),
+        flat_values={},
+        all_panels=True,
+    )
+    assert visible is False
+    assert reason == "hidden:dropdown-missing-value"
+
+
+def test_route_visibility_diagnostics_visible_when_ancestor_and_leaf_true() -> None:
+    """Ancestor and leaf ParamStore gates that are both true keep the route visible."""
+    parent = _route(path="parent", name="modules.menu.parent", meta={"displayDropdown": "P6.v219"})
+    child = _route(path="child", name="modules.menu.child", meta={"displayDropdown": "P6.v220"})
+    visible, reason = ParamResolver.route_visibility_diagnostics(
+        child,
+        ancestors=(parent,),
+        flat_values={"P6.v219": 1, "P6.v220": 1},
+        all_panels=True,
+    )
+    assert visible is True
+    assert reason == "visible:dropdown-value"
+
+
+def test_route_visibility_diagnostics_ancestor_visible_reason_does_not_short_circuit() -> None:
+    """Ancestor ``visible:*`` (non-default) still continues so the leaf gate is evaluated."""
+    parent = _route(path="parent", name="modules.menu.parent", meta={"displayDropdown": "!![]"})
+    child = _route(path="child", name="modules.menu.child", meta={"displayDropdown": "P6.v220"})
+    visible, reason = ParamResolver.route_visibility_diagnostics(
+        child,
+        ancestors=(parent,),
+        flat_values={"P6.v220": 0},
+        all_panels=True,
+    )
+    assert visible is False
+    assert reason == "hidden:dropdown-value"
+
+
 def test_route_visibility_diagnostics_hides_literal_dropdown_false() -> None:
     """Literal ``![]`` dropdown leftovers hide the route."""
     route = _route(path="hidden", name="modules.menu.hidden", meta={"displayDropdown": "![]"})
@@ -303,6 +359,28 @@ async def test_discover_static_route_tokens_falls_back_to_assets_basename() -> N
         assets_by_basename={"timezones": [AssetRef(url="https://example/tz.js", base="timezones", hash="x")]},
     )
     assert await catalog.discover_static_route_tokens("timezones") == {"PARAM_99"}
+
+
+@pytest.mark.asyncio
+async def test_discover_static_route_tokens_retries_after_unloaded_index() -> None:
+    """Failed index load returns empty without caching so a later call can retry."""
+    api = AsyncMock()
+    catalog = LiveAssetsCatalog(api)
+    catalog._idx = AssetIndex()
+    catalog._auto_discover_and_load_index = AsyncMock()  # type: ignore[method-assign]
+
+    assert await catalog.discover_static_route_tokens("timezones") == set()
+    assert "timezones" not in catalog._static_route_tokens_cache
+    catalog._auto_discover_and_load_index.assert_awaited()
+
+    api.get_bytes = AsyncMock(return_value=b"PARAM_177")
+    catalog._idx = AssetIndex(
+        static_route_map={"timezones": "timezones"},
+        assets_by_basename={"timezones": [AssetRef(url="https://example/tz.js", base="timezones", hash="x")]},
+        index_bytes=b"loaded",
+    )
+    assert await catalog.discover_static_route_tokens("timezones") == {"PARAM_177"}
+    assert catalog._static_route_tokens_cache["timezones"] == {"PARAM_177"}
 
 
 @pytest.mark.asyncio

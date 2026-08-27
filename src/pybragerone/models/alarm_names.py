@@ -26,21 +26,30 @@ def parse_alarm_name_enum(source: str | bytes | bytearray) -> dict[int, str]:
         source: JavaScript (or JSON-like) source that contains ``AlarmName`` pairs.
 
     Returns:
-        Mapping of numeric alarm type id → ``ERROR_*`` symbol. Later pairs win on
-        duplicate ids.
+        Mapping of numeric alarm type id → ``ERROR_*`` symbol. Pair and bracket
+        matches are applied in source order so a later declaration wins on
+        duplicate ids regardless of syntax.
     """
     text = source.decode("utf-8", errors="replace") if isinstance(source, (bytes, bytearray)) else source
-    out: dict[int, str] = {}
+    events: list[tuple[int, str, re.Match[str]]] = []
     for match in _ALARM_NAME_PAIR_RE.finditer(text):
-        # Alternation always binds either name_a/code_a or name_b/code_b.
-        name_a = match.group("name_a")
-        if name_a is not None:
-            out[int(match.group("code_a"))] = name_a
-        else:
-            out[int(match.group("code_b"))] = match.group("name_b")
+        events.append((match.start(), "pair", match))
     for match in _ALARM_NAME_BRACKET_ASSIGN_RE.finditer(text):
-        # Named groups are always present when the bracket pattern matches.
-        out[int(match.group("code"), 0)] = match.group("name")
+        events.append((match.start(), "bracket", match))
+    events.sort(key=lambda item: item[0])
+
+    out: dict[int, str] = {}
+    for _start, kind, match in events:
+        if kind == "pair":
+            # Alternation always binds either name_a/code_a or name_b/code_b.
+            name_a = match.group("name_a")
+            if name_a is not None:
+                out[int(match.group("code_a"))] = name_a
+            else:
+                out[int(match.group("code_b"))] = match.group("name_b")
+        else:
+            # Named groups are always present when the bracket pattern matches.
+            out[int(match.group("code"), 0)] = match.group("name")
     return out
 
 

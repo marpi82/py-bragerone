@@ -80,6 +80,17 @@ def test_parse_alarm_name_enum_mixed_pair_and_bracket_sources() -> None:
     assert names[13] == "ERROR_C"
 
 
+def test_parse_alarm_name_enum_preserves_source_order_across_syntaxes() -> None:
+    """Later declarations win across pair and bracket syntaxes by source position."""
+    # Bracket first, then pair overwrites the same id.
+    assert parse_alarm_name_enum('obj["ERROR_OLD"]=38, ERROR_NEW: 38')[38] == "ERROR_NEW"
+    # Pair first, then bracket overwrites the same id.
+    assert parse_alarm_name_enum('ERROR_OLD: 38, obj["ERROR_NEW"]=38')[38] == "ERROR_NEW"
+    # Interleaved distinct ids keep both, ordered by appearance.
+    names = parse_alarm_name_enum('11:"ERROR_A", obj["ERROR_B"]=12, ERROR_C: 13')
+    assert names == {11: "ERROR_A", 12: "ERROR_B", 13: "ERROR_C"}
+
+
 def test_parse_alarm_name_enum_obfuscated_bracket_assignments() -> None:
     """Obfuscated SPA chunks use ``obj['ERROR_*']=0xNN`` enum assignments."""
     source = """

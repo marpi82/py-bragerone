@@ -220,6 +220,32 @@ async def test_invalidate_and_reauth_clears_token_store(httpx_mock: HTTPXMock) -
 
 @pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
 @pytest.mark.asyncio
+async def test_invalidate_and_reauth_propagates_clearer_errors(httpx_mock: HTTPXMock) -> None:
+    """Persisted-store clear failures must not be swallowed during invalidation."""
+
+    class _BoomStore(_TestTokenStore):
+        def clear(self) -> None:
+            raise RuntimeError("disk full")
+
+    store = _BoomStore()
+    client = BragerOneApiClient(
+        token_store=store,
+        creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD),
+        validate_on_start=False,
+    )
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T1"})
+    await client.ensure_auth()
+
+    with pytest.raises(RuntimeError, match="disk full"):
+        await client.invalidate_and_reauth()
+
+    assert client._token is None
+    assert client._skip_load_once is True
+    await client.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
 async def test_invalidate_and_reauth_accepts_explicit_credentials(httpx_mock: HTTPXMock) -> None:
     """Explicit email/password overrides are forwarded to the forced login."""
     client = BragerOneApiClient(validate_on_start=False)

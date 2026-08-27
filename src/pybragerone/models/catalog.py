@@ -1485,7 +1485,7 @@ class LiveAssetsCatalog:
 
     @staticmethod
     def _extract_public_tokens_from_js(code: bytes) -> set[str]:
-        """Return PARAM/STATUS/COMMAND tokens referenced in a minified JS chunk."""
+        """Return PARAM/STATUS tokens referenced in a minified JS chunk."""
         text = code.decode("utf-8", errors="replace")
         tokens: set[str] = set()
         tokens.update(_HELPER_TOKEN_RE.findall(text))
@@ -1506,6 +1506,11 @@ class LiveAssetsCatalog:
             return set(self._static_route_tokens_cache[path_key])
 
         await self._ensure_index_loaded()
+        # Mirror ``_ensure_index_loaded`` success predicate: an unloaded index must not
+        # poison the cache (auto-discovery may recover on a later call).
+        if not (self._idx.index_bytes or self._idx.assets_by_basename):
+            return set()
+
         asset_base = self._idx.static_route_map.get(path_key)
         if asset_base is None and path_key in self._idx.assets_by_basename:
             asset_base = path_key

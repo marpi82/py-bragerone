@@ -130,12 +130,10 @@ async def probe(
             routes_i18n = await resolver._panel_title_i18n(menu)
 
             if capture_dir is not None:
-                capture_dir.mkdir(parents=True, exist_ok=True)
+                menu_payload = json.dumps(menu.model_dump(mode="json", by_alias=True), indent=2, ensure_ascii=False) + "\n"
                 menu_path = capture_dir / f"menu_{mod.devid}.json"
-                menu_path.write_text(
-                    json.dumps(menu.model_dump(mode="json", by_alias=True), indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8",
-                )
+                await asyncio.to_thread(capture_dir.mkdir, parents=True, exist_ok=True)
+                await asyncio.to_thread(menu_path.write_text, menu_payload, encoding="utf-8")
 
             route_rows: list[dict[str, Any]] = []
             for route, ancestors in ParamResolver._iter_routes_with_ancestors(menu.routes):
