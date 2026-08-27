@@ -272,6 +272,14 @@ async def test_discover_static_route_tokens_empty_path() -> None:
 
 
 @pytest.mark.asyncio
+async def test_discover_static_route_tokens_unknown_path_returns_empty() -> None:
+    """Paths absent from both the static map and basename index yield no tokens."""
+    catalog = LiveAssetsCatalog(AsyncMock())
+    catalog._idx = AssetIndex(static_route_map={}, assets_by_basename={}, index_bytes=b"loaded")
+    assert await catalog.discover_static_route_tokens("missing-route") == set()
+
+
+@pytest.mark.asyncio
 async def test_discover_static_route_tokens_missing_asset_ref() -> None:
     """Missing asset refs for a basename yield an empty token set."""
     catalog = LiveAssetsCatalog(AsyncMock())
@@ -343,6 +351,30 @@ def test_route_visibility_dependency_keys_ignores_invalid_status_fields() -> Non
         ),
     )
     assert ParamResolver.route_visibility_dependency_keys(route) == set()
+
+
+def test_route_visibility_dependency_keys_skips_non_list_status() -> None:
+    """Non-list ``status`` containers contribute no dependency keys."""
+    route = SimpleNamespace(
+        name="modules.menu.test",
+        path="test",
+        meta=SimpleNamespace(parameters=SimpleNamespace(status={"group": "P6"}), display_dropdown=None),
+    )
+    assert ParamResolver.route_visibility_dependency_keys(route) == set()
+
+
+def test_route_visibility_dependency_keys_skips_non_digit_ancestor_dropdown() -> None:
+    """Ancestor dropdown markers must be digit strings to become soft deps."""
+    parent = SimpleNamespace(meta=SimpleNamespace(display_dropdown="P6.v219"))
+    route = SimpleNamespace(name="leaf", path="leaf", meta=None)
+    assert ParamResolver.route_visibility_dependency_keys(route, ancestors=(parent,)) == set()
+
+
+def test_resolve_route_symbols_ignores_empty_static_overlay() -> None:
+    """Empty static overlays leave the route symbol set empty."""
+    route = SimpleNamespace(path="timezones", name="MAINMENU_STREFY_CZASOWE", meta=None, parameters=None)
+    symbols = ParamResolver._resolve_route_symbols(route, static_route_symbols={"timezones": set()})
+    assert symbols == set()
 
 
 def test_route_visibility_dependency_keys_accepts_dict_status_items() -> None:

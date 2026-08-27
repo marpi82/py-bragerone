@@ -32,15 +32,15 @@ def parse_alarm_name_enum(source: str | bytes | bytearray) -> dict[int, str]:
     text = source.decode("utf-8", errors="replace") if isinstance(source, (bytes, bytearray)) else source
     out: dict[int, str] = {}
     for match in _ALARM_NAME_PAIR_RE.finditer(text):
-        if match.group("name_a") is not None and match.group("code_a") is not None:
-            out[int(match.group("code_a"))] = match.group("name_a")
-        elif match.group("name_b") is not None and match.group("code_b") is not None:
+        # Alternation always binds either name_a/code_a or name_b/code_b.
+        name_a = match.group("name_a")
+        if name_a is not None:
+            out[int(match.group("code_a"))] = name_a
+        else:
             out[int(match.group("code_b"))] = match.group("name_b")
     for match in _ALARM_NAME_BRACKET_ASSIGN_RE.finditer(text):
-        name = match.group("name")
-        code_raw = match.group("code")
-        if name is not None and code_raw is not None:
-            out[int(code_raw, 0)] = name
+        # Named groups are always present when the bracket pattern matches.
+        out[int(match.group("code"), 0)] = match.group("name")
     return out
 
 
