@@ -71,6 +71,15 @@ def test_parse_alarm_name_enum_name_a_and_name_b_patterns() -> None:
     assert parse_alarm_name_enum('12: "ERROR_RIGHT"') == {12: "ERROR_RIGHT"}
 
 
+def test_parse_alarm_name_enum_mixed_pair_and_bracket_sources() -> None:
+    """One blob may contain both pair orientations and bracket assignments."""
+    source = '11:"ERROR_A", ERROR_B: 12, obj["ERROR_C"]=0x0D'
+    names = parse_alarm_name_enum(source)
+    assert names[11] == "ERROR_A"
+    assert names[12] == "ERROR_B"
+    assert names[13] == "ERROR_C"
+
+
 def test_parse_alarm_name_enum_obfuscated_bracket_assignments() -> None:
     """Obfuscated SPA chunks use ``obj['ERROR_*']=0xNN`` enum assignments."""
     source = """

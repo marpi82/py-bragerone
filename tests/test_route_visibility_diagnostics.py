@@ -272,6 +272,19 @@ async def test_discover_static_route_tokens_empty_path() -> None:
 
 
 @pytest.mark.asyncio
+async def test_discover_static_route_tokens_missing_asset_ref() -> None:
+    """Missing asset refs for a basename yield an empty token set."""
+    api = AsyncMock()
+    catalog = LiveAssetsCatalog(api)
+    catalog._idx = AssetIndex(
+        static_route_map={},
+        assets_by_basename={"timezones": [AssetRef(url="https://example/tz.js", base="timezones", hash="x")]},
+    )
+    catalog._idx.find_asset_for_basename = lambda _base: None  # type: ignore[method-assign,assignment]
+    assert await catalog.discover_static_route_tokens("timezones") == set()
+
+
+@pytest.mark.asyncio
 async def test_discover_static_route_tokens_falls_back_to_assets_basename() -> None:
     """When static-route map misses, basename keys can still resolve the chunk."""
     api = AsyncMock()
@@ -317,6 +330,19 @@ async def test_static_route_symbols_for_menu_overlays_shell_routes() -> None:
     resolver = ParamResolver(store=store, assets=assets)  # type: ignore[arg-type]
     overlays = await resolver._static_route_symbols_for_menu(menu)
     assert overlays == {"timezones": {"PARAM_177", "PARAM_178"}}
+
+
+def test_route_visibility_dependency_keys_ignores_invalid_status_fields() -> None:
+    """Malformed status items do not produce dependency keys."""
+    route = SimpleNamespace(
+        name="modules.menu.test",
+        path="test",
+        meta=SimpleNamespace(
+            parameters=SimpleNamespace(status=[{"group": "P6", "use": "s", "number": "219"}]),
+            display_dropdown=None,
+        ),
+    )
+    assert ParamResolver.route_visibility_dependency_keys(route) == set()
 
 
 def test_route_visibility_dependency_keys_accepts_dict_status_items() -> None:
