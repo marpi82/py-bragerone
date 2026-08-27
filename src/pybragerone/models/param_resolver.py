@@ -9,6 +9,7 @@ CLI/config-time tooling to opt into richer behavior.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ from .param import ParamStore
 
 if TYPE_CHECKING:
     from ..api import BragerOneApiClient
+
+LOG = logging.getLogger(__name__)
 
 
 _PARAM_POOL_RE = re.compile(r"^PARAM_P(?P<pool>\d+)_(?P<idx>\d+)$")
@@ -891,15 +894,25 @@ class ParamResolver:
                         number = getattr(item, "number", None) if not isinstance(item, dict) else item.get("number")
                         if isinstance(group, str) and isinstance(use, str) and isinstance(number, int):
                             keys.add(f"{group}.{use}{number}")
+            dropdown = getattr(meta, "display_dropdown", None)
+            if isinstance(dropdown, str):
+                token = dropdown.strip()
+                if _ROUTE_DROPDOWN_VALUE_KEY_RE.fullmatch(token):
+                    keys.add(token)
         for ancestor in ancestors:
             ancestor_meta = getattr(ancestor, "meta", None)
             if ancestor_meta is None:
                 continue
             dropdown = getattr(ancestor_meta, "display_dropdown", None)
-            if isinstance(dropdown, str) and dropdown.strip().isdigit():
+            if not isinstance(dropdown, str):
+                continue
+            token = dropdown.strip()
+            if _ROUTE_DROPDOWN_VALUE_KEY_RE.fullmatch(token):
+                keys.add(token)
+            elif token.isdigit():
                 # Dropdown selection routes often key off a parent write parameter — callers
-                # also track symbol-level deps; keep ancestor dropdown marker as a soft hint.
-                keys.add(f"route_dropdown:{dropdown.strip()}")
+                # also track symbol-level deps; keep digit-only ancestor dropdown as a soft hint.
+                keys.add(f"route_dropdown:{token}")
         return keys
 
     @classmethod
@@ -983,8 +996,7 @@ class ParamResolver:
             if not route_visible:
                 continue
             symbols = cls._resolve_route_symbols(route, static_route_symbols=static_route_symbols)
-            is_shell = cls._route_is_panel_shell(route, static_route_symbols=static_route_symbols)
-            if symbols or is_shell:
+            if symbols:
                 title = cls._route_title(route, routes_i18n=routes_i18n)
                 name = str(getattr(route, "name", "") or "")
                 path = str(getattr(route, "path", "") or "")
@@ -1103,7 +1115,7 @@ class ParamResolver:
                 elif not route_visible:
                     accepted = False
                     reason = f"rejected:route-hidden:{route_vis_reason}"
-                elif not symbols and not is_shell:
+                elif not symbols:
                     accepted = False
                     reason = "rejected:no-symbols"
             else:
@@ -1113,7 +1125,7 @@ class ParamResolver:
                 elif not route_visible:
                     accepted = False
                     reason = f"rejected:route-hidden:{route_vis_reason}"
-                elif not symbols and not is_shell:
+                elif not symbols:
                     accepted = False
                     reason = "rejected:no-symbols"
 
@@ -1153,6 +1165,7 @@ class ParamResolver:
             try:
                 tokens = await assets.discover_static_route_tokens(path_key)
             except Exception:
+                LOG.exception("Static route token discovery failed for %s", path_key)
                 tokens = set()
             if tokens:
                 out[path_key] = set(tokens)

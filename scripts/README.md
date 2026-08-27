@@ -11,7 +11,7 @@ Utility scripts for development and system setup.
 - `perf_bench.py` - Local wall-time micro-benchmarks, baseline compare, and real startup timing
 - `check_upstream_assets.py` - Unauthenticated probe of BragerOne `/system/version` + live `index-*.js` (used by the scheduled Upstream assets workflow). When the fingerprint changes (or `--always-parse`), the probe also requires a non-empty language config, units descriptor table, and `units` i18n namespace.
 - `live_contract.py` - Authenticated structural catalog contract for the self-hosted `bragerone-live` runner. Seeds `/var/lib/gha/baselines/live_contract.json` on first success; later runs compare structure only (no live register values).
-- `probe_menu_routes.py` - Authenticated live probe of module menu routes, panel groups, and route visibility diagnostics (issue #192). Requires ``PYBO_*`` credentials in ``.env``.
+- `probe_menu_routes.py` - Authenticated live probe of module menu routes, panel groups, and route visibility diagnostics (issue marpi82/ha-bragerone#192). Requires ``PYBO_*`` credentials in ``.env``.
 
 CPU-bound dispatch/catalog cases also live as pytest tests in `tests/test_bench_micro.py`
 (`uv run --group dev --group test poe bench` / `pytest --codspeed`). This script remains the

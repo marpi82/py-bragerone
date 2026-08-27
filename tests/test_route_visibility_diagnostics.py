@@ -307,7 +307,7 @@ async def test_discover_static_route_tokens_falls_back_to_assets_basename() -> N
 
 @pytest.mark.asyncio
 async def test_discover_static_route_tokens_fetch_failure_is_non_fatal() -> None:
-    """Asset fetch failures yield an empty token set without raising."""
+    """Asset fetch failures yield empty tokens and do not poison the cache."""
     api = AsyncMock()
     api.get_bytes = AsyncMock(side_effect=OSError("offline"))
     catalog = LiveAssetsCatalog(api)
@@ -316,6 +316,22 @@ async def test_discover_static_route_tokens_fetch_failure_is_non_fatal() -> None
         assets_by_basename={"timezones": [AssetRef(url="https://example/tz.js", base="timezones", hash="x")]},
     )
     assert await catalog.discover_static_route_tokens("timezones") == set()
+    assert "timezones" not in catalog._static_route_tokens_cache
+
+    api.get_bytes = AsyncMock(return_value=b"PARAM_177")
+    assert await catalog.discover_static_route_tokens("timezones") == {"PARAM_177"}
+    assert api.get_bytes.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_index_clears_static_route_tokens_cache() -> None:
+    """Index refresh invalidates cached static-route token lookups."""
+    api = AsyncMock()
+    api.get_bytes = AsyncMock(return_value=b'const x=()=>import("./module.menu-ABC.js");')
+    catalog = LiveAssetsCatalog(api)
+    catalog._static_route_tokens_cache["timezones"] = {"PARAM_OLD"}
+    await catalog.refresh_index("https://example/assets/index-NEW.js", allow_recover=False)
+    assert catalog._static_route_tokens_cache == {}
 
 
 @pytest.mark.asyncio
@@ -363,11 +379,21 @@ def test_route_visibility_dependency_keys_skips_non_list_status() -> None:
     assert ParamResolver.route_visibility_dependency_keys(route) == set()
 
 
-def test_route_visibility_dependency_keys_skips_non_digit_ancestor_dropdown() -> None:
-    """Ancestor dropdown markers must be digit strings to become soft deps."""
+def test_route_visibility_dependency_keys_includes_ancestor_param_key_dropdown() -> None:
+    """Ancestor ``displayDropdown`` ParamStore keys are included as flat deps."""
     parent = SimpleNamespace(meta=SimpleNamespace(display_dropdown="P6.v219"))
     route = SimpleNamespace(name="leaf", path="leaf", meta=None)
-    assert ParamResolver.route_visibility_dependency_keys(route, ancestors=(parent,)) == set()
+    assert ParamResolver.route_visibility_dependency_keys(route, ancestors=(parent,)) == {"P6.v219"}
+
+
+def test_route_visibility_dependency_keys_includes_own_param_key_dropdown() -> None:
+    """Route-own ``displayDropdown`` ParamStore keys are visibility deps."""
+    route = SimpleNamespace(
+        name="modules.menu.circulation",
+        path="circulation",
+        meta=SimpleNamespace(parameters=None, display_dropdown="P6.v219"),
+    )
+    assert ParamResolver.route_visibility_dependency_keys(route) == {"P6.v219"}
 
 
 def test_resolve_route_symbols_ignores_empty_static_overlay() -> None:
@@ -515,6 +541,42 @@ def test_panel_route_diagnostics_rejection_branches() -> None:
     assert by_path["hidden"]["reason"].startswith("rejected:route-hidden:")
 
 
+def test_empty_mainmenu_shell_without_symbols_is_rejected() -> None:
+    """Empty MAINMENU shells must not emit panels or be accepted without tokens."""
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "timezones",
+                    "name": "MAINMENU_STREFY_CZASOWE",
+                    "meta": {"displayName": "MAINMENU_STREFY_CZASOWE", "displayDropdown": "!![]"},
+                }
+            ]
+        }
+    )
+    routes_i18n = {"MAINMENU_STREFY_CZASOWE": "Strefy czasowe"}
+    groups = ParamResolver.build_panel_groups_from_menu(
+        menu,
+        all_panels=True,
+        web_ui_only=True,
+        routes_i18n=routes_i18n,
+    )
+    assert "Strefy czasowe" not in groups
+    assert groups == {}
+
+    diagnostics = ParamResolver.panel_route_diagnostics_from_menu(
+        menu,
+        all_panels=True,
+        web_ui_only=True,
+        routes_i18n=routes_i18n,
+    )
+    assert len(diagnostics) == 1
+    row = diagnostics[0]
+    assert row["accepted"] is False
+    assert row["reason"] == "rejected:no-symbols"
+    assert row["panel_shell"] is True
+
+
 def test_panel_route_diagnostics_non_all_panels_rejects_hidden_route() -> None:
     """Legacy boiler/DHW grouping still honors route visibility diagnostics."""
     menu = MenuResult.model_validate(
@@ -581,8 +643,8 @@ async def test_static_route_symbols_for_menu_skips_non_shell_and_dedupes() -> No
 
 
 @pytest.mark.asyncio
-async def test_static_route_symbols_for_menu_swallows_fetch_errors() -> None:
-    """Asset fetch failures leave the overlay empty without aborting discovery."""
+async def test_static_route_symbols_for_menu_swallows_fetch_errors(caplog: pytest.LogCaptureFixture) -> None:
+    """Asset fetch failures leave the overlay empty and log the discovery failure."""
     menu = MenuResult.model_validate(
         {
             "routes": [
@@ -598,7 +660,9 @@ async def test_static_route_symbols_for_menu_swallows_fetch_errors() -> None:
     assets.discover_static_route_tokens = AsyncMock(side_effect=RuntimeError("offline"))
     store = SimpleNamespace(flatten=lambda: {})
     resolver = ParamResolver(store=store, assets=assets)  # type: ignore[arg-type]
-    assert await resolver._static_route_symbols_for_menu(menu) == {}
+    with caplog.at_level("ERROR", logger="pybragerone.models.param_resolver"):
+        assert await resolver._static_route_symbols_for_menu(menu) == {}
+    assert "Static route token discovery failed for timezones" in caplog.text
 
 
 @pytest.mark.asyncio

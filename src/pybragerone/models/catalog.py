@@ -1284,6 +1284,7 @@ class LiveAssetsCatalog:
             raise
         self._last_index_url = index_url  # Store for i18n URL construction
         self._idx = self._build_asset_index_from_index_js(index_url, code)
+        self._static_route_tokens_cache.clear()
         self._units_descriptor_table = None
         self._index_token_raw_maps = None
         self._index_token_raw_maps_sig = None
@@ -1518,6 +1519,8 @@ class LiveAssetsCatalog:
                     tokens = self._extract_public_tokens_from_js(code)
                 except Exception as exc:
                     self._log.debug("Static route asset fetch failed for %s: %s", path_key, exc)
+                    # Transient fetch failures must not poison the cache.
+                    return set()
 
         self._static_route_tokens_cache[path_key] = tokens
         return set(tokens)

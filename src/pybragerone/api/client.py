@@ -510,8 +510,8 @@ class BragerOneApiClient:
 
         Used by zombie-session recovery when reconnecting with the existing
         (still-valid) access token fails to restore live WS ``ParamUpdate`` traffic.
-        Persisted tokens are skipped for this cycle so a stale store cannot undo the
-        invalidation.
+        The persisted store is cleared so a later failed/skipped login cannot reload
+        the wedged token.
 
         Args:
             email: Optional email override for the login call.
@@ -523,6 +523,9 @@ class BragerOneApiClient:
         async with self._auth_lock:
             self._token = None
             self._validated = False
+            if self._token_clearer:
+                with contextlib.suppress(Exception):
+                    self._token_clearer()
             self._skip_load_once = True
         return await self.ensure_auth(email, password)
 

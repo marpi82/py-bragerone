@@ -179,6 +179,47 @@ async def test_invalidate_and_reauth_forces_login(httpx_mock: HTTPXMock) -> None
 
 @pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
 @pytest.mark.asyncio
+async def test_invalidate_and_reauth_clears_token_store(httpx_mock: HTTPXMock) -> None:
+    """invalidate_and_reauth clears the persisted store before re-login.
+
+    If the forced login fails after clearing, ``load()`` stays empty so a later
+    recovery cycle cannot reload the wedged token.
+    """
+    store = _TestTokenStore()
+    client = BragerOneApiClient(
+        token_store=store,
+        creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD),
+        validate_on_start=False,
+    )
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T1"})
+    await client.ensure_auth()
+    saved = store.load()
+    assert saved is not None
+    assert saved.access_token == "T1"
+
+    httpx_mock.add_response(
+        method="POST",
+        url=f"{API}/v1/auth/user",
+        status_code=401,
+        json={"message": "bad credentials"},
+    )
+    with pytest.raises(ApiError):
+        await client.invalidate_and_reauth()
+
+    assert client._token is None
+    assert store.load() is None
+
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T2"})
+    tok = await client.ensure_auth()
+    assert tok.access_token == "T2"
+    saved_again = store.load()
+    assert saved_again is not None
+    assert saved_again.access_token == "T2"
+    await client.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
 async def test_invalidate_and_reauth_accepts_explicit_credentials(httpx_mock: HTTPXMock) -> None:
     """Explicit email/password overrides are forwarded to the forced login."""
     client = BragerOneApiClient(validate_on_start=False)

@@ -1,4 +1,4 @@
-"""Probe live module menu routes and panel inclusion diagnostics (#192).
+"""Probe live module menu routes and panel inclusion diagnostics (marpi82/ha-bragerone#192).
 
 Logs into BragerOne with ``PYBO_*`` credentials, primes parameters, and dumps
 per-route diagnostics for ``build_panel_groups`` / ``panel_route_diagnostics``.
@@ -96,30 +96,35 @@ async def probe(
     """Authenticate and return per-module menu route probe payload."""
     server = server_for(platform)
     client = BragerOneApiClient(server=server, creds_provider=lambda: (email, password), validate_on_start=False)
-    store = ParamStore()
     filter_re = re.compile(filter_text, re.IGNORECASE) if filter_text else _ROUTE_FILTER_RE
 
     try:
         await client.ensure_auth(email, password)
         catalog = LiveAssetsCatalog(client)
-        resolver = ParamResolver.from_api(api=client, store=store, lang=lang)
 
         mods = await client.get_modules(object_id)
         if not mods:
-            raise SystemExit("No modules matched PYBO_MODULES filter.")
+            raise SystemExit("get_modules returned no modules for this object.")
 
-        prime = await client.modules_parameters_prime([m.devid for m in mods], return_data=True)
-        if isinstance(prime, tuple) and len(prime) == 2:
-            st, data = prime[0], prime[1]
-            if st in (200, 204) and isinstance(data, dict):
-                store.ingest_prime_payload(data)
+        if modules:
+            wanted = set(modules)
+            mods = [m for m in mods if m.devid in wanted]
+            if not mods:
+                raise SystemExit("No modules matched PYBO_MODULES filter (devid).")
 
-        flat_values = store.flatten()
         out_modules: dict[str, Any] = {}
 
         for mod in mods:
-            if modules and mod.name not in modules:
-                continue
+            store = ParamStore()
+            resolver = ParamResolver.from_api(api=client, store=store, lang=lang)
+
+            prime = await client.modules_parameters_prime([mod.devid], return_data=True)
+            if isinstance(prime, tuple) and len(prime) == 2:
+                st, data = prime[0], prime[1]
+                if st in (200, 204) and isinstance(data, dict):
+                    store.ingest_prime_payload(data)
+
+            flat_values = store.flatten()
             perms = [str(p) for p in getattr(mod, "permissions", []) or []]
             menu = await catalog.get_module_menu(device_menu=mod.deviceMenu, permissions=perms)
             routes_i18n = await resolver._panel_title_i18n(menu)
@@ -216,7 +221,7 @@ async def probe(
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint."""
-    parser = argparse.ArgumentParser(description="Probe live BragerOne menu routes (#192).")
+    parser = argparse.ArgumentParser(description="Probe live BragerOne menu routes (marpi82/ha-bragerone#192).")
     parser.add_argument("--lang", default=os.environ.get("PYBO_LANG", "pl"))
     parser.add_argument("--platform", default=os.environ.get("PYBO_PLATFORM", Platform.BRAGERONE.value))
     parser.add_argument(
