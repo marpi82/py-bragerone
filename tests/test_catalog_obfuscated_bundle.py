@@ -852,6 +852,25 @@ def test_logical_and_short_circuits_falsy_left_operand() -> None:
     assert _node_to_python(code, node) is None
 
 
+def test_logical_ops_preserve_expression_when_left_is_unbound_identifier() -> None:
+    """Unbound identifier leftovers must not short-circuit as truthy/falsy strings."""
+    catalog = _catalog()
+    or_code = b"const x = unknown || fallback;"
+    or_tree = catalog._ts.parse(or_code)
+    or_node = next(n for n in _walk(or_tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(or_code, or_node) == "unknown || fallback"
+
+    and_code = b"const x = unknown && fallback;"
+    and_tree = catalog._ts.parse(and_code)
+    and_node = next(n for n in _walk(and_tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(and_code, and_node) == "unknown && fallback"
+
+    bound_code = b"const x = known || fallback;"
+    bound_tree = catalog._ts.parse(bound_code)
+    bound_node = next(n for n in _walk(bound_tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(bound_code, bound_node, {"known": ""}) == "fallback"
+
+
 def test_optional_chain_missing_key_on_bound_mapping_returns_none() -> None:
     """``obj?.['missing']`` on a non-nullish mapping without the key is undefined."""
     catalog = _catalog()

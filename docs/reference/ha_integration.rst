@@ -124,9 +124,11 @@ Hard reconnect, transport recycle, and manager rebuild each attempt a fresh logi
 before proceeding when credentials are available; token-only gateway clients (no
 ``creds_provider``) keep the existing access token instead of clearing it.
 Transport recycle and manager rebuild then apply an exponential recovery cooldown
-(REST primes continue); hard reconnect does not arm cooldown.
+(REST primes continue). A **successful** hard reconnect does not arm cooldown; when
+hard reconnect aborts because forced re-login failed, cooldown **is** armed so the
+poll loop does not thrash.
 A subscribed module returning online while still zombie clears the cooldown and
-triggers recovery immediately. Recovery is skipped
+triggers recovery immediately (failed auth/resubscribe re-arms cooldown). Recovery is skipped
 while every subscribed module is known offline. Numeric
 event ``22`` (``SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED``) also triggers a
 per-module REST prime. ``BragerOneGateway.last_param_update_age_s()`` returns that gap for

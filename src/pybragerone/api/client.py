@@ -522,6 +522,22 @@ class BragerOneApiClient:
             # 3) no token → login (credentials from args or provider)
             return await self._login_unlocked(email, password)
 
+    async def _run_token_store_io(self, func: Callable[..., None], /, *args: Any) -> None:
+        """Run token-store I/O off the loop; finish even if the await is cancelled.
+
+        ``asyncio.to_thread`` workers are not cancelled with the awaiting task. If
+        ``_auth_lock`` were released while ``clear``/``save`` still runs, a concurrent
+        ``ensure_auth`` could interleave and leave a stale persisted token. Shield the
+        worker and wait it out before propagating ``CancelledError``.
+        """
+        worker = asyncio.create_task(asyncio.to_thread(func, *args))
+        try:
+            await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            with contextlib.suppress(Exception):
+                await worker
+            raise
+
     async def invalidate_and_reauth(self, email: str | None = None, password: str | None = None) -> Token:
         """Drop the cached token and force a fresh login.
 
@@ -561,7 +577,7 @@ class BragerOneApiClient:
             self._validated = False
             self._skip_load_once = True
             if self._token_clearer:
-                await asyncio.to_thread(self._token_clearer)
+                await self._run_token_store_io(self._token_clearer)
             # Do not call ``ensure_auth`` here — the lock is non-reentrant.
             return await self._login_unlocked(em, pw)
 
@@ -657,7 +673,7 @@ class BragerOneApiClient:
             if self._token_saver:
                 saver = self._token_saver
                 with contextlib.suppress(Exception):
-                    await asyncio.to_thread(saver, tok)
+                    await self._run_token_store_io(saver, tok)
             return tok
 
         # practically won't reach here, but for safety:

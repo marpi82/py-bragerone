@@ -61,9 +61,11 @@ Best Practices
   and manager rebuild) attempts a fresh login first when credentials are available;
   without a ``creds_provider`` or explicit login args the gateway keeps the current
   access token so reconnect is not left unauthenticated. Transport recycle and
-  manager rebuild then back off with an exponential cooldown (REST primes continue);
-  hard reconnect does not arm cooldown. If a subscribed module returns online while
-  still zombie, cooldown is cleared and recovery runs immediately. Recovery is
+  manager rebuild then back off with an exponential cooldown (REST primes continue).
+  A successful hard reconnect does not arm cooldown; an aborted hard reconnect
+  (forced re-login failed) does arm cooldown to avoid thrash. If a subscribed module
+  returns online while still zombie, cooldown is cleared and recovery runs immediately
+  (failed auth/resubscribe re-arms cooldown). Recovery is
   skipped while every subscribed module is known offline.
   Numeric Socket.IO event ``22`` (``SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED``)
   also REST-primes that module. ``last_param_update_age_s()`` and

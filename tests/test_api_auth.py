@@ -406,6 +406,50 @@ async def test_invalidate_and_reauth_clearer_runs_off_event_loop(httpx_mock: HTT
     await client.close()
 
 
+@pytest.mark.httpx_mock(assert_all_responses_were_requested=False)
+@pytest.mark.asyncio
+async def test_token_store_io_waits_out_cancellation(httpx_mock: HTTPXMock) -> None:
+    """Cancelled token-store I/O must finish before the auth lock is released."""
+    import threading
+
+    started = threading.Event()
+    finished = threading.Event()
+    release = threading.Event()
+
+    class _SlowClearStore(_TestTokenStore):
+        def clear(self) -> None:
+            started.set()
+            assert release.wait(timeout=2.0)
+            super().clear()
+            finished.set()
+
+    store = _SlowClearStore()
+    client = BragerOneApiClient(
+        token_store=store,
+        creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD),
+        validate_on_start=False,
+    )
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T1"})
+    await client.ensure_auth()
+
+    task = asyncio.create_task(client.invalidate_and_reauth())
+    for _ in range(200):
+        if started.is_set():
+            break
+        await asyncio.sleep(0.01)
+    assert started.is_set()
+    task.cancel()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    for _ in range(200):
+        if finished.is_set():
+            break
+        await asyncio.sleep(0.01)
+    assert finished.is_set()
+    await client.close()
+
+
 @pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
 @pytest.mark.asyncio
 async def test_post_login_token_saver_runs_off_event_loop(httpx_mock: HTTPXMock) -> None:
