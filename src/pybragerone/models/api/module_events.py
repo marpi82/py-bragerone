@@ -34,9 +34,9 @@ class ModuleActivity(BaseModel):
 
     Live ``POST /v1/modules/activity`` rows typically include:
 
-    - ``prevValue`` (camelCase): scalar previous value — mapped to ``prev_value``
-    - ``prev_value`` (snake_case): nested param snapshot ``{P*: {n: {v, u}}}`` — kept in
-      ``model_extra`` when both keys are present
+    - ``prevValue`` (camelCase): scalar previous value — :attr:`previous_value`
+    - ``prev_value`` (snake_case): nested param snapshot ``{P*: {n: {v, u}}}`` —
+      :attr:`prev_value_snapshot` (distinct from the camelCase scalar)
     - ``user``: either a username string or :class:`ModuleActivityUser`
     """
 
@@ -48,7 +48,12 @@ class ModuleActivity(BaseModel):
     name: str = ""
     unit: int | None = None
     value: JsonValue = None
-    prev_value: JsonValue = Field(default=None, validation_alias="prevValue")
+    previous_value: JsonValue = Field(default=None, validation_alias="prevValue", serialization_alias="prevValue")
+    prev_value_snapshot: JsonValue = Field(
+        default=None,
+        validation_alias="prev_value",
+        serialization_alias="prev_value",
+    )
     state: str = ""
     created_at: str | None = None
     user: ModuleActivityUser | str | None = None

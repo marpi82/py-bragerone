@@ -171,12 +171,28 @@ def test_module_alarm_activity_dto_aliases() -> None:
             "user": {"name": "u", "id": 9},
         }
     )
-    assert activity.prev_value == 2
+    assert activity.previous_value == 2
+    assert activity.prev_value_snapshot == {"P6": {"219": {"v": 2, "u": 38}}}
     assert isinstance(activity.user, ModuleActivityUser)
     assert activity.user.id == 9
     assert activity.user.name == "u"
-    assert activity.model_extra is not None
-    assert activity.model_extra.get("prev_value") == {"P6": {"219": {"v": 2, "u": 38}}}
+
+
+def test_module_activity_prev_value_keys_are_distinct() -> None:
+    """CamelCase ``prevValue`` and snake-case ``prev_value`` must not collide."""
+    scalar_only = ModuleActivity.model_validate({"id": 1, "prevValue": 9})
+    assert scalar_only.previous_value == 9
+    assert scalar_only.prev_value_snapshot is None
+
+    snapshot_only = ModuleActivity.model_validate({"id": 2, "prev_value": {"P1": {"1": {"v": 3}}}})
+    assert snapshot_only.previous_value is None
+    assert snapshot_only.prev_value_snapshot == {"P1": {"1": {"v": 3}}}
+
+    dumped = ModuleActivity.model_validate({"id": 3, "prevValue": 1, "prev_value": {"P1": {"1": {"v": 2}}}}).model_dump(
+        by_alias=True
+    )
+    assert dumped["prevValue"] == 1
+    assert dumped["prev_value"] == {"P1": {"1": {"v": 2}}}
 
 
 def test_module_activity_user_accepts_string_or_object() -> None:

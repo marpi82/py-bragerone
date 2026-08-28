@@ -7,6 +7,16 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Added
+
+- Module alarm / activity REST helpers (``modules_alarms``, ``modules_alarms_history``,
+  ``modules_alarms_quantity``, ``modules_activity``) and DTOs
+  (:class:`~pybragerone.models.api.ModuleAlarm`,
+  :class:`~pybragerone.models.api.ModuleActivity`).
+- Static menu-shell discovery (``LiveAssetsCatalog.discover_static_route_tokens``,
+  ``ParamResolver`` panel overlays) for SPA routes such as
+  ``MAINMENU_STREFY_CZASOWE`` / ``timezones`` (ha-bragerone#192).
+
 ### Fixed
 
 - Zombie recovery now **forces** a fresh login before hard reconnect, transport recycle,
@@ -20,7 +30,10 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 - ``discover_static_route_tokens`` drops stale symbols when the asset index refreshes
   during fetch or token extraction.
 - Module-online zombie recovery during cooldown resubscribes instead of forcing an
-  immediate full rebuild; forced re-login failures abort WS recovery steps.
+  immediate full rebuild; forced re-login failures abort WS recovery steps and re-arm
+  cooldown so the poll loop does not thrash.
+- Obfuscated SPA ``minValue`` / ``maxValue`` optional-chain fallbacks
+  (``_0x?.['minValue'] || […]``) resolve correctly for catalog paths (#329).
 
 ## [2026.8.9] - 2026-08-26
 

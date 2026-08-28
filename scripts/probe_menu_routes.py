@@ -133,7 +133,7 @@ async def probe(
 
         for mod in mods:
             store = ParamStore()
-            resolver = ParamResolver.from_api(api=client, store=store, lang=lang)
+            resolver = ParamResolver(store=store, assets=catalog, lang=lang)
 
             prime = await client.modules_parameters_prime([mod.devid], return_data=True)
             if isinstance(prime, tuple) and len(prime) == 2:

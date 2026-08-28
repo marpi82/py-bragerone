@@ -1036,8 +1036,13 @@ class BragerOneGateway:
                 )
                 if not await self._force_fresh_auth():
                     LOG.warning("Module-online recovery skipped: no usable token after forced re-login")
+                    self._arm_zombie_recovery_cooldown()
                     return
-                await self.resubscribe()
+                try:
+                    await self.resubscribe()
+                except Exception:
+                    self._arm_zombie_recovery_cooldown()
+                    raise
                 return
 
             LOG.warning(
