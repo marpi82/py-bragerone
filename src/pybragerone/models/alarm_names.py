@@ -88,5 +88,5 @@ def resolve_alarm_label(
         return None
     value = errors_i18n.get(key)
     if isinstance(value, str) and value.strip():
-        return value.strip()
+        return value
     return None

@@ -7,6 +7,14 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Fixed
+
+- Zombie recovery now **forces** a fresh login before hard reconnect, transport recycle,
+  and ``RealtimeManager`` rebuild (reuse of a still-valid access token was not restoring
+  live WS traffic), and clears the recovery cooldown when a subscribed module flips back
+  online during a zombie so the push stream is rebound immediately instead of waiting out
+  the backoff window.
+
 ## [2026.8.9] - 2026-08-26
 
 ### Changed
@@ -25,11 +33,6 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
-- Zombie recovery now **forces** a fresh login before hard reconnect, transport recycle,
-  and ``RealtimeManager`` rebuild (reuse of a still-valid access token was not restoring
-  live WS traffic), and clears the recovery cooldown when a subscribed module flips back
-  online during a zombie so the push stream is rebound immediately instead of waiting out
-  the backoff window.
 - Zombie recovery no longer thrashing forever when hard reconnect + recycle fail
   to restore live WS ``ParamUpdate`` traffic: ``force_reconnect`` waits for the
   namespace join before ``resubscribe``; recycle replaces the Socket.IO client via

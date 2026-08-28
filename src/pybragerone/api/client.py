@@ -474,8 +474,7 @@ class BragerOneApiClient:
         em = email
         pw = password
         if (not em or not pw) and self._creds_provider:
-            with contextlib.suppress(Exception):
-                em, pw = self._creds_provider()
+            em, pw = self._creds_provider()
         return em, pw
 
     async def ensure_auth(self, email: str | None = None, password: str | None = None) -> Token:

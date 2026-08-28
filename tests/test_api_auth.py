@@ -190,6 +190,21 @@ async def test_invalidate_and_reauth_without_creds_preserves_token() -> None:
 
 
 @pytest.mark.asyncio
+async def test_invalidate_and_reauth_propagates_creds_provider_errors() -> None:
+    """A broken ``creds_provider`` must not be treated as missing credentials."""
+    client = BragerOneApiClient(
+        creds_provider=lambda: (_ for _ in ()).throw(RuntimeError("keyring offline")),
+        validate_on_start=False,
+    )
+    client._token = Token(access_token="keep-me")
+    with pytest.raises(RuntimeError, match="keyring offline"):
+        await client.invalidate_and_reauth()
+    assert client._token is not None
+    assert client._token.access_token == "keep-me"
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_invalidate_and_reauth_without_creds_or_token_raises() -> None:
     """Without credentials and without a usable token, invalidate raises ApiError."""
     client = BragerOneApiClient(validate_on_start=False)

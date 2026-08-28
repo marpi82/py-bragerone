@@ -120,9 +120,11 @@ anyway; after two consecutive zombie primes it forces a hard Socket.IO restart
 (SPA parity: ``connect`` → ``ModulesService.connect`` + REST parameters), **awaiting**
 namespace join + ``resubscribe()`` so module binding completes. After repeated failed
 hard restarts it hard-resets the Socket.IO client, then rebuilds ``RealtimeManager``.
-Hard reconnect, transport recycle, and manager rebuild each force a fresh login
-before proceeding. Transport recycle and manager rebuild then apply an exponential
-recovery cooldown (REST primes continue); hard reconnect does not arm cooldown.
+Hard reconnect, transport recycle, and manager rebuild each attempt a fresh login
+before proceeding when credentials are available; token-only gateway clients (no
+``creds_provider``) keep the existing access token instead of clearing it.
+Transport recycle and manager rebuild then apply an exponential recovery cooldown
+(REST primes continue); hard reconnect does not arm cooldown.
 A subscribed module returning online while still zombie clears the cooldown and
 triggers recovery immediately. Recovery is skipped
 while every subscribed module is known offline. Numeric

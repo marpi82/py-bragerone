@@ -142,6 +142,13 @@ def test_resolve_alarm_label_uses_errors_i18n() -> None:
     assert resolve_alarm_label(38, alarm_names=names, errors_i18n={"ERROR_BRAK_PALIWA": 42}) is None
 
 
+def test_resolve_alarm_label_preserves_i18n_whitespace() -> None:
+    """Whitespace in catalog i18n values is returned byte-for-byte (strip only gates emptiness)."""
+    names = {38: "ERROR_BRAK_PALIWA"}
+    label = " Brak paliwa "
+    assert resolve_alarm_label(38, alarm_names=names, errors_i18n={"ERROR_BRAK_PALIWA": label}) == label
+
+
 def test_module_alarm_activity_dto_aliases() -> None:
     """DTOs accept SPA field aliases without dropping extras."""
     alarm = ModuleAlarm.model_validate({"id": 38, "devid": "D1", "created_at": "t0", "extra": 1})
@@ -167,12 +174,12 @@ def test_module_alarm_activity_dto_aliases() -> None:
 
 def test_module_activity_user_accepts_string_or_object() -> None:
     """``user`` may be a legacy username string or a ``{id, name}`` object."""
-    as_string = ModuleActivity.model_validate({"id": 1, "user": "marpi82", "state": "success"})
-    assert as_string.user == "marpi82"
+    as_string = ModuleActivity.model_validate({"id": 1, "user": "test-user", "state": "success"})
+    assert as_string.user == "test-user"
 
-    as_object = ModuleActivity.model_validate({"id": 2, "user": {"id": 861, "name": "marpi82"}, "state": "success"})
+    as_object = ModuleActivity.model_validate({"id": 2, "user": {"id": 861, "name": "test-user"}, "state": "success"})
     assert isinstance(as_object.user, ModuleActivityUser)
-    assert as_object.user.model_dump() == {"id": 861, "name": "marpi82"}
+    assert as_object.user.model_dump() == {"id": 861, "name": "test-user"}
 
 
 @pytest.mark.asyncio
