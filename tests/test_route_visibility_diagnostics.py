@@ -491,6 +491,31 @@ async def test_discover_static_route_tokens_skips_stale_cache_on_index_refresh()
 
 
 @pytest.mark.asyncio
+async def test_discover_static_route_tokens_skips_cache_when_index_refreshes_before_write() -> None:
+    """Index refresh after token extraction must not repopulate the cache."""
+    api = AsyncMock()
+    api.get_bytes = AsyncMock(return_value=b"PARAM_LATE")
+    catalog = LiveAssetsCatalog(api)
+    catalog._idx = AssetIndex(
+        static_route_map={"timezones": "timezones"},
+        assets_by_basename={"timezones": [AssetRef(url="https://example/tz.js", base="timezones", hash="x")]},
+        index_bytes=b"loaded",
+    )
+    original_extract = catalog._extract_public_tokens_from_js
+
+    def extract_then_refresh(code: bytes) -> set[str]:
+        tokens = original_extract(code)
+        catalog._index_generation += 1
+        catalog._static_route_tokens_cache.clear()
+        return tokens
+
+    catalog._extract_public_tokens_from_js = extract_then_refresh  # type: ignore[method-assign]
+
+    assert await catalog.discover_static_route_tokens("timezones") == {"PARAM_LATE"}
+    assert "timezones" not in catalog._static_route_tokens_cache
+
+
+@pytest.mark.asyncio
 async def test_refresh_index_clears_static_route_tokens_cache() -> None:
     """Index refresh invalidates cached static-route token lookups."""
     api = AsyncMock()
