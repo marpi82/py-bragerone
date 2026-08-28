@@ -1731,6 +1731,44 @@ async def test_gateway_recovers_when_module_comes_online_during_zombie(
     await gw.stop()
 
 
+async def test_gateway_module_online_recovery_skips_when_auth_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Cooldown-clearing module-online recovery must abort when forced re-login fails."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=1,
+        zombie_recovery_cooldown_s=1800,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    gw._zombie_recovery_cooldown_until = time.monotonic() + 1800.0
+    resub_calls = {"n": 0}
+
+    async def _failed_auth() -> bool:
+        return False
+
+    async def _track_resubscribe() -> None:
+        resub_calls["n"] += 1
+
+    gw._force_fresh_auth = _failed_auth  # type: ignore[method-assign]
+    gw.resubscribe = _track_resubscribe  # type: ignore[method-assign]
+    with caplog.at_level("WARNING"):
+        await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=123)
+        assert "Module-online recovery skipped: no usable token" in caplog.text
+    assert resub_calls["n"] == 0
+    await gw.stop()
+
+
 async def test_gateway_module_online_recovery_skips_when_not_zombie() -> None:
     """Fresh live traffic must not trigger module-online rebuild."""
     api = FakeApiClient()

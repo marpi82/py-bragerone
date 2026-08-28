@@ -1539,8 +1539,8 @@ class LiveAssetsCatalog:
                     # Transient fetch failures must not poison the cache.
                     return set()
 
-        if generation == self._index_generation:
-            self._static_route_tokens_cache[path_key] = tokens
+        # Generation mismatches return above; reaching here means this index is still current.
+        self._static_route_tokens_cache[path_key] = tokens
         return set(tokens)
 
     # ---------- MENU ----------

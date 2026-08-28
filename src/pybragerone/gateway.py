@@ -793,15 +793,11 @@ class BragerOneGateway:
             rest_prime_streak,
             self._zombie_hard_restart_streak,
         )
-        try:
-            # Soft reconnect alone left wedged cloud push sessions in field logs;
-            # force a fresh login before reconnecting (same as recycle/rebuild).
-            if not await self._force_fresh_auth():
-                LOG.warning("Aborting WS hard reconnect: no usable token after forced re-login")
-                self._arm_zombie_recovery_cooldown()
-                return
-        except Exception:
-            LOG.exception("Token refresh during WS hard reconnect failed")
+        # Soft reconnect alone left wedged cloud push sessions in field logs;
+        # force a fresh login before reconnecting (same as recycle/rebuild).
+        # ``_force_fresh_auth`` never raises — failures return ``False``.
+        if not await self._force_fresh_auth():
+            LOG.warning("Aborting WS hard reconnect: no usable token after forced re-login")
             self._arm_zombie_recovery_cooldown()
             return
         try:
