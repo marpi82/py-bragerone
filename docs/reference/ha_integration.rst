@@ -175,6 +175,16 @@ parameter tokens from ``deviceMenu/static/<path>.ts`` chunks referenced in
 ``build_panel_groups`` with a primed ``ParamStore`` so overlays are resolved
 automatically).
 
+The Home Assistant integration caches entity descriptors in the config entry;
+after upgrading to a release that adds static-route overlays, users must
+**reconfigure or reload** the integration so ``ha-bragerone`` re-runs bootstrap
+(its ``BOOTSTRAP_VERSION`` gate invalidates stale descriptor caches). Upgrading
+``py-bragerone`` alone does not rewrite existing HA entity registries.
+
+``build_panel_groups(..., web_ui_only=False)`` keeps permission/module-item based
+grouping and does **not** apply SPA ``displayDropdown`` gates; pass
+``web_ui_only=True`` (and primed ``flat_values``) for everyday web-UI parity.
+
 .. code-block:: python
 
    # Recommended unique_id format for HA entities

@@ -511,8 +511,34 @@ async def test_discover_static_route_tokens_skips_cache_when_index_refreshes_bef
 
     catalog._extract_public_tokens_from_js = extract_then_refresh  # type: ignore[method-assign]
 
-    assert await catalog.discover_static_route_tokens("timezones") == {"PARAM_LATE"}
+    assert await catalog.discover_static_route_tokens("timezones") == set()
     assert "timezones" not in catalog._static_route_tokens_cache
+
+
+def test_build_panel_groups_all_panels_keeps_dropdown_route_when_not_web_ui() -> None:
+    """``web_ui_only=False`` must not drop routes hidden only by SPA ``displayDropdown``."""
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "circulation",
+                    "name": "modules.menu.circulation",
+                    "meta": {
+                        "displayName": "Cyrkulacja",
+                        "displayDropdown": "P6.v219",
+                        "parameters": {"read": [{"parameter": "E(A.READ,'PARAM_219')"}]},
+                    },
+                }
+            ]
+        }
+    )
+    groups = ParamResolver.build_panel_groups_from_menu(
+        menu,
+        all_panels=True,
+        web_ui_only=False,
+        flat_values={"P6.v219": 0},
+    )
+    assert any("PARAM_219" in symbols for symbols in groups.values())
 
 
 @pytest.mark.asyncio

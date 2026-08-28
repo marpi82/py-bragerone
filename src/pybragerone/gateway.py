@@ -51,7 +51,8 @@ _MAX_ZOMBIE_RECOVERY_COOLDOWN_S = 1800.0
 # How long ``resubscribe`` waits for a namespace SID after reconnect.
 _RESUBSCRIBE_SID_WAIT_S = 2.0
 # Debounce module-online → zombie recovery so one get_modules pass cannot rebuild twice.
-_MODULE_ONLINE_RECOVERY_DEBOUNCE_S = 60.0
+# Strictly above the default connectivity poll interval (60s).
+_MODULE_ONLINE_RECOVERY_DEBOUNCE_S = 90.0
 
 ConnectivitySource = Literal["rest", "ws", "derived"]
 CloudSessionSource = Literal["connect", "disconnect", "stop"]
@@ -574,19 +575,27 @@ class BragerOneGateway:
         await api.ensure_auth()
         return api.access_token
 
-    async def _force_fresh_auth(self) -> str:
+    async def _force_fresh_auth(self) -> bool:
         """Force a full re-login so WS recovery does not reuse a wedged cloud session.
 
         Delegates to ``BragerOneApiClient.invalidate_and_reauth``, which preflights
         credentials before clearing state. Without email/password (args or
         ``creds_provider``), the client keeps a usable token rather than wiping it
         and leaving reconnect unauthenticated.
+
+        Returns:
+            ``True`` when a usable access token is available after the attempt.
         """
         api = self.api
-        if isinstance(api, BragerOneApiClient):
-            await api.invalidate_and_reauth()
-            return api.access_token
-        return await self._fresh_ws_token()
+        try:
+            if isinstance(api, BragerOneApiClient):
+                tok = await api.invalidate_and_reauth()
+                return bool(tok.access_token)
+            await self._fresh_ws_token()
+            return True
+        except Exception:
+            LOG.exception("Forced fresh auth failed")
+            return False
 
     async def _set_ws_session_up(self, up: bool, *, source: CloudSessionSource) -> None:
         """Update library↔cloud session cache and notify listeners on flips."""
@@ -787,9 +796,14 @@ class BragerOneGateway:
         try:
             # Soft reconnect alone left wedged cloud push sessions in field logs;
             # force a fresh login before reconnecting (same as recycle/rebuild).
-            await self._force_fresh_auth()
+            if not await self._force_fresh_auth():
+                LOG.warning("Aborting WS hard reconnect: no usable token after forced re-login")
+                self._arm_zombie_recovery_cooldown()
+                return
         except Exception:
             LOG.exception("Token refresh during WS hard reconnect failed")
+            self._arm_zombie_recovery_cooldown()
+            return
         try:
             await ws.force_reconnect()
             # ``force_reconnect`` may spawn ``on_connected`` work; await resubscribe so
@@ -818,10 +832,10 @@ class BragerOneGateway:
         )
         self._zombie_hard_restart_streak = 0
         self._zombie_prime_streak = 0
-        try:
-            await self._force_fresh_auth()
-        except Exception:
-            LOG.exception("Token refresh during realtime recycle failed")
+        if not await self._force_fresh_auth():
+            LOG.warning("Aborting realtime recycle: no usable token after forced re-login")
+            self._arm_zombie_recovery_cooldown()
+            return
         if not self._is_running():
             return
         try:
@@ -861,10 +875,10 @@ class BragerOneGateway:
             LOG.exception("WS disconnect during RealtimeManager rebuild failed")
         if not self._is_running():
             return
-        try:
-            await self._force_fresh_auth()
-        except Exception:
-            LOG.exception("Token refresh during RealtimeManager rebuild failed")
+        if not await self._force_fresh_auth():
+            LOG.warning("Aborting RealtimeManager rebuild: no usable token after forced re-login")
+            self._arm_zombie_recovery_cooldown()
+            return
         if not self._is_running():
             return
         try:
@@ -1014,27 +1028,28 @@ class BragerOneGateway:
             return
 
         was_cooling = self._zombie_recovery_in_cooldown()
-        self._zombie_recovery_cooldown_until = None
         self._zombie_module_online_recovery_inflight = True
         self._zombie_last_module_online_recovery_monotonic = time.monotonic()
         try:
+            if was_cooling:
+                self._zombie_recovery_cooldown_until = None
+                LOG.warning(
+                    "Module %s came online while zombie (age=%.0fs, cleared cooldown); resubscribing",
+                    devid,
+                    age,
+                )
+                if not await self._force_fresh_auth():
+                    LOG.warning("Module-online recovery skipped: no usable token after forced re-login")
+                    return
+                await self.resubscribe()
+                return
+
             LOG.warning(
-                "Module %s came online while zombie (age=%.0fs%s); forcing immediate zombie recovery",
+                "Module %s came online while zombie (age=%.0fs); escalating zombie recovery",
                 devid,
                 age,
-                ", cleared cooldown" if was_cooling else "",
             )
-            if self._owns_ws and self._zombie_rebuild_after > 0:
-                self._zombie_recycle_streak = max(self._zombie_recycle_streak, self._zombie_rebuild_after)
-                await self._rebuild_realtime_manager(max(1, self._zombie_prime_streak))
-            elif self._zombie_full_recycle_after > 0:
-                self._zombie_hard_restart_streak = max(
-                    self._zombie_hard_restart_streak,
-                    self._zombie_full_recycle_after,
-                )
-                await self._recycle_realtime_session(max(1, self._zombie_prime_streak))
-            else:
-                await self.resubscribe()
+            await self._recover_zombie_session(max(1, self._zombie_prime_streak))
         except Exception:
             LOG.exception("Zombie recovery after module online failed")
         finally:

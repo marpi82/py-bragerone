@@ -852,6 +852,15 @@ def test_logical_and_short_circuits_falsy_left_operand() -> None:
     assert _node_to_python(code, node) is None
 
 
+def test_optional_chain_missing_key_on_bound_mapping_returns_none() -> None:
+    """``obj?.['missing']`` on a non-nullish mapping without the key is undefined."""
+    catalog = _catalog()
+    code = b"const v=obj?.['MISSING'];"
+    tree = catalog._ts.parse(code)
+    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(code, sub, {"obj": {"OTHER": 1}}) is None
+
+
 def test_optional_chain_nullish_binding_returns_none() -> None:
     """Optional chain on a nullish binding yields undefined, not the public key."""
     catalog = _catalog()

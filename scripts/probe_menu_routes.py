@@ -27,6 +27,17 @@ _ROUTE_FILTER_RE = re.compile(
 )
 
 
+def _maybe_load_dotenv() -> None:
+    """Load ``.env`` from the current working directory when python-dotenv is installed."""
+    try:
+        from dotenv import find_dotenv, load_dotenv
+    except ImportError:
+        return
+    dotenv_path = find_dotenv(usecwd=True)
+    if dotenv_path:
+        load_dotenv(dotenv_path, override=False)
+
+
 def parse_modules(raw: str | None) -> list[str]:
     """Split a comma-separated module filter into sorted unique codes."""
     if not raw:
@@ -233,6 +244,7 @@ async def probe(
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint."""
+    _maybe_load_dotenv()
     parser = argparse.ArgumentParser(description="Probe live BragerOne menu routes (marpi82/ha-bragerone#192).")
     parser.add_argument("--lang", default=os.environ.get("PYBO_LANG", "pl"))
     parser.add_argument("--platform", default=os.environ.get("PYBO_PLATFORM", Platform.BRAGERONE.value))

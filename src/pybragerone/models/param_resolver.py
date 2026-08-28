@@ -1004,15 +1004,18 @@ class ParamResolver:
         """
         routes_meta: list[tuple[str, str, str, set[str], tuple[Any, ...], Any]] = []
         for route, ancestors in cls._iter_routes_with_ancestors(menu.routes):
-            route_visible, _ = cls.route_visibility_diagnostics(
-                route,
-                ancestors=ancestors,
-                flat_values=flat_values,
-                all_panels=all_panels,
-                web_ui_only=web_ui_only,
-            )
-            if not route_visible:
+            if all_panels and not cls._route_allowed_in_module_item(route):
                 continue
+            if web_ui_only:
+                route_visible, _ = cls.route_visibility_diagnostics(
+                    route,
+                    ancestors=ancestors,
+                    flat_values=flat_values,
+                    all_panels=all_panels,
+                    web_ui_only=web_ui_only,
+                )
+                if not route_visible:
+                    continue
             symbols = cls._resolve_route_symbols(route, static_route_symbols=static_route_symbols)
             if symbols:
                 title = cls._route_title(route, routes_i18n=routes_i18n)
@@ -1130,7 +1133,7 @@ class ParamResolver:
                 elif web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
                     accepted = False
                     reason = "rejected:not-web-ui"
-                elif not route_visible:
+                elif web_ui_only and not route_visible:
                     accepted = False
                     reason = f"rejected:route-hidden:{route_vis_reason}"
                 elif not symbols:
@@ -1140,7 +1143,7 @@ class ParamResolver:
                 if web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
                     accepted = False
                     reason = "rejected:not-web-ui"
-                elif not route_visible:
+                elif web_ui_only and not route_visible:
                     accepted = False
                     reason = f"rejected:route-hidden:{route_vis_reason}"
                 elif not symbols:

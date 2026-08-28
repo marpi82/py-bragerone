@@ -1074,7 +1074,7 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
                     if isinstance(obj_val, Mapping) and public in obj_val:
                         return obj_val[public]
                     # Optional chain on a missing / nullish binding → undefined.
-                    if optional and _is_js_nullish(obj_val):
+                    if optional and (_is_js_nullish(obj_val) or isinstance(obj_val, Mapping)):
                         return None
                 if obj_name.startswith("_0x"):
                     # ``_0x?.['minValue']`` with no binding is undefined (SPA fallback
@@ -1532,6 +1532,8 @@ class LiveAssetsCatalog:
                     if generation != self._index_generation:
                         return set()
                     tokens = self._extract_public_tokens_from_js(code)
+                    if generation != self._index_generation:
+                        return set()
                 except Exception as exc:
                     self._log.debug("Static route asset fetch failed for %s: %s", path_key, exc)
                     # Transient fetch failures must not poison the cache.

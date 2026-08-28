@@ -14,6 +14,13 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   live WS traffic), and clears the recovery cooldown when a subscribed module flips back
   online during a zombie so the push stream is rebound immediately instead of waiting out
   the backoff window.
+- ``build_panel_groups(..., web_ui_only=False)`` no longer applies SPA ``displayDropdown``
+  gates (permission/module-item grouping unchanged); UI-only filtering requires
+  ``web_ui_only=True``.
+- ``discover_static_route_tokens`` drops stale symbols when the asset index refreshes
+  during fetch or token extraction.
+- Module-online zombie recovery during cooldown resubscribes instead of forcing an
+  immediate full rebuild; forced re-login failures abort WS recovery steps.
 
 ## [2026.8.9] - 2026-08-26
 
