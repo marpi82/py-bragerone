@@ -14,6 +14,7 @@ import pytest
 
 from pybragerone.models.catalog import AssetIndex, AssetRef, LiveAssetsCatalog, ParamMap
 from pybragerone.models.menu import MenuResult, MenuRoute
+from pybragerone.models.param import ParamStore
 from pybragerone.models.param_resolver import AssetsProtocol, ParamResolver
 
 _FIXTURE = Path(__file__).resolve().parent / "fixtures" / "menu_strefy_czasowe.json"
@@ -187,6 +188,35 @@ def test_build_panel_groups_unprimed_keeps_dropdown_gated_route() -> None:
         flat_values=None,
     )
     assert any("PARAM_1" in symbols for symbols in groups.values())
+
+
+@pytest.mark.asyncio
+async def test_build_panel_groups_empty_store_keeps_dropdown_unprimed() -> None:
+    """Instance API with an empty ParamStore must treat dropdown gates as unprimed."""
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "circulation",
+                    "name": "modules.menu.circulation",
+                    "meta": {
+                        "displayName": "Cyrkulacja",
+                        "displayDropdown": "P6.v219",
+                        "parameters": {"read": [{"parameter": "E(A.READ,'PARAM_1')"}]},
+                    },
+                }
+            ]
+        }
+    )
+    assets = AsyncMock()
+    assets.get_module_menu = AsyncMock(return_value=menu)
+    assets.get_i18n = AsyncMock(return_value={})
+    assets.discover_static_route_tokens = AsyncMock(return_value=set())
+    resolver = ParamResolver(store=ParamStore(), assets=assets, lang="pl")
+    groups = await resolver.build_panel_groups(device_menu=0, all_panels=True, web_ui_only=True)
+    assert any("PARAM_1" in symbols for symbols in groups.values())
+    rows = await resolver.panel_route_diagnostics(device_menu=0, all_panels=True, web_ui_only=True)
+    assert rows[0]["route_visibility_reason"] == "visible:dropdown-unprimed"
 
 
 def test_route_visibility_diagnostics_visible_when_ancestor_and_leaf_true() -> None:

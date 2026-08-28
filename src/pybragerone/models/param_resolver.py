@@ -1205,7 +1205,13 @@ class ParamResolver:
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
         routes_i18n = await self._panel_title_i18n(menu)
         static_route_symbols = await self._static_route_symbols_for_menu(menu)
-        values = flat_values if flat_values is not None else self._store.flatten()
+        if flat_values is not None:
+            values: Mapping[str, Any] | None = flat_values
+        else:
+            # Empty implicit store ≡ unprimed (``None``), so displayDropdown stays
+            # ``visible:dropdown-unprimed``. Callers pass ``{}`` explicitly for missing-key hide.
+            flattened = self._store.flatten()
+            values = flattened if flattened else None
         return self.build_panel_groups_from_menu(
             menu,
             all_panels=all_panels,
@@ -1228,7 +1234,11 @@ class ParamResolver:
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
         routes_i18n = await self._panel_title_i18n(menu)
         static_route_symbols = await self._static_route_symbols_for_menu(menu)
-        values = flat_values if flat_values is not None else self._store.flatten()
+        if flat_values is not None:
+            values: Mapping[str, Any] | None = flat_values
+        else:
+            flattened = self._store.flatten()
+            values = flattened if flattened else None
         return self.panel_route_diagnostics_from_menu(
             menu,
             all_panels=all_panels,

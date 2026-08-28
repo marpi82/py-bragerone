@@ -638,24 +638,31 @@ class BragerOneGateway:
         # Keep last connectedAt; REST poll / reconnect refresh remains authoritative.
         await self._set_ws_session_up(False, source="disconnect")
 
-    async def resubscribe(self) -> None:
-        """Call after WS reconnect to re-bind modules + prime again."""
+    async def resubscribe(self) -> bool:
+        """Call after WS reconnect to re-bind modules + prime again.
+
+        Returns:
+            ``True`` when ``modules.connect`` succeeded and subscribe/prime ran;
+            ``False`` when there is no WS client, no namespace SID, or connect failed.
+        """
         ws = self.ws
         if ws is None:
-            return
+            return False
         sid_ns = await self._wait_for_ws_sid(ws)
         sid_engine = ws.engine_sid()
         if not sid_ns:
             LOG.warning("WS resubscribe skipped: no namespace SID after reconnect")
-            return
+            return False
         ok = await self.api.modules_connect(sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine)
         if ok:
             LOG.info("modules.connect (resub): %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
         else:
             LOG.warning("modules.connect (resub) failed (ns_sid=%s, engine_sid=%s)", sid_ns, sid_engine)
+            return False
         await ws.subscribe(self.modules)
         okp, oka = await self._prime_with_retry()
         LOG.debug("prime after resubscribe: parameters=%s activity=%s", okp, oka)
+        return True
 
     async def _wait_for_ws_sid(self, ws: RealtimeManagerClient, *, timeout_s: float = _RESUBSCRIBE_SID_WAIT_S) -> str | None:
         """Wait briefly for a namespace SID after connect/reconnect."""
@@ -1039,10 +1046,14 @@ class BragerOneGateway:
                     self._arm_zombie_recovery_cooldown()
                     return
                 try:
-                    await self.resubscribe()
+                    rebound = await self.resubscribe()
                 except Exception:
                     self._arm_zombie_recovery_cooldown()
                     raise
+                if not rebound:
+                    LOG.warning("Module-online recovery incomplete: resubscribe did not re-bind modules")
+                    self._arm_zombie_recovery_cooldown()
+                    return
                 return
 
             LOG.warning(

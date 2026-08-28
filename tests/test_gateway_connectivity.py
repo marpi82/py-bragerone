@@ -574,7 +574,7 @@ async def test_gateway_ws_reconnect_and_poll_exception_paths() -> None:
     assert gw.ws_session_up() is False
     gw._started = True
 
-    async def _boom_resubscribe() -> None:
+    async def _boom_resubscribe() -> bool:
         raise RuntimeError("resubscribe failed")
 
     gw.resubscribe = _boom_resubscribe  # type: ignore[method-assign]
@@ -643,9 +643,9 @@ async def test_gateway_reconnect_skips_stale_generation_refresh() -> None:
     await gw.start()
     calls_before = api.get_modules_calls
 
-    async def _slow_resubscribe() -> None:
+    async def _slow_resubscribe() -> bool:
         await gw._on_ws_disconnected()
-        return None
+        return False
 
     gw.resubscribe = _slow_resubscribe  # type: ignore[method-assign]
     await gw._on_ws_connected()
@@ -1326,7 +1326,7 @@ async def test_gateway_resubscribe_skips_without_sid(
     ws.sid = lambda: None  # type: ignore[method-assign]
     connects_after_start = api.modules_connect_calls
     with caplog.at_level("WARNING"):
-        await gw.resubscribe()
+        assert await gw.resubscribe() is False
         assert "no namespace SID after reconnect" in caplog.text
     assert api.modules_connect_calls == connects_after_start
     await gw.stop()
@@ -1352,7 +1352,7 @@ async def test_gateway_resubscribe_warns_when_modules_connect_fails(
 
     api.modules_connect = _fail_connect  # type: ignore[method-assign]
     with caplog.at_level("WARNING"):
-        await gw.resubscribe()
+        assert await gw.resubscribe() is False
         assert "modules.connect (resub) failed" in caplog.text
     await gw.stop()
 
@@ -1714,8 +1714,9 @@ async def test_gateway_recovers_when_module_comes_online_during_zombie(
     gw._zombie_recovery_cooldown_until = time.monotonic() + 1800.0
     resub_calls = {"n": 0}
 
-    async def _track_resubscribe() -> None:
+    async def _track_resubscribe() -> bool:
         resub_calls["n"] += 1
+        return True
 
     gw.resubscribe = _track_resubscribe  # type: ignore[method-assign]
     with caplog.at_level("WARNING"):
@@ -1757,8 +1758,9 @@ async def test_gateway_module_online_recovery_skips_when_auth_fails(
     async def _failed_auth() -> bool:
         return False
 
-    async def _track_resubscribe() -> None:
+    async def _track_resubscribe() -> bool:
         resub_calls["n"] += 1
+        return True
 
     gw._force_fresh_auth = _failed_auth  # type: ignore[method-assign]
     gw.resubscribe = _track_resubscribe  # type: ignore[method-assign]
@@ -1795,7 +1797,7 @@ async def test_gateway_module_online_recovery_rearms_cooldown_when_resubscribe_f
     async def _ok_auth() -> bool:
         return True
 
-    async def _boom_resubscribe() -> None:
+    async def _boom_resubscribe() -> bool:
         raise RuntimeError("resub boom")
 
     gw._force_fresh_auth = _ok_auth  # type: ignore[method-assign]
@@ -1803,6 +1805,43 @@ async def test_gateway_module_online_recovery_rearms_cooldown_when_resubscribe_f
     with caplog.at_level("ERROR"):
         await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=123)
         assert "Zombie recovery after module online failed" in caplog.text
+    assert gw._zombie_recovery_in_cooldown() is True
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_rearms_cooldown_when_resubscribe_incomplete(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Soft resubscribe failure (False) must re-arm cooldown after clearing it."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=1,
+        zombie_recovery_cooldown_s=1800,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    gw._zombie_recovery_cooldown_until = time.monotonic() + 1800.0
+
+    async def _ok_auth() -> bool:
+        return True
+
+    async def _soft_fail_resubscribe() -> bool:
+        return False
+
+    gw._force_fresh_auth = _ok_auth  # type: ignore[method-assign]
+    gw.resubscribe = _soft_fail_resubscribe  # type: ignore[method-assign]
+    with caplog.at_level("WARNING"):
+        await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=123)
+        assert "resubscribe did not re-bind modules" in caplog.text
     assert gw._zombie_recovery_in_cooldown() is True
     await gw.stop()
 

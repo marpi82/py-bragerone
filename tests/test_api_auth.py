@@ -433,19 +433,15 @@ async def test_token_store_io_waits_out_cancellation(httpx_mock: HTTPXMock) -> N
     await client.ensure_auth()
 
     task = asyncio.create_task(client.invalidate_and_reauth())
-    for _ in range(200):
-        if started.is_set():
-            break
-        await asyncio.sleep(0.01)
-    assert started.is_set()
+    assert await asyncio.to_thread(started.wait, 2.0)
     task.cancel()
     release.set()
-    with pytest.raises(asyncio.CancelledError):
+    try:
         await task
-    for _ in range(200):
-        if finished.is_set():
-            break
-        await asyncio.sleep(0.01)
+    except asyncio.CancelledError:
+        pass
+    else:
+        pytest.fail("expected CancelledError from cancelled invalidate_and_reauth")
     assert finished.is_set()
     await client.close()
 

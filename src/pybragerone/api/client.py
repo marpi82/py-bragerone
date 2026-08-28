@@ -534,8 +534,10 @@ class BragerOneApiClient:
         try:
             await asyncio.shield(worker)
         except asyncio.CancelledError:
-            with contextlib.suppress(Exception):
+            try:
                 await worker
+            except Exception as exc:
+                LOG.debug("Token-store I/O failed while unwinding cancellation: %s", exc)
             raise
 
     async def invalidate_and_reauth(self, email: str | None = None, password: str | None = None) -> Token:
