@@ -11,8 +11,10 @@ from typing import Any
 _ALARM_NAME_PAIR_RE = re.compile(
     r"""(?x)
     (?:
-        (?<![A-Za-z0-9_$])['"]?(?P<name_a>ERROR_[A-Z0-9_]+)['"]?(?![A-Za-z0-9_$])\s*:\s*(?P<code_a>\d+)
-      | (?P<code_b>\d+)\s*:\s*(?<![A-Za-z0-9_$])['"]?(?P<name_b>ERROR_[A-Z0-9_]+)['"]?(?![A-Za-z0-9_$])
+        (?<![A-Za-z0-9_$])['"]?(?P<name_a>ERROR_[A-Z0-9_]+)['"]?(?![A-Za-z0-9_$])\s*:\s*
+        (?<![0-9A-Za-z_$])(?P<code_a>\d+)(?![0-9A-Za-z_$])
+      | (?<![0-9A-Za-z_$])(?P<code_b>\d+)(?![0-9A-Za-z_$])\s*:\s*
+        (?<![A-Za-z0-9_$])['"]?(?P<name_b>ERROR_[A-Z0-9_]+)['"]?(?![A-Za-z0-9_$])
     )
     """
 )

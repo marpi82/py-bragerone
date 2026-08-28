@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -452,6 +453,41 @@ async def test_discover_static_route_tokens_fetch_failure_is_non_fatal() -> None
     api.get_bytes = AsyncMock(return_value=b"PARAM_177")
     assert await catalog.discover_static_route_tokens("timezones") == {"PARAM_177"}
     assert api.get_bytes.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_discover_static_route_tokens_skips_stale_cache_on_index_refresh() -> None:
+    """Concurrent index refresh during asset fetch must not repopulate the cache."""
+    fetch_started = asyncio.Event()
+    release_fetch = asyncio.Event()
+
+    async def delayed_get_bytes(_url: str) -> bytes:
+        fetch_started.set()
+        await release_fetch.wait()
+        return b"PARAM_STALE"
+
+    api = AsyncMock()
+    api.get_bytes = AsyncMock(side_effect=delayed_get_bytes)
+    catalog = LiveAssetsCatalog(api)
+    catalog._idx = AssetIndex(
+        static_route_map={"timezones": "timezones"},
+        assets_by_basename={"timezones": [AssetRef(url="https://example/tz.js", base="timezones", hash="x")]},
+        index_bytes=b"loaded",
+    )
+    catalog._index_generation = 1
+
+    discover_task = asyncio.create_task(catalog.discover_static_route_tokens("timezones"))
+    await fetch_started.wait()
+    catalog._index_generation += 1
+    catalog._static_route_tokens_cache.clear()
+    release_fetch.set()
+
+    assert await discover_task == set()
+    assert "timezones" not in catalog._static_route_tokens_cache
+
+    api.get_bytes = AsyncMock(return_value=b"PARAM_FRESH")
+    assert await catalog.discover_static_route_tokens("timezones") == {"PARAM_FRESH"}
+    assert catalog._static_route_tokens_cache["timezones"] == {"PARAM_FRESH"}
 
 
 @pytest.mark.asyncio

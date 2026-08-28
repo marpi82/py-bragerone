@@ -655,8 +655,9 @@ class BragerOneApiClient:
             self._token = tok
             self._validated = False
             if self._token_saver:
+                saver = self._token_saver
                 with contextlib.suppress(Exception):
-                    self._token_saver(tok)
+                    await asyncio.to_thread(saver, tok)
             return tok
 
         # practically won't reach here, but for safety:

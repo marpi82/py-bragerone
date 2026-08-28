@@ -408,6 +408,33 @@ async def test_invalidate_and_reauth_clearer_runs_off_event_loop(httpx_mock: HTT
 
 @pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
 @pytest.mark.asyncio
+async def test_post_login_token_saver_runs_off_event_loop(httpx_mock: HTTPXMock) -> None:
+    """Token saver must run via ``asyncio.to_thread`` (not on the event loop)."""
+    import threading
+
+    loop_thread_id = threading.get_ident()
+    saver_thread_ids: list[int] = []
+
+    class _ThreadProbeStore(_TestTokenStore):
+        def save(self, token: Token) -> None:
+            saver_thread_ids.append(threading.get_ident())
+            super().save(token)
+
+    store = _ThreadProbeStore()
+    client = BragerOneApiClient(
+        token_store=store,
+        creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD),
+        validate_on_start=False,
+    )
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T1"})
+    await client.ensure_auth()
+    assert saver_thread_ids
+    assert saver_thread_ids[0] != loop_thread_id
+    await client.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
 async def test_revoke_swallows_errors(httpx_mock: HTTPXMock) -> None:
     """Test that token revoke gracefully handles server errors.
 

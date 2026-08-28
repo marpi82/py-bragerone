@@ -1232,6 +1232,7 @@ class LiveAssetsCatalog:
         # New menu management system
         self._menu_manager = MenuManager(self._log)
         self._static_route_tokens_cache: dict[str, set[str]] = {}
+        self._index_generation = 0
 
         # Track auto-discovery attempts to help guard repeated network fetches
         self._index_autoload_attempts = 0
@@ -1286,6 +1287,7 @@ class LiveAssetsCatalog:
             raise
         self._last_index_url = index_url  # Store for i18n URL construction
         self._idx = self._build_asset_index_from_index_js(index_url, code)
+        self._index_generation += 1
         self._static_route_tokens_cache.clear()
         self._units_descriptor_table = None
         self._index_token_raw_maps = None
@@ -1516,6 +1518,7 @@ class LiveAssetsCatalog:
         if not (self._idx.index_bytes or self._idx.assets_by_basename):
             return set()
 
+        generation = self._index_generation
         asset_base = self._idx.static_route_map.get(path_key)
         if asset_base is None and path_key in self._idx.assets_by_basename:
             asset_base = path_key
@@ -1526,13 +1529,16 @@ class LiveAssetsCatalog:
             if asset_ref is not None:
                 try:
                     code = await self._api.get_bytes(asset_ref.url)
+                    if generation != self._index_generation:
+                        return set()
                     tokens = self._extract_public_tokens_from_js(code)
                 except Exception as exc:
                     self._log.debug("Static route asset fetch failed for %s: %s", path_key, exc)
                     # Transient fetch failures must not poison the cache.
                     return set()
 
-        self._static_route_tokens_cache[path_key] = tokens
+        if generation == self._index_generation:
+            self._static_route_tokens_cache[path_key] = tokens
         return set(tokens)
 
     # ---------- MENU ----------

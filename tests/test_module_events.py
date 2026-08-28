@@ -79,6 +79,13 @@ def test_parse_alarm_name_enum_ignores_embedded_error_prefix() -> None:
     assert parse_alarm_name_enum('39: "ERROR_BAR"') == {39: "ERROR_BAR"}
 
 
+def test_parse_alarm_name_enum_ignores_embedded_decimal_codes() -> None:
+    """Decimal codes must not match inside identifiers or hex literals."""
+    assert parse_alarm_name_enum('foo38: "ERROR_X"') == {}
+    assert parse_alarm_name_enum("ERROR_X: 0x26") == {}
+    assert parse_alarm_name_enum('38: "ERROR_X"') == {38: "ERROR_X"}
+
+
 def test_parse_alarm_name_enum_mixed_pair_and_bracket_sources() -> None:
     """One blob may contain both pair orientations and bracket assignments."""
     source = '11:"ERROR_A", ERROR_B: 12, obj["ERROR_C"]=0x0D'
