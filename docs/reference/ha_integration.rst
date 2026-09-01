@@ -204,6 +204,13 @@ previous bootstrap version leaves stale descriptor caches unchanged. Upgrading
 grouping and does **not** apply SPA ``displayDropdown`` gates; pass
 ``web_ui_only=True`` (and primed ``flat_values``) for everyday web-UI parity.
 
+``build_panel_groups`` and ``panel_route_diagnostics`` accept
+``use_store_flat_values=False`` to skip primed-store overlays and treat dropdown
+state as unprimed (structural route discovery). When ``flat_values`` is passed
+explicitly it always takes precedence over both the store and that switch.
+``ParamStore.flatten_for_devid(devid)`` supplies module-scoped snapshots for
+multi-module setups; always forward ``ParamUpdate.devid`` on ``upsert``/``upsert_async``.
+
 .. code-block:: python
 
    # Recommended unique_id format for HA entities
