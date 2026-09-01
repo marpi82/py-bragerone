@@ -1200,6 +1200,7 @@ class ParamResolver:
         all_panels: bool = False,
         web_ui_only: bool = False,
         flat_values: Mapping[str, Any] | None = None,
+        use_store_flat_values: bool = True,
     ) -> dict[str, list[str]]:
         """Build panel groups from module menu for selected permissions."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
@@ -1207,6 +1208,8 @@ class ParamResolver:
         static_route_symbols = await self._static_route_symbols_for_menu(menu)
         if flat_values is not None:
             values: Mapping[str, Any] | None = flat_values
+        elif not use_store_flat_values:
+            values = None
         else:
             # Empty implicit store ≡ unprimed (``None``), so displayDropdown stays
             # ``visible:dropdown-unprimed``. Callers pass ``{}`` explicitly for missing-key hide.
@@ -1229,6 +1232,7 @@ class ParamResolver:
         all_panels: bool = False,
         web_ui_only: bool = False,
         flat_values: Mapping[str, Any] | None = None,
+        use_store_flat_values: bool = True,
     ) -> list[dict[str, Any]]:
         """Return route diagnostics for panel inclusion filtering."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
@@ -1236,6 +1240,8 @@ class ParamResolver:
         static_route_symbols = await self._static_route_symbols_for_menu(menu)
         if flat_values is not None:
             values: Mapping[str, Any] | None = flat_values
+        elif not use_store_flat_values:
+            values = None
         else:
             flattened = self._store.flatten()
             values = flattened if flattened else None
@@ -1263,6 +1269,34 @@ class ParamResolver:
     async def resolve_unit(self, unit_code: Any) -> str | dict[str, str] | None:
         """Resolve unit metadata to a human-readable label or enumeration mapping."""
         return await self._i18n.resolve_unit(unit_code)
+
+    async def resolve_raw_display_value(self, raw: Any, *, unit_code: Any) -> Any:
+        """Return a display-ready scalar for activity/alarm feeds (enum, i18n, transforms).
+
+        Applies the same unit-descriptor numeric transforms as :meth:`resolve_value`
+        while preserving enum label lookup against the raw upstream scalar.
+        """
+        if unit_code is None or raw is None:
+            return raw
+
+        unit_meta = await self._resolve_unit_meta(raw_unit_code=unit_code)
+        unit_options = self._unit_options_map(unit_meta)
+        if unit_options is None:
+            unit = await self.resolve_unit(unit_code)
+            unit_options = self._unit_options_map(unit)
+
+        label = self._unit_mapping_value_label(unit_options, raw)
+        if label is not None:
+            resolved = await self._resolve_units_value_token(label)
+            return resolved if resolved is not None else label
+
+        transform_expr = unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
+        display_val = self._apply_numeric_transform(raw, transform_expr)
+        if isinstance(display_val, str):
+            resolved_display = await self._resolve_units_value_token(display_val)
+            if isinstance(resolved_display, str):
+                return resolved_display
+        return display_val
 
     async def resolve_module_connection_labels(self, *, lang: str | None = None) -> dict[str, str]:
         """Return SPA module connection-panel labels from the ``module`` i18n namespace."""

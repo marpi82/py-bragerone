@@ -68,6 +68,12 @@ class FakeApiClient:
             return True
         return 200, {"activityQuantity": {}}
 
+    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        """Return a minimal alarm quantity prime payload."""
+        if not return_data:
+            return True
+        return 200, {"alarmsQuantity": {}}
+
     async def get_modules(self, object_id: int) -> list[Any]:
         """Return no modules by default (connectivity stays unknown/offline)."""
         return []
@@ -227,6 +233,7 @@ async def test_start_wires_self_healing_token_provider(monkeypatch: pytest.Monke
     monkeypatch.setattr(api, "modules_connect", lambda *a, **k: _async_true())
     monkeypatch.setattr(api, "modules_parameters_prime", lambda *a, **k: _async_true())
     monkeypatch.setattr(api, "modules_activity_quantity_prime", lambda *a, **k: _async_true())
+    monkeypatch.setattr(api, "modules_alarms_quantity", lambda *a, **k: _async_true())
     monkeypatch.setattr(api, "get_modules", lambda *a, **k: _async_empty_modules())
 
     httpx_mock.add_response(

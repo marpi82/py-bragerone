@@ -59,6 +59,22 @@ class ModuleConnectivity:
 
 
 @dataclass(frozen=True)
+class AlarmQuantityChanged:
+    """Per-module alarm count changed (REST prime or Socket.IO push)."""
+
+    devid: str
+    #: Device identifier.
+    quantity: int | None
+    #: New alarm count when known.
+    source: Literal["rest", "ws"]
+    #: Where the observation came from.
+    changed: bool = True
+    #: ``True`` when the quantity differs from the previous cache.
+    ts: float = field(default_factory=time.time)
+    #: Timestamp when this signal was produced.
+
+
+@dataclass(frozen=True)
 class CloudSessionConnectivity:
     """Library ↔ Brager cloud Socket.IO session (client transport health).
 

@@ -54,6 +54,12 @@ class FakeApiClient:
             return True
         return 200, {"activityQuantity": {}}
 
+    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        """Return a minimal alarm quantity prime payload."""
+        if not return_data:
+            return True
+        return 200, {"alarmsQuantity": {}}
+
     async def get_modules(self, object_id: int) -> list[Any]:
         """Return no modules by default (connectivity stays unknown/offline)."""
         return []

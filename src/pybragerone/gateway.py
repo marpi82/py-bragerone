@@ -23,6 +23,7 @@ from .models.api.modules import Module
 from .models.events import (
     MODULE_CONNECTION_STATUS_CHANGED,
     MODULE_MEMORY_UPDATED,
+    AlarmQuantityChanged,
     CloudSessionConnectivity,
     EventBus,
     ModuleConnectivity,
@@ -63,6 +64,7 @@ SnapshotCb = Callable[[dict[str, Any]], Awaitable[None] | None]
 GenericCb = Callable[[str, Any], Awaitable[None] | None]
 ModuleConnectivityCb = Callable[[ModuleConnectivity], Awaitable[None] | None]
 CloudSessionCb = Callable[[CloudSessionConnectivity], Awaitable[None] | None]
+AlarmQuantityCb = Callable[[AlarmQuantityChanged], Awaitable[None] | None]
 
 
 def module_connected_at_means_online(connected_at: int) -> bool:
@@ -72,6 +74,44 @@ def module_connected_at_means_online(connected_at: int) -> bool:
     Upstream uses ``0`` as the offline sentinel (see fixtures and live payloads).
     """
     return int(connected_at) != 0
+
+
+def _parse_alarm_quantity(raw_qty: Any) -> int | None:
+    """Normalize an upstream ``alarmsQuantity`` entry.
+
+    Returns:
+        Non-negative integer count, or ``None`` when upstream sends explicit null.
+
+    Raises:
+        ValueError: When the payload is malformed (bool, fractional float, negative, etc.).
+    """
+    if raw_qty is None:
+        return None
+    if isinstance(raw_qty, bool):
+        msg = f"boolean alarm count: {raw_qty!r}"
+        raise ValueError(msg)
+    if isinstance(raw_qty, int):
+        if raw_qty < 0:
+            msg = f"negative alarm count: {raw_qty}"
+            raise ValueError(msg)
+        return raw_qty
+    if isinstance(raw_qty, float):
+        if raw_qty < 0 or not raw_qty.is_integer():
+            msg = f"non-integral alarm count: {raw_qty!r}"
+            raise ValueError(msg)
+        return int(raw_qty)
+    if isinstance(raw_qty, str):
+        text = raw_qty.strip()
+        if not text:
+            msg = "empty alarm count string"
+            raise ValueError(msg)
+        parsed = int(text)
+        if parsed < 0:
+            msg = f"negative alarm count: {parsed}"
+            raise ValueError(msg)
+        return parsed
+    msg = f"unsupported alarm count type: {type(raw_qty).__name__}"
+    raise ValueError(msg)
 
 
 def _parse_connected_at(raw: Any) -> int | None:
@@ -145,6 +185,9 @@ class ApiClient(Protocol):
         raise NotImplementedError
 
     async def modules_activity_quantity_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:  # noqa: D102
+        raise NotImplementedError
+
+    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:  # noqa: D102
         raise NotImplementedError
 
     async def get_modules(self, object_id: int) -> list[Module]:  # noqa: D102
@@ -289,6 +332,7 @@ class BragerOneGateway:
         self._on_any: list[GenericCb] = []
         self._on_module_connectivity: list[ModuleConnectivityCb] = []
         self._on_cloud_session: list[CloudSessionCb] = []
+        self._on_alarm_quantity: list[AlarmQuantityCb] = []
 
         # Module↔cloud (REST/WS connectedAt) vs library↔cloud (Socket.IO session).
         # The session bit never forces module offline (SPA parity).
@@ -298,6 +342,12 @@ class BragerOneGateway:
         self._module_connected_at: dict[str, int] = {}
         self._module_online: dict[str, bool] = {}
         self._module_gateway: dict[str, dict[str, Any]] = {}
+        self._alarm_quantity_cache: dict[str, int | None] = {}
+        self._alarm_quantity_ws_rev: dict[str, int] = {}
+        self._alarm_quantity_ingest_lock = asyncio.Lock()
+        self._alarm_quantity_rest_seq = 0
+        self._alarm_quantity_rest_applied_seq = 0
+        self._alarm_quantity_rest_seq_lock = asyncio.Lock()
 
     @classmethod
     async def from_credentials(
@@ -377,6 +427,15 @@ class BragerOneGateway:
         stay detectable without looking like a module went offline.
         """
         self._on_cloud_session.append(cb)
+
+    def on_alarm_quantity(self, cb: AlarmQuantityCb) -> None:
+        """Register callback for per-module alarm count changes.
+
+        Callbacks receive :class:`~pybragerone.models.events.AlarmQuantityChanged`
+        when REST prime or Socket.IO ``app:modules:alarms:quantity:change`` reports
+        a new count for a subscribed module.
+        """
+        self._on_alarm_quantity.append(cb)
 
     def module_online(self, devid: str) -> bool | None:
         """Return current online state for *devid*, or ``None`` if not yet known."""
@@ -1070,12 +1129,32 @@ class BragerOneGateway:
 
     # ------------------------- PRIME & ingest -------------------------
 
+    async def _prime_alarm_quantity(self) -> None:
+        """Best-effort alarm count prime; failures must not block parameter prime."""
+        async with self._alarm_quantity_rest_seq_lock:
+            self._alarm_quantity_rest_seq += 1
+            rest_seq = self._alarm_quantity_rest_seq
+            ws_floor = dict(self._alarm_quantity_ws_rev)
+        try:
+            res = await self.api.modules_alarms_quantity(self.modules, return_data=True)
+        except Exception:
+            LOG.debug("Alarm quantity prime failed", exc_info=True)
+            return
+        if isinstance(res, tuple) and len(res) == 2:
+            st, data = res
+            if st in (200, 204):
+                await self.ingest_alarm_quantity(
+                    data if isinstance(data, dict) else None,
+                    source="rest",
+                    ws_floor=ws_floor,
+                    rest_seq=rest_seq,
+                )
+
     async def _prime(self) -> tuple[bool, bool]:
-        """Fetch initial state via REST (/modules/parameters + /modules/activity/quantity)."""
+        """Fetch initial state via REST (parameters, activity quantity, alarm quantity)."""
         ok_params = False
         ok_act = False
 
-        # Fetch parameters and activity quantities in parallel.
         async with asyncio.TaskGroup() as tg:
             t_params = tg.create_task(
                 self.api.modules_parameters_prime(self.modules, return_data=True),
@@ -1084,6 +1163,10 @@ class BragerOneGateway:
             t_act = tg.create_task(
                 self.api.modules_activity_quantity_prime(self.modules, return_data=True),
                 name="gateway.api.modules_activity_quantity_prime",
+            )
+            t_alarms = tg.create_task(
+                self._prime_alarm_quantity(),
+                name="gateway.api.modules_alarms_quantity",
             )
 
         res1 = t_params.result()
@@ -1099,6 +1182,8 @@ class BragerOneGateway:
             if st2 in (200, 204):
                 await self.ingest_activity_quantity(data2 if isinstance(data2, dict) else None)
                 ok_act = True
+
+        t_alarms.result()
 
         self._prime_seq = self.bus.last_seq()
         self._prime_done.set()
@@ -1154,6 +1239,57 @@ class BragerOneGateway:
         if isinstance(data, dict):
             LOG.debug("activityQuantity: %s", data.get("activityQuantity"))
 
+    async def ingest_alarm_quantity(
+        self,
+        data: dict[str, Any] | None,
+        *,
+        source: Literal["rest", "ws"] = "rest",
+        ws_floor: dict[str, int] | None = None,
+        rest_seq: int | None = None,
+    ) -> None:
+        """Ingest alarm quantity payload and notify ``on_alarm_quantity`` listeners."""
+        async with self._alarm_quantity_ingest_lock:
+            if source == "rest" and rest_seq is not None and rest_seq < self._alarm_quantity_rest_applied_seq:
+                return
+            await self._ingest_alarm_quantity_payload(data, source=source, ws_floor=ws_floor)
+            if source == "rest" and rest_seq is not None:
+                self._alarm_quantity_rest_applied_seq = rest_seq
+
+    async def _ingest_alarm_quantity_payload(
+        self,
+        data: dict[str, Any] | None,
+        *,
+        source: Literal["rest", "ws"],
+        ws_floor: dict[str, int] | None = None,
+    ) -> None:
+        if not isinstance(data, dict):
+            return
+        qty_map = data.get("alarmsQuantity")
+        if not isinstance(qty_map, dict):
+            return
+        wanted = set(self.modules)
+        for raw_devid, raw_qty in qty_map.items():
+            devid = str(raw_devid)
+            if devid not in wanted:
+                continue
+            if source == "rest" and ws_floor is not None and self._alarm_quantity_ws_rev.get(devid, 0) > ws_floor.get(devid, 0):
+                continue
+            try:
+                quantity = _parse_alarm_quantity(raw_qty)
+            except ValueError:
+                LOG.debug("Ignoring non-numeric alarmsQuantity for devid=%s: %r", devid, raw_qty)
+                continue
+            if source == "ws":
+                self._alarm_quantity_ws_rev[devid] = self._alarm_quantity_ws_rev.get(devid, 0) + 1
+            previous = self._alarm_quantity_cache.get(devid)
+            changed = previous != quantity
+            self._alarm_quantity_cache[devid] = quantity
+            if not changed:
+                continue
+            event = AlarmQuantityChanged(devid=devid, quantity=quantity, source=source, changed=True)
+            if self._on_alarm_quantity:
+                await self._invoke_list(self._on_alarm_quantity, event)
+
     # ------------------------- WS dispatch -------------------------
 
     async def _invoke_list(self, cbs: list[Callable[..., Any]], *args: Any, **kwargs: Any) -> None:
@@ -1207,6 +1343,15 @@ class BragerOneGateway:
                     self._invoke_list(self._on_parameters_change, event_name, payload),
                     name="gateway.on_parameters_change",
                 )
+            return None
+
+        # alarms:quantity:change
+        if event_name.endswith("alarms:quantity:change") and isinstance(payload, dict):
+
+            async def _alarms_quantity_changed() -> None:
+                await self.ingest_alarm_quantity(payload, source="ws")
+
+            self._spawn(_alarms_quantity_changed(), name="gateway.ingest_alarm_quantity")
             return None
 
         # SPA Layout/ObjectsLayout: EventChannel 0x16 → REST /modules/parameters for devid.

@@ -13,13 +13,17 @@ For production use, lightweight mode provides fast access to parameter values.
    # Create store
    param_store = ParamStore()
 
-   # Subscribe to EventBus
+   # Subscribe to EventBus (forwards module scope from each update)
    async for event in event_bus.subscribe():
          if event.value is None:
             continue
-         param_store.upsert(f"{event.pool}.{event.chan}{event.idx}", event.value)
+         param_store.upsert(
+            f"{event.pool}.{event.chan}{event.idx}",
+            event.value,
+            devid=event.devid,
+         )
 
-   # Read values
+   # Read values (``get_family`` / ``upsert`` return snapshot copies)
    fam = param_store.get_family("P4", 1)
    temperature = fam.value if fam else None
    status_fam = param_store.get_family("P5", 40)

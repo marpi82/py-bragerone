@@ -9,6 +9,7 @@ import pytest
 
 from pybragerone.api.client import ApiError
 from pybragerone.cli import _build_watch_groups, _prompt_select_modules
+from pybragerone.models.param import ParamStore
 
 
 class _FakeApi:
@@ -51,6 +52,7 @@ async def test_build_watch_groups_handles_api_error(capsys: pytest.CaptureFixtur
     groups = await _build_watch_groups(
         api=cast(Any, api),
         resolver=cast(Any, _Resolver()),
+        store=ParamStore(),
         object_id=3,
         module_ids=["M1"],
         all_panels=False,
@@ -82,6 +84,7 @@ async def test_build_watch_groups_missing_selected_module() -> None:
     groups = await _build_watch_groups(
         api=cast(Any, api),
         resolver=cast(Any, _Resolver()),
+        store=ParamStore(),
         object_id=1,
         module_ids=["M1"],
         all_panels=False,

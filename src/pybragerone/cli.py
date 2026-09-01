@@ -193,7 +193,7 @@ def _select_command_rule(desc: Mapping[str, Any], flat_values: Mapping[str, Any]
     return None
 
 
-def _toggle_value_for_symbol(*, desc: Mapping[str, Any], store: ParamStore) -> Any:
+def _toggle_value_for_symbol(*, desc: Mapping[str, Any], store: ParamStore, devid: str) -> Any:
     pool = desc.get("pool")
     chan = desc.get("chan")
     idx = desc.get("idx")
@@ -211,7 +211,8 @@ def _toggle_value_for_symbol(*, desc: Mapping[str, Any], store: ParamStore) -> A
         current_value = desc.get("value")
 
     if not has_direct_address and command_rules:
-        flat_values = store.flatten()
+        scoped = store.flatten_for_devid(devid)
+        flat_values = scoped if scoped else {}
         active_rule = _select_command_rule(desc, flat_values)
         if isinstance(active_rule, Mapping):
             active_command = active_rule.get("command")
@@ -227,6 +228,12 @@ def _toggle_value_for_symbol(*, desc: Mapping[str, Any], store: ParamStore) -> A
                         return candidate_value
         return None
 
+    if has_direct_address:
+        scoped = store.flatten_for_devid(devid)
+        direct_key = f"{pool}.{chan}{idx}"
+        if direct_key in scoped:
+            current_value = scoped[direct_key]
+
     return _invert_value(current_value)
 
 
@@ -234,7 +241,7 @@ async def _store_ingest_loop(gw: BragerOneGateway, store: ParamStore) -> None:
     async for upd in gw.bus.subscribe():
         if getattr(upd, "value", None) is None:
             continue
-        await store.upsert_async(_format_event_key(upd), upd.value)
+        await store.upsert_async(_format_event_key(upd), upd.value, devid=upd.devid)
 
 
 def _mapping_parameter_name(desc: Mapping[str, Any]) -> str | None:
@@ -356,7 +363,8 @@ async def _execute_symbol_write(
             f"{symbol} -> command {pool}.{parameter}={prepared_value} (input={value}) status={status} data={data}",
         )
 
-    flat_values = store.flatten()
+    scoped = store.flatten_for_devid(devid)
+    flat_values = scoped if scoped else {}
     rule = _select_command_rule(desc, flat_values)
     if isinstance(rule, Mapping):
         command = rule.get("command")
@@ -421,7 +429,7 @@ async def _run_send_only_actions(
                 continue
 
             desc = await resolver.describe_symbol(symbol_norm)
-            toggle_value = _toggle_value_for_symbol(desc=desc, store=store)
+            toggle_value = _toggle_value_for_symbol(desc=desc, store=store, devid=devid)
 
             ok, message = await _execute_symbol_write(
                 api=api,
@@ -688,6 +696,7 @@ async def _build_watch_groups(
     *,
     api: BragerOneApiClient,
     resolver: ParamResolver,
+    store: ParamStore,
     object_id: int,
     module_ids: list[str],
     all_panels: bool,
@@ -706,7 +715,14 @@ async def _build_watch_groups(
 
     device_menu = int(mod.deviceMenu)
     perms = list(getattr(mod, "permissions", []) or [])
-    return await resolver.build_panel_groups(device_menu=device_menu, permissions=perms, all_panels=all_panels)
+    scoped = store.flatten_for_devid(first_id)
+    flat_values = scoped if scoped else None
+    return await resolver.build_panel_groups(
+        device_menu=device_menu,
+        permissions=perms,
+        all_panels=all_panels,
+        flat_values=flat_values,
+    )
 
 
 async def _run_tui(
@@ -980,7 +996,7 @@ async def _run_tui(
             if getattr(upd, "value", None) is None:
                 continue
             key = _format_event_key(upd)
-            await store.upsert_async(key, upd.value)
+            await store.upsert_async(key, upd.value, devid=upd.devid)
             dirty_keys.add(key)
 
             src = ""
@@ -1045,6 +1061,7 @@ async def _run_tui(
         groups = await _build_watch_groups(
             api=api,
             resolver=resolver,
+            store=store,
             object_id=object_id,
             module_ids=module_ids,
             all_panels=all_panels,
@@ -1058,10 +1075,12 @@ async def _run_tui(
             mod = selected_module
             if mod is not None:
                 perms = list(getattr(mod, "permissions", []) or [])
+                scoped_flat = store.flatten_for_devid(str(mod.devid))
                 route_diag = await resolver.panel_route_diagnostics(
                     device_menu=int(mod.deviceMenu),
                     permissions=perms,
                     all_panels=all_panels,
+                    flat_values=scoped_flat if scoped_flat else None,
                 )
                 accepted = sum(1 for row in route_diag if bool(row.get("accepted")))
                 rejected = len(route_diag) - accepted
@@ -1109,7 +1128,8 @@ async def _run_tui(
                     for dep in symbol_deps[sym]:
                         key_to_computed_symbols.setdefault(dep, set()).add(sym)
 
-        flat_values = store.flatten()
+        scoped_flat = store.flatten_for_devid(module_ids[0])
+        flat_values = scoped_flat if scoped_flat else {}
         for sym, item in watch.items():
             desc = desc_cache.get(sym, {})
             visible, _reason = resolver.parameter_visibility_diagnostics(desc=desc, resolved=item, flat_values=flat_values)
@@ -1180,7 +1200,7 @@ async def _run_tui(
             return
 
         desc = await resolver.describe_symbol(selected_symbol)
-        toggle_value = _toggle_value_for_symbol(desc=desc, store=store)
+        toggle_value = _toggle_value_for_symbol(desc=desc, store=store, devid=module_ids[0])
 
         ok, message = await _execute_symbol_write(
             api=api,
