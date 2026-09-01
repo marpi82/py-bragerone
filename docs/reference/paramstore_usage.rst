@@ -23,7 +23,7 @@ For production use, lightweight mode provides fast access to parameter values.
             devid=event.devid,
          )
 
-   # Read values
+   # Read values (``get_family`` / ``upsert`` return snapshot copies)
    fam = param_store.get_family("P4", 1)
    temperature = fam.value if fam else None
    status_fam = param_store.get_family("P5", 40)
