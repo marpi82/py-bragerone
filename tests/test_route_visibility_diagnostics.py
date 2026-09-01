@@ -219,6 +219,54 @@ async def test_build_panel_groups_empty_store_keeps_dropdown_unprimed() -> None:
     assert rows[0]["route_visibility_reason"] == "visible:dropdown-unprimed"
 
 
+@pytest.mark.asyncio
+async def test_build_panel_groups_instance_flat_values_resolution() -> None:
+    """Instance helpers honor explicit ``flat_values`` or a primed implicit store."""
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "circulation",
+                    "name": "modules.menu.circulation",
+                    "meta": {
+                        "displayName": "Cyrkulacja",
+                        "displayDropdown": "P6.v219",
+                        "parameters": {"read": [{"parameter": "E(A.READ,'PARAM_1')"}]},
+                    },
+                }
+            ]
+        }
+    )
+    assets = AsyncMock()
+    assets.get_module_menu = AsyncMock(return_value=menu)
+    assets.get_i18n = AsyncMock(return_value={})
+    assets.discover_static_route_tokens = AsyncMock(return_value=set())
+
+    explicit = ParamResolver(store=ParamStore(), assets=assets, lang="pl")
+    explicit_groups = await explicit.build_panel_groups(
+        device_menu=0,
+        all_panels=True,
+        web_ui_only=True,
+        flat_values={"P6.v219": 1},
+    )
+    assert any("PARAM_1" in symbols for symbols in explicit_groups.values())
+    explicit_rows = await explicit.panel_route_diagnostics(
+        device_menu=0,
+        all_panels=True,
+        web_ui_only=True,
+        flat_values={"P6.v219": 1},
+    )
+    assert explicit_rows[0]["route_visibility_reason"] == "visible:dropdown-value"
+
+    store = ParamStore()
+    store.upsert("P6.v219", 1)
+    implicit = ParamResolver(store=store, assets=assets, lang="pl")
+    implicit_groups = await implicit.build_panel_groups(device_menu=0, all_panels=True, web_ui_only=True)
+    assert any("PARAM_1" in symbols for symbols in implicit_groups.values())
+    implicit_rows = await implicit.panel_route_diagnostics(device_menu=0, all_panels=True, web_ui_only=True)
+    assert implicit_rows[0]["route_visibility_reason"] == "visible:dropdown-value"
+
+
 def test_route_visibility_diagnostics_visible_when_ancestor_and_leaf_true() -> None:
     """Ancestor and leaf ParamStore gates that are both true keep the route visible."""
     parent = _route(path="parent", name="modules.menu.parent", meta={"displayDropdown": "P6.v219"})

@@ -2,11 +2,13 @@
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from pytest_httpx import HTTPXMock
 
 from pybragerone.api import BragerOneApiClient
+from pybragerone.api import client as client_module
 from pybragerone.api.client import ApiError
 from pybragerone.models import Token
 
@@ -443,6 +445,46 @@ async def test_token_store_io_waits_out_cancellation(httpx_mock: HTTPXMock) -> N
     else:
         pytest.fail("expected CancelledError from cancelled invalidate_and_reauth")
     assert finished.is_set()
+    await client.close()
+
+
+@pytest.mark.httpx_mock(assert_all_responses_were_requested=False)
+@pytest.mark.asyncio
+async def test_token_store_io_unwinds_cancellation_when_worker_raises(httpx_mock: HTTPXMock) -> None:
+    """Worker failures during cancellation unwind must finish before ``CancelledError``."""
+    import threading
+
+    started = threading.Event()
+    release = threading.Event()
+
+    class _FailingClearStore(_TestTokenStore):
+        def clear(self) -> None:
+            started.set()
+            assert release.wait(timeout=2.0)
+            raise OSError("disk full")
+
+    store = _FailingClearStore()
+    client = BragerOneApiClient(
+        token_store=store,
+        creds_provider=lambda: (TEST_EMAIL, TEST_PASSWORD),
+        validate_on_start=False,
+    )
+    httpx_mock.add_response(method="POST", url=f"{API}/v1/auth/user", json={"accessToken": "T1"})
+    await client.ensure_auth()
+
+    task = asyncio.create_task(client.invalidate_and_reauth())
+    assert await asyncio.to_thread(started.wait, 2.0)
+    task.cancel()
+    release.set()
+    with patch.object(client_module.LOG, "debug") as debug_mock:
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        else:
+            pytest.fail("expected CancelledError from cancelled invalidate_and_reauth")
+    debug_mock.assert_called_once()
+    assert "Token-store I/O failed while unwinding cancellation" in debug_mock.call_args[0][0]
     await client.close()
 
 
