@@ -119,8 +119,16 @@ no **live** ``ParamUpdate`` is published for 180s (zombie transport), the poll R
 anyway; after two consecutive zombie primes it forces a hard Socket.IO restart
 (SPA parity: ``connect`` → ``ModulesService.connect`` + REST parameters), **awaiting**
 namespace join + ``resubscribe()`` so module binding completes. After repeated failed
-hard restarts it hard-resets the Socket.IO client, then rebuilds ``RealtimeManager``
-with an exponential recovery cooldown (REST primes continue). Recovery is skipped
+hard restarts it hard-resets the Socket.IO client, then rebuilds ``RealtimeManager``.
+Hard reconnect, transport recycle, and manager rebuild each attempt a fresh login
+before proceeding when credentials are available; token-only gateway clients (no
+``creds_provider``) keep the existing access token instead of clearing it.
+Transport recycle and manager rebuild then apply an exponential recovery cooldown
+(REST primes continue). A **successful** hard reconnect does not arm cooldown; when
+hard reconnect aborts because forced re-login failed, cooldown **is** armed so the
+poll loop does not thrash.
+A subscribed module returning online while still zombie clears the cooldown and
+triggers recovery immediately (failed auth/resubscribe re-arms cooldown). Recovery is skipped
 while every subscribed module is known offline. Numeric
 event ``22`` (``SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED``) also triggers a
 per-module REST prime. ``BragerOneGateway.last_param_update_age_s()`` returns that gap for
@@ -150,6 +158,36 @@ Stable grouping key for the HA connection child device: ``module.connection``
 
 Entity Naming
 -------------
+
+Route vs parameter visibility
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Everyday web-UI side-menu routes may be gated separately from individual
+parameters:
+
+- ``ParamResolver.route_visibility_diagnostics`` — static SPA route gates
+  (installer denylist, ``isVisibleOnSideMenu``, ``displayDropdown`` leftovers).
+- ``ParamResolver.parameter_visibility_diagnostics`` — per-parameter status bits
+  (``INVISIBLE``, ``DEVICE_AVAILABLE``).
+
+Static menu shells (e.g. ``MAINMENU_STREFY_CZASOWE`` / path ``timezones``) load
+parameter tokens from ``deviceMenu/static/<path>.ts`` chunks referenced in
+``index-*.js``. Use ``LiveAssetsCatalog.discover_static_route_tokens`` and pass
+``static_route_symbols`` into ``build_panel_groups_from_menu`` (or call
+``build_panel_groups`` with a primed ``ParamStore`` so overlays are resolved
+automatically).
+
+The Home Assistant integration caches entity descriptors in the config entry;
+after upgrading to a release that adds static-route overlays, users need a
+``ha-bragerone`` release that bumps ``BOOTSTRAP_VERSION`` (the ``release/2026.9``
+train uses version 14) **and** must reconfigure or reload the integration so
+bootstrap re-runs. Reloading on an integration build that still stores the
+previous bootstrap version leaves stale descriptor caches unchanged. Upgrading
+``py-bragerone`` alone does not rewrite existing HA entity registries.
+
+``build_panel_groups(..., web_ui_only=False)`` keeps permission/module-item based
+grouping and does **not** apply SPA ``displayDropdown`` gates; pass
+``web_ui_only=True`` (and primed ``flat_values``) for everyday web-UI parity.
 
 .. code-block:: python
 

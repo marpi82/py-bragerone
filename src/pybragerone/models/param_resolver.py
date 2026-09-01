@@ -9,6 +9,7 @@ CLI/config-time tooling to opt into richer behavior.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ from .param import ParamStore
 
 if TYPE_CHECKING:
     from ..api import BragerOneApiClient
+
+LOG = logging.getLogger(__name__)
 
 
 _PARAM_POOL_RE = re.compile(r"^PARAM_P(?P<pool>\d+)_(?P<idx>\d+)$")
@@ -36,6 +39,8 @@ _UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
 # Bare menu-title i18n namespaces (``MAINMENU_*``, ``MENUSERWIS_*``, ``MENU_*``, …).
 # Require the known prefixes so abbreviations like ``DHW`` do not trigger asset fetches.
 _MENU_TITLE_TOKEN_RE = re.compile(r"^(?:MAINMENU|MENUSERWIS|MENUPALNIKA|MENU)_[A-Z0-9_]+$")
+# ParamStore flat keys referenced by SPA ``displayDropdown`` (e.g. ``P6.v219``).
+_ROUTE_DROPDOWN_VALUE_KEY_RE = re.compile(r"^P\d+\.[a-z]\d+$", re.IGNORECASE)
 
 # Installer / service module-item route *suffixes* (after optional ``companies.``).
 # Compared case-insensitively. Everyday panels may still use ``MENUSERWIS_*`` titles.
@@ -68,6 +73,16 @@ _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES_NORMALIZED: frozenset[str] = frozenset(
     _normalize_module_menu_route_name(item) for item in _WEB_UI_EXCLUDED_MODULE_MENU_ROUTES
 )
 
+# Known SPA view components that may host parameters outside the menu token list.
+_PANEL_SHELL_COMPONENT_MARKERS: frozenset[str] = frozenset(
+    {
+        "ScheduleView",
+        "TimeZonesView",
+        "SchedulesView",
+        "TariffsView",
+    }
+)
+
 
 class AssetsProtocol(Protocol):
     """Minimal async API used by ParamResolver.
@@ -87,6 +102,10 @@ class AssetsProtocol(Protocol):
         debug_mode: bool = False,
     ) -> MenuResult:
         """Return processed module menu tree for the given device_menu."""
+        raise NotImplementedError
+
+    async def discover_static_route_tokens(self, route_path: str) -> set[str]:
+        """Return tokens from a static deviceMenu route chunk when supported."""
         raise NotImplementedError
 
     async def list_symbols_for_permissions(self, device_menu: int, permissions: Iterable[str]) -> set[str]:
@@ -757,6 +776,211 @@ class ParamResolver:
         return symbols
 
     @classmethod
+    def _normalize_route_path_key(cls, path: Any) -> str:
+        """Normalize a menu route path into a static-route lookup key."""
+        if not isinstance(path, str):
+            return ""
+        token = path.strip().strip("/")
+        if not token or token in {".", ".."}:
+            return ""
+        return token
+
+    @classmethod
+    def _route_has_child_routes(cls, route: Any) -> bool:
+        """Return whether *route* has non-empty ``children``."""
+        children = getattr(route, "children", None)
+        return isinstance(children, list) and len(children) > 0
+
+    @classmethod
+    def _route_component_is_panel_shell(cls, route: Any) -> bool:
+        """Return whether the route ``component`` names a known SPA shell view."""
+        component = getattr(route, "component", None)
+        if not isinstance(component, str) or not component.strip():
+            return False
+        comp = component.strip()
+        if comp in _PANEL_SHELL_COMPONENT_MARKERS:
+            return True
+        return any(marker.casefold() in comp.casefold() for marker in _PANEL_SHELL_COMPONENT_MARKERS)
+
+    @classmethod
+    def _route_is_panel_shell(
+        cls,
+        route: Any,
+        *,
+        static_route_symbols: Mapping[str, set[str]] | None = None,
+    ) -> bool:
+        """Return whether *route* is a navigation shell without inline menu parameters.
+
+        Shell routes still appear in the SPA side menu (e.g. ``MAINMENU_STREFY_CZASOWE``)
+        but declare parameters in a separate static ``deviceMenu/static/<path>.ts`` chunk.
+        """
+        if not cls._route_allowed_in_module_item(route):
+            return False
+        if cls._collect_route_symbols(route):
+            return False
+        if cls._route_has_child_routes(route):
+            return False
+
+        path_key = cls._normalize_route_path_key(getattr(route, "path", None))
+        if static_route_symbols is not None and path_key and path_key in static_route_symbols:
+            return True
+        if cls._route_component_is_panel_shell(route):
+            return True
+
+        raw_name = getattr(route, "name", None)
+        return isinstance(raw_name, str) and _MENU_TITLE_TOKEN_RE.fullmatch(raw_name.strip()) is not None
+
+    @classmethod
+    def _dropdown_param_truthy(cls, raw: Any) -> bool:
+        """Return whether a ParamStore value should keep a dropdown-gated route visible."""
+        if isinstance(raw, bool):
+            return raw
+        if isinstance(raw, int | float) and not isinstance(raw, bool):
+            return raw != 0
+        if isinstance(raw, str):
+            stripped = raw.strip()
+            return bool(stripped) and stripped.casefold() not in {"0", "false"}
+        # JS treats empty arrays/objects as truthy; ``bool([])`` / ``bool({})`` do not.
+        if isinstance(raw, list | dict):
+            return True
+        return bool(raw)
+
+    @classmethod
+    def _route_display_dropdown_visibility(
+        cls,
+        route: Any,
+        flat_values: Mapping[str, Any] | None,
+    ) -> tuple[bool, str]:
+        """Evaluate SPA ``displayDropdown`` leftovers for route side-menu visibility.
+
+        When ``flat_values`` is ``None``, ParamStore-key dropdowns are treated as
+        visible (``visible:dropdown-unprimed``) so callers without a primed store
+        do not lose gated panels. An empty mapping still means primed-but-missing.
+        """
+        meta = getattr(route, "meta", None)
+        dropdown = getattr(meta, "display_dropdown", None) if meta is not None else None
+        if dropdown is None:
+            return True, "visible:no-dropdown"
+        if isinstance(dropdown, bool):
+            return (bool(dropdown), "visible:dropdown-true" if dropdown else "hidden:dropdown-false")
+        if not isinstance(dropdown, str):
+            return True, "visible:dropdown-unknown"
+        token = dropdown.strip()
+        if not token:
+            return True, "visible:no-dropdown"
+        if _ROUTE_DROPDOWN_VALUE_KEY_RE.fullmatch(token):
+            if flat_values is None:
+                return True, "visible:dropdown-unprimed"
+            raw = flat_values.get(token)
+            if raw is None:
+                return False, "hidden:dropdown-missing-value"
+            visible = cls._dropdown_param_truthy(raw)
+            return visible, "visible:dropdown-value" if visible else "hidden:dropdown-value"
+        lowered = token.casefold()
+        if lowered in {"!![]", "true", "1"}:
+            return True, "visible:dropdown-always"
+        if lowered in {"![]", "false", "0"}:
+            return False, "hidden:dropdown-false"
+        return True, "visible:dropdown-unknown"
+
+    @classmethod
+    def route_visibility_dependency_keys(
+        cls,
+        route: Any,
+        *,
+        ancestors: tuple[Any, ...] = (),
+    ) -> set[str]:
+        """Return ParamStore keys that may affect route side-menu visibility."""
+        keys: set[str] = set()
+        meta = getattr(route, "meta", None)
+        if meta is not None:
+            params = getattr(meta, "parameters", None)
+            if params is not None:
+                status_items = getattr(params, "status", None)
+                if isinstance(status_items, list):
+                    for item in status_items:
+                        group = getattr(item, "group", None) if not isinstance(item, dict) else item.get("group")
+                        use = getattr(item, "use", None) if not isinstance(item, dict) else item.get("use")
+                        number = getattr(item, "number", None) if not isinstance(item, dict) else item.get("number")
+                        if isinstance(group, str) and isinstance(use, str) and isinstance(number, int):
+                            keys.add(f"{group}.{use}{number}")
+            dropdown = getattr(meta, "display_dropdown", None)
+            if isinstance(dropdown, str):
+                token = dropdown.strip()
+                if _ROUTE_DROPDOWN_VALUE_KEY_RE.fullmatch(token):
+                    keys.add(token)
+        for ancestor in ancestors:
+            ancestor_meta = getattr(ancestor, "meta", None)
+            if ancestor_meta is None:
+                continue
+            dropdown = getattr(ancestor_meta, "display_dropdown", None)
+            if not isinstance(dropdown, str):
+                continue
+            token = dropdown.strip()
+            if _ROUTE_DROPDOWN_VALUE_KEY_RE.fullmatch(token):
+                keys.add(token)
+            elif token.isdigit():
+                # Dropdown selection routes often key off a parent write parameter — callers
+                # also track symbol-level deps; keep digit-only ancestor dropdown as a soft hint.
+                keys.add(f"route_dropdown:{token}")
+        return keys
+
+    @classmethod
+    def route_visibility_diagnostics(
+        cls,
+        route: Any,
+        *,
+        ancestors: tuple[Any, ...] = (),
+        flat_values: Mapping[str, Any] | None = None,
+        all_panels: bool = False,
+        web_ui_only: bool = False,
+    ) -> tuple[bool, str]:
+        """Return whether a menu route should be treated as visible in the web UI.
+
+        Mirrors static SPA ``isRouteVisible`` gates (module-item classification,
+        installer/side-menu filters, ``displayDropdown`` leftovers). Dynamic status
+        rules on individual parameters are handled separately via
+        :meth:`parameter_visibility_diagnostics`.
+        """
+        if all_panels and not cls._route_allowed_in_module_item(route):
+            return False, "hidden:not-module-item"
+        if web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
+            return False, "hidden:not-web-ui"
+        # SPA hides a leaf when any ancestor ``displayDropdown`` gate is false.
+        # Ancestor ``visible:*`` reasons (including ParamStore-true) do not short-circuit;
+        # only a hidden ancestor rejects. Leaf keeps the early-return for non-default
+        # visible dropdown reasons. ``flat_values is None`` keeps ParamStore gates
+        # visible (unprimed); ``{}`` still means missing-key → hidden.
+        for ancestor in ancestors:
+            ancestor_visible, ancestor_reason = cls._route_display_dropdown_visibility(ancestor, flat_values)
+            if not ancestor_visible:
+                return False, ancestor_reason
+        dropdown_visible, dropdown_reason = cls._route_display_dropdown_visibility(route, flat_values)
+        if not dropdown_visible:
+            return False, dropdown_reason
+        if dropdown_reason not in {"visible:no-dropdown", "visible:default"}:
+            return True, dropdown_reason
+        return True, "visible:default"
+
+    @classmethod
+    def _resolve_route_symbols(
+        cls,
+        route: Any,
+        *,
+        static_route_symbols: Mapping[str, set[str]] | None = None,
+    ) -> set[str]:
+        """Collect route symbols including optional static-route token overlays."""
+        symbols = cls._collect_route_symbols(route)
+        if symbols:
+            return symbols
+        path_key = cls._normalize_route_path_key(getattr(route, "path", None))
+        if static_route_symbols is not None and path_key:
+            overlay = static_route_symbols.get(path_key)
+            if overlay:
+                return set(overlay)
+        return symbols
+
+    @classmethod
     def build_panel_groups_from_menu(
         cls,
         menu: MenuResult,
@@ -764,6 +988,8 @@ class ParamResolver:
         all_panels: bool = False,
         web_ui_only: bool = False,
         routes_i18n: Mapping[str, Any] | None = None,
+        flat_values: Mapping[str, Any] | None = None,
+        static_route_symbols: Mapping[str, set[str]] | None = None,
     ) -> dict[str, list[str]]:
         """Build route-driven panel groups from a menu tree.
 
@@ -780,9 +1006,17 @@ class ParamResolver:
         for route, ancestors in cls._iter_routes_with_ancestors(menu.routes):
             if all_panels and not cls._route_allowed_in_module_item(route):
                 continue
-            if web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
-                continue
-            symbols = cls._collect_route_symbols(route)
+            if web_ui_only:
+                route_visible, _ = cls.route_visibility_diagnostics(
+                    route,
+                    ancestors=ancestors,
+                    flat_values=flat_values,
+                    all_panels=all_panels,
+                    web_ui_only=web_ui_only,
+                )
+                if not route_visible:
+                    continue
+            symbols = cls._resolve_route_symbols(route, static_route_symbols=static_route_symbols)
             if symbols:
                 title = cls._route_title(route, routes_i18n=routes_i18n)
                 name = str(getattr(route, "name", "") or "")
@@ -854,6 +1088,8 @@ class ParamResolver:
         all_panels: bool = False,
         web_ui_only: bool = False,
         routes_i18n: Mapping[str, Any] | None = None,
+        flat_values: Mapping[str, Any] | None = None,
+        static_route_symbols: Mapping[str, set[str]] | None = None,
     ) -> list[dict[str, Any]]:
         """Return per-route panel inclusion diagnostics.
 
@@ -866,7 +1102,26 @@ class ParamResolver:
             panel_title = cls._panel_title_hierarchical(route=route, ancestors=ancestors, routes_i18n=routes_i18n)
             name = str(getattr(route, "name", "") or "")
             path = str(getattr(route, "path", "") or "")
-            symbols = cls._collect_route_symbols(route)
+            symbols = cls._resolve_route_symbols(route, static_route_symbols=static_route_symbols)
+            is_shell = cls._route_is_panel_shell(route, static_route_symbols=static_route_symbols)
+            route_visible, route_vis_reason = cls.route_visibility_diagnostics(
+                route,
+                ancestors=ancestors,
+                flat_values=flat_values,
+                all_panels=all_panels,
+                web_ui_only=web_ui_only,
+            )
+            web_visible, web_vis_reason = cls.route_visibility_diagnostics(
+                route,
+                ancestors=ancestors,
+                flat_values=flat_values,
+                all_panels=all_panels,
+                web_ui_only=True,
+            )
+            component = getattr(route, "component", None)
+            meta = getattr(route, "meta", None)
+            side = getattr(meta, "is_visible_on_side_menu", None) if meta is not None else None
+            dropdown = getattr(meta, "display_dropdown", None) if meta is not None else None
 
             accepted = True
             reason = "accepted"
@@ -878,6 +1133,9 @@ class ParamResolver:
                 elif web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
                     accepted = False
                     reason = "rejected:not-web-ui"
+                elif web_ui_only and not route_visible:
+                    accepted = False
+                    reason = f"rejected:route-hidden:{route_vis_reason}"
                 elif not symbols:
                     accepted = False
                     reason = "rejected:no-symbols"
@@ -885,6 +1143,9 @@ class ParamResolver:
                 if web_ui_only and not cls._route_is_end_user_web_ui(route, ancestors=ancestors):
                     accepted = False
                     reason = "rejected:not-web-ui"
+                elif web_ui_only and not route_visible:
+                    accepted = False
+                    reason = f"rejected:route-hidden:{route_vis_reason}"
                 elif not symbols:
                     accepted = False
                     reason = "rejected:no-symbols"
@@ -895,12 +1156,41 @@ class ParamResolver:
                     "panel_title": panel_title,
                     "name": name,
                     "path": path,
+                    "component": str(component) if component is not None else None,
+                    "is_visible_on_side_menu": side,
+                    "display_dropdown": dropdown,
                     "symbol_count": len(symbols),
+                    "panel_shell": is_shell,
+                    "route_visible": route_visible,
+                    "route_visibility_reason": route_vis_reason,
+                    "web_ui_visible": web_visible,
+                    "web_ui_visibility_reason": web_vis_reason,
                     "accepted": accepted,
                     "reason": reason,
                 }
             )
         return diagnostics
+
+    async def _static_route_symbols_for_menu(self, menu: MenuResult) -> dict[str, set[str]]:
+        """Discover static-route token overlays for shell routes in *menu*."""
+        assets = self._assets
+        if not hasattr(assets, "discover_static_route_tokens"):
+            return {}
+        out: dict[str, set[str]] = {}
+        for route, _ancestors in self._iter_routes_with_ancestors(menu.routes):
+            path_key = self._normalize_route_path_key(getattr(route, "path", None))
+            if not path_key or path_key in out:
+                continue
+            if not self._route_is_panel_shell(route):
+                continue
+            try:
+                tokens = await assets.discover_static_route_tokens(path_key)
+            except Exception:
+                LOG.exception("Static route token discovery failed for %s", path_key)
+                tokens = set()
+            if tokens:
+                out[path_key] = set(tokens)
+        return out
 
     async def build_panel_groups(
         self,
@@ -909,15 +1199,26 @@ class ParamResolver:
         permissions: Iterable[str] | None = None,
         all_panels: bool = False,
         web_ui_only: bool = False,
+        flat_values: Mapping[str, Any] | None = None,
     ) -> dict[str, list[str]]:
         """Build panel groups from module menu for selected permissions."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
         routes_i18n = await self._panel_title_i18n(menu)
+        static_route_symbols = await self._static_route_symbols_for_menu(menu)
+        if flat_values is not None:
+            values: Mapping[str, Any] | None = flat_values
+        else:
+            # Empty implicit store ≡ unprimed (``None``), so displayDropdown stays
+            # ``visible:dropdown-unprimed``. Callers pass ``{}`` explicitly for missing-key hide.
+            flattened = self._store.flatten()
+            values = flattened if flattened else None
         return self.build_panel_groups_from_menu(
             menu,
             all_panels=all_panels,
             web_ui_only=web_ui_only,
             routes_i18n=routes_i18n,
+            flat_values=values,
+            static_route_symbols=static_route_symbols,
         )
 
     async def panel_route_diagnostics(
@@ -927,15 +1228,24 @@ class ParamResolver:
         permissions: Iterable[str] | None = None,
         all_panels: bool = False,
         web_ui_only: bool = False,
+        flat_values: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Return route diagnostics for panel inclusion filtering."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
         routes_i18n = await self._panel_title_i18n(menu)
+        static_route_symbols = await self._static_route_symbols_for_menu(menu)
+        if flat_values is not None:
+            values: Mapping[str, Any] | None = flat_values
+        else:
+            flattened = self._store.flatten()
+            values = flattened if flattened else None
         return self.panel_route_diagnostics_from_menu(
             menu,
             all_panels=all_panels,
             web_ui_only=web_ui_only,
             routes_i18n=routes_i18n,
+            flat_values=values,
+            static_route_symbols=static_route_symbols,
         )
 
     async def resolve_label(self, symbol: str) -> str | None:

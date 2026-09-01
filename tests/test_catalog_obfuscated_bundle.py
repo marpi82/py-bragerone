@@ -24,6 +24,7 @@ from pybragerone.models.catalog import (
     _eval_js_binary,
     _i18n_import_base_and_hash,
     _is_js_nullish,
+    _is_unevaluable_logical_operand,
     _js_concat,
     _js_nullish_aware_equal,
     _js_truthy,
@@ -636,6 +637,11 @@ def test_js_nullish_ternary_and_equality_helpers() -> None:
     assert _eval_js_binary("+", [], {}) == (False, None)
     assert _eval_js_binary("??", None, "fallback") == (True, "fallback")
     assert _eval_js_binary("??", "kept", "fallback") == (True, "kept")
+    assert _eval_js_binary("||", None, "fallback") == (True, "fallback")
+    assert _eval_js_binary("||", "", "fallback") == (True, "fallback")
+    assert _eval_js_binary("||", "kept", "fallback") == (True, "kept")
+    assert _eval_js_binary("&&", "kept", "right") == (True, "right")
+    assert _eval_js_binary("&&", None, "right") == (True, None)
     assert _eval_js_binary("===", None, None) == (True, True)
     assert _eval_js_binary("==", "x", "x") == (True, True)
     assert _eval_js_binary("!==", None, 1) == (True, True)
@@ -796,3 +802,173 @@ def test_string_concat_declines_non_primitive_operands() -> None:
     tree = _catalog()._ts.parse(code)
     node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
     assert _node_to_python(code, node) == "[1]+2"
+
+
+def test_optional_chain_or_fallback_fills_minmax_paths() -> None:
+    """Issue #329: ``_0x?.['minValue']||[{…}]`` must become paths.min / paths.max."""
+    catalog = _catalog()
+    code = b"""
+    const map = {
+      PARAM_TEST: {
+        value: [{group: 'P6', number: 1, use: 'v'}],
+        minValue: _0x39dd22?.['minValue']||[{group: 'P6', number: 42, use: 'n'}],
+        maxValue: _0x39dd22?.['maxValue']||[{group: 'P6', number: 42, use: 'x'}],
+      }
+    };
+    """
+    tree = catalog._ts.parse(code)
+    obj_node = next(n for n in _walk(tree.root_node) if n.type == "object" and b"PARAM_TEST" in code[n.start_byte : n.end_byte])
+    root = _node_to_python(code, obj_node)
+    assert isinstance(root, dict)
+    param_obj = root["PARAM_TEST"]
+    assert isinstance(param_obj, dict)
+    built = catalog._build_param_map_from_obj(param_obj, "PARAM_TEST", "test")
+    assert built is not None
+    assert built.paths["min"] == [{"group": "P6", "number": 42, "use": "n"}]
+    assert built.paths["max"] == [{"group": "P6", "number": 42, "use": "x"}]
+    # Non-optional ``_0x['KEY']`` remains an import-alias public name.
+    alias_code = b"_0x521864['DISPLAY_MENU_DHW']"
+    alias_tree = catalog._ts.parse(alias_code)
+    alias_expr = alias_tree.root_node.named_children[0]
+    if alias_expr.type == "expression_statement":
+        alias_expr = alias_expr.named_children[0]
+    assert _node_to_python(alias_code, alias_expr) == "DISPLAY_MENU_DHW"
+
+
+def test_logical_or_short_circuits_truthy_left_operand() -> None:
+    """``||`` must not evaluate the right operand when the left is truthy."""
+    catalog = _catalog()
+    code = b'const x = "kept" || right_side;'
+    tree = catalog._ts.parse(code)
+    node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(code, node) == "kept"
+
+
+def test_logical_and_short_circuits_falsy_left_operand() -> None:
+    """``&&`` must not evaluate the right operand when the left is falsy."""
+    catalog = _catalog()
+    code = b"const x = null && right_side;"
+    tree = catalog._ts.parse(code)
+    node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(code, node) is None
+
+
+def test_unevaluable_logical_operand_rejects_none_node() -> None:
+    """Missing AST nodes are not treated as unevaluable leftovers."""
+    assert _is_unevaluable_logical_operand(b"", None, None, None) is False
+
+
+def test_logical_ops_preserve_expression_when_left_is_unbound_identifier() -> None:
+    """Unbound identifier leftovers must not short-circuit as truthy/falsy strings."""
+    catalog = _catalog()
+    or_code = b"const x = unknown || fallback;"
+    or_tree = catalog._ts.parse(or_code)
+    or_node = next(n for n in _walk(or_tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(or_code, or_node) == "unknown || fallback"
+
+    and_code = b"const x = unknown && fallback;"
+    and_tree = catalog._ts.parse(and_code)
+    and_node = next(n for n in _walk(and_tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(and_code, and_node) == "unknown && fallback"
+
+    member_or_code = b"const x = unknown.member || fallback;"
+    member_or_tree = catalog._ts.parse(member_or_code)
+    member_or_node = next(n for n in _walk(member_or_tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(member_or_code, member_or_node) == "unknown.member || fallback"
+
+    member_and_code = b"const x = unknown.member && fallback;"
+    member_and_tree = catalog._ts.parse(member_and_code)
+    member_and_node = next(n for n in _walk(member_and_tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(member_and_code, member_and_node) == "unknown.member && fallback"
+
+    bound_code = b"const x = known || fallback;"
+    bound_tree = catalog._ts.parse(bound_code)
+    bound_node = next(n for n in _walk(bound_tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(bound_code, bound_node, {"known": ""}) == "fallback"
+
+
+def test_optional_chain_missing_key_on_bound_mapping_returns_none() -> None:
+    """``obj?.['missing']`` on a non-nullish mapping without the key is undefined."""
+    catalog = _catalog()
+    code = b"const v=obj?.['MISSING'];"
+    tree = catalog._ts.parse(code)
+    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
+    assert _node_to_python(code, sub, {"obj": {"OTHER": 1}}) is None
+
+
+def test_optional_chain_nullish_binding_returns_none() -> None:
+    """Optional chain on a nullish binding yields undefined, not the public key."""
+    catalog = _catalog()
+    code = b"_0x39dd22?.['minValue']"
+    tree = catalog._ts.parse(code)
+    expr = tree.root_node.named_children[0]
+    if expr.type == "expression_statement":
+        expr = expr.named_children[0]
+    assert _node_to_python(code, expr, {"_0x39dd22": None}) is None
+
+
+def test_build_asset_index_extracts_static_device_menu_routes() -> None:
+    """Index regex maps ``deviceMenu/static/<path>.ts`` imports to asset basenames."""
+    catalog = _catalog()
+    index = (
+        b"deviceMenu/static/timezones.ts', import('./timezones-Ab12Cd.js');"
+        b"deviceMenu/static/schedules.ts', import('./schedules-Xy99Zz.js');"
+    )
+    assets = catalog._build_asset_index_from_index_js("https://example/index.js", index)
+    assert assets.static_route_map == {"timezones": "timezones", "schedules": "schedules"}
+
+
+def test_build_asset_index_static_route_skips_entry_without_import() -> None:
+    """A malformed static-route key without its own import must not steal the next."""
+    catalog = _catalog()
+    index = (
+        b"deviceMenu/static/broken.ts', /* no import here */ deviceMenu/static/timezones.ts', import('./timezones-Ab12Cd.js');"
+    )
+    assets = catalog._build_asset_index_from_index_js("https://example/index.js", index)
+    assert assets.static_route_map == {"timezones": "timezones"}
+    assert "broken" not in assets.static_route_map
+
+
+def test_extract_public_tokens_ignores_prefixed_identifiers() -> None:
+    """``DEFAULT_PARAM_177`` must not contribute ``PARAM_177`` to shell overlays."""
+    tokens = LiveAssetsCatalog._extract_public_tokens_from_js(b"const DEFAULT_PARAM_177=1; e(E.READ,'PARAM_178'); STATUS_P9_4;")
+    assert tokens == {"PARAM_178", "STATUS_P9_4"}
+    assert "PARAM_177" not in tokens
+
+
+def test_extract_public_tokens_uses_js_identifier_boundaries() -> None:
+    """Lowercase / ``$`` prefixes are JS identifier chars and must not strip to ``PARAM_*``."""
+    source = b"const default_PARAM_177=1; const $PARAM_177=2; e(E.READ,'PARAM_178');"
+    tokens = LiveAssetsCatalog._extract_public_tokens_from_js(source)
+    assert tokens == {"PARAM_178"}
+    assert "PARAM_177" not in tokens
+
+
+def test_extract_public_tokens_keeps_quoted_tokens() -> None:
+    """Quoted ``'PARAM_*'`` remains extractable even beside identifier-like neighbors."""
+    tokens = LiveAssetsCatalog._extract_public_tokens_from_js(b"default_'PARAM_177'; foo$('PARAM_178');")
+    assert tokens == {"PARAM_177", "PARAM_178"}
+
+
+def test_build_asset_index_static_route_parse_failure_is_non_fatal(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Static route regex failures leave ``static_route_map`` empty."""
+    import re
+    from unittest.mock import patch
+
+    catalog = _catalog()
+    real_compile = re.compile
+
+    def _compile(pattern: str, flags: int = 0) -> re.Pattern[str]:
+        if "deviceMenu/static" in pattern:
+            raise RuntimeError("regex boom")
+        return real_compile(pattern, flags)
+
+    with patch("pybragerone.models.catalog.re.compile", side_effect=_compile), caplog.at_level(logging.DEBUG):
+        assets = catalog._build_asset_index_from_index_js(
+            "https://example/index.js",
+            b"deviceMenu/static/timezones.ts', import('./timezones-Ab12Cd.js');",
+        )
+    assert assets.static_route_map == {}
+    assert "Static deviceMenu route parsing failed" in caplog.text

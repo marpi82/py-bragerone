@@ -35,7 +35,9 @@ _HELPER_ACTIONS = frozenset({"READ", "WRITE", "STATUS"})
 # Only ``PARAM_*`` / ``STATUS_*`` are addressable tokens. Any other quoted upper-case
 # literal in leftover source (``'WRITE'``, ``'DISPLAY_*'``) would be a bogus parameter.
 _PUBLIC_PARAM_PATTERN = r"(?:PARAM|STATUS)_[A-Z0-9_]+"
-_HELPER_TOKEN_RE = re.compile(_PUBLIC_PARAM_PATTERN)
+# JS identifier boundaries (``[A-Za-z0-9_$]``) so ``DEFAULT_PARAM_177``,
+# ``default_PARAM_177``, and ``$PARAM_177`` do not yield ``PARAM_177``.
+_HELPER_TOKEN_RE = re.compile(rf"(?<![A-Za-z0-9_$]){_PUBLIC_PARAM_PATTERN}(?![A-Za-z0-9_$])")
 _LEFTOVER_QUOTED_TOKEN_RE = re.compile(rf"""['"]({_PUBLIC_PARAM_PATTERN})['"]""")
 _OBFUSCATED_IDENTIFIER_RE = re.compile(r"_0x[0-9a-fA-F]*")
 # Minified bundles spell booleans as unary expressions: ``!0``/``!![]`` are true,
@@ -85,6 +87,8 @@ class AssetIndex:
     assets_by_basename: dict[str, list[AssetRef]] = field(default_factory=dict)
     # mapping from deviceMenu:int -> BASENAME('module.menu-<hash>.js')
     menu_map: dict[int, str] = field(default_factory=dict)
+    # static side-menu route chunks: path basename -> asset basename (e.g. timezones -> timezones)
+    static_route_map: dict[str, str] = field(default_factory=dict)
     # inline parameter maps detected within index-*.js
     inline_param_candidates: list[tuple[int, int]] = field(default_factory=list)  # (start_byte, end_byte)
     # raw index for potential inline parsing
@@ -664,6 +668,10 @@ def _eval_js_binary(operator: str, left: Any, right: Any) -> tuple[bool, Any]:
         return False, None
     if operator == "??":
         return True, right if _is_js_nullish(left) else left
+    if operator == "||":
+        return True, left if _js_truthy(left) else right
+    if operator == "&&":
+        return True, right if _js_truthy(left) else left
     if operator in {"===", "=="}:
         return True, _js_nullish_aware_equal(left, right)
     if operator in {"!==", "!="}:
@@ -677,6 +685,29 @@ def _js_truthy(value: Any) -> bool:
         return False
     # ``0`` and ``0.0`` compare equal in Python, so a single zero check is enough.
     return bool(value != 0 and value != "")
+
+
+def _is_unevaluable_logical_operand(
+    code: bytes,
+    node: Node | None,
+    value: Any,
+    bindings: dict[str, Any] | None,
+) -> bool:
+    """Return whether *value* is an unevaluated AST leftover for ``||`` / ``&&``.
+
+    ``_node_to_python`` returns raw source for unresolved identifiers, member
+    access, calls, and similar nodes. Treating that string as a known value makes
+    ``unknown || fallback`` and ``unknown.member || fallback`` short-circuit
+    incorrectly instead of leaving the expression unevaluable.
+    """
+    if node is None:
+        return False
+    raw = _node_text(code, node)
+    if value != raw:
+        return False
+    if node.type in {"identifier", "property_identifier"}:
+        return not (bindings and raw in bindings)
+    return True
 
 
 def _pattern_bindings(code: bytes, pattern: Node, arg: Any, bindings: dict[str, Any]) -> dict[str, Any]:
@@ -1054,6 +1085,7 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
     if t == "subscript_expression":
         obj_node = node.child_by_field_name("object")
         index_node = node.child_by_field_name("index")
+        optional = any(child.type == "optional_chain" for child in node.children)
         if index_node is not None and _is_string(index_node):
             public = _string_value(_node_text(code, index_node))
             # Import aliases: ``_0x521864['DISPLAY_MENU_DHW']``. Leave ``arr['map']`` and
@@ -1064,7 +1096,14 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
                     obj_val = bindings[obj_name]
                     if isinstance(obj_val, Mapping) and public in obj_val:
                         return obj_val[public]
+                    # Optional chain on a missing / nullish binding → undefined.
+                    if optional and (_is_js_nullish(obj_val) or isinstance(obj_val, Mapping)):
+                        return None
                 if obj_name.startswith("_0x"):
+                    # ``_0x?.['minValue']`` with no binding is undefined (SPA fallback
+                    # via ``|| […]``), not the public name used for import aliases.
+                    if optional:
+                        return None
                     return public
         leftover = _node_text(code, node)
         public_leftover = js_public_member_name(leftover)
@@ -1083,9 +1122,19 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         right_node = node.child_by_field_name("right")
         if operator is None or left_node is None or right_node is None:  # pragma: no cover
             return _node_text(code, node)
+        op_text = _node_text(code, operator)
+        left_val = _node_to_python(code, left_node, bindings)
+        if op_text == "||":
+            if _is_unevaluable_logical_operand(code, left_node, left_val, bindings):
+                return _node_text(code, node)
+            return left_val if _js_truthy(left_val) else _node_to_python(code, right_node, bindings)
+        if op_text == "&&":
+            if _is_unevaluable_logical_operand(code, left_node, left_val, bindings):
+                return _node_text(code, node)
+            return left_val if not _js_truthy(left_val) else _node_to_python(code, right_node, bindings)
         handled, result = _eval_js_binary(
-            _node_text(code, operator),
-            _node_to_python(code, left_node, bindings),
+            op_text,
+            left_val,
             _node_to_python(code, right_node, bindings),
         )
         if handled:
@@ -1209,6 +1258,8 @@ class LiveAssetsCatalog:
 
         # New menu management system
         self._menu_manager = MenuManager(self._log)
+        self._static_route_tokens_cache: dict[str, set[str]] = {}
+        self._index_generation = 0
 
         # Track auto-discovery attempts to help guard repeated network fetches
         self._index_autoload_attempts = 0
@@ -1263,6 +1314,8 @@ class LiveAssetsCatalog:
             raise
         self._last_index_url = index_url  # Store for i18n URL construction
         self._idx = self._build_asset_index_from_index_js(index_url, code)
+        self._index_generation += 1
+        self._static_route_tokens_cache.clear()
         self._units_descriptor_table = None
         self._index_token_raw_maps = None
         self._index_token_raw_maps_sig = None
@@ -1404,6 +1457,23 @@ class LiveAssetsCatalog:
         except Exception as regex_e:
             self._log.debug("Regex deviceMenu parsing failed: %s", regex_e)
 
+        static_route_map: dict[str, str] = {}
+        try:
+            # Bound the gap between the static route key and its import so a
+            # malformed entry without ``import(...)`` cannot steal the next
+            # entry's chunk (DOTALL ``.*?`` previously crossed manifest keys).
+            static_route_pattern = re.compile(
+                r"deviceMenu/static/([A-Za-z0-9_-]+)\.ts['\"]"
+                r"(?:(?!deviceMenu/static/)[\s\S]){0,160}?"
+                r"import\s*\(\s*['\"]\./([A-Za-z0-9_.-]+)-([A-Za-z0-9_-]+)\.js['\"]",
+            )
+            for match in static_route_pattern.finditer(text):
+                route_path = str(match.group(1))
+                asset_base = str(match.group(2))
+                static_route_map.setdefault(route_path, asset_base)
+        except Exception as static_exc:
+            self._log.debug("Static deviceMenu route parsing failed: %s", static_exc)
+
         # Prepare limited code for AST parsing (needed for inline param candidates)
         ast_limit = min(1000000, len(code))
         limited_code = code[:ast_limit]
@@ -1442,9 +1512,63 @@ class LiveAssetsCatalog:
         return AssetIndex(
             assets_by_basename=assets_by_basename,
             menu_map=menu_map,
+            static_route_map=static_route_map,
             inline_param_candidates=inline_candidates,
             index_bytes=code,
         )
+
+    @staticmethod
+    def _extract_public_tokens_from_js(code: bytes) -> set[str]:
+        """Return PARAM/STATUS tokens referenced in a minified JS chunk."""
+        text = code.decode("utf-8", errors="replace")
+        tokens: set[str] = set()
+        tokens.update(_HELPER_TOKEN_RE.findall(text))
+        tokens.update(_LEFTOVER_QUOTED_TOKEN_RE.findall(text))
+        return tokens
+
+    async def discover_static_route_tokens(self, route_path: str) -> set[str]:
+        """Return parameter tokens declared in a static ``deviceMenu/static/<path>.ts`` chunk.
+
+        Live menus sometimes expose a side-menu route (e.g. ``MAINMENU_STREFY_CZASOWE`` /
+        path ``timezones``) with no ``read``/``write`` parameters in ``module.menu-*.js``.
+        The SPA loads symbols from a separate static route bundle referenced in ``index-*.js``.
+        """
+        path_key = route_path.strip().strip("/")
+        if not path_key or path_key in {".", ".."}:
+            return set()
+        if path_key in self._static_route_tokens_cache:
+            return set(self._static_route_tokens_cache[path_key])
+
+        await self._ensure_index_loaded()
+        # Mirror ``_ensure_index_loaded`` success predicate: an unloaded index must not
+        # poison the cache (auto-discovery may recover on a later call).
+        if not (self._idx.index_bytes or self._idx.assets_by_basename):
+            return set()
+
+        generation = self._index_generation
+        asset_base = self._idx.static_route_map.get(path_key)
+        if asset_base is None and path_key in self._idx.assets_by_basename:
+            asset_base = path_key
+
+        tokens: set[str] = set()
+        if asset_base is not None:
+            asset_ref = self._idx.find_asset_for_basename(asset_base)
+            if asset_ref is not None:
+                try:
+                    code = await self._api.get_bytes(asset_ref.url)
+                    if generation != self._index_generation:
+                        return set()
+                    tokens = self._extract_public_tokens_from_js(code)
+                    if generation != self._index_generation:
+                        return set()
+                except Exception as exc:
+                    self._log.debug("Static route asset fetch failed for %s: %s", path_key, exc)
+                    # Transient fetch failures must not poison the cache.
+                    return set()
+
+        # Generation mismatches return above; reaching here means this index is still current.
+        self._static_route_tokens_cache[path_key] = tokens
+        return set(tokens)
 
     # ---------- MENU ----------
 

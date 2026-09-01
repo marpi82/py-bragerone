@@ -50,6 +50,9 @@ _DEFAULT_ZOMBIE_RECOVERY_COOLDOWN_S = 300.0
 _MAX_ZOMBIE_RECOVERY_COOLDOWN_S = 1800.0
 # How long ``resubscribe`` waits for a namespace SID after reconnect.
 _RESUBSCRIBE_SID_WAIT_S = 2.0
+# Debounce module-online → zombie recovery so one get_modules pass cannot rebuild twice.
+# Strictly above the default connectivity poll interval (60s).
+_MODULE_ONLINE_RECOVERY_DEBOUNCE_S = 90.0
 
 ConnectivitySource = Literal["rest", "ws", "derived"]
 CloudSessionSource = Literal["connect", "disconnect", "stop"]
@@ -267,6 +270,8 @@ class BragerOneGateway:
         self._zombie_hard_restart_streak = 0
         self._zombie_recycle_streak = 0
         self._zombie_recovery_cooldown_until: float | None = None
+        self._zombie_module_online_recovery_inflight = False
+        self._zombie_last_module_online_recovery_monotonic: float | None = None
         self._last_param_publish_monotonic: float | None = None
         self._last_live_param_publish_monotonic: float | None = None
 
@@ -445,6 +450,7 @@ class BragerOneGateway:
             self._zombie_hard_restart_streak = 0
             self._zombie_recycle_streak = 0
             self._zombie_recovery_cooldown_until = None
+            self._zombie_last_module_online_recovery_monotonic = None
 
     async def refresh_module_connectivity(self) -> None:
         """Refresh module↔cloud connectivity from REST ``get_modules``."""
@@ -480,7 +486,10 @@ class BragerOneGateway:
             raise RuntimeError("No namespace SID after connecting to WS (Socket.IO).")
 
         ok = await self.api.modules_connect(sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine)
-        LOG.info("modules.connect: %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
+        if ok:
+            LOG.info("modules.connect: %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
+        else:
+            LOG.warning("modules.connect failed (ns_sid=%s, engine_sid=%s)", sid_ns, sid_engine)
         modules_connected_at = time.monotonic()
 
         # 4) WS subscribe + PRIME via REST (in parallel)
@@ -566,6 +575,28 @@ class BragerOneGateway:
         await api.ensure_auth()
         return api.access_token
 
+    async def _force_fresh_auth(self) -> bool:
+        """Force a full re-login so WS recovery does not reuse a wedged cloud session.
+
+        Delegates to ``BragerOneApiClient.invalidate_and_reauth``, which preflights
+        credentials before clearing state. Without email/password (args or
+        ``creds_provider``), the client keeps a usable token rather than wiping it
+        and leaving reconnect unauthenticated.
+
+        Returns:
+            ``True`` when a usable access token is available after the attempt.
+        """
+        api = self.api
+        try:
+            if isinstance(api, BragerOneApiClient):
+                tok = await api.invalidate_and_reauth()
+                return bool(tok.access_token)
+            access_token = await self._fresh_ws_token()
+            return bool(access_token)
+        except Exception:
+            LOG.exception("Forced fresh auth failed")
+            return False
+
     async def _set_ws_session_up(self, up: bool, *, source: CloudSessionSource) -> None:
         """Update library↔cloud session cache and notify listeners on flips."""
         previous = self._ws_session_up
@@ -607,21 +638,32 @@ class BragerOneGateway:
         # Keep last connectedAt; REST poll / reconnect refresh remains authoritative.
         await self._set_ws_session_up(False, source="disconnect")
 
-    async def resubscribe(self) -> None:
-        """Call after WS reconnect to re-bind modules + prime again."""
+    async def resubscribe(self) -> bool:
+        """Call after WS reconnect to re-bind modules + prime again.
+
+        Returns:
+            ``True`` when ``modules.connect`` succeeded and subscribe/prime ran;
+            ``False`` when there is no WS client, no namespace SID, or connect failed.
+            REST prime still runs when connect fails so the store is refreshed from
+            the authoritative snapshot even without a live push binding.
+        """
         ws = self.ws
         if ws is None:
-            return
+            return False
         sid_ns = await self._wait_for_ws_sid(ws)
         sid_engine = ws.engine_sid()
         if not sid_ns:
             LOG.warning("WS resubscribe skipped: no namespace SID after reconnect")
-            return
+            return False
         ok = await self.api.modules_connect(sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine)
-        LOG.info("modules.connect (resub): %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
-        await ws.subscribe(self.modules)
+        if ok:
+            LOG.info("modules.connect (resub): %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
+            await ws.subscribe(self.modules)
+        else:
+            LOG.warning("modules.connect (resub) failed (ns_sid=%s, engine_sid=%s)", sid_ns, sid_engine)
         okp, oka = await self._prime_with_retry()
         LOG.debug("prime after resubscribe: parameters=%s activity=%s", okp, oka)
+        return ok
 
     async def _wait_for_ws_sid(self, ws: RealtimeManagerClient, *, timeout_s: float = _RESUBSCRIBE_SID_WAIT_S) -> str | None:
         """Wait briefly for a namespace SID after connect/reconnect."""
@@ -688,15 +730,12 @@ class BragerOneGateway:
                         age,
                     )
                 elif self._zombie_recovery_in_cooldown():
+                    # REST-prime only: do not grow the escalation streak or WARN-spam.
+                    # Field logs showed streak climbing through cooldown so the first
+                    # post-cooldown tick immediately hard-reconnected.
                     LOG.debug(
-                        "Skipping zombie WS recovery during cooldown (age=%.0fs)",
+                        "No live ParamUpdate for %.0fs while Socket.IO reports up; REST-priming during zombie recovery cooldown",
                         age,
-                    )
-                    self._zombie_prime_streak += 1
-                    LOG.warning(
-                        "No live ParamUpdate for %.0fs while Socket.IO reports up; REST-priming (zombie_streak=%s, cooldown)",
-                        age,
-                        self._zombie_prime_streak,
                     )
                 else:
                     self._zombie_prime_streak += 1
@@ -728,6 +767,10 @@ class BragerOneGateway:
 
     def _arm_zombie_recovery_cooldown(self) -> None:
         """Exponential backoff after recycle/rebuild so recovery does not thrash."""
+        # Reset short-cycle streaks so cooldown expiry starts a fresh escalate ladder
+        # instead of an immediate hard reconnect from primes counted during cooldown.
+        self._zombie_prime_streak = 0
+        self._zombie_hard_restart_streak = 0
         base = max(0.0, self._zombie_recovery_cooldown_s)
         if base <= 0:
             self._zombie_recovery_cooldown_until = None
@@ -758,6 +801,13 @@ class BragerOneGateway:
             rest_prime_streak,
             self._zombie_hard_restart_streak,
         )
+        # Soft reconnect alone left wedged cloud push sessions in field logs;
+        # force a fresh login before reconnecting (same as recycle/rebuild).
+        # ``_force_fresh_auth`` never raises — failures return ``False``.
+        if not await self._force_fresh_auth():
+            LOG.warning("Aborting WS hard reconnect: no usable token after forced re-login")
+            self._arm_zombie_recovery_cooldown()
+            return
         try:
             await ws.force_reconnect()
             # ``force_reconnect`` may spawn ``on_connected`` work; await resubscribe so
@@ -786,10 +836,10 @@ class BragerOneGateway:
         )
         self._zombie_hard_restart_streak = 0
         self._zombie_prime_streak = 0
-        try:
-            await self._fresh_ws_token()
-        except Exception:
-            LOG.exception("Token refresh during realtime recycle failed")
+        if not await self._force_fresh_auth():
+            LOG.warning("Aborting realtime recycle: no usable token after forced re-login")
+            self._arm_zombie_recovery_cooldown()
+            return
         if not self._is_running():
             return
         try:
@@ -820,6 +870,12 @@ class BragerOneGateway:
         )
         self._zombie_hard_restart_streak = 0
         self._zombie_prime_streak = 0
+        if not await self._force_fresh_auth():
+            LOG.warning("Aborting RealtimeManager rebuild: no usable token after forced re-login")
+            self._arm_zombie_recovery_cooldown()
+            return
+        if not self._is_running():
+            return
         old = self.ws
         self._ws_hooks_registered = False
         try:
@@ -827,12 +883,6 @@ class BragerOneGateway:
                 await old.disconnect()
         except Exception:
             LOG.exception("WS disconnect during RealtimeManager rebuild failed")
-        if not self._is_running():
-            return
-        try:
-            await self._fresh_ws_token()
-        except Exception:
-            LOG.exception("Token refresh during RealtimeManager rebuild failed")
         if not self._is_running():
             return
         try:
@@ -960,6 +1010,63 @@ class BragerOneGateway:
         )
         if self._on_module_connectivity:
             await self._invoke_list(self._on_module_connectivity, event)
+        if online_changed and online and devid in self.modules:
+            await self._maybe_recover_after_module_online(devid)
+
+    async def _maybe_recover_after_module_online(self, devid: str) -> None:
+        """Clear cooldown and escalate recovery when a module returns during a zombie.
+
+        Today's field logs show rebuild+cooldown leaving the push stream dead while the
+        module flaps offline→online; waiting out the cooldown misses that window.
+        """
+        if self._zombie_module_online_recovery_inflight or not self._is_running():
+            return
+        if not self._ws_session_up:
+            return
+        last = self._zombie_last_module_online_recovery_monotonic
+        if last is not None and (time.monotonic() - last) < _MODULE_ONLINE_RECOVERY_DEBOUNCE_S:
+            return
+        age = self._zombie_param_update_age_s()
+        stale_after = self._stale_prime_after_s
+        if stale_after <= 0 or age is None or age < stale_after:
+            return
+
+        was_cooling = self._zombie_recovery_in_cooldown()
+        self._zombie_module_online_recovery_inflight = True
+        self._zombie_last_module_online_recovery_monotonic = time.monotonic()
+        try:
+            if was_cooling:
+                self._zombie_recovery_cooldown_until = None
+                LOG.warning(
+                    "Module %s came online while zombie (age=%.0fs, cleared cooldown); resubscribing",
+                    devid,
+                    age,
+                )
+                if not await self._force_fresh_auth():
+                    LOG.warning("Module-online recovery skipped: no usable token after forced re-login")
+                    self._arm_zombie_recovery_cooldown()
+                    return
+                try:
+                    rebound = await self.resubscribe()
+                except Exception:
+                    self._arm_zombie_recovery_cooldown()
+                    raise
+                if not rebound:
+                    LOG.warning("Module-online recovery incomplete: resubscribe did not re-bind modules")
+                    self._arm_zombie_recovery_cooldown()
+                    return
+                return
+
+            LOG.warning(
+                "Module %s came online while zombie (age=%.0fs); escalating zombie recovery",
+                devid,
+                age,
+            )
+            await self._recover_zombie_session(max(1, self._zombie_prime_streak))
+        except Exception:
+            LOG.exception("Zombie recovery after module online failed")
+        finally:
+            self._zombie_module_online_recovery_inflight = False
 
     # ------------------------- PRIME & ingest -------------------------
 

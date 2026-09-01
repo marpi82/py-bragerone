@@ -10,8 +10,9 @@ from typing import Any
 
 import pytest
 from httpx import ReadTimeout, TimeoutException
+from pytest_httpx import HTTPXMock
 
-from pybragerone.api.client import ApiError
+from pybragerone.api.client import ApiError, BragerOneApiClient
 from pybragerone.gateway import (
     ApiClient,
     BragerOneGateway,
@@ -573,7 +574,7 @@ async def test_gateway_ws_reconnect_and_poll_exception_paths() -> None:
     assert gw.ws_session_up() is False
     gw._started = True
 
-    async def _boom_resubscribe() -> None:
+    async def _boom_resubscribe() -> bool:
         raise RuntimeError("resubscribe failed")
 
     gw.resubscribe = _boom_resubscribe  # type: ignore[method-assign]
@@ -642,9 +643,9 @@ async def test_gateway_reconnect_skips_stale_generation_refresh() -> None:
     await gw.start()
     calls_before = api.get_modules_calls
 
-    async def _slow_resubscribe() -> None:
+    async def _slow_resubscribe() -> bool:
         await gw._on_ws_disconnected()
-        return None
+        return False
 
     gw.resubscribe = _slow_resubscribe  # type: ignore[method-assign]
     await gw._on_ws_connected()
@@ -1267,7 +1268,7 @@ async def test_gateway_rebuild_registers_hooks_before_failed_connect(
 async def test_gateway_zombie_recovery_cooldown_skips_ws_recovery(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """During cooldown the poll REST-primes but does not hard-reconnect."""
+    """During cooldown the poll REST-primes but does not hard-reconnect or escalate."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     ws = FakeRealtimeManager()
@@ -1283,13 +1284,35 @@ async def test_gateway_zombie_recovery_cooldown_skips_ws_recovery(
     )
     await gw.start()
     gw._last_live_param_publish_monotonic = 0.0
+    gw._zombie_prime_streak = 0
     gw._zombie_recovery_cooldown_until = time.monotonic() + 60.0
     primes_after_start = api.prime_params_calls
-    await _wait_until(lambda: api.prime_params_calls > primes_after_start)
+    await _wait_until(lambda: api.prime_params_calls > primes_after_start + 1)
     assert ws.force_reconnect_calls == 0
-    with caplog.at_level("WARNING"):
-        await _wait_until(lambda: "cooldown)" in caplog.text)
+    assert gw._zombie_prime_streak == 0
+    with caplog.at_level("DEBUG"):
+        await _wait_until(lambda: "REST-priming during zombie recovery cooldown" in caplog.text)
     await gw.stop()
+
+
+def test_arm_zombie_recovery_cooldown_resets_short_streaks() -> None:
+    """Arming cooldown must clear prime/hard streaks so expiry does not thrash."""
+    api = FakeApiClient()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=FakeRealtimeManager(),
+        connectivity_poll_interval=0,
+        zombie_recovery_cooldown_s=30,
+    )
+    gw._zombie_prime_streak = 11
+    gw._zombie_hard_restart_streak = 3
+    gw._zombie_recycle_streak = 2
+    gw._arm_zombie_recovery_cooldown()
+    assert gw._zombie_prime_streak == 0
+    assert gw._zombie_hard_restart_streak == 0
+    assert gw._zombie_recovery_in_cooldown() is True
 
 
 async def test_gateway_resubscribe_skips_without_sid(
@@ -1303,9 +1326,62 @@ async def test_gateway_resubscribe_skips_without_sid(
     ws.sid = lambda: None  # type: ignore[method-assign]
     connects_after_start = api.modules_connect_calls
     with caplog.at_level("WARNING"):
-        await gw.resubscribe()
+        assert await gw.resubscribe() is False
         assert "no namespace SID after reconnect" in caplog.text
     assert api.modules_connect_calls == connects_after_start
+    await gw.stop()
+
+
+async def test_gateway_resubscribe_warns_when_modules_connect_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``resubscribe`` must WARNING-log when ``modules_connect`` returns False."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+
+    async def _fail_connect(
+        wsid_ns: str,
+        modules: list[str],
+        group_id: int | None = None,
+        engine_sid: str | None = None,
+    ) -> bool:
+        api.modules_connect_calls += 1
+        return False
+
+    api.modules_connect = _fail_connect  # type: ignore[method-assign]
+    prime_before = api.prime_params_calls
+    subscribe_before = len(ws.subscribe_calls)
+    with caplog.at_level("WARNING"):
+        assert await gw.resubscribe() is False
+        assert "modules.connect (resub) failed" in caplog.text
+    assert api.prime_params_calls > prime_before
+    assert len(ws.subscribe_calls) == subscribe_before
+    await gw.stop()
+
+
+async def test_gateway_start_warns_when_modules_connect_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``start`` must WARNING-log when ``modules_connect`` returns False."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+
+    async def _fail_connect(
+        wsid_ns: str,
+        modules: list[str],
+        group_id: int | None = None,
+        engine_sid: str | None = None,
+    ) -> bool:
+        api.modules_connect_calls += 1
+        return False
+
+    api.modules_connect = _fail_connect  # type: ignore[method-assign]
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    with caplog.at_level("WARNING"):
+        await gw.start()
+        assert "modules.connect failed" in caplog.text
     await gw.stop()
 
 
@@ -1475,7 +1551,7 @@ async def test_gateway_recycle_token_refresh_failure_and_stop(
     gw._fresh_ws_token = _boom_token  # type: ignore[method-assign]
     with caplog.at_level("ERROR"):
         await gw._recycle_realtime_session(2)
-        assert "Token refresh during realtime recycle failed" in caplog.text
+        assert "Forced fresh auth failed" in caplog.text
     assert gw._zombie_recovery_cooldown_until is not None
 
     async def _stop_during_token() -> str:
@@ -1574,9 +1650,12 @@ async def test_gateway_rebuild_edge_paths(caplog: pytest.LogCaptureFixture) -> N
 
     gw.ws = FakeRealtimeManager()
     gw._fresh_ws_token = _token_fail  # type: ignore[method-assign]
+    fail_ws = gw.ws
     with caplog.at_level("ERROR"):
         await gw._rebuild_realtime_manager(2)
-        assert "Token refresh during RealtimeManager rebuild failed" in caplog.text
+        assert "Forced fresh auth failed" in caplog.text
+    assert fail_ws.disconnect_calls == 0
+    assert gw.ws is fail_ws
 
     async def _token_stop() -> str:
         gw._started = False
@@ -1617,3 +1696,555 @@ def test_gateway_make_realtime_manager_branches() -> None:
     mgr_real = gw_real._make_realtime_manager()
     assert mgr_real._token == "real-token"
     assert mgr_real._token_provider is not None
+
+
+async def test_gateway_recovers_when_module_comes_online_during_zombie(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Module online during cooldown must clear backoff and resubscribe."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=1,
+        zombie_recovery_cooldown_s=1800,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    gw._zombie_recovery_cooldown_until = time.monotonic() + 1800.0
+    resub_calls = {"n": 0}
+
+    async def _track_resubscribe() -> bool:
+        resub_calls["n"] += 1
+        return True
+
+    gw.resubscribe = _track_resubscribe  # type: ignore[method-assign]
+    with caplog.at_level("WARNING"):
+        await gw._apply_connectivity(
+            devid="M1",
+            online=True,
+            source="rest",
+            connected_at=123,
+        )
+        assert "came online while zombie" in caplog.text
+        assert "cleared cooldown" in caplog.text
+    assert resub_calls["n"] == 1
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_skips_when_auth_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Cooldown-clearing module-online recovery must abort when forced re-login fails."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=1,
+        zombie_recovery_cooldown_s=1800,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    gw._zombie_recovery_cooldown_until = time.monotonic() + 1800.0
+    resub_calls = {"n": 0}
+
+    async def _failed_auth() -> bool:
+        return False
+
+    async def _track_resubscribe() -> bool:
+        resub_calls["n"] += 1
+        return True
+
+    gw._force_fresh_auth = _failed_auth  # type: ignore[method-assign]
+    gw.resubscribe = _track_resubscribe  # type: ignore[method-assign]
+    with caplog.at_level("WARNING"):
+        await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=123)
+        assert "Module-online recovery skipped: no usable token" in caplog.text
+    assert resub_calls["n"] == 0
+    assert gw._zombie_recovery_in_cooldown() is True
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_rearms_cooldown_when_resubscribe_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Failed resubscribe after clearing cooldown must re-arm backoff."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=1,
+        zombie_recovery_cooldown_s=1800,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    gw._zombie_recovery_cooldown_until = time.monotonic() + 1800.0
+
+    async def _ok_auth() -> bool:
+        return True
+
+    async def _boom_resubscribe() -> bool:
+        raise RuntimeError("resub boom")
+
+    gw._force_fresh_auth = _ok_auth  # type: ignore[method-assign]
+    gw.resubscribe = _boom_resubscribe  # type: ignore[method-assign]
+    with caplog.at_level("ERROR"):
+        await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=123)
+        assert "Zombie recovery after module online failed" in caplog.text
+    assert gw._zombie_recovery_in_cooldown() is True
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_rearms_cooldown_when_resubscribe_incomplete(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Soft resubscribe failure (False) must re-arm cooldown after clearing it."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=1,
+        zombie_recovery_cooldown_s=1800,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    gw._zombie_recovery_cooldown_until = time.monotonic() + 1800.0
+
+    async def _ok_auth() -> bool:
+        return True
+
+    async def _soft_fail_resubscribe() -> bool:
+        return False
+
+    gw._force_fresh_auth = _ok_auth  # type: ignore[method-assign]
+    gw.resubscribe = _soft_fail_resubscribe  # type: ignore[method-assign]
+    with caplog.at_level("WARNING"):
+        await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=123)
+        assert "resubscribe did not re-bind modules" in caplog.text
+    assert gw._zombie_recovery_in_cooldown() is True
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_skips_when_not_zombie() -> None:
+    """Fresh live traffic must not trigger module-online rebuild."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+    )
+    await gw.start()
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic()
+    rebuild_calls = {"n": 0}
+
+    async def _boom_rebuild(_streak: int) -> None:
+        rebuild_calls["n"] += 1
+
+    gw._rebuild_realtime_manager = _boom_rebuild  # type: ignore[method-assign,assignment]
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=1)
+    assert rebuild_calls["n"] == 0
+    await gw.stop()
+
+
+async def test_gateway_force_fresh_auth_falls_back_for_fake_api() -> None:
+    """Non-BragerOne API clients keep using the soft token path."""
+    api = FakeApiClient()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=FakeRealtimeManager(),
+        connectivity_poll_interval=0,
+    )
+    assert await gw._force_fresh_auth() is True
+
+
+async def test_gateway_force_fresh_auth_rejects_empty_custom_token() -> None:
+    """Custom ``ApiClient`` implementations must not report success without a token."""
+
+    class _EmptyTokenApi(FakeApiClient):
+        @property
+        def access_token(self) -> str:
+            return ""
+
+    gw = BragerOneGateway(
+        api=_EmptyTokenApi(),
+        object_id=1,
+        modules=["M1"],
+        ws=FakeRealtimeManager(),
+        connectivity_poll_interval=0,
+    )
+    assert await gw._force_fresh_auth() is False
+
+
+@pytest.mark.asyncio
+async def test_gateway_force_fresh_auth_without_creds_keeps_token(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Gateway recovery without creds_provider must not erase the only token."""
+    from pybragerone.models.token import Token
+
+    api = BragerOneApiClient(validate_on_start=False)
+    api._token = Token(access_token="keep-me")
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=FakeRealtimeManager(),
+        connectivity_poll_interval=0,
+    )
+    with caplog.at_level("WARNING"):
+        assert await gw._force_fresh_auth() is True
+        assert "no credentials available" in caplog.text
+    assert api.access_token == "keep-me"
+    await api.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
+async def test_gateway_force_fresh_auth_invalidates_real_client(httpx_mock: HTTPXMock) -> None:
+    """Real API clients must drop cached tokens during zombie recovery."""
+    api = BragerOneApiClient(creds_provider=lambda: ("e@example.com", "secret"), validate_on_start=False)
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/auth/user", json={"accessToken": "T1"})
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/auth/user", json={"accessToken": "T2"})
+    await api.ensure_auth("e@example.com", "secret")
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=FakeRealtimeManager(),
+        connectivity_poll_interval=0,
+    )
+    assert await gw._force_fresh_auth() is True
+    await gw.stop()
+    await api.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
+async def test_gateway_recycle_calls_force_fresh_auth_on_real_client(httpx_mock: HTTPXMock) -> None:
+    """Recycle/rebuild paths force re-login on the real HTTP client."""
+    api = BragerOneApiClient(creds_provider=lambda: ("e@example.com", "secret"), validate_on_start=False)
+    ws = FakeRealtimeManager()
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/auth/user", json={"accessToken": "T1"})
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/auth/user", json={"accessToken": "T2"})
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/connect", status_code=204)
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/parameters", json={"M1": {}})
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/activity/quantity", status_code=204)
+    await api.ensure_auth("e@example.com", "secret")
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        zombie_rebuild_after=0,
+        zombie_recovery_cooldown_s=0,
+    )
+    await gw.start()
+    await gw._recycle_realtime_session(2)
+    assert api.access_token == "T2"
+    await gw.stop()
+    await api.close()
+
+
+@pytest.mark.httpx_mock(assert_all_requests_were_expected=False)
+@pytest.mark.asyncio
+async def test_gateway_hard_reconnect_force_fresh_auth_on_real_client(httpx_mock: HTTPXMock) -> None:
+    """Hard reconnect in ``_recover_zombie_session`` must invalidate the real HTTP client."""
+    api = BragerOneApiClient(creds_provider=lambda: ("e@example.com", "secret"), validate_on_start=False)
+    ws = FakeRealtimeManager()
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/auth/user", json={"accessToken": "T1"})
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/auth/user", json={"accessToken": "T2"})
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/connect", status_code=204)
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/parameters", json={"M1": {}})
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/activity/quantity", status_code=204)
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/connect", status_code=204)
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/parameters", json={"M1": {}})
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/activity/quantity", status_code=204)
+    await api.ensure_auth("e@example.com", "secret")
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        zombie_full_recycle_after=0,
+        zombie_recovery_cooldown_s=0,
+    )
+    await gw.start()
+    assert api.access_token == "T1"
+    await gw._recover_zombie_session(2)
+    assert ws.force_reconnect_calls >= 1
+    assert api.access_token == "T2"
+    await gw.stop()
+    await api.close()
+
+
+async def test_gateway_hard_reconnect_aborts_when_force_fresh_auth_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Hard reconnect must abort when ``_force_fresh_auth`` cannot obtain a token."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        zombie_full_recycle_after=0,
+        zombie_recovery_cooldown_s=0,
+    )
+    await gw.start()
+    reconnects_after_start = ws.force_reconnect_calls
+
+    async def _failed_auth() -> bool:
+        return False
+
+    gw._force_fresh_auth = _failed_auth  # type: ignore[method-assign]
+    with caplog.at_level("WARNING"):
+        await gw._recover_zombie_session(2)
+        assert "Aborting WS hard reconnect" in caplog.text
+    assert ws.force_reconnect_calls == reconnects_after_start
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_uses_recycle_path() -> None:
+    """When not cooling down, module-online recovery escalates via the zombie ladder."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=0,
+        zombie_full_recycle_after=1,
+        zombie_recovery_cooldown_s=0,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    recover_calls = {"n": 0}
+
+    async def _track_recover(_streak: int) -> None:
+        recover_calls["n"] += 1
+
+    gw._recover_zombie_session = _track_recover  # type: ignore[method-assign,assignment]
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=1)
+    assert recover_calls["n"] == 1
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_resubscribe_only() -> None:
+    """With recycle/rebuild disabled, module-online recovery escalates via the ladder."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=0,
+        zombie_full_recycle_after=0,
+        zombie_recovery_cooldown_s=0,
+    )
+    await gw.start()
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    recover_calls = {"n": 0}
+
+    async def _track_recover(_streak: int) -> None:
+        recover_calls["n"] += 1
+
+    gw._recover_zombie_session = _track_recover  # type: ignore[method-assign,assignment]
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=1)
+    assert recover_calls["n"] == 1
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_debounce_skips_second_attempt() -> None:
+    """Repeated module-online signals within the debounce window are ignored."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=1,
+    )
+    await gw.start()
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    gw._zombie_last_module_online_recovery_monotonic = time.monotonic()
+    recover_calls = {"n": 0}
+
+    async def _track_recover(_streak: int) -> None:
+        recover_calls["n"] += 1
+
+    gw._recover_zombie_session = _track_recover  # type: ignore[method-assign,assignment]
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=1)
+    assert recover_calls["n"] == 0
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_skips_without_ws_session() -> None:
+    """Module-online recovery requires an active library↔cloud session."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=1,
+    )
+    await gw.start()
+    gw._ws_session_up = False
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    recover_calls = {"n": 0}
+
+    async def _track_recover(_streak: int) -> None:
+        recover_calls["n"] += 1
+
+    gw._recover_zombie_session = _track_recover  # type: ignore[method-assign,assignment]
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=1)
+    assert recover_calls["n"] == 0
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_logs_without_cooldown(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Recovery log omits the cooldown suffix when none was active."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=1,
+        zombie_recovery_cooldown_s=0,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    recover_calls = {"n": 0}
+
+    async def _track_recover(_streak: int) -> None:
+        recover_calls["n"] += 1
+
+    gw._recover_zombie_session = _track_recover  # type: ignore[method-assign,assignment]
+    with caplog.at_level("WARNING"):
+        await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=1)
+        assert "came online while zombie" in caplog.text
+        assert "cleared cooldown" not in caplog.text
+    assert recover_calls["n"] == 1
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_skips_when_inflight() -> None:
+    """Concurrent module-online recovery attempts must not stack."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=1,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    gw._zombie_module_online_recovery_inflight = True
+    recover_calls = {"n": 0}
+
+    async def _boom_recover(_streak: int) -> None:
+        recover_calls["n"] += 1
+
+    gw._recover_zombie_session = _boom_recover  # type: ignore[method-assign,assignment]
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=1)
+    assert recover_calls["n"] == 0
+    await gw.stop()
+
+
+async def test_gateway_module_online_recovery_exception_is_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Failures during module-online recovery must not kill connectivity polling."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_rebuild_after=1,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+
+    async def _boom_recover(_streak: int) -> None:
+        raise RuntimeError("recover failed")
+
+    gw._recover_zombie_session = _boom_recover  # type: ignore[method-assign,assignment]
+    with caplog.at_level("ERROR"):
+        await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=1)
+        assert "Zombie recovery after module online failed" in caplog.text
+    await gw.stop()

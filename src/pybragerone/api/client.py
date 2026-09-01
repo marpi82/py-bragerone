@@ -32,6 +32,10 @@ from .endpoints import (
     module_command_raw_url,
     module_command_url,
     modules_activity_quantity_url,
+    modules_activity_url,
+    modules_alarms_history_url,
+    modules_alarms_quantity_url,
+    modules_alarms_url,
     modules_connect_url,
     modules_parameters_url,
     modules_url,
@@ -389,6 +393,11 @@ class BragerOneApiClient:
         hdrs = dict(headers or {})
         hdrs["Accept"] = "application/json"
         if auth:
+            # Wait for in-flight ``invalidate_and_reauth`` / login instead of racing a
+            # cleared ``_token`` into a hard ``No token`` failure (field logs during
+            # zombie rebuild). ``ensure_auth`` serializes on ``_auth_lock``.
+            if not self._token or not self._token.access_token:
+                await self.ensure_auth()
             if not self._token or not self._token.access_token:
                 raise ApiError(401, {"message": "No token"}, {})
             hdrs["Authorization"] = f"Bearer {self._token.access_token}"
@@ -450,6 +459,24 @@ class BragerOneApiClient:
 
     # ----------------- AUTH -----------------
 
+    async def _login_unlocked(self, email: str | None = None, password: str | None = None) -> Token:
+        """Resolve credentials and POST login. Caller must hold ``_auth_lock``."""
+        em = email
+        pw = password
+        if (not em or not pw) and self._creds_provider:
+            em, pw = self._creds_provider()
+        if not em or not pw:
+            raise ApiError(401, {"message": "No credentials for (re)login"}, {})
+        return await self._post_login(em, pw)
+
+    def _resolve_login_credentials(self, email: str | None = None, password: str | None = None) -> tuple[str | None, str | None]:
+        """Resolve email/password from explicit args or ``creds_provider`` (no I/O)."""
+        em = email
+        pw = password
+        if (not em or not pw) and self._creds_provider:
+            em, pw = self._creds_provider()
+        return em, pw
+
     async def ensure_auth(self, email: str | None = None, password: str | None = None) -> Token:
         """Ensure valid token: use cache + validation, and if missing/expired — login.
 
@@ -470,6 +497,13 @@ class BragerOneApiClient:
                     self._token = self._token_loader()
             self._skip_load_once = False
 
+            # Empty/missing access_token is unusable. Clear it before soft validation so
+            # ``_try_validate`` → ``_req`` never re-enters ``ensure_auth`` on the same
+            # non-reentrant ``_auth_lock`` (deadlock with persisted ``Token("")``).
+            if self._token is not None and not self._token.access_token:
+                self._token = None
+                self._validated = False
+
             # 2) if we have token and it's not expired — soft validation (optional) and done
             if self._token and not self._token.is_expired(leeway=self._refresh_leeway):
                 if self._validate_on_start and not self._validated:
@@ -485,16 +519,69 @@ class BragerOneApiClient:
                 else:
                     return self._token
 
-            # 3) no token → need credentials
-            em = email
-            pw = password
-            if (not em or not pw) and self._creds_provider:
-                em, pw = self._creds_provider()
+            # 3) no token → login (credentials from args or provider)
+            return await self._login_unlocked(email, password)
+
+    async def _run_token_store_io(self, func: Callable[..., None], /, *args: Any) -> None:
+        """Run token-store I/O off the loop; finish even if the await is cancelled.
+
+        ``asyncio.to_thread`` workers are not cancelled with the awaiting task. If
+        ``_auth_lock`` were released while ``clear``/``save`` still runs, a concurrent
+        ``ensure_auth`` could interleave and leave a stale persisted token. Shield the
+        worker and wait it out before propagating ``CancelledError``.
+        """
+        worker = asyncio.create_task(asyncio.to_thread(func, *args))
+        try:
+            await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            try:
+                await worker
+            except Exception as exc:
+                LOG.debug("Token-store I/O failed while unwinding cancellation: %s", exc)
+            raise
+
+    async def invalidate_and_reauth(self, email: str | None = None, password: str | None = None) -> Token:
+        """Drop the cached token and force a fresh login.
+
+        Used by zombie-session recovery when reconnecting with the existing
+        (still-valid) access token fails to restore live WS ``ParamUpdate`` traffic.
+        Credentials are resolved **before** any destructive clear: if neither
+        explicit args nor ``creds_provider`` can supply both email and password,
+        a usable in-memory token is left intact (soft path — log a warning and
+        return it) so reconnect is not left unauthenticated. Only when credentials
+        are available do invalidation, optional persisted-store clear, and
+        ``_post_login`` run under one ``_auth_lock`` hold so a racing
+        ``ensure_auth`` cannot interleave a provider login ahead of explicit
+        overrides. The clearer runs via ``asyncio.to_thread`` (keyring/fs I/O).
+
+        Args:
+            email: Optional email override for the login call.
+            password: Optional password override for the login call.
+
+        Returns:
+            Fresh authentication token from login, or the existing token when
+            credentials are unavailable and a usable token is already cached.
+
+        Raises:
+            ApiError: If credentials are missing and there is no usable token.
+        """
+        async with self._auth_lock:
+            em, pw = self._resolve_login_credentials(email, password)
             if not em or not pw:
+                if self._token is not None and self._token.access_token:
+                    LOG.warning(
+                        "invalidate_and_reauth: no credentials available; keeping existing access token instead of clearing"
+                    )
+                    return self._token
                 raise ApiError(401, {"message": "No credentials for (re)login"}, {})
 
-            # 4) classic login
-            return await self._post_login(em, pw)
+            self._token = None
+            self._validated = False
+            self._skip_load_once = True
+            if self._token_clearer:
+                await self._run_token_store_io(self._token_clearer)
+            # Do not call ``ensure_auth`` here — the lock is non-reentrant.
+            return await self._login_unlocked(em, pw)
 
     @property
     def access_token(self) -> str:
@@ -586,8 +673,9 @@ class BragerOneApiClient:
             self._token = tok
             self._validated = False
             if self._token_saver:
+                saver = self._token_saver
                 with contextlib.suppress(Exception):
-                    self._token_saver(tok)
+                    await self._run_token_store_io(saver, tok)
             return tok
 
         # practically won't reach here, but for safety:
@@ -921,6 +1009,94 @@ class BragerOneApiClient:
         payload = {"modules": modules}
         status, data, _ = await self._req("POST", modules_activity_quantity_url(api_base=self._api_base), json=payload)
         # log_json_payload(LOG, "prime.modules.activity.quantity", summarize_top_level(data))
+        return (status, data) if return_data else (status in (200, 204))
+
+    async def modules_activity(
+        self,
+        modules: list[str],
+        *,
+        page: int = 1,
+        limit: int = 20,
+        return_data: bool = False,
+    ) -> tuple[int, Any] | bool:
+        """Fetch a page of module activity rows (SPA activity list).
+
+        Args:
+            modules: Module device identifiers.
+            page: 1-based page index (SPA default).
+            limit: Page size (SPA default ``20``).
+            return_data: When true, return ``(status, data)``.
+
+        Returns:
+            Success flag, or ``(status, payload)`` when ``return_data`` is set.
+        """
+        payload: dict[str, Any] = {"modules": modules, "page": page, "limit": limit}
+        status, data, _ = await self._req("POST", modules_activity_url(api_base=self._api_base), json=payload)
+        return (status, data) if return_data else (status in (200, 204))
+
+    async def modules_alarms_quantity(
+        self,
+        modules: list[str],
+        *,
+        return_data: bool = False,
+    ) -> tuple[int, Any] | bool:
+        """Fetch per-module active alarm badge counts.
+
+        Args:
+            modules: Module device identifiers.
+            return_data: When true, return ``(status, data)``.
+
+        Returns:
+            Success flag, or ``(status, payload)`` when ``return_data`` is set.
+        """
+        payload = {"modules": modules}
+        status, data, _ = await self._req("POST", modules_alarms_quantity_url(api_base=self._api_base), json=payload)
+        return (status, data) if return_data else (status in (200, 204))
+
+    async def modules_alarms(
+        self,
+        modules: list[str],
+        *,
+        page: int = 1,
+        limit: int = 20,
+        return_data: bool = False,
+    ) -> tuple[int, Any] | bool:
+        """Fetch active module alarms (SPA current-alarms list).
+
+        Args:
+            modules: Module device identifiers.
+            page: 1-based page index.
+            limit: Page size.
+            return_data: When true, return ``(status, data)``.
+
+        Returns:
+            Success flag, or ``(status, payload)`` when ``return_data`` is set.
+        """
+        payload: dict[str, Any] = {"modules": modules, "page": page, "limit": limit}
+        status, data, _ = await self._req("POST", modules_alarms_url(api_base=self._api_base), json=payload)
+        return (status, data) if return_data else (status in (200, 204))
+
+    async def modules_alarms_history(
+        self,
+        modules: list[str],
+        *,
+        page: int = 1,
+        limit: int = 20,
+        return_data: bool = False,
+    ) -> tuple[int, Any] | bool:
+        """Fetch finished/historical module alarms (SPA alarm-history list).
+
+        Args:
+            modules: Module device identifiers.
+            page: 1-based page index.
+            limit: Page size.
+            return_data: When true, return ``(status, data)``.
+
+        Returns:
+            Success flag, or ``(status, payload)`` when ``return_data`` is set.
+        """
+        payload: dict[str, Any] = {"modules": modules, "page": page, "limit": limit}
+        status, data, _ = await self._req("POST", modules_alarms_history_url(api_base=self._api_base), json=payload)
         return (status, data) if return_data else (status in (200, 204))
 
     async def module_command(
