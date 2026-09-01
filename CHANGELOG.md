@@ -7,6 +7,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.9.0] - 2026-09-01
+
 ### Added
 
 - Module alarm / activity REST helpers (``modules_alarms``, ``modules_alarms_history``,
