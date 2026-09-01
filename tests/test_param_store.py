@@ -315,3 +315,12 @@ def test_flatten_reads_live_family_after_direct_channel_mutation() -> None:
 
     assert store.flatten()["P4.v1"] == 2
     assert store.flatten_for_devid("M1")["P4.v1"] == 2
+
+
+def test_flatten_skips_stale_last_write_when_family_removed() -> None:
+    """Last-write overlay is skipped when the tracked family no longer exists."""
+    store = ParamStore()
+    store.upsert("P4.v1", 1, devid="M1")
+    store._devid_families["M1"].pop("P4:1")
+
+    assert store.flatten() == {}
