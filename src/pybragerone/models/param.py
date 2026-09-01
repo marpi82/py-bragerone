@@ -10,6 +10,7 @@ evaluation, and rich "describe" helpers) is implemented in
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Mapping
 from typing import Any
 
@@ -70,6 +71,7 @@ class ParamStore(BaseModel):
     _devid_families: dict[str, dict[str, ParamFamilyModel]] = PrivateAttr(default_factory=dict)
     _last_write: dict[str, tuple[str | None, str, str]] = PrivateAttr(default_factory=dict)
     _last_fid_devid: dict[str, str | None] = PrivateAttr(default_factory=dict)
+    _lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     model_config = ConfigDict(frozen=False, validate_assignment=True)
 
@@ -95,6 +97,10 @@ class ParamStore(BaseModel):
 
     def upsert(self, key: str, value: Any, *, devid: str | None = None) -> ParamFamilyModel | None:
         """Upsert a single parameter value by full key, e.g. ``P4.v1``."""
+        with self._lock:
+            return self._upsert_locked(key, value, devid=devid)
+
+    def _upsert_locked(self, key: str, value: Any, *, devid: str | None = None) -> ParamFamilyModel | None:
         try:
             pool, rest = key.split(".", 1)
             chan = rest[0]
@@ -120,32 +126,33 @@ class ParamStore(BaseModel):
 
     def get_family(self, pool: str, idx: int, *, devid: str | None = None) -> ParamFamilyModel | None:
         """Get ParamFamilyModel by (pool, idx) address, or None if not found."""
-        fid = self._fid(pool, idx)
-        if devid is not None:
-            bucket = self._devid_families.get(devid)
-            if bucket is None:
-                return None
-            return bucket.get(fid)
-        if fid in self._last_fid_devid:
-            last_devid = self._last_fid_devid[fid]
-            if last_devid is not None:
-                bucket = self._devid_families.get(last_devid)
-                if bucket is not None:
-                    found = bucket.get(fid)
-                    if found is not None:
-                        return found
-            else:
-                legacy = self.families.get(fid)
-                if legacy is not None:
-                    return legacy
-        legacy = self.families.get(fid)
-        if legacy is not None:
-            return legacy
-        for bucket in self._devid_families.values():
-            found = bucket.get(fid)
-            if found is not None:
-                return found
-        return None
+        with self._lock:
+            fid = self._fid(pool, idx)
+            if devid is not None:
+                bucket = self._devid_families.get(devid)
+                if bucket is None:
+                    return None
+                return bucket.get(fid)
+            if fid in self._last_fid_devid:
+                last_devid = self._last_fid_devid[fid]
+                if last_devid is not None:
+                    bucket = self._devid_families.get(last_devid)
+                    if bucket is not None:
+                        found = bucket.get(fid)
+                        if found is not None:
+                            return found
+                else:
+                    legacy = self.families.get(fid)
+                    if legacy is not None:
+                        return legacy
+            legacy = self.families.get(fid)
+            if legacy is not None:
+                return legacy
+            for bucket in self._devid_families.values():
+                found = bucket.get(fid)
+                if found is not None:
+                    return found
+            return None
 
     @staticmethod
     def _flatten_bucket(fam_dict: Mapping[str, ParamFamilyModel]) -> dict[str, Any]:
@@ -153,10 +160,11 @@ class ParamStore(BaseModel):
 
     def flatten_for_devid(self, devid: str) -> dict[str, Any]:
         """Flattened parameter snapshot for one module (prime + scoped deltas)."""
-        bucket = self._devid_families.get(devid)
-        if bucket is None:
-            return {}
-        return self._flatten_bucket(bucket)
+        with self._lock:
+            bucket = self._devid_families.get(devid)
+            if bucket is None:
+                return {}
+            return self._flatten_bucket(bucket)
 
     def flatten(self) -> dict[str, Any]:
         """Flattened view of all parameters as ``{ 'P4.v1': value, ... }``.
@@ -164,15 +172,16 @@ class ParamStore(BaseModel):
         Returns the most recently upserted value per address across all modules
         (true last-write-wins), regardless of ``devid`` bucket insertion order.
         """
-        merged: dict[str, Any] = {}
-        for bucket in self._devid_families.values():
-            merged.update(self._flatten_bucket(bucket))
-        merged.update(self._flatten_bucket(self.families))
-        for full_key, (devid, fid, chan) in self._last_write.items():
-            fam = self._families_bucket(devid).get(fid)
-            if fam is not None and chan in fam.channels:
-                merged[full_key] = fam.channels[chan]
-        return merged
+        with self._lock:
+            merged: dict[str, Any] = {}
+            for bucket in self._devid_families.values():
+                merged.update(self._flatten_bucket(bucket))
+            merged.update(self._flatten_bucket(self.families))
+            for full_key, (devid, fid, chan) in self._last_write.items():
+                fam = self._families_bucket(devid).get(fid)
+                if fam is not None and chan in fam.channels:
+                    merged[full_key] = fam.channels[chan]
+            return merged
 
     def ingest_prime_payload(self, payload: Mapping[str, Any]) -> None:
         """Ingest REST prime payload (modules/parameters) into the store."""

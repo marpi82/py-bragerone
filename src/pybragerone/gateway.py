@@ -76,6 +76,44 @@ def module_connected_at_means_online(connected_at: int) -> bool:
     return int(connected_at) != 0
 
 
+def _parse_alarm_quantity(raw_qty: Any) -> int | None:
+    """Normalize an upstream ``alarmsQuantity`` entry.
+
+    Returns:
+        Non-negative integer count, or ``None`` when upstream sends explicit null.
+
+    Raises:
+        ValueError: When the payload is malformed (bool, fractional float, negative, etc.).
+    """
+    if raw_qty is None:
+        return None
+    if isinstance(raw_qty, bool):
+        msg = f"boolean alarm count: {raw_qty!r}"
+        raise ValueError(msg)
+    if isinstance(raw_qty, int):
+        if raw_qty < 0:
+            msg = f"negative alarm count: {raw_qty}"
+            raise ValueError(msg)
+        return raw_qty
+    if isinstance(raw_qty, float):
+        if raw_qty < 0 or not raw_qty.is_integer():
+            msg = f"non-integral alarm count: {raw_qty!r}"
+            raise ValueError(msg)
+        return int(raw_qty)
+    if isinstance(raw_qty, str):
+        text = raw_qty.strip()
+        if not text:
+            msg = "empty alarm count string"
+            raise ValueError(msg)
+        parsed = int(text)
+        if parsed < 0:
+            msg = f"negative alarm count: {parsed}"
+            raise ValueError(msg)
+        return parsed
+    msg = f"unsupported alarm count type: {type(raw_qty).__name__}"
+    raise ValueError(msg)
+
+
 def _parse_connected_at(raw: Any) -> int | None:
     """Parse a connectedAt value; return ``None`` when missing/unusable."""
     if raw is None:
@@ -305,6 +343,7 @@ class BragerOneGateway:
         self._module_online: dict[str, bool] = {}
         self._module_gateway: dict[str, dict[str, Any]] = {}
         self._alarm_quantity_cache: dict[str, int | None] = {}
+        self._alarm_quantity_ws_rev: dict[str, int] = {}
 
     @classmethod
     async def from_credentials(
@@ -1088,6 +1127,7 @@ class BragerOneGateway:
 
     async def _prime_alarm_quantity(self) -> None:
         """Best-effort alarm count prime; failures must not block parameter prime."""
+        ws_floor = dict(self._alarm_quantity_ws_rev)
         try:
             res = await self.api.modules_alarms_quantity(self.modules, return_data=True)
         except Exception:
@@ -1096,7 +1136,11 @@ class BragerOneGateway:
         if isinstance(res, tuple) and len(res) == 2:
             st, data = res
             if st in (200, 204):
-                await self.ingest_alarm_quantity(data if isinstance(data, dict) else None, source="rest")
+                await self.ingest_alarm_quantity(
+                    data if isinstance(data, dict) else None,
+                    source="rest",
+                    ws_floor=ws_floor,
+                )
 
     async def _prime(self) -> tuple[bool, bool]:
         """Fetch initial state via REST (parameters, activity quantity, alarm quantity)."""
@@ -1187,15 +1231,22 @@ class BragerOneGateway:
         if isinstance(data, dict):
             LOG.debug("activityQuantity: %s", data.get("activityQuantity"))
 
-    async def ingest_alarm_quantity(self, data: dict[str, Any] | None, *, source: Literal["rest", "ws"] = "rest") -> None:
+    async def ingest_alarm_quantity(
+        self,
+        data: dict[str, Any] | None,
+        *,
+        source: Literal["rest", "ws"] = "rest",
+        ws_floor: dict[str, int] | None = None,
+    ) -> None:
         """Ingest alarm quantity payload and notify ``on_alarm_quantity`` listeners."""
-        await self._ingest_alarm_quantity_payload(data, source=source)
+        await self._ingest_alarm_quantity_payload(data, source=source, ws_floor=ws_floor)
 
     async def _ingest_alarm_quantity_payload(
         self,
         data: dict[str, Any] | None,
         *,
         source: Literal["rest", "ws"],
+        ws_floor: dict[str, int] | None = None,
     ) -> None:
         if not isinstance(data, dict):
             return
@@ -1207,15 +1258,15 @@ class BragerOneGateway:
             devid = str(raw_devid)
             if devid not in wanted:
                 continue
-            quantity: int | None
-            if raw_qty is None:
-                quantity = None
-            else:
-                try:
-                    quantity = int(raw_qty)
-                except (TypeError, ValueError):
-                    LOG.debug("Ignoring non-numeric alarmsQuantity for devid=%s: %r", devid, raw_qty)
-                    continue
+            if source == "rest" and ws_floor is not None and self._alarm_quantity_ws_rev.get(devid, 0) > ws_floor.get(devid, 0):
+                continue
+            try:
+                quantity = _parse_alarm_quantity(raw_qty)
+            except ValueError:
+                LOG.debug("Ignoring non-numeric alarmsQuantity for devid=%s: %r", devid, raw_qty)
+                continue
+            if source == "ws":
+                self._alarm_quantity_ws_rev[devid] = self._alarm_quantity_ws_rev.get(devid, 0) + 1
             previous = self._alarm_quantity_cache.get(devid)
             changed = previous != quantity
             self._alarm_quantity_cache[devid] = quantity

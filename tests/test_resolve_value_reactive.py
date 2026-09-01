@@ -974,8 +974,19 @@ async def test_resolve_raw_display_value_applies_transform_and_enum() -> None:
                         "text": "units.enum",
                         "options": {"1": "units.one", "2": "units.two"},
                     },
+                    "66": {
+                        "text": "units.0",
+                        "value": 'e => { if (e === 0) return "units.202.0"; return String((e - 1) * 10).padStart(2, "0"); }',
+                    },
                 },
-                i18n_by_namespace={"units": {"one": "One", "two": "Two"}},
+                i18n_by_namespace={
+                    "units": {
+                        "one": "One",
+                        "two": "Two",
+                        "0": "",
+                        "202": {"0": "Wyłączony"},
+                    },
+                },
             ),
         ),
         lang="en",
@@ -984,3 +995,10 @@ async def test_resolve_raw_display_value_applies_transform_and_enum() -> None:
     assert await resolver.resolve_raw_display_value(53, unit_code=49) == 5.3
     assert await resolver.resolve_raw_display_value(2, unit_code=38) == "Two"
     assert await resolver.resolve_raw_display_value(None, unit_code=49) is None
+    assert (
+        await resolver.resolve_raw_display_value(
+            0,
+            unit_code=66,
+        )
+        == "Wyłączony"
+    )

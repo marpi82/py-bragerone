@@ -7,7 +7,7 @@ from typing import Any, cast
 
 import pytest
 
-from pybragerone.gateway import BragerOneGateway
+from pybragerone.gateway import BragerOneGateway, _parse_alarm_quantity
 
 
 class _FakeApi:
@@ -69,6 +69,18 @@ class _RaisingAlarmsApi(_FakeApi):
         raise RuntimeError("alarm prime unavailable")
 
 
+class _RacyAlarmsApi(_FakeApi):
+    def __init__(self, gateway: BragerOneGateway) -> None:
+        self._gateway = gateway
+
+    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        _ = modules
+        await self._gateway.ingest_alarm_quantity({"alarmsQuantity": {"D1": 5}}, source="ws")
+        if return_data:
+            return 200, {"alarmsQuantity": {"D1": 3}}
+        return True
+
+
 @pytest.mark.asyncio
 async def test_prime_ingests_alarm_quantity_from_rest() -> None:
     """Gateway REST prime notifies on_alarm_quantity with the primed count."""
@@ -124,6 +136,41 @@ async def test_prime_completes_when_alarm_prime_raises() -> None:
     assert ok_params is True
     assert ok_act is True
     assert seen == []
+
+
+@pytest.mark.asyncio
+async def test_rest_alarm_prime_skips_stale_counts_after_ws_update() -> None:
+    """REST alarm prime must not overwrite a newer WebSocket observation."""
+    gateway = BragerOneGateway(api=cast(Any, _FakeApi()), object_id=1, modules=["D1"], ws=cast(Any, _FakeWs()))
+    gateway.api = cast(Any, _RacyAlarmsApi(gateway))
+    seen: list[Any] = []
+    gateway.on_alarm_quantity(lambda event: seen.append(event))
+
+    await gateway._prime_alarm_quantity()
+
+    assert gateway._alarm_quantity_cache["D1"] == 5
+    assert [event.quantity for event in seen] == [5]
+
+
+def test_parse_alarm_quantity_rejects_invalid_payloads() -> None:
+    """Malformed alarm counts are rejected instead of coerced."""
+    assert _parse_alarm_quantity(None) is None
+    assert _parse_alarm_quantity(0) == 0
+    assert _parse_alarm_quantity(3) == 3
+    assert _parse_alarm_quantity(2.0) == 2
+    assert _parse_alarm_quantity("4") == 4
+    with pytest.raises(ValueError):
+        _parse_alarm_quantity(True)
+    with pytest.raises(ValueError):
+        _parse_alarm_quantity(1.9)
+    with pytest.raises(ValueError):
+        _parse_alarm_quantity(-1)
+    with pytest.raises(ValueError):
+        _parse_alarm_quantity("")
+    with pytest.raises(ValueError):
+        _parse_alarm_quantity("-3")
+    with pytest.raises(ValueError):
+        _parse_alarm_quantity([])
 
 
 @pytest.mark.asyncio
@@ -203,6 +250,9 @@ async def test_ingest_alarm_quantity_handles_null_and_non_numeric_counts() -> No
     await gateway.ingest_alarm_quantity({"alarmsQuantity": {"D1": 5}}, source="rest")
     await gateway.ingest_alarm_quantity({"alarmsQuantity": {"D1": None}}, source="rest")
     await gateway.ingest_alarm_quantity({"alarmsQuantity": {"D1": "nope"}}, source="rest")
+    await gateway.ingest_alarm_quantity({"alarmsQuantity": {"D1": True}}, source="rest")
+    await gateway.ingest_alarm_quantity({"alarmsQuantity": {"D1": 1.9}}, source="rest")
+    await gateway.ingest_alarm_quantity({"alarmsQuantity": {"D1": -2}}, source="rest")
 
     assert len(seen) == 2
     assert seen[1].quantity is None

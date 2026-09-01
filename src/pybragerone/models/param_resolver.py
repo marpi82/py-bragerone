@@ -1291,7 +1291,12 @@ class ParamResolver:
             return resolved if resolved is not None else label
 
         transform_expr = unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
-        return self._apply_numeric_transform(raw, transform_expr)
+        display_val = self._apply_numeric_transform(raw, transform_expr)
+        if isinstance(display_val, str):
+            resolved_display = await self._resolve_units_value_token(display_val)
+            if isinstance(resolved_display, str):
+                return resolved_display
+        return display_val
 
     async def resolve_module_connection_labels(self, *, lang: str | None = None) -> dict[str, str]:
         """Return SPA module connection-panel labels from the ``module`` i18n namespace."""
