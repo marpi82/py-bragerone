@@ -7,6 +7,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.9.1] - 2026-09-01
+
 ### Changed
 
 - ``ParamStore.get_family`` and ``ParamStore.upsert`` return deep-copy snapshots; update
