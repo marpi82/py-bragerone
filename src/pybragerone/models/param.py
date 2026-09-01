@@ -32,6 +32,10 @@ class ParamFamilyModel(BaseModel):
         """Set raw channel value."""
         self.channels[chan] = value
 
+    def snapshot(self) -> ParamFamilyModel:
+        """Return a deep copy safe to mutate without affecting the store."""
+        return self.model_copy(deep=True)
+
     def get(self, chan: str, default: Any = None) -> Any:
         """Get raw channel value, or default if not present."""
         return self.channels.get(chan, default)
@@ -96,9 +100,12 @@ class ParamStore(BaseModel):
         return bucket
 
     def upsert(self, key: str, value: Any, *, devid: str | None = None) -> ParamFamilyModel | None:
-        """Upsert a single parameter value by full key, e.g. ``P4.v1``."""
+        """Upsert a single parameter value by full key, e.g. ``P4.v1``.
+
+        Returns a snapshot copy; mutate the store via further ``upsert`` calls.
+        """
         with self._lock:
-            return self._upsert_locked(key, value, devid=devid)
+            return self._family_snapshot(self._upsert_locked(key, value, devid=devid))
 
     def _upsert_locked(self, key: str, value: Any, *, devid: str | None = None) -> ParamFamilyModel | None:
         try:
@@ -120,14 +127,23 @@ class ParamStore(BaseModel):
         self._last_fid_devid[fid] = devid
         return fam
 
+    @staticmethod
+    def _family_snapshot(fam: ParamFamilyModel | None) -> ParamFamilyModel | None:
+        if fam is None:
+            return None
+        return fam.snapshot()
+
     async def upsert_async(self, key: str, value: Any, *, devid: str | None = None) -> ParamFamilyModel | None:
         """Async upsert wrapper for convenience in async code."""
         return self.upsert(key, value, devid=devid)
 
     def get_family(self, pool: str, idx: int, *, devid: str | None = None) -> ParamFamilyModel | None:
-        """Get ParamFamilyModel by (pool, idx) address, or None if not found."""
+        """Get ParamFamilyModel by (pool, idx) address, or None if not found.
+
+        Returns a snapshot copy; mutate the store via ``upsert``.
+        """
         with self._lock:
-            return self._get_family_locked(pool, idx, devid=devid)
+            return self._family_snapshot(self._get_family_locked(pool, idx, devid=devid))
 
     def _get_family_locked(self, pool: str, idx: int, *, devid: str | None = None) -> ParamFamilyModel | None:
         fid = self._fid(pool, idx)

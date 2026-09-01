@@ -30,17 +30,22 @@ async def _consume_bus(store: ParamStore, bus: EventBus) -> asyncio.Task[None]:
 def test_upsert_builds_family_and_exposes_channels() -> None:
     """Valid keys create a family; channel helpers and flatten match the store."""
     store = ParamStore()
-    fam = store.upsert("P4.v1", 42.5)
-    assert fam is not None
+    first = store.upsert("P4.v1", 42.5)
+    assert first is not None
     store.upsert("P4.u1", 2)
     store.upsert("P4.s1", 8)
 
+    fam = store.get_family("P4", 1)
+    assert fam is not None
     assert fam.pool == "P4"
     assert fam.idx == 1
     assert fam.value == 42.5
     assert fam.unit_code == 2
     assert fam.status_raw == 8
-    assert store.get_family("P4", 1) is fam
+    assert first.model_dump() == {"pool": "P4", "idx": 1, "channels": {"v": 42.5}}
+    got = store.get_family("P4", 1)
+    assert got is not None
+    assert got.model_dump() == fam.model_dump()
     assert store.get_family("P5", 1) is None
     assert store.flatten() == {"P4.v1": 42.5, "P4.u1": 2, "P4.s1": 8}
 
@@ -60,7 +65,9 @@ async def test_upsert_async_delegates_to_upsert() -> None:
     fam = await store.upsert_async("P5.v0", 1)
     assert fam is not None
     assert fam.value == 1
-    assert store.get_family("P5", 0) is fam
+    got = store.get_family("P5", 0)
+    assert got is not None
+    assert got.model_dump() == fam.model_dump()
 
 
 def test_ingest_prime_payload_skips_invalid_shapes_and_keeps_meta() -> None:
@@ -305,14 +312,18 @@ def test_flatten_preserves_untracked_legacy_after_tracked_upsert() -> None:
     assert store.flatten() == {"P4.v0": 99, "P4.v1": 2}
 
 
-def test_flatten_reads_live_family_after_direct_channel_mutation() -> None:
-    """Global flatten follows in-place channel updates on upserted families."""
+def test_get_family_and_upsert_return_snapshots_not_live_references() -> None:
+    """Returned families are copies; in-place mutation does not affect the store."""
     store = ParamStore()
     store.upsert("P4.v1", 1, devid="M1")
     fam = store.get_family("P4", 1, devid="M1")
     assert fam is not None
     fam.set("v", 2)
 
+    assert store.flatten()["P4.v1"] == 1
+    assert store.flatten_for_devid("M1")["P4.v1"] == 1
+
+    store.upsert("P4.v1", 2, devid="M1")
     assert store.flatten()["P4.v1"] == 2
     assert store.flatten_for_devid("M1")["P4.v1"] == 2
 
