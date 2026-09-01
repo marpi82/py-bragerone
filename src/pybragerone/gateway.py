@@ -1086,6 +1086,18 @@ class BragerOneGateway:
 
     # ------------------------- PRIME & ingest -------------------------
 
+    async def _prime_alarm_quantity(self) -> None:
+        """Best-effort alarm count prime; failures must not block parameter prime."""
+        try:
+            res = await self.api.modules_alarms_quantity(self.modules, return_data=True)
+        except Exception:
+            LOG.debug("Alarm quantity prime failed", exc_info=True)
+            return
+        if isinstance(res, tuple) and len(res) == 2:
+            st, data = res
+            if st in (200, 204):
+                await self.ingest_alarm_quantity(data if isinstance(data, dict) else None, source="rest")
+
     async def _prime(self) -> tuple[bool, bool]:
         """Fetch initial state via REST (parameters, activity quantity, alarm quantity)."""
         ok_params = False
@@ -1101,7 +1113,7 @@ class BragerOneGateway:
                 name="gateway.api.modules_activity_quantity_prime",
             )
             t_alarms = tg.create_task(
-                self.api.modules_alarms_quantity(self.modules, return_data=True),
+                self._prime_alarm_quantity(),
                 name="gateway.api.modules_alarms_quantity",
             )
 
@@ -1119,11 +1131,7 @@ class BragerOneGateway:
                 await self.ingest_activity_quantity(data2 if isinstance(data2, dict) else None)
                 ok_act = True
 
-        res3 = t_alarms.result()
-        if isinstance(res3, tuple) and len(res3) == 2:
-            st3, data3 = res3
-            if st3 in (200, 204):
-                await self.ingest_alarm_quantity(data3 if isinstance(data3, dict) else None, source="rest")
+        t_alarms.result()
 
         self._prime_seq = self.bus.last_seq()
         self._prime_done.set()

@@ -63,6 +63,12 @@ class _NonDictAlarmsApi(_FakeApi):
         return True
 
 
+class _RaisingAlarmsApi(_FakeApi):
+    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        _ = modules
+        raise RuntimeError("alarm prime unavailable")
+
+
 @pytest.mark.asyncio
 async def test_prime_ingests_alarm_quantity_from_rest() -> None:
     """Gateway REST prime notifies on_alarm_quantity with the primed count."""
@@ -103,6 +109,20 @@ async def test_prime_treats_non_dict_alarm_body_as_empty() -> None:
 
     await gateway._prime()
 
+    assert seen == []
+
+
+@pytest.mark.asyncio
+async def test_prime_completes_when_alarm_prime_raises() -> None:
+    """Alarm quantity prime failures must not abort mandatory parameter prime."""
+    gateway = BragerOneGateway(api=cast(Any, _RaisingAlarmsApi()), object_id=1, modules=["D1"], ws=cast(Any, _FakeWs()))
+    seen: list[Any] = []
+    gateway.on_alarm_quantity(lambda event: seen.append(event))
+
+    ok_params, ok_act = await gateway._prime()
+
+    assert ok_params is True
+    assert ok_act is True
     assert seen == []
 
 

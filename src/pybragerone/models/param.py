@@ -68,7 +68,7 @@ class ParamStore(BaseModel):
 
     families: dict[str, ParamFamilyModel] = Field(default_factory=dict)
     _devid_families: dict[str, dict[str, ParamFamilyModel]] = PrivateAttr(default_factory=dict)
-    _last_flat: dict[str, Any] = PrivateAttr(default_factory=dict)
+    _last_write: dict[str, tuple[str | None, str, str]] = PrivateAttr(default_factory=dict)
     _last_fid_devid: dict[str, str | None] = PrivateAttr(default_factory=dict)
 
     model_config = ConfigDict(frozen=False, validate_assignment=True)
@@ -110,7 +110,7 @@ class ParamStore(BaseModel):
             fam_dict[fid] = fam
         fam.set(chan, value)
         full_key = f"{pool}.{chan}{idx}"
-        self._last_flat[full_key] = value
+        self._last_write[full_key] = (devid, fid, chan)
         self._last_fid_devid[fid] = devid
         return fam
 
@@ -168,8 +168,10 @@ class ParamStore(BaseModel):
         for bucket in self._devid_families.values():
             merged.update(self._flatten_bucket(bucket))
         merged.update(self._flatten_bucket(self.families))
-        if self._last_flat:
-            merged.update(self._last_flat)
+        for full_key, (devid, fid, chan) in self._last_write.items():
+            fam = self._families_bucket(devid).get(fid)
+            if fam is not None and chan in fam.channels:
+                merged[full_key] = fam.channels[chan]
         return merged
 
     def ingest_prime_payload(self, payload: Mapping[str, Any]) -> None:

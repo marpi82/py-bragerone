@@ -303,3 +303,15 @@ def test_flatten_preserves_untracked_legacy_after_tracked_upsert() -> None:
     store.upsert("P4.v1", 2, devid="M2")
 
     assert store.flatten() == {"P4.v0": 99, "P4.v1": 2}
+
+
+def test_flatten_reads_live_family_after_direct_channel_mutation() -> None:
+    """Global flatten follows in-place channel updates on upserted families."""
+    store = ParamStore()
+    store.upsert("P4.v1", 1, devid="M1")
+    fam = store.get_family("P4", 1, devid="M1")
+    assert fam is not None
+    fam.set("v", 2)
+
+    assert store.flatten()["P4.v1"] == 2
+    assert store.flatten_for_devid("M1")["P4.v1"] == 2

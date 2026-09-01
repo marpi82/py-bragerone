@@ -24,9 +24,11 @@ Highlights
 ----------
 
 - **REST (httpx)**: login, user & permissions, objects, modules, ``modules.connect``,
-  snapshot endpoints (``modules/parameters``, ``modules/activity/quantity``).
+  snapshot endpoints (``modules/parameters``, ``modules/activity/quantity``,
+  ``modules/alarms/quantity``).
 - **Realtime (python-socketio)**: namespace ``/ws``; subscribes to
-  ``app:modules:parameters:listen`` and ``app:modules:activity:quantity:listen``.
+  ``app:modules:parameters:listen``, ``app:modules:activity:quantity:listen``, and
+  ``app:modules:alarms:quantity:listen``.
 - **EventBus**: in-process async fan-out of structured updates.
 - **ParamStore**: lightweight key→value view (e.g. ``"P4.v1" -> 20.5``) for runtime.
 - **ParamResolver**: optional asset-driven resolution (i18n labels, units/enums, menu grouping, computed STATUS).

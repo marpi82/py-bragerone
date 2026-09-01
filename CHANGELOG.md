@@ -7,8 +7,6 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
-## [2026.9.0] - 2026-09-01
-
 ### Added
 
 - ``LiveAssetsCatalog.fetch_alarm_name_source`` — public Alarms webpack chunk fetch for
