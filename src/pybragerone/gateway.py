@@ -23,6 +23,7 @@ from .models.api.modules import Module
 from .models.events import (
     MODULE_CONNECTION_STATUS_CHANGED,
     MODULE_MEMORY_UPDATED,
+    AlarmQuantityChanged,
     CloudSessionConnectivity,
     EventBus,
     ModuleConnectivity,
@@ -63,6 +64,7 @@ SnapshotCb = Callable[[dict[str, Any]], Awaitable[None] | None]
 GenericCb = Callable[[str, Any], Awaitable[None] | None]
 ModuleConnectivityCb = Callable[[ModuleConnectivity], Awaitable[None] | None]
 CloudSessionCb = Callable[[CloudSessionConnectivity], Awaitable[None] | None]
+AlarmQuantityCb = Callable[[AlarmQuantityChanged], Awaitable[None] | None]
 
 
 def module_connected_at_means_online(connected_at: int) -> bool:
@@ -289,6 +291,7 @@ class BragerOneGateway:
         self._on_any: list[GenericCb] = []
         self._on_module_connectivity: list[ModuleConnectivityCb] = []
         self._on_cloud_session: list[CloudSessionCb] = []
+        self._on_alarm_quantity: list[AlarmQuantityCb] = []
 
         # Module↔cloud (REST/WS connectedAt) vs library↔cloud (Socket.IO session).
         # The session bit never forces module offline (SPA parity).
@@ -298,6 +301,7 @@ class BragerOneGateway:
         self._module_connected_at: dict[str, int] = {}
         self._module_online: dict[str, bool] = {}
         self._module_gateway: dict[str, dict[str, Any]] = {}
+        self._alarm_quantity_cache: dict[str, int | None] = {}
 
     @classmethod
     async def from_credentials(
@@ -377,6 +381,15 @@ class BragerOneGateway:
         stay detectable without looking like a module went offline.
         """
         self._on_cloud_session.append(cb)
+
+    def on_alarm_quantity(self, cb: AlarmQuantityCb) -> None:
+        """Register callback for per-module alarm count changes.
+
+        Callbacks receive :class:`~pybragerone.models.events.AlarmQuantityChanged`
+        when REST prime or Socket.IO ``app:modules:alarms:quantity:change`` reports
+        a new count for a subscribed module.
+        """
+        self._on_alarm_quantity.append(cb)
 
     def module_online(self, devid: str) -> bool | None:
         """Return current online state for *devid*, or ``None`` if not yet known."""
@@ -1154,6 +1167,44 @@ class BragerOneGateway:
         if isinstance(data, dict):
             LOG.debug("activityQuantity: %s", data.get("activityQuantity"))
 
+    async def ingest_alarm_quantity(self, data: dict[str, Any] | None, *, source: Literal["rest", "ws"] = "rest") -> None:
+        """Ingest alarm quantity payload and notify ``on_alarm_quantity`` listeners."""
+        await self._ingest_alarm_quantity_payload(data, source=source)
+
+    async def _ingest_alarm_quantity_payload(
+        self,
+        data: dict[str, Any] | None,
+        *,
+        source: Literal["rest", "ws"],
+    ) -> None:
+        if not isinstance(data, dict):
+            return
+        qty_map = data.get("alarmsQuantity")
+        if not isinstance(qty_map, dict):
+            return
+        wanted = set(self.modules)
+        for raw_devid, raw_qty in qty_map.items():
+            devid = str(raw_devid)
+            if devid not in wanted:
+                continue
+            quantity: int | None
+            if raw_qty is None:
+                quantity = None
+            else:
+                try:
+                    quantity = int(raw_qty)
+                except (TypeError, ValueError):
+                    LOG.debug("Ignoring non-numeric alarmsQuantity for devid=%s: %r", devid, raw_qty)
+                    continue
+            previous = self._alarm_quantity_cache.get(devid)
+            changed = previous != quantity
+            self._alarm_quantity_cache[devid] = quantity
+            if not changed:
+                continue
+            event = AlarmQuantityChanged(devid=devid, quantity=quantity, source=source, changed=True)
+            if self._on_alarm_quantity:
+                await self._invoke_list(self._on_alarm_quantity, event)
+
     # ------------------------- WS dispatch -------------------------
 
     async def _invoke_list(self, cbs: list[Callable[..., Any]], *args: Any, **kwargs: Any) -> None:
@@ -1207,6 +1258,15 @@ class BragerOneGateway:
                     self._invoke_list(self._on_parameters_change, event_name, payload),
                     name="gateway.on_parameters_change",
                 )
+            return None
+
+        # alarms:quantity:change
+        if event_name.endswith("alarms:quantity:change") and isinstance(payload, dict):
+
+            async def _alarms_quantity_changed() -> None:
+                await self.ingest_alarm_quantity(payload, source="ws")
+
+            self._spawn(_alarms_quantity_changed(), name="gateway.ingest_alarm_quantity")
             return None
 
         # SPA Layout/ObjectsLayout: EventChannel 0x16 → REST /modules/parameters for devid.

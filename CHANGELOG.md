@@ -7,6 +7,19 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Added
+
+- ``LiveAssetsCatalog.fetch_alarm_name_source`` — public Alarms webpack chunk fetch for
+  ``AlarmName`` enum parsing (ha-bragerone#252 / #362).
+- ``ParamStore.flatten_for_devid`` — per-module parameter snapshots for multi-module route
+  visibility (ha-bragerone#253 / #363).
+- ``BragerOneGateway.on_alarm_quantity`` — callback for SPA alarm count push/REST updates
+  (ha-bragerone#254 / #364).
+- ``ParamResolver.resolve_raw_display_value`` — display-ready activity feed scalars with unit
+  transforms (ha-bragerone#255 / #365).
+- ``ParamResolver.build_panel_groups(..., use_store_flat_values=False)`` for structural
+  static-route discovery without implicit ParamStore flattening.
+
 ## [2026.9.0] - 2026-09-01
 
 ### Added

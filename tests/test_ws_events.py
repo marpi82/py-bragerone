@@ -204,6 +204,8 @@ async def test_subscribe_emits_variants_and_skips_empty(monkeypatch: pytest.Monk
         "app:modules:parameters:listen",
         "app:modules:activity:quantity:listen",
         "app:modules:activity:quantity:listen",
+        "app:modules:alarms:quantity:listen",
+        "app:modules:alarms:quantity:listen",
     ]
     assert fake.emits[0][1] == {"modules": ["M1", "M2"], "group_id": 9}
     assert fake.emits[1][1] == {"devids": ["M1", "M2"], "group_id": 9}

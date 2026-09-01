@@ -92,7 +92,7 @@ def test_ingest_prime_payload_skips_invalid_shapes_and_keeps_meta() -> None:
         }
     )
 
-    fam = store.get_family("P4", 1)
+    fam = store.get_family("P4", 1, devid="DEV1")
     assert fam is not None
     assert fam.value == 21.5
     assert fam.status_raw == 3
@@ -111,10 +111,10 @@ def test_ingest_prime_payload_skips_invalid_shapes_and_keeps_meta() -> None:
 def test_ingest_prime_payload_attaches_meta_to_existing_family() -> None:
     """A meta-only body updates an already-created family instead of replacing it."""
     store = ParamStore()
-    store.upsert("P4.v2", 7)
+    store.upsert("P4.v2", 7, devid="DEV1")
     store.ingest_prime_payload({"DEV1": {"P4": {"v2": {"updatedAt": 99}}}})
 
-    fam = store.get_family("P4", 2)
+    fam = store.get_family("P4", 2, devid="DEV1")
     assert fam is not None
     assert fam.value == 7
     assert fam.get("updatedAt") == 99
@@ -125,7 +125,7 @@ def test_ingest_prime_payload_creates_family_from_meta_only_body() -> None:
     store = ParamStore()
     store.ingest_prime_payload({"DEV1": {"P4": {"u3": {"storable": True}}}})
 
-    fam = store.get_family("P4", 3)
+    fam = store.get_family("P4", 3, devid="DEV1")
     assert fam is not None
     assert fam.unit_code is None
     assert fam.get("storable") is True
@@ -139,11 +139,36 @@ async def test_run_with_bus_upserts_values_and_skips_none() -> None:
     try:
         await bus.publish(ParamUpdate(devid="M1", pool="P4", chan="v", idx=1, value=18.0))
         await bus.publish(ParamUpdate(devid="M1", pool="P4", chan="s", idx=1, value=None))
-        await _wait_until(lambda: store.get_family("P4", 1) is not None)
-        fam = store.get_family("P4", 1)
+        await _wait_until(lambda: store.flatten_for_devid("M1").get("P4.v1") == 18.0)
+        fam = store.get_family("P4", 1, devid="M1")
         assert fam is not None
         assert fam.value == 18.0
         assert fam.status_raw is None
     finally:
         consumer.cancel()
         await asyncio.wait({consumer})
+
+
+def test_flatten_for_devid_isolates_modules_with_same_address() -> None:
+    """Two modules can hold different values for the same parameter address."""
+    store = ParamStore()
+    store.upsert("P6.v219", 1, devid="M1")
+    store.upsert("P6.v219", 7, devid="M2")
+
+    assert store.flatten_for_devid("M1") == {"P6.v219": 1}
+    assert store.flatten_for_devid("M2") == {"P6.v219": 7}
+    assert store.flatten()["P6.v219"] == 7
+
+
+def test_ingest_prime_payload_scopes_by_devid() -> None:
+    """Prime ingest keeps per-module snapshots separate."""
+    store = ParamStore()
+    store.ingest_prime_payload(
+        {
+            "DEV1": {"P4": {"v1": 10}},
+            "DEV2": {"P4": {"v1": 20}},
+        }
+    )
+
+    assert store.flatten_for_devid("DEV1") == {"P4.v1": 10}
+    assert store.flatten_for_devid("DEV2") == {"P4.v1": 20}

@@ -1270,6 +1270,29 @@ class ParamResolver:
         """Resolve unit metadata to a human-readable label or enumeration mapping."""
         return await self._i18n.resolve_unit(unit_code)
 
+    async def resolve_raw_display_value(self, raw: Any, *, unit_code: Any) -> Any:
+        """Return a display-ready scalar for activity/alarm feeds (enum, i18n, transforms).
+
+        Applies the same unit-descriptor numeric transforms as :meth:`resolve_value`
+        while preserving enum label lookup against the raw upstream scalar.
+        """
+        if unit_code is None or raw is None:
+            return raw
+
+        unit_meta = await self._resolve_unit_meta(raw_unit_code=unit_code)
+        unit_options = self._unit_options_map(unit_meta)
+        if unit_options is None:
+            unit = await self.resolve_unit(unit_code)
+            unit_options = self._unit_options_map(unit)
+
+        label = self._unit_mapping_value_label(unit_options, raw)
+        if label is not None:
+            resolved = await self._resolve_units_value_token(label)
+            return resolved if resolved is not None else label
+
+        transform_expr = unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
+        return self._apply_numeric_transform(raw, transform_expr)
+
     async def resolve_module_connection_labels(self, *, lang: str | None = None) -> dict[str, str]:
         """Return SPA module connection-panel labels from the ``module`` i18n namespace."""
         return await self._i18n.resolve_module_connection_labels(lang=lang)

@@ -594,6 +594,8 @@ class RealtimeManager:
             ("app:modules:parameters:listen", base_alt),
             ("app:modules:activity:quantity:listen", base),
             ("app:modules:activity:quantity:listen", base_alt),
+            ("app:modules:alarms:quantity:listen", base),
+            ("app:modules:alarms:quantity:listen", base_alt),
         ]
 
         for ev, pl in payloads:

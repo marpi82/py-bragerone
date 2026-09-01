@@ -940,3 +940,47 @@ async def test_resolve_label_uses_mapping_name_app_namespace() -> None:
 
     label = await resolver.resolve_label("URUCHOMIENIE_KOTLA")
     assert label == "Uruchomienie kotła"
+
+
+@pytest.mark.asyncio
+async def test_resolve_raw_display_value_applies_transform_and_enum() -> None:
+    """Activity-style helper applies unit transforms and enum/i18n labels."""
+    store = ParamStore()
+    dummy_map = ParamMap(
+        key="_",
+        group=None,
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="test",
+        raw={},
+    )
+    resolver = ParamResolver(
+        store=store,
+        assets=cast(
+            AssetsProtocol,
+            _StubAssets(
+                mapping=dummy_map,
+                unit_descriptors={
+                    "49": {
+                        "text": "units.31",
+                        "value": "e => Number((e * .1).toFixed(1))",
+                    },
+                    "38": {
+                        "text": "units.enum",
+                        "options": {"1": "units.one", "2": "units.two"},
+                    },
+                },
+                i18n_by_namespace={"units": {"one": "One", "two": "Two"}},
+            ),
+        ),
+        lang="en",
+    )
+
+    assert await resolver.resolve_raw_display_value(53, unit_code=49) == 5.3
+    assert await resolver.resolve_raw_display_value(2, unit_code=38) == "Two"
+    assert await resolver.resolve_raw_display_value(None, unit_code=49) is None

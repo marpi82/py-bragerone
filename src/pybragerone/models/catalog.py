@@ -1570,6 +1570,42 @@ class LiveAssetsCatalog:
         self._static_route_tokens_cache[path_key] = tokens
         return set(tokens)
 
+    async def fetch_alarm_name_source(self) -> str | bytes | None:
+        """Return SPA Alarms chunk bytes/text for ``AlarmName`` enum parsing, or ``None``.
+
+        Resolves the webpack ``Alarms`` / ``alarms`` asset from the live index and
+        fetches it via :meth:`~pybragerone.api.BragerOneApiClient.get_bytes`.
+        """
+        await self._ensure_index_loaded()
+        if not (self._idx.index_bytes or self._idx.assets_by_basename):
+            return None
+
+        asset: AssetRef | None = None
+        for candidate in ("Alarms", "alarms"):
+            asset = self._idx.find_asset_for_basename(candidate)
+            if asset is not None:
+                break
+        if asset is None:
+            for basename, refs in self._idx.assets_by_basename.items():
+                if not isinstance(basename, str) or not basename.casefold().startswith("alarms"):
+                    continue
+                if refs:
+                    asset = refs[-1]
+                    break
+        if asset is None:
+            return None
+
+        try:
+            payload: Any = await self._api.get_bytes(asset.url)
+        except Exception as exc:
+            self._log.debug("Failed to fetch Alarms chunk from %s: %s", asset.url, exc)
+            return None
+        if isinstance(payload, (bytes, str)):
+            return payload
+        if isinstance(payload, bytearray):
+            return bytes(payload)
+        return None
+
     # ---------- MENU ----------
 
     async def get_module_menu(

@@ -62,8 +62,20 @@ At runtime, use lightweight mode for best performance.
        async for event in gateway.bus.subscribe():
            if event.value is None:
                continue
-           param_store.upsert(f"{event.pool}.{event.chan}{event.idx}", event.value)
+           param_store.upsert(
+               f"{event.pool}.{event.chan}{event.idx}",
+               event.value,
+               devid=event.devid,
+           )
            # Trigger HA entity updates
+
+   # Per-module route visibility (multi-module): param_store.flatten_for_devid(devid)
+
+   def on_alarm_quantity(event):
+       if event.changed:
+           ...  # REST refresh alarm feed for event.devid
+
+   gateway.on_alarm_quantity(on_alarm_quantity)
 
    # 3. Start gateway (connects WS, subscribes, primes)
    await gateway.start()
@@ -172,10 +184,13 @@ parameters:
 
 Static menu shells (e.g. ``MAINMENU_STREFY_CZASOWE`` / path ``timezones``) load
 parameter tokens from ``deviceMenu/static/<path>.ts`` chunks referenced in
-``index-*.js``. Use ``LiveAssetsCatalog.discover_static_route_tokens`` and pass
+``index-*.js``. Use ``LiveAssetsCatalog.discover_static_route_tokens``,
+``LiveAssetsCatalog.fetch_alarm_name_source`` (Alarms chunk / ``AlarmName`` enum), and pass
 ``static_route_symbols`` into ``build_panel_groups_from_menu`` (or call
 ``build_panel_groups`` with a primed ``ParamStore`` so overlays are resolved
-automatically).
+automatically). For activity feed display values use
+``ParamResolver.resolve_raw_display_value(raw, unit_code=...)`` so numeric unit
+transforms match parameter entities.
 
 The Home Assistant integration caches entity descriptors in the config entry;
 after upgrading to a release that adds static-route overlays, users need a
