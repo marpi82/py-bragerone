@@ -865,6 +865,16 @@ def test_logical_ops_preserve_expression_when_left_is_unbound_identifier() -> No
     and_node = next(n for n in _walk(and_tree.root_node) if n.type == "binary_expression")
     assert _node_to_python(and_code, and_node) == "unknown && fallback"
 
+    member_or_code = b"const x = unknown.member || fallback;"
+    member_or_tree = catalog._ts.parse(member_or_code)
+    member_or_node = next(n for n in _walk(member_or_tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(member_or_code, member_or_node) == "unknown.member || fallback"
+
+    member_and_code = b"const x = unknown.member && fallback;"
+    member_and_tree = catalog._ts.parse(member_and_code)
+    member_and_node = next(n for n in _walk(member_and_tree.root_node) if n.type == "binary_expression")
+    assert _node_to_python(member_and_code, member_and_node) == "unknown.member && fallback"
+
     bound_code = b"const x = known || fallback;"
     bound_tree = catalog._ts.parse(bound_code)
     bound_node = next(n for n in _walk(bound_tree.root_node) if n.type == "binary_expression")

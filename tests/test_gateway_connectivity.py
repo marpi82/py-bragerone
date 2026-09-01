@@ -1650,9 +1650,12 @@ async def test_gateway_rebuild_edge_paths(caplog: pytest.LogCaptureFixture) -> N
 
     gw.ws = FakeRealtimeManager()
     gw._fresh_ws_token = _token_fail  # type: ignore[method-assign]
+    fail_ws = gw.ws
     with caplog.at_level("ERROR"):
         await gw._rebuild_realtime_manager(2)
         assert "Forced fresh auth failed" in caplog.text
+    assert fail_ws.disconnect_calls == 0
+    assert gw.ws is fail_ws
 
     async def _token_stop() -> str:
         gw._started = False
@@ -1887,6 +1890,24 @@ async def test_gateway_force_fresh_auth_falls_back_for_fake_api() -> None:
         connectivity_poll_interval=0,
     )
     assert await gw._force_fresh_auth() is True
+
+
+async def test_gateway_force_fresh_auth_rejects_empty_custom_token() -> None:
+    """Custom ``ApiClient`` implementations must not report success without a token."""
+
+    class _EmptyTokenApi(FakeApiClient):
+        @property
+        def access_token(self) -> str:
+            return ""
+
+    gw = BragerOneGateway(
+        api=_EmptyTokenApi(),
+        object_id=1,
+        modules=["M1"],
+        ws=FakeRealtimeManager(),
+        connectivity_poll_interval=0,
+    )
+    assert await gw._force_fresh_auth() is False
 
 
 @pytest.mark.asyncio

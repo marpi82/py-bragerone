@@ -591,8 +591,8 @@ class BragerOneGateway:
             if isinstance(api, BragerOneApiClient):
                 tok = await api.invalidate_and_reauth()
                 return bool(tok.access_token)
-            await self._fresh_ws_token()
-            return True
+            access_token = await self._fresh_ws_token()
+            return bool(access_token)
         except Exception:
             LOG.exception("Forced fresh auth failed")
             return False
@@ -870,6 +870,12 @@ class BragerOneGateway:
         )
         self._zombie_hard_restart_streak = 0
         self._zombie_prime_streak = 0
+        if not await self._force_fresh_auth():
+            LOG.warning("Aborting RealtimeManager rebuild: no usable token after forced re-login")
+            self._arm_zombie_recovery_cooldown()
+            return
+        if not self._is_running():
+            return
         old = self.ws
         self._ws_hooks_registered = False
         try:
@@ -877,12 +883,6 @@ class BragerOneGateway:
                 await old.disconnect()
         except Exception:
             LOG.exception("WS disconnect during RealtimeManager rebuild failed")
-        if not self._is_running():
-            return
-        if not await self._force_fresh_auth():
-            LOG.warning("Aborting RealtimeManager rebuild: no usable token after forced re-login")
-            self._arm_zombie_recovery_cooldown()
-            return
         if not self._is_running():
             return
         try:

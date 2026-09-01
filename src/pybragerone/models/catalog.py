@@ -687,24 +687,27 @@ def _js_truthy(value: Any) -> bool:
     return bool(value != 0 and value != "")
 
 
-def _is_unbound_identifier_operand(
+def _is_unevaluable_logical_operand(
     code: bytes,
     node: Node | None,
     value: Any,
     bindings: dict[str, Any] | None,
 ) -> bool:
-    """Return whether *value* is an unbound identifier leftover (not a JS literal).
+    """Return whether *value* is an unevaluated AST leftover for ``||`` / ``&&``.
 
-    ``_node_to_python`` returns the identifier text for unresolved names. Treating
-    that string as a known value makes ``unknown || fallback`` keep the identifier
-    text instead of leaving the expression unevaluable.
+    ``_node_to_python`` returns raw source for unresolved identifiers, member
+    access, calls, and similar nodes. Treating that string as a known value makes
+    ``unknown || fallback`` and ``unknown.member || fallback`` short-circuit
+    incorrectly instead of leaving the expression unevaluable.
     """
-    if node is None or node.type not in {"identifier", "property_identifier"}:
+    if node is None:
         return False
-    name = _node_text(code, node)
-    if bindings and name in bindings:
+    raw = _node_text(code, node)
+    if value != raw:
         return False
-    return bool(value == name)
+    if node.type in {"identifier", "property_identifier"}:
+        return not (bindings and raw in bindings)
+    return True
 
 
 def _pattern_bindings(code: bytes, pattern: Node, arg: Any, bindings: dict[str, Any]) -> dict[str, Any]:
@@ -1122,11 +1125,11 @@ def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | No
         op_text = _node_text(code, operator)
         left_val = _node_to_python(code, left_node, bindings)
         if op_text == "||":
-            if _is_unbound_identifier_operand(code, left_node, left_val, bindings):
+            if _is_unevaluable_logical_operand(code, left_node, left_val, bindings):
                 return _node_text(code, node)
             return left_val if _js_truthy(left_val) else _node_to_python(code, right_node, bindings)
         if op_text == "&&":
-            if _is_unbound_identifier_operand(code, left_node, left_val, bindings):
+            if _is_unevaluable_logical_operand(code, left_node, left_val, bindings):
                 return _node_text(code, node)
             return left_val if not _js_truthy(left_val) else _node_to_python(code, right_node, bindings)
         handled, result = _eval_js_binary(

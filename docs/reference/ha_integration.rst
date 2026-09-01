@@ -178,9 +178,11 @@ parameter tokens from ``deviceMenu/static/<path>.ts`` chunks referenced in
 automatically).
 
 The Home Assistant integration caches entity descriptors in the config entry;
-after upgrading to a release that adds static-route overlays, users must
-**reconfigure or reload** the integration so ``ha-bragerone`` re-runs bootstrap
-(its ``BOOTSTRAP_VERSION`` gate invalidates stale descriptor caches). Upgrading
+after upgrading to a release that adds static-route overlays, users need a
+``ha-bragerone`` release that bumps ``BOOTSTRAP_VERSION`` (the ``release/2026.9``
+train uses version 14) **and** must reconfigure or reload the integration so
+bootstrap re-runs. Reloading on an integration build that still stores the
+previous bootstrap version leaves stale descriptor caches unchanged. Upgrading
 ``py-bragerone`` alone does not rewrite existing HA entity registries.
 
 ``build_panel_groups(..., web_ui_only=False)`` keeps permission/module-item based
