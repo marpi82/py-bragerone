@@ -26,11 +26,11 @@ class _FakeApi:
 
 @pytest.mark.asyncio
 async def test_fetch_alarm_name_source_uses_find_basename() -> None:
-    """Primary lookup uses exact Alarms/alarms basenames."""
+    """Primary lookup uses exact ``Alarms`` / ``alarms`` basenames."""
     catalog = LiveAssetsCatalog(cast(BragerOneApiClient, _FakeApi(payload=b"enum-source")))
     catalog._idx = AssetIndex(
         assets_by_basename={
-            "alarms-abc123": [AssetRef(url="https://cdn/assets/alarms-abc123.js", base="alarms", hash="abc123")],
+            "alarms": [AssetRef(url="https://cdn/assets/alarms-abc123.js", base="alarms", hash="abc123")],
         }
     )
     catalog._ensure_index_loaded = AsyncMock()  # type: ignore[method-assign]

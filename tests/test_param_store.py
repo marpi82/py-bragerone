@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from unittest.mock import patch
 
 from pybragerone.models.events import EventBus, ParamUpdate
-from pybragerone.models.param import ParamStore
+from pybragerone.models.param import ParamFamilyModel, ParamStore
 
 
 async def _wait_until(predicate: Callable[[], bool], *, spins: int = 50) -> None:
@@ -158,6 +159,8 @@ def test_flatten_for_devid_isolates_modules_with_same_address() -> None:
     assert store.flatten_for_devid("M1") == {"P6.v219": 1}
     assert store.flatten_for_devid("M2") == {"P6.v219": 7}
     assert store.flatten()["P6.v219"] == 7
+    store.upsert("P6.v219", 9, devid="M1")
+    assert store.flatten()["P6.v219"] == 9
 
 
 def test_ingest_prime_payload_scopes_by_devid() -> None:
@@ -174,20 +177,67 @@ def test_ingest_prime_payload_scopes_by_devid() -> None:
     assert store.flatten_for_devid("DEV2") == {"P4.v1": 20}
 
 
-def test_get_family_without_devid_falls_back_to_scoped_modules() -> None:
-    """Legacy get_family resolves scoped-only values when no legacy bucket exists."""
+def test_get_family_without_devid_uses_last_writer_module() -> None:
+    """Unscoped get_family follows the module that last upserted the family."""
     store = ParamStore()
-    store.upsert("P4.v1", 11, devid="M1")
+    store.upsert("P4.v1", 1, devid="M1")
+    store.upsert("P4.v1", 99, devid="M2")
 
     fam = store.get_family("P4", 1)
     assert fam is not None
-    assert fam.value == 11
+    assert fam.value == 99
+
+
+def test_get_family_scans_buckets_when_last_writer_missing() -> None:
+    """Fallback scan finds a family when last-writer metadata is absent."""
+    store = ParamStore()
+    bucket = store._devid_families.setdefault("M2", {})
+    bucket["P4:3"] = ParamFamilyModel(pool="P4", idx=3, channels={"v": 5})
+
+    fam = store.get_family("P4", 3)
+    assert fam is not None
+    assert fam.value == 5
 
 
 def test_get_family_with_unknown_devid_returns_none() -> None:
     """Explicit devid lookup returns None for modules without data."""
     store = ParamStore()
     assert store.get_family("P4", 1, devid="MISSING") is None
+
+
+def test_get_family_without_devid_returns_legacy_family() -> None:
+    """Unscoped upserts resolve through the legacy bucket when last writer is unscoped."""
+    store = ParamStore()
+    store.upsert("P4.v0", 3)
+
+    fam = store.get_family("P4", 0)
+    assert fam is not None
+    assert fam.value == 3
+
+
+def test_flatten_falls_back_to_bucket_merge_when_no_upserts_tracked() -> None:
+    """Empty last-flat cache still merges scoped buckets for backward compatibility."""
+    store = ParamStore()
+    bucket = store._devid_families.setdefault("M1", {})
+    bucket["P4:1"] = ParamFamilyModel(pool="P4", idx=1, channels={"v": 8})
+
+    assert store.flatten() == {"P4.v1": 8}
+
+
+def test_ingest_prime_skips_meta_when_value_upsert_fails() -> None:
+    """Prime meta attachment is skipped when the value upsert is rejected."""
+    original = ParamStore.upsert
+
+    def _upsert(self: ParamStore, key: str, value: object, *, devid: str | None = None) -> ParamFamilyModel | None:
+        if key == "P4.v1":
+            return None
+        return original(self, key, value, devid=devid)
+
+    with patch.object(ParamStore, "upsert", _upsert):
+        store = ParamStore()
+        store.ingest_prime_payload({"DEV1": {"P4": {"v1": {"value": 1, "updatedAt": 9}}}})
+
+    assert store.flatten_for_devid("DEV1") == {}
 
 
 def test_flatten_merges_legacy_and_scoped_families() -> None:

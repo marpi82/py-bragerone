@@ -68,6 +68,8 @@ class ParamStore(BaseModel):
 
     families: dict[str, ParamFamilyModel] = Field(default_factory=dict)
     _devid_families: dict[str, dict[str, ParamFamilyModel]] = PrivateAttr(default_factory=dict)
+    _last_flat: dict[str, Any] = PrivateAttr(default_factory=dict)
+    _last_fid_devid: dict[str, str | None] = PrivateAttr(default_factory=dict)
 
     model_config = ConfigDict(frozen=False, validate_assignment=True)
 
@@ -107,6 +109,9 @@ class ParamStore(BaseModel):
             fam = ParamFamilyModel(pool=pool, idx=idx)
             fam_dict[fid] = fam
         fam.set(chan, value)
+        full_key = f"{pool}.{chan}{idx}"
+        self._last_flat[full_key] = value
+        self._last_fid_devid[fid] = devid
         return fam
 
     async def upsert_async(self, key: str, value: Any, *, devid: str | None = None) -> ParamFamilyModel | None:
@@ -121,6 +126,18 @@ class ParamStore(BaseModel):
             if bucket is None:
                 return None
             return bucket.get(fid)
+        if fid in self._last_fid_devid:
+            last_devid = self._last_fid_devid[fid]
+            if last_devid is not None:
+                bucket = self._devid_families.get(last_devid)
+                if bucket is not None:
+                    found = bucket.get(fid)
+                    if found is not None:
+                        return found
+            else:
+                legacy = self.families.get(fid)
+                if legacy is not None:
+                    return legacy
         legacy = self.families.get(fid)
         if legacy is not None:
             return legacy
@@ -144,9 +161,11 @@ class ParamStore(BaseModel):
     def flatten(self) -> dict[str, Any]:
         """Flattened view of all parameters as ``{ 'P4.v1': value, ... }``.
 
-        Merges every scoped module plus any legacy unscoped upserts; when the
-        same address appears in multiple modules, the last ingested value wins.
+        Returns the most recently upserted value per address across all modules
+        (true last-write-wins), regardless of ``devid`` bucket insertion order.
         """
+        if self._last_flat:
+            return dict(self._last_flat)
         merged: dict[str, Any] = {}
         for bucket in self._devid_families.values():
             merged.update(self._flatten_bucket(bucket))
