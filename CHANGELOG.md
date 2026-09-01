@@ -291,7 +291,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.8.9...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.0...HEAD
+[2026.9.0]: https://github.com/marpi82/py-bragerone/releases/tag/2026.9.0
 [2026.8.9]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.9
 [2026.8.8]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.8
 [2026.8.7]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.7
