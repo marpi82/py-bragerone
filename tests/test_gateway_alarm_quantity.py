@@ -283,3 +283,24 @@ async def test_ingest_alarm_quantity_invokes_async_callbacks() -> None:
 
     assert len(seen) == 1
     assert seen[0].quantity == 1
+
+
+@pytest.mark.asyncio
+async def test_ws_alarm_quantity_ingest_serializes_overlapping_callbacks() -> None:
+    """Back-to-back WS changes await callbacks in order so stale work cannot win."""
+    gateway = BragerOneGateway(api=cast(Any, _FakeApi()), object_id=1, modules=["D1"], ws=cast(Any, _FakeWs()))
+    callback_order: list[int] = []
+
+    async def _slow_first(event: Any) -> None:
+        if event.quantity == 1:
+            await asyncio.sleep(0.05)
+        callback_order.append(event.quantity)
+
+    gateway.on_alarm_quantity(_slow_first)
+
+    gateway._ws_dispatch("app:modules:alarms:quantity:change", {"alarmsQuantity": {"D1": 1}})
+    gateway._ws_dispatch("app:modules:alarms:quantity:change", {"alarmsQuantity": {"D1": 2}})
+    await asyncio.sleep(0.15)
+
+    assert gateway._alarm_quantity_cache["D1"] == 2
+    assert callback_order == [1, 2]

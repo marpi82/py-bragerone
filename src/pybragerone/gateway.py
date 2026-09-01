@@ -344,6 +344,7 @@ class BragerOneGateway:
         self._module_gateway: dict[str, dict[str, Any]] = {}
         self._alarm_quantity_cache: dict[str, int | None] = {}
         self._alarm_quantity_ws_rev: dict[str, int] = {}
+        self._alarm_quantity_ingest_lock = asyncio.Lock()
 
     @classmethod
     async def from_credentials(
@@ -1239,7 +1240,8 @@ class BragerOneGateway:
         ws_floor: dict[str, int] | None = None,
     ) -> None:
         """Ingest alarm quantity payload and notify ``on_alarm_quantity`` listeners."""
-        await self._ingest_alarm_quantity_payload(data, source=source, ws_floor=ws_floor)
+        async with self._alarm_quantity_ingest_lock:
+            await self._ingest_alarm_quantity_payload(data, source=source, ws_floor=ws_floor)
 
     async def _ingest_alarm_quantity_payload(
         self,

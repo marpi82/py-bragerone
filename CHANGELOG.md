@@ -7,6 +7,12 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Changed
+
+- ``ParamStore.get_family`` and ``ParamStore.upsert`` return deep-copy snapshots; update
+  the store via ``upsert`` / ``upsert_async`` instead of mutating the returned
+  ``ParamFamilyModel`` in place.
+
 ### Added
 
 - ``LiveAssetsCatalog.fetch_alarm_name_source`` — public Alarms webpack chunk fetch for
