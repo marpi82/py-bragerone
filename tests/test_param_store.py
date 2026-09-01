@@ -215,6 +215,52 @@ def test_get_family_without_devid_returns_legacy_family() -> None:
     assert fam.value == 3
 
 
+def test_get_family_reads_legacy_bucket_without_last_writer_metadata() -> None:
+    """Families inserted only into the legacy bucket remain discoverable."""
+    store = ParamStore()
+    store.families["P4:5"] = ParamFamilyModel(pool="P4", idx=5, channels={"v": 11})
+
+    fam = store.get_family("P4", 5)
+    assert fam is not None
+    assert fam.value == 11
+
+
+def test_get_family_falls_through_when_last_writer_bucket_missing() -> None:
+    """Stale last-writer metadata does not block the scoped-bucket scan fallback."""
+    store = ParamStore()
+    store.upsert("P4.v1", 1, devid="M1")
+    store._devid_families.pop("M1")
+    store._devid_families.setdefault("M2", {})["P4:1"] = ParamFamilyModel(pool="P4", idx=1, channels={"v": 2})
+
+    fam = store.get_family("P4", 1)
+    assert fam is not None
+    assert fam.value == 2
+
+
+def test_get_family_falls_through_when_last_writer_family_removed() -> None:
+    """Missing family in the last-writer bucket falls back to other scoped buckets."""
+    store = ParamStore()
+    store.upsert("P4.v1", 1, devid="M1")
+    store._devid_families["M1"].pop("P4:1")
+    store._devid_families.setdefault("M2", {})["P4:1"] = ParamFamilyModel(pool="P4", idx=1, channels={"v": 3})
+
+    fam = store.get_family("P4", 1)
+    assert fam is not None
+    assert fam.value == 3
+
+
+def test_get_family_unscoped_last_writer_without_legacy_scans_buckets() -> None:
+    """Unscoped last-writer metadata with no legacy family scans scoped buckets."""
+    store = ParamStore()
+    store._last_fid_devid["P4:7"] = None
+    store._devid_families["M1"] = {}
+    store._devid_families["M2"] = {"P4:7": ParamFamilyModel(pool="P4", idx=7, channels={"v": 42})}
+
+    fam = store.get_family("P4", 7)
+    assert fam is not None
+    assert fam.value == 42
+
+
 def test_flatten_falls_back_to_bucket_merge_when_no_upserts_tracked() -> None:
     """Empty last-flat cache still merges scoped buckets for backward compatibility."""
     store = ParamStore()
