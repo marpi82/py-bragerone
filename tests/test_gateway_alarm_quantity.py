@@ -353,7 +353,9 @@ async def test_overlapping_rest_alarm_primes_discard_stale_response() -> None:
     await asyncio.wait_for(first_started.wait(), timeout=1.0)
     await gateway._prime_alarm_quantity()
     release_first.set()
-    await slow_prime
+    done, pending = await asyncio.wait({slow_prime})
+    assert pending == set()
+    assert slow_prime in done
 
     assert gateway._alarm_quantity_cache["D1"] == 7
     assert seen == [7]
