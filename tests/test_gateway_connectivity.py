@@ -501,6 +501,8 @@ async def test_protocol_stubs_raise_not_implemented() -> None:
     with pytest.raises(NotImplementedError):
         await ApiClient.get_modules(probe, 1)  # type: ignore[arg-type]
     with pytest.raises(NotImplementedError):
+        await ApiClient.modules_alarms_quantity(probe, ["M1"], return_data=True)  # type: ignore[arg-type]
+    with pytest.raises(NotImplementedError):
         RealtimeManagerClient.add_on_disconnected(probe, lambda: None)  # type: ignore[arg-type]
     with pytest.raises(NotImplementedError):
         await RealtimeManagerClient.force_reconnect(probe)  # type: ignore[arg-type]

@@ -47,6 +47,22 @@ class _FakeWs:
         return None
 
 
+class _FailingAlarmsApi(_FakeApi):
+    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        _ = modules
+        if return_data:
+            return 503, {"alarmsQuantity": {"D1": 9}}
+        return False
+
+
+class _NonDictAlarmsApi(_FakeApi):
+    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        _ = modules
+        if return_data:
+            return 204, "not-a-dict"
+        return True
+
+
 @pytest.mark.asyncio
 async def test_prime_ingests_alarm_quantity_from_rest() -> None:
     """Gateway REST prime notifies on_alarm_quantity with the primed count."""
@@ -62,6 +78,32 @@ async def test_prime_ingests_alarm_quantity_from_rest() -> None:
     assert seen[0].devid == "D1"
     assert seen[0].quantity == 7
     assert seen[0].source == "rest"
+
+
+@pytest.mark.asyncio
+async def test_prime_skips_alarm_ingest_on_upstream_failure() -> None:
+    """Non-success alarm prime responses are ignored without breaking parameter prime."""
+    gateway = BragerOneGateway(api=cast(Any, _FailingAlarmsApi()), object_id=1, modules=["D1"], ws=cast(Any, _FakeWs()))
+    seen: list[Any] = []
+    gateway.on_alarm_quantity(lambda event: seen.append(event))
+
+    ok_params, ok_act = await gateway._prime()
+
+    assert ok_params is True
+    assert ok_act is True
+    assert seen == []
+
+
+@pytest.mark.asyncio
+async def test_prime_treats_non_dict_alarm_body_as_empty() -> None:
+    """204 alarm prime with a non-dict body does not notify listeners."""
+    gateway = BragerOneGateway(api=cast(Any, _NonDictAlarmsApi()), object_id=1, modules=["D1"], ws=cast(Any, _FakeWs()))
+    seen: list[Any] = []
+    gateway.on_alarm_quantity(lambda event: seen.append(event))
+
+    await gateway._prime()
+
+    assert seen == []
 
 
 @pytest.mark.asyncio
