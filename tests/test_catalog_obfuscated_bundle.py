@@ -24,6 +24,7 @@ from pybragerone.models.catalog import (
     _eval_js_binary,
     _i18n_import_base_and_hash,
     _is_js_nullish,
+    _is_unevaluable_logical_operand,
     _js_concat,
     _js_nullish_aware_equal,
     _js_truthy,
@@ -850,6 +851,11 @@ def test_logical_and_short_circuits_falsy_left_operand() -> None:
     tree = catalog._ts.parse(code)
     node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
     assert _node_to_python(code, node) is None
+
+
+def test_unevaluable_logical_operand_rejects_none_node() -> None:
+    """Missing AST nodes are not treated as unevaluable leftovers."""
+    assert _is_unevaluable_logical_operand(b"", None, None, None) is False
 
 
 def test_logical_ops_preserve_expression_when_left_is_unbound_identifier() -> None:
