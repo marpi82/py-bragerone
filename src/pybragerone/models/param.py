@@ -127,32 +127,35 @@ class ParamStore(BaseModel):
     def get_family(self, pool: str, idx: int, *, devid: str | None = None) -> ParamFamilyModel | None:
         """Get ParamFamilyModel by (pool, idx) address, or None if not found."""
         with self._lock:
-            fid = self._fid(pool, idx)
-            if devid is not None:
-                bucket = self._devid_families.get(devid)
-                if bucket is None:
-                    return None
-                return bucket.get(fid)
-            if fid in self._last_fid_devid:
-                last_devid = self._last_fid_devid[fid]
-                if last_devid is not None:
-                    bucket = self._devid_families.get(last_devid)
-                    if bucket is not None:
-                        found = bucket.get(fid)
-                        if found is not None:
-                            return found
-                else:
-                    legacy = self.families.get(fid)
-                    if legacy is not None:
-                        return legacy
-            legacy = self.families.get(fid)
-            if legacy is not None:
-                return legacy
-            for bucket in self._devid_families.values():
-                found = bucket.get(fid)
-                if found is not None:
-                    return found
-            return None
+            return self._get_family_locked(pool, idx, devid=devid)
+
+    def _get_family_locked(self, pool: str, idx: int, *, devid: str | None = None) -> ParamFamilyModel | None:
+        fid = self._fid(pool, idx)
+        if devid is not None:
+            bucket = self._devid_families.get(devid)
+            if bucket is None:
+                return None
+            return bucket.get(fid)
+        if fid in self._last_fid_devid:
+            last_devid = self._last_fid_devid[fid]
+            if last_devid is not None:
+                bucket = self._devid_families.get(last_devid)
+                if bucket is not None:
+                    found = bucket.get(fid)
+                    if found is not None:
+                        return found
+            else:
+                legacy = self.families.get(fid)
+                if legacy is not None:
+                    return legacy
+        legacy = self.families.get(fid)
+        if legacy is not None:
+            return legacy
+        for bucket in self._devid_families.values():
+            found = bucket.get(fid)
+            if found is not None:
+                return found
+        return None
 
     @staticmethod
     def _flatten_bucket(fam_dict: Mapping[str, ParamFamilyModel]) -> dict[str, Any]:
@@ -202,25 +205,26 @@ class ParamStore(BaseModel):
                         continue
                     chan_key = f"{pool}.{chan}{idx}"
                     if isinstance(body, Mapping):
-                        fam: ParamFamilyModel | None
-                        if "value" in body:
-                            fam = self.upsert(chan_key, body["value"], devid=devid_key)
-                        else:
-                            fam = self.get_family(pool, idx, devid=devid_key)
-                            if fam is None:
-                                fam = self.upsert(chan_key, None, devid=devid_key)
-                        if fam is not None:
-                            meta_keys = (
-                                "storable",
-                                "createdAt",
-                                "previousCreatedAt",
-                                "updatedAt",
-                                "updatedAtClient",
-                                "expire",
-                                "average",
-                            )
-                            for meta_key in meta_keys:
-                                if meta_key in body:
-                                    fam.set(meta_key, body[meta_key])
+                        meta_keys = (
+                            "storable",
+                            "createdAt",
+                            "previousCreatedAt",
+                            "updatedAt",
+                            "updatedAtClient",
+                            "expire",
+                            "average",
+                        )
+                        with self._lock:
+                            fam: ParamFamilyModel | None
+                            if "value" in body:
+                                fam = self._upsert_locked(chan_key, body["value"], devid=devid_key)
+                            else:
+                                fam = self._get_family_locked(pool, idx, devid=devid_key)
+                                if fam is None:
+                                    fam = self._upsert_locked(chan_key, None, devid=devid_key)
+                            if fam is not None:
+                                for meta_key in meta_keys:
+                                    if meta_key in body:
+                                        fam.set(meta_key, body[meta_key])
                     else:
                         self.upsert(chan_key, body, devid=devid_key)

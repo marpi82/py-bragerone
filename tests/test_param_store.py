@@ -272,14 +272,14 @@ def test_flatten_falls_back_to_bucket_merge_when_no_upserts_tracked() -> None:
 
 def test_ingest_prime_skips_meta_when_value_upsert_fails() -> None:
     """Prime meta attachment is skipped when the value upsert is rejected."""
-    original = ParamStore.upsert
+    original = ParamStore._upsert_locked
 
-    def _upsert(self: ParamStore, key: str, value: object, *, devid: str | None = None) -> ParamFamilyModel | None:
+    def _upsert_locked(self: ParamStore, key: str, value: object, *, devid: str | None = None) -> ParamFamilyModel | None:
         if key == "P4.v1":
             return None
         return original(self, key, value, devid=devid)
 
-    with patch.object(ParamStore, "upsert", _upsert):
+    with patch.object(ParamStore, "_upsert_locked", _upsert_locked):
         store = ParamStore()
         store.ingest_prime_payload({"DEV1": {"P4": {"v1": {"value": 1, "updatedAt": 9}}}})
 
