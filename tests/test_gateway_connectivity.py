@@ -1351,9 +1351,13 @@ async def test_gateway_resubscribe_warns_when_modules_connect_fails(
         return False
 
     api.modules_connect = _fail_connect  # type: ignore[method-assign]
+    prime_before = api.prime_params_calls
+    subscribe_before = len(ws.subscribe_calls)
     with caplog.at_level("WARNING"):
         assert await gw.resubscribe() is False
         assert "modules.connect (resub) failed" in caplog.text
+    assert api.prime_params_calls > prime_before
+    assert len(ws.subscribe_calls) == subscribe_before
     await gw.stop()
 
 

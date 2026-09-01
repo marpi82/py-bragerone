@@ -45,20 +45,23 @@ def parse_alarm_name_enum(source: str | bytes | bytearray) -> dict[int, str]:
 
     out: dict[int, str] = {}
     for _start, kind, match in events:
-        if kind == "pair":
-            # Alternation always binds either name_a/code_a or name_b/code_b.
-            name_a = match.group("name_a")
-            if name_a is not None:
-                out[int(match.group("code_a"))] = name_a
+        try:
+            if kind == "pair":
+                # Alternation always binds either name_a/code_a or name_b/code_b.
+                name_a = match.group("name_a")
+                if name_a is not None:
+                    out[int(match.group("code_a"))] = name_a
+                else:
+                    out[int(match.group("code_b"))] = match.group("name_b")
             else:
-                out[int(match.group("code_b"))] = match.group("name_b")
-        else:
-            # Named groups are always present when the bracket pattern matches.
-            # Prefer explicit bases: ``int(..., 0)`` rejects zero-padded decimals
-            # such as ``=08`` that appear in public SPA bundles.
-            code = match.group("code")
-            base = 16 if code[:2].lower() == "0x" else 10
-            out[int(code, base)] = match.group("name")
+                # Named groups are always present when the bracket pattern matches.
+                # Prefer explicit bases: ``int(..., 0)`` rejects zero-padded decimals
+                # such as ``=08`` that appear in public SPA bundles.
+                code = match.group("code")
+                base = 16 if code[:2].lower() == "0x" else 10
+                out[int(code, base)] = match.group("name")
+        except ValueError:
+            continue
     return out
 
 

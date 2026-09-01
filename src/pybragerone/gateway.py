@@ -644,6 +644,8 @@ class BragerOneGateway:
         Returns:
             ``True`` when ``modules.connect`` succeeded and subscribe/prime ran;
             ``False`` when there is no WS client, no namespace SID, or connect failed.
+            REST prime still runs when connect fails so the store is refreshed from
+            the authoritative snapshot even without a live push binding.
         """
         ws = self.ws
         if ws is None:
@@ -656,13 +658,12 @@ class BragerOneGateway:
         ok = await self.api.modules_connect(sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine)
         if ok:
             LOG.info("modules.connect (resub): %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
+            await ws.subscribe(self.modules)
         else:
             LOG.warning("modules.connect (resub) failed (ns_sid=%s, engine_sid=%s)", sid_ns, sid_engine)
-            return False
-        await ws.subscribe(self.modules)
         okp, oka = await self._prime_with_retry()
         LOG.debug("prime after resubscribe: parameters=%s activity=%s", okp, oka)
-        return True
+        return ok
 
     async def _wait_for_ws_sid(self, ws: RealtimeManagerClient, *, timeout_s: float = _RESUBSCRIBE_SID_WAIT_S) -> str | None:
         """Wait briefly for a namespace SID after connect/reconnect."""

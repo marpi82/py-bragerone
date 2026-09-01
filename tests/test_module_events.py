@@ -127,6 +127,15 @@ def test_parse_alarm_name_enum_zero_padded_decimal_code() -> None:
     assert names_hex == {10: "ERROR_HEX"}
 
 
+def test_parse_alarm_name_enum_skips_oversized_decimal_literals() -> None:
+    """Malformed oversized numeric literals must not abort parsing of other entries."""
+    huge = "9" * 5000
+    pair_source = f"ERROR_BAD: {huge}, ERROR_GOOD: 42"
+    assert parse_alarm_name_enum(pair_source) == {42: "ERROR_GOOD"}
+    bracket_source = f"obj['ERROR_BAD']={huge}, obj['ERROR_GOOD']=43"
+    assert parse_alarm_name_enum(bracket_source) == {43: "ERROR_GOOD"}
+
+
 def test_resolve_alarm_label_after_obfuscated_enum_parse() -> None:
     """Bracket-parsed ``ERROR_*`` keys resolve via ``errors.*`` i18n — never shown raw."""
     source = "_0xabc['ERROR_BRAK_PALIWA']=0x26,_0xabc['ERROR_PELLET_NIEUDANE_ROZPALANIE']=54"
