@@ -290,17 +290,70 @@ async def test_ws_alarm_quantity_ingest_serializes_overlapping_callbacks() -> No
     """Back-to-back WS changes await callbacks in order so stale work cannot win."""
     gateway = BragerOneGateway(api=cast(Any, _FakeApi()), object_id=1, modules=["D1"], ws=cast(Any, _FakeWs()))
     callback_order: list[int] = []
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    both_done = asyncio.Event()
+    pending = 2
 
     async def _slow_first(event: Any) -> None:
+        nonlocal pending
         if event.quantity == 1:
-            await asyncio.sleep(0.05)
+            first_started.set()
+            await release_first.wait()
         callback_order.append(event.quantity)
+        pending -= 1
+        if pending == 0:
+            both_done.set()
 
     gateway.on_alarm_quantity(_slow_first)
 
     gateway._ws_dispatch("app:modules:alarms:quantity:change", {"alarmsQuantity": {"D1": 1}})
+    await asyncio.wait_for(first_started.wait(), timeout=1.0)
     gateway._ws_dispatch("app:modules:alarms:quantity:change", {"alarmsQuantity": {"D1": 2}})
-    await asyncio.sleep(0.15)
+    release_first.set()
+    await asyncio.wait_for(both_done.wait(), timeout=1.0)
 
     assert gateway._alarm_quantity_cache["D1"] == 2
     assert callback_order == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_overlapping_rest_alarm_primes_discard_stale_response() -> None:
+    """Concurrent REST alarm primes must not let an older in-flight response win."""
+    gateway = BragerOneGateway(api=cast(Any, _FakeApi()), object_id=1, modules=["D1"], ws=cast(Any, _FakeWs()))
+    seen: list[int] = []
+
+    def _on_event(event: Any) -> None:
+        if event.quantity is not None:
+            seen.append(event.quantity)
+
+    gateway.on_alarm_quantity(_on_event)
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    call_count = 0
+
+    class _OverlappingApi(_FakeApi):
+        async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+            nonlocal call_count
+            _ = modules
+            call_count += 1
+            if call_count == 1:
+                first_started.set()
+                await release_first.wait()
+                if return_data:
+                    return 200, {"alarmsQuantity": {"D1": 3}}
+                return True
+            if return_data:
+                return 200, {"alarmsQuantity": {"D1": 7}}
+            return True
+
+    gateway.api = cast(Any, _OverlappingApi())
+
+    slow_prime = asyncio.create_task(gateway._prime_alarm_quantity())
+    await asyncio.wait_for(first_started.wait(), timeout=1.0)
+    await gateway._prime_alarm_quantity()
+    release_first.set()
+    await slow_prime
+
+    assert gateway._alarm_quantity_cache["D1"] == 7
+    assert seen == [7]

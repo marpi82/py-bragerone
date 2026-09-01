@@ -345,6 +345,9 @@ class BragerOneGateway:
         self._alarm_quantity_cache: dict[str, int | None] = {}
         self._alarm_quantity_ws_rev: dict[str, int] = {}
         self._alarm_quantity_ingest_lock = asyncio.Lock()
+        self._alarm_quantity_rest_seq = 0
+        self._alarm_quantity_rest_applied_seq = 0
+        self._alarm_quantity_rest_seq_lock = asyncio.Lock()
 
     @classmethod
     async def from_credentials(
@@ -1128,7 +1131,10 @@ class BragerOneGateway:
 
     async def _prime_alarm_quantity(self) -> None:
         """Best-effort alarm count prime; failures must not block parameter prime."""
-        ws_floor = dict(self._alarm_quantity_ws_rev)
+        async with self._alarm_quantity_rest_seq_lock:
+            self._alarm_quantity_rest_seq += 1
+            rest_seq = self._alarm_quantity_rest_seq
+            ws_floor = dict(self._alarm_quantity_ws_rev)
         try:
             res = await self.api.modules_alarms_quantity(self.modules, return_data=True)
         except Exception:
@@ -1141,6 +1147,7 @@ class BragerOneGateway:
                     data if isinstance(data, dict) else None,
                     source="rest",
                     ws_floor=ws_floor,
+                    rest_seq=rest_seq,
                 )
 
     async def _prime(self) -> tuple[bool, bool]:
@@ -1238,10 +1245,15 @@ class BragerOneGateway:
         *,
         source: Literal["rest", "ws"] = "rest",
         ws_floor: dict[str, int] | None = None,
+        rest_seq: int | None = None,
     ) -> None:
         """Ingest alarm quantity payload and notify ``on_alarm_quantity`` listeners."""
         async with self._alarm_quantity_ingest_lock:
+            if source == "rest" and rest_seq is not None and rest_seq < self._alarm_quantity_rest_applied_seq:
+                return
             await self._ingest_alarm_quantity_payload(data, source=source, ws_floor=ws_floor)
+            if source == "rest" and rest_seq is not None:
+                self._alarm_quantity_rest_applied_seq = rest_seq
 
     async def _ingest_alarm_quantity_payload(
         self,

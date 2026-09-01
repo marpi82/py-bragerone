@@ -228,6 +228,12 @@ def _toggle_value_for_symbol(*, desc: Mapping[str, Any], store: ParamStore, devi
                         return candidate_value
         return None
 
+    if has_direct_address:
+        scoped = store.flatten_for_devid(devid)
+        direct_key = f"{pool}.{chan}{idx}"
+        if direct_key in scoped:
+            current_value = scoped[direct_key]
+
     return _invert_value(current_value)
 
 
