@@ -149,6 +149,9 @@ class ApiClient(Protocol):
     async def modules_activity_quantity_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:  # noqa: D102
         raise NotImplementedError
 
+    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:  # noqa: D102
+        raise NotImplementedError
+
     async def get_modules(self, object_id: int) -> list[Module]:  # noqa: D102
         raise NotImplementedError
 
@@ -1084,11 +1087,10 @@ class BragerOneGateway:
     # ------------------------- PRIME & ingest -------------------------
 
     async def _prime(self) -> tuple[bool, bool]:
-        """Fetch initial state via REST (/modules/parameters + /modules/activity/quantity)."""
+        """Fetch initial state via REST (parameters, activity quantity, alarm quantity)."""
         ok_params = False
         ok_act = False
 
-        # Fetch parameters and activity quantities in parallel.
         async with asyncio.TaskGroup() as tg:
             t_params = tg.create_task(
                 self.api.modules_parameters_prime(self.modules, return_data=True),
@@ -1097,6 +1099,10 @@ class BragerOneGateway:
             t_act = tg.create_task(
                 self.api.modules_activity_quantity_prime(self.modules, return_data=True),
                 name="gateway.api.modules_activity_quantity_prime",
+            )
+            t_alarms = tg.create_task(
+                self.api.modules_alarms_quantity(self.modules, return_data=True),
+                name="gateway.api.modules_alarms_quantity",
             )
 
         res1 = t_params.result()
@@ -1112,6 +1118,12 @@ class BragerOneGateway:
             if st2 in (200, 204):
                 await self.ingest_activity_quantity(data2 if isinstance(data2, dict) else None)
                 ok_act = True
+
+        res3 = t_alarms.result()
+        if isinstance(res3, tuple) and len(res3) == 2:
+            st3, data3 = res3
+            if st3 in (200, 204):
+                await self.ingest_alarm_quantity(data3 if isinstance(data3, dict) else None, source="rest")
 
         self._prime_seq = self.bus.last_seq()
         self._prime_done.set()

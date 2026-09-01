@@ -164,12 +164,12 @@ class ParamStore(BaseModel):
         Returns the most recently upserted value per address across all modules
         (true last-write-wins), regardless of ``devid`` bucket insertion order.
         """
-        if self._last_flat:
-            return dict(self._last_flat)
         merged: dict[str, Any] = {}
         for bucket in self._devid_families.values():
             merged.update(self._flatten_bucket(bucket))
         merged.update(self._flatten_bucket(self.families))
+        if self._last_flat:
+            merged.update(self._last_flat)
         return merged
 
     def ingest_prime_payload(self, payload: Mapping[str, Any]) -> None:

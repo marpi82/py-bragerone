@@ -23,6 +23,12 @@ class _FakeApi:
             return 200, {"activityQuantity": {}}
         return True
 
+    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        _ = modules
+        if return_data:
+            return 200, {"alarmsQuantity": {"D1": 7}}
+        return True
+
 
 class _FakeWs:
     def __init__(self) -> None:
@@ -39,6 +45,23 @@ class _FakeWs:
 
     async def resubscribe(self) -> None:
         return None
+
+
+@pytest.mark.asyncio
+async def test_prime_ingests_alarm_quantity_from_rest() -> None:
+    """Gateway REST prime notifies on_alarm_quantity with the primed count."""
+    gateway = BragerOneGateway(api=cast(Any, _FakeApi()), object_id=1, modules=["D1"], ws=cast(Any, _FakeWs()))
+    seen: list[Any] = []
+    gateway.on_alarm_quantity(lambda event: seen.append(event))
+
+    ok_params, ok_act = await gateway._prime()
+
+    assert ok_params is True
+    assert ok_act is True
+    assert len(seen) == 1
+    assert seen[0].devid == "D1"
+    assert seen[0].quantity == 7
+    assert seen[0].source == "rest"
 
 
 @pytest.mark.asyncio

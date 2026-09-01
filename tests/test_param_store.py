@@ -293,3 +293,13 @@ def test_flatten_merges_legacy_and_scoped_families() -> None:
     store.upsert("P4.v1", 2, devid="M1")
 
     assert store.flatten() == {"P4.v0": 1, "P4.v1": 2}
+
+
+def test_flatten_preserves_untracked_legacy_after_tracked_upsert() -> None:
+    """Tracked upserts overlay last-write-wins without dropping pre-existing legacy families."""
+    store = ParamStore()
+    store.families["P4:0"] = ParamFamilyModel(pool="P4", idx=0, channels={"v": 99})
+    store.upsert("P4.v1", 1, devid="M1")
+    store.upsert("P4.v1", 2, devid="M2")
+
+    assert store.flatten() == {"P4.v0": 99, "P4.v1": 2}

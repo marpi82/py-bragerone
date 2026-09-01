@@ -67,6 +67,12 @@ class FakeApiClient:
             return True
         return 200, {}
 
+    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        """Return an empty successful alarm quantity prime."""
+        if not return_data:
+            return True
+        return 200, {}
+
     async def get_modules(self, object_id: int) -> list[Any]:
         """Return the configured module rows (or raise when configured)."""
         self.get_modules_calls += 1
@@ -1964,6 +1970,7 @@ async def test_gateway_recycle_calls_force_fresh_auth_on_real_client(httpx_mock:
     httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/connect", status_code=204)
     httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/parameters", json={"M1": {}})
     httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/activity/quantity", status_code=204)
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/alarms/quantity", status_code=204)
     await api.ensure_auth("e@example.com", "secret")
     gw = BragerOneGateway(
         api=api,
@@ -1992,9 +1999,11 @@ async def test_gateway_hard_reconnect_force_fresh_auth_on_real_client(httpx_mock
     httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/connect", status_code=204)
     httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/parameters", json={"M1": {}})
     httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/activity/quantity", status_code=204)
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/alarms/quantity", status_code=204)
     httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/connect", status_code=204)
     httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/parameters", json={"M1": {}})
     httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/activity/quantity", status_code=204)
+    httpx_mock.add_response(method="POST", url="https://io.brager.pl/v1/modules/alarms/quantity", status_code=204)
     await api.ensure_auth("e@example.com", "secret")
     gw = BragerOneGateway(
         api=api,
