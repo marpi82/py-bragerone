@@ -172,3 +172,28 @@ def test_ingest_prime_payload_scopes_by_devid() -> None:
 
     assert store.flatten_for_devid("DEV1") == {"P4.v1": 10}
     assert store.flatten_for_devid("DEV2") == {"P4.v1": 20}
+
+
+def test_get_family_without_devid_falls_back_to_scoped_modules() -> None:
+    """Legacy get_family resolves scoped-only values when no legacy bucket exists."""
+    store = ParamStore()
+    store.upsert("P4.v1", 11, devid="M1")
+
+    fam = store.get_family("P4", 1)
+    assert fam is not None
+    assert fam.value == 11
+
+
+def test_get_family_with_unknown_devid_returns_none() -> None:
+    """Explicit devid lookup returns None for modules without data."""
+    store = ParamStore()
+    assert store.get_family("P4", 1, devid="MISSING") is None
+
+
+def test_flatten_merges_legacy_and_scoped_families() -> None:
+    """Global flatten includes both unscoped upserts and per-module snapshots."""
+    store = ParamStore()
+    store.upsert("P4.v0", 1)
+    store.upsert("P4.v1", 2, devid="M1")
+
+    assert store.flatten() == {"P4.v0": 1, "P4.v1": 2}

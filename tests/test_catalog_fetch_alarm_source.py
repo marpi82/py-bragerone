@@ -98,3 +98,37 @@ async def test_fetch_alarm_name_source_rejects_unsupported_payload_type() -> Non
     catalog._ensure_index_loaded = AsyncMock()  # type: ignore[method-assign]
 
     assert await catalog.fetch_alarm_name_source() is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_alarm_name_source_prefers_exact_alarms_basename() -> None:
+    """Exact ``Alarms`` / ``alarms`` index keys win before the scan fallback."""
+    catalog = LiveAssetsCatalog(cast(BragerOneApiClient, _FakeApi(payload=b"exact")))
+    catalog._idx = AssetIndex(
+        assets_by_basename={
+            "Alarms": [AssetRef(url="https://cdn/assets/Alarms.js", base="Alarms", hash="h1")],
+            "AlarmsPanel-x": [AssetRef(url="https://cdn/assets/panel.js", base="AlarmsPanel", hash="x")],
+        }
+    )
+    catalog._ensure_index_loaded = AsyncMock()  # type: ignore[method-assign]
+
+    source = await catalog.fetch_alarm_name_source()
+
+    assert source == b"exact"
+    fake_api = cast(_FakeApi, catalog._api)
+    assert fake_api.urls == ["https://cdn/assets/Alarms.js"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_alarm_name_source_scan_skips_invalid_basenames_and_empty_refs() -> None:
+    """Basename scan ignores non-alarms keys and empty ref lists."""
+    catalog = LiveAssetsCatalog(cast(BragerOneApiClient, _FakeApi(payload=b"chunk")))
+    catalog._idx = AssetIndex(
+        assets_by_basename={
+            "menu.js": [AssetRef(url="https://cdn/menu.js", base="menu", hash="m")],
+            "alarmsEmpty": [],
+        }
+    )
+    catalog._ensure_index_loaded = AsyncMock()  # type: ignore[method-assign]
+
+    assert await catalog.fetch_alarm_name_source() is None
