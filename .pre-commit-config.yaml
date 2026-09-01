@@ -60,12 +60,12 @@ repos:
         args: ["-r", "src", "-q", "-ll"]
         pass_filenames: false
 
-  # --- Tests on pre-push with coverage gate ---
+  # --- Tests on pre-push: project 80% + patch 100% vs main (Codecov parity) ---
   - repo: local
     hooks:
       - id: pytest-pre-push
-        name: pytest (coverage gate on push)
+        name: pytest (coverage gates on push)
         language: system
-        entry: bash -lc 'uv run --group test pytest --maxfail=1 --disable-warnings -q --cov=src --cov-report=term-missing --cov-fail-under=80'
+        entry: bash scripts/check_patch_coverage.sh
         pass_filenames: false
         stages: [pre-push]

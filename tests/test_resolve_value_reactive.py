@@ -1002,3 +1002,47 @@ async def test_resolve_raw_display_value_applies_transform_and_enum() -> None:
         )
         == "Wyłączony"
     )
+
+
+@pytest.mark.asyncio
+async def test_resolve_raw_display_value_keeps_transform_string_when_i18n_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unresolved transform tokens fall back to the raw transformed string."""
+    store = ParamStore()
+    resolver = ParamResolver(
+        store=store,
+        assets=cast(
+            AssetsProtocol,
+            _StubAssets(
+                mapping=ParamMap(
+                    key="_",
+                    group=None,
+                    paths={},
+                    component_type=None,
+                    units=None,
+                    limits=None,
+                    status_flags=[],
+                    status_conditions=None,
+                    command_rules=[],
+                    origin="test",
+                    raw={},
+                ),
+                unit_descriptors={
+                    "66": {
+                        "text": "units.0",
+                        "value": 'e => { if (e === 0) return "units.202.0"; return String((e - 1) * 10).padStart(2, "0"); }',
+                    },
+                },
+                i18n_by_namespace={"units": {"0": "", "202": {"0": "Wyłączony"}}},
+            ),
+        ),
+        lang="en",
+    )
+
+    async def _missing_token(_label: str | None) -> None:
+        return None
+
+    monkeypatch.setattr(resolver, "_resolve_units_value_token", _missing_token)
+
+    assert await resolver.resolve_raw_display_value(0, unit_code=66) == "units.202.0"
