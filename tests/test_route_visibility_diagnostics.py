@@ -267,6 +267,56 @@ async def test_build_panel_groups_instance_flat_values_resolution() -> None:
     assert implicit_rows[0]["route_visibility_reason"] == "visible:dropdown-value"
 
 
+@pytest.mark.asyncio
+async def test_build_panel_groups_structural_skips_implicit_store_flat_values() -> None:
+    """Structural discovery keeps dropdown-gated routes when the store would hide them."""
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "circulation",
+                    "name": "modules.menu.circulation",
+                    "meta": {
+                        "displayName": "Cyrkulacja",
+                        "displayDropdown": "P6.v219",
+                        "parameters": {"read": [{"parameter": "E(A.READ,'PARAM_1')"}]},
+                    },
+                }
+            ]
+        }
+    )
+    assets = AsyncMock()
+    assets.get_module_menu = AsyncMock(return_value=menu)
+    assets.get_i18n = AsyncMock(return_value={})
+    assets.discover_static_route_tokens = AsyncMock(return_value=set())
+
+    store = ParamStore()
+    store.upsert("P6.v219", 0)
+    resolver = ParamResolver(store=store, assets=assets, lang="pl")
+
+    runtime_groups = await resolver.build_panel_groups(
+        device_menu=0,
+        all_panels=True,
+        web_ui_only=True,
+    )
+    assert not any("PARAM_1" in symbols for symbols in runtime_groups.values())
+
+    structural_groups = await resolver.build_panel_groups(
+        device_menu=0,
+        all_panels=True,
+        web_ui_only=True,
+        use_store_flat_values=False,
+    )
+    assert any("PARAM_1" in symbols for symbols in structural_groups.values())
+    structural_rows = await resolver.panel_route_diagnostics(
+        device_menu=0,
+        all_panels=True,
+        web_ui_only=True,
+        use_store_flat_values=False,
+    )
+    assert structural_rows[0]["route_visibility_reason"] == "visible:dropdown-unprimed"
+
+
 def test_route_visibility_diagnostics_visible_when_ancestor_and_leaf_true() -> None:
     """Ancestor and leaf ParamStore gates that are both true keep the route visible."""
     parent = _route(path="parent", name="modules.menu.parent", meta={"displayDropdown": "P6.v219"})

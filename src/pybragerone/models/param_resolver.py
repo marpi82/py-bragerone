@@ -1200,6 +1200,7 @@ class ParamResolver:
         all_panels: bool = False,
         web_ui_only: bool = False,
         flat_values: Mapping[str, Any] | None = None,
+        use_store_flat_values: bool = True,
     ) -> dict[str, list[str]]:
         """Build panel groups from module menu for selected permissions."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
@@ -1207,6 +1208,8 @@ class ParamResolver:
         static_route_symbols = await self._static_route_symbols_for_menu(menu)
         if flat_values is not None:
             values: Mapping[str, Any] | None = flat_values
+        elif not use_store_flat_values:
+            values = None
         else:
             # Empty implicit store ≡ unprimed (``None``), so displayDropdown stays
             # ``visible:dropdown-unprimed``. Callers pass ``{}`` explicitly for missing-key hide.
@@ -1229,6 +1232,7 @@ class ParamResolver:
         all_panels: bool = False,
         web_ui_only: bool = False,
         flat_values: Mapping[str, Any] | None = None,
+        use_store_flat_values: bool = True,
     ) -> list[dict[str, Any]]:
         """Return route diagnostics for panel inclusion filtering."""
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
@@ -1236,6 +1240,8 @@ class ParamResolver:
         static_route_symbols = await self._static_route_symbols_for_menu(menu)
         if flat_values is not None:
             values: Mapping[str, Any] | None = flat_values
+        elif not use_store_flat_values:
+            values = None
         else:
             flattened = self._store.flatten()
             values = flattened if flattened else None
