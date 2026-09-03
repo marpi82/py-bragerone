@@ -203,6 +203,9 @@ async def test_gateway_resubscribe_on_connected_reprimes() -> None:
     gw = BragerOneGateway(api=api, object_id=123, modules=["M1"], ws=ws, connectivity_poll_interval=0)
     await gw.start()
 
+    # Simulate a real WS disconnect→reconnect cycle: clear the bound SID so
+    # resubscribe treats the (unchanged fake) namespace SID as a new session.
+    gw._bound_ns_sid = None
     await ws.trigger_connected()
 
     assert api._modules_connect_calls == [

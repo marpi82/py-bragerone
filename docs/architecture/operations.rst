@@ -63,10 +63,22 @@ Best Practices
   access token so reconnect is not left unauthenticated. Transport recycle and
   manager rebuild then back off with an exponential cooldown (REST primes continue).
   A successful hard reconnect does not arm cooldown; an aborted hard reconnect
-  (forced re-login failed) does arm cooldown to avoid thrash. If a subscribed module
-  returns online while still zombie, cooldown is cleared and recovery runs immediately
+  (forced re-login failed) does arm cooldown to avoid thrash. After the rebuild cap
+  (default 3 rebuilds without live traffic), the gateway enters **REST-only quarantine**
+  (default 6 h): WS recovery pauses entirely while REST primes continue. Quarantine
+  is cleared by a live ``ParamUpdate`` (``_touch_param_publish(live=True)``) or a
+  module-online recovery path. If a subscribed module returns online while still
+  zombie, cooldown or quarantine is cleared and recovery runs immediately
   (failed auth/resubscribe re-arms cooldown). Recovery is
   skipped while every subscribed module is known offline.
+- ``modules.connect`` caches only the successful body **shape** (``wsid`` vs ``sid``,
+  optional ``group_id``) — never a stale SID. After a WS reconnect the gateway
+  always posts the **current** namespace SID. Field logs showed that caching the
+  entire body (including the SID) could silently re-bind the old dead session while
+  the new socket received no deltas.
+- ``resubscribe()`` is serialized with ``asyncio.Lock`` and deduped per namespace SID
+  (``_bound_ns_sid``). This prevents races between the spawned ``on_connected``
+  callback and the zombie recovery ``await resubscribe()``.
   Numeric Socket.IO event ``22`` (``SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED``)
   also REST-primes that module. ``last_param_update_age_s()`` and
   ``last_live_param_update_age_s()`` expose the gaps for diagnostics.

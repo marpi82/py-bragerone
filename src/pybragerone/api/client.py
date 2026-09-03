@@ -8,7 +8,7 @@ import json
 import logging
 import ssl
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, Literal, NamedTuple
 
 import httpx
 
@@ -50,6 +50,13 @@ from .server import BRAGERONE_SERVER, ServerConfig
 
 LOG = logging.getLogger("pybragerone.api")
 LOG_HTTP = logging.getLogger("pybragerone.http")
+
+
+class _ModulesConnectShape(NamedTuple):
+    """Remember which ``modules.connect`` body shape worked (never a SID)."""
+
+    sid_key: Literal["wsid", "sid"]
+    include_group_id: bool
 
 
 class ApiError(RuntimeError):
@@ -273,7 +280,8 @@ class BragerOneApiClient:
 
         self._creds_provider = creds_provider
         self._auth_lock = asyncio.Lock()
-        self._connect_variant: dict[str, Any] | None = None
+        # Preferred modules.connect *shape* only — never cache a SID (reconnects mint new ones).
+        self._connect_shape: _ModulesConnectShape | None = None
 
         self._cache = HttpCache()
         self._timeout = timeout
@@ -918,6 +926,11 @@ class BragerOneApiClient:
     ) -> bool:
         """Connect to modules via WebSocket.
 
+        Remembers which JSON *shape* succeeded (``wsid`` vs ``sid``, optional
+        ``group_id``) but always injects the **current** namespace/engine SID.
+        Replaying a cached body with a stale SID after reconnect was observed to
+        return HTTP 200 while leaving the new Socket.IO session unbound.
+
         Args:
             wsid_ns: WebSocket namespace ID.
             modules: List of module codes to connect to.
@@ -934,6 +947,14 @@ class BragerOneApiClient:
             "Content-Type": "application/json;charset=UTF-8",
             "X-Requested-With": "XMLHttpRequest",
         }
+        current_sids = {sid for sid in (wsid_ns, engine_sid) if sid}
+
+        def _body_from_shape(pref_sid: str, shape: _ModulesConnectShape) -> dict[str, Any]:
+            """Build a connect body for ``pref_sid`` using a remembered shape."""
+            body: dict[str, Any] = {shape.sid_key: pref_sid, "modules": modules}
+            if shape.include_group_id and group_id is not None:
+                body["group_id"] = str(group_id)
+            return body
 
         def bodies(pref_sid: str) -> list[dict[str, Any]]:
             """Generate candidate request bodies for module connection."""
@@ -946,23 +967,28 @@ class BragerOneApiClient:
             return arr
 
         candidates: list[dict[str, Any]] = []
-        if self._connect_variant:
-            candidates.append(self._connect_variant)
+        # Preferred shape first, but only with *current* SIDs (never a stale cached SID).
+        if self._connect_shape is not None:
+            shape = self._connect_shape
+            if wsid_ns:
+                candidates.append(_body_from_shape(wsid_ns, shape))
+            if engine_sid and engine_sid != wsid_ns:
+                candidates.append(_body_from_shape(engine_sid, shape))
 
-        # 1) namespace SID
+        # 1) namespace SID fallbacks
         if wsid_ns:
-            for body in bodies(wsid_ns):
-                candidates.append(body)
-        # 2) engine SID (fallback)
-        if engine_sid:
-            for body in bodies(engine_sid):
-                candidates.append(body)
+            candidates.extend(bodies(wsid_ns))
+        # 2) engine SID fallbacks
+        if engine_sid and engine_sid != wsid_ns:
+            candidates.extend(bodies(engine_sid))
 
         # de-dupe
         seen: set[str] = set()
         uniq: list[dict[str, Any]] = []
         for c in candidates:
-            # hash payload "shape" as stable JSON
+            body_sid = c.get("wsid") or c.get("sid")
+            if not isinstance(body_sid, str) or body_sid not in current_sids:
+                continue
             key = json.dumps(c, sort_keys=True, separators=(",", ":"))
             if key not in seen:
                 seen.add(key)
@@ -977,7 +1003,11 @@ class BragerOneApiClient:
             )
             LOG.debug("modules.connect try %s → %s %s", body, status, data if isinstance(data, dict) else "")
             if status in (200, 204):
-                self._connect_variant = body
+                sid_key: Literal["wsid", "sid"] = "wsid" if "wsid" in body else "sid"
+                self._connect_shape = _ModulesConnectShape(
+                    sid_key=sid_key,
+                    include_group_id="group_id" in body,
+                )
                 return True
         return False
 

@@ -49,6 +49,11 @@ _DEFAULT_ZOMBIE_REBUILD_AFTER = 2
 _DEFAULT_ZOMBIE_RECOVERY_COOLDOWN_S = 300.0
 # Cap for exponential recovery cooldown.
 _MAX_ZOMBIE_RECOVERY_COOLDOWN_S = 1800.0
+# After this many RealtimeManager rebuilds without live WS traffic, enter REST-only
+# quarantine so recovery cannot thrash the cloud session forever.
+_DEFAULT_ZOMBIE_QUARANTINE_AFTER = 3
+# REST-only pause after the rebuild cap (seconds).
+_DEFAULT_ZOMBIE_QUARANTINE_S = 6 * 3600.0
 # How long ``resubscribe`` waits for a namespace SID after reconnect.
 _RESUBSCRIBE_SID_WAIT_S = 2.0
 # Debounce module-online → zombie recovery so one get_modules pass cannot rebuild twice.
@@ -267,6 +272,8 @@ class BragerOneGateway:
         zombie_full_recycle_after: int = _DEFAULT_ZOMBIE_FULL_RECYCLE_AFTER,
         zombie_rebuild_after: int = _DEFAULT_ZOMBIE_REBUILD_AFTER,
         zombie_recovery_cooldown_s: float = _DEFAULT_ZOMBIE_RECOVERY_COOLDOWN_S,
+        zombie_quarantine_after: int = _DEFAULT_ZOMBIE_QUARANTINE_AFTER,
+        zombie_quarantine_s: float = _DEFAULT_ZOMBIE_QUARANTINE_S,
     ) -> None:
         """Initialize the gateway but do not start it yet.
 
@@ -293,6 +300,10 @@ class BragerOneGateway:
                 never escalate beyond recycle.
             zombie_recovery_cooldown_s: Base seconds to skip WS recovery after a
                 recycle/rebuild (exponential backoff, capped). REST primes still run.
+            zombie_quarantine_after: RealtimeManager rebuilds without live traffic
+                before REST-only quarantine. Use ``0`` to disable quarantine.
+            zombie_quarantine_s: Seconds to skip WS recovery while quarantined
+                (REST primes still run). Use ``0`` to disable the pause duration.
         """
         self.object_id = int(object_id)
         self.modules = sorted(set(modules))
@@ -309,12 +320,18 @@ class BragerOneGateway:
         self._zombie_full_recycle_after = int(zombie_full_recycle_after)
         self._zombie_rebuild_after = int(zombie_rebuild_after)
         self._zombie_recovery_cooldown_s = float(zombie_recovery_cooldown_s)
+        self._zombie_quarantine_after = int(zombie_quarantine_after)
+        self._zombie_quarantine_s = float(zombie_quarantine_s)
         self._zombie_prime_streak = 0
         self._zombie_hard_restart_streak = 0
         self._zombie_recycle_streak = 0
+        self._zombie_rebuild_count = 0
         self._zombie_recovery_cooldown_until: float | None = None
+        self._zombie_quarantine_until: float | None = None
         self._zombie_module_online_recovery_inflight = False
         self._zombie_last_module_online_recovery_monotonic: float | None = None
+        self._resubscribe_lock = asyncio.Lock()
+        self._bound_ns_sid: str | None = None
         self._last_param_publish_monotonic: float | None = None
         self._last_live_param_publish_monotonic: float | None = None
 
@@ -508,7 +525,9 @@ class BragerOneGateway:
             self._zombie_prime_streak = 0
             self._zombie_hard_restart_streak = 0
             self._zombie_recycle_streak = 0
+            self._zombie_rebuild_count = 0
             self._zombie_recovery_cooldown_until = None
+            self._zombie_quarantine_until = None
             self._zombie_last_module_online_recovery_monotonic = None
 
     async def refresh_module_connectivity(self) -> None:
@@ -547,8 +566,10 @@ class BragerOneGateway:
         ok = await self.api.modules_connect(sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine)
         if ok:
             LOG.info("modules.connect: %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
+            self._bound_ns_sid = sid_ns
         else:
             LOG.warning("modules.connect failed (ns_sid=%s, engine_sid=%s)", sid_ns, sid_engine)
+            self._bound_ns_sid = None
         modules_connected_at = time.monotonic()
 
         # 4) WS subscribe + PRIME via REST (in parallel)
@@ -688,6 +709,7 @@ class BragerOneGateway:
         During :meth:`stop` (``_started`` already cleared) leave the session bit
         for the ``source="stop"`` notification so consumers still see a down event.
         """
+        self._bound_ns_sid = None
         if not self._started:
             return
         if not self._ws_session_up:
@@ -703,9 +725,14 @@ class BragerOneGateway:
         Returns:
             ``True`` when ``modules.connect`` succeeded and subscribe/prime ran;
             ``False`` when there is no WS client, no namespace SID, or connect failed.
-            REST prime still runs when connect fails so the store is refreshed from
-            the authoritative snapshot even without a live push binding.
+        REST prime still runs when connect fails so the store is refreshed from
+        the authoritative snapshot even without a live push binding.
         """
+        async with self._resubscribe_lock:
+            return await self._resubscribe_unlocked()
+
+    async def _resubscribe_unlocked(self) -> bool:
+        """Bind modules + prime; callers must hold ``_resubscribe_lock``."""
         ws = self.ws
         if ws is None:
             return False
@@ -714,12 +741,17 @@ class BragerOneGateway:
         if not sid_ns:
             LOG.warning("WS resubscribe skipped: no namespace SID after reconnect")
             return False
+        if sid_ns == self._bound_ns_sid:
+            LOG.debug("WS resubscribe skipped: already bound ns_sid=%s", sid_ns)
+            return True
         ok = await self.api.modules_connect(sid_ns, self.modules, group_id=self.object_id, engine_sid=sid_engine)
         if ok:
             LOG.info("modules.connect (resub): %s (ns_sid=%s, engine_sid=%s)", ok, sid_ns, sid_engine)
             await ws.subscribe(self.modules)
+            self._bound_ns_sid = sid_ns
         else:
             LOG.warning("modules.connect (resub) failed (ns_sid=%s, engine_sid=%s)", sid_ns, sid_engine)
+            self._bound_ns_sid = None
         okp, oka = await self._prime_with_retry()
         LOG.debug("prime after resubscribe: parameters=%s activity=%s", okp, oka)
         return ok
@@ -788,6 +820,11 @@ class BragerOneGateway:
                         "Skipping zombie WS recovery while all subscribed modules are offline (age=%.0fs)",
                         age,
                     )
+                elif self._zombie_recovery_in_quarantine():
+                    LOG.debug(
+                        "No live ParamUpdate for %.0fs while Socket.IO reports up; REST-priming during zombie quarantine",
+                        age,
+                    )
                 elif self._zombie_recovery_in_cooldown():
                     # REST-prime only: do not grow the escalation streak or WARN-spam.
                     # Field logs showed streak climbing through cooldown so the first
@@ -823,6 +860,26 @@ class BragerOneGateway:
         """Return whether WS recovery should pause after a recent recycle/rebuild."""
         until = self._zombie_recovery_cooldown_until
         return until is not None and time.monotonic() < until
+
+    def _zombie_recovery_in_quarantine(self) -> bool:
+        """Return whether WS recovery is paused for a long REST-only quarantine."""
+        until = self._zombie_quarantine_until
+        return until is not None and time.monotonic() < until
+
+    def _arm_zombie_quarantine(self) -> None:
+        """Pause WS recovery after repeated rebuilds without live ParamUpdates."""
+        self._zombie_prime_streak = 0
+        self._zombie_hard_restart_streak = 0
+        duration = max(0.0, self._zombie_quarantine_s)
+        if duration <= 0:
+            self._zombie_quarantine_until = None
+            return
+        self._zombie_quarantine_until = time.monotonic() + duration
+        LOG.warning(
+            "Zombie WS recovery quarantined for %.0fs after %s rebuild(s) without live ParamUpdates; REST-priming only",
+            duration,
+            self._zombie_rebuild_count,
+        )
 
     def _arm_zombie_recovery_cooldown(self) -> None:
         """Exponential backoff after recycle/rebuild so recovery does not thrash."""
@@ -871,7 +928,13 @@ class BragerOneGateway:
             await ws.force_reconnect()
             # ``force_reconnect`` may spawn ``on_connected`` work; await resubscribe so
             # ``modules.connect`` + subscribe + prime finish before the next poll tick.
-            await self.resubscribe()
+            rebound = await self.resubscribe()
+            LOG.warning(
+                "WS hard reconnect resubscribe %s (ns_sid=%s engine_sid=%s)",
+                "ok" if rebound else "failed",
+                ws.sid(),
+                ws.engine_sid(),
+            )
         except Exception:
             LOG.exception("WS hard reconnect (zombie session) failed")
 
@@ -929,6 +992,7 @@ class BragerOneGateway:
         )
         self._zombie_hard_restart_streak = 0
         self._zombie_prime_streak = 0
+        self._zombie_rebuild_count += 1
         if not await self._force_fresh_auth():
             LOG.warning("Aborting RealtimeManager rebuild: no usable token after forced re-login")
             self._arm_zombie_recovery_cooldown()
@@ -958,6 +1022,10 @@ class BragerOneGateway:
             await self.resubscribe()
         except Exception:
             LOG.exception("RealtimeManager rebuild (connect/resubscribe) failed")
+        quarantine_after = self._zombie_quarantine_after
+        if quarantine_after > 0 and self._zombie_rebuild_count >= quarantine_after:
+            self._arm_zombie_quarantine()
+            return
         self._arm_zombie_recovery_cooldown()
 
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource) -> None:
@@ -1091,15 +1159,18 @@ class BragerOneGateway:
             return
 
         was_cooling = self._zombie_recovery_in_cooldown()
+        was_quarantined = self._zombie_recovery_in_quarantine()
         self._zombie_module_online_recovery_inflight = True
         self._zombie_last_module_online_recovery_monotonic = time.monotonic()
         try:
-            if was_cooling:
+            if was_cooling or was_quarantined:
                 self._zombie_recovery_cooldown_until = None
+                self._zombie_quarantine_until = None
                 LOG.warning(
-                    "Module %s came online while zombie (age=%.0fs, cleared cooldown); resubscribing",
+                    "Module %s came online while zombie (age=%.0fs, cleared %s); resubscribing",
                     devid,
                     age,
+                    "quarantine" if was_quarantined else "cooldown",
                 )
                 if not await self._force_fresh_auth():
                     LOG.warning("Module-online recovery skipped: no usable token after forced re-login")

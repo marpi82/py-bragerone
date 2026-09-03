@@ -1359,6 +1359,7 @@ async def test_gateway_resubscribe_warns_when_modules_connect_fails(
         return False
 
     api.modules_connect = _fail_connect  # type: ignore[method-assign]
+    gw._bound_ns_sid = None
     prime_before = api.prime_params_calls
     subscribe_before = len(ws.subscribe_calls)
     with caplog.at_level("WARNING"):
@@ -2258,4 +2259,124 @@ async def test_gateway_module_online_recovery_exception_is_logged(
     with caplog.at_level("ERROR"):
         await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=1)
         assert "Zombie recovery after module online failed" in caplog.text
+    await gw.stop()
+
+
+async def test_gateway_resubscribe_skips_duplicate_bind_for_same_sid() -> None:
+    """Concurrent/repeat ``resubscribe`` on the same namespace SID must not re-POST connect."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    connects_after_start = api.modules_connect_calls
+    first, second = await asyncio.gather(gw.resubscribe(), gw.resubscribe())
+    assert first is True
+    assert second is True
+    assert api.modules_connect_calls == connects_after_start
+    await gw.stop()
+
+
+async def test_gateway_quarantine_skips_zombie_hard_reconnect(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """After the rebuild cap, WS recovery pauses; REST primes continue."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0.05,
+        stale_prime_after_s=0.05,
+        zombie_hard_restart_after=1,
+        zombie_quarantine_after=1,
+        zombie_quarantine_s=1800,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = 0.0
+    gw._zombie_rebuild_count = 1
+    gw._arm_zombie_quarantine()
+    primes_before = api.prime_params_calls
+    reconnects_before = ws.force_reconnect_calls
+    await _wait_until(lambda: api.prime_params_calls > primes_before)
+    await asyncio.sleep(0.12)
+    assert ws.force_reconnect_calls == reconnects_before
+    assert gw._zombie_recovery_in_quarantine() is True
+    await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
+    assert gw._zombie_quarantine_until is None
+    assert gw._zombie_rebuild_count == 0
+    await gw.stop()
+
+
+async def test_gateway_rebuild_arms_quarantine_after_cap(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The Nth silent rebuild arms REST-only quarantine instead of a short cooldown."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    rebuilt = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        zombie_rebuild_after=1,
+        zombie_recovery_cooldown_s=300,
+        zombie_quarantine_after=1,
+        zombie_quarantine_s=1800,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign,assignment,return-value]
+    with caplog.at_level("WARNING"):
+        await gw._rebuild_realtime_manager(2)
+        assert "quarantined" in caplog.text
+    assert gw._zombie_rebuild_count == 1
+    assert gw._zombie_recovery_in_quarantine() is True
+    assert gw._zombie_recovery_in_cooldown() is False
+    await gw.stop()
+
+
+async def test_gateway_module_online_clears_quarantine(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A module returning online during quarantine must resubscribe immediately."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=180,
+        zombie_quarantine_s=1800,
+    )
+    await gw.start()
+    gw._owns_ws = True
+    gw._ws_session_up = True
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    gw._zombie_rebuild_count = 3
+    gw._arm_zombie_quarantine()
+    resub_calls = {"n": 0}
+
+    async def _track_resubscribe() -> bool:
+        resub_calls["n"] += 1
+        return True
+
+    gw.resubscribe = _track_resubscribe  # type: ignore[method-assign]
+    with caplog.at_level("WARNING"):
+        await gw._apply_connectivity(
+            devid="M1",
+            online=True,
+            source="rest",
+            connected_at=123,
+        )
+        assert "cleared quarantine" in caplog.text
+    assert resub_calls["n"] == 1
+    assert gw._zombie_quarantine_until is None
     await gw.stop()

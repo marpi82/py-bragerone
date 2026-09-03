@@ -252,6 +252,32 @@ async def test_modules_connect_empty_success_and_all_fail(api_client: BragerOneA
 
 
 @pytest.mark.asyncio
+async def test_modules_connect_never_reposts_stale_sid(api_client: BragerOneApiClient, httpx_mock: HTTPXMock) -> None:
+    """After a successful bind, reconnect must POST the new SID — never the cached one.
+
+    Field zombies showed ``modules.connect`` returning 200 while still sending the
+    pre-disconnect SID from ``_connect_variant``, leaving the new Socket.IO session unbound.
+    """
+    url = f"{API}/v1/modules/connect"
+    httpx_mock.add_response(method="POST", url=url, status_code=200, json={})
+    assert await api_client.modules_connect("NS-OLD", ["M1"], group_id=9, engine_sid="ENG-OLD") is True
+    first = json.loads(httpx_mock.get_requests()[-1].content)
+    assert first.get("wsid") == "NS-OLD" or first.get("sid") == "NS-OLD"
+
+    before = len(httpx_mock.get_requests())
+    httpx_mock.add_response(method="POST", url=url, status_code=200, json={})
+    assert await api_client.modules_connect("NS-NEW", ["M1"], group_id=9, engine_sid="ENG-NEW") is True
+    second_bodies = [json.loads(req.content) for req in httpx_mock.get_requests()[before:]]
+    assert second_bodies, "expected at least one modules.connect attempt with the new SID"
+    for body in second_bodies:
+        assert body.get("wsid") not in {"NS-OLD", "ENG-OLD"}
+        assert body.get("sid") not in {"NS-OLD", "ENG-OLD"}
+        assert body.get("wsid") in {"NS-NEW", "ENG-NEW"} or body.get("sid") in {"NS-NEW", "ENG-NEW"}
+    # Preferred shape from the first success should be tried first with the *new* namespace SID.
+    assert second_bodies[0].get("wsid") == "NS-NEW" or second_bodies[0].get("sid") == "NS-NEW"
+
+
+@pytest.mark.asyncio
 async def test_prime_helpers_return_bool_or_payload(api_client: BragerOneApiClient, httpx_mock: HTTPXMock) -> None:
     """Prime helpers return a boolean unless ``return_data`` is requested."""
     params_url = f"{API}/v1/modules/parameters"
