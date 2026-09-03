@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pytest_httpx import HTTPXMock
 
 from pybragerone.api import BragerOneApiClient
-from pybragerone.api.client import ApiError
+from pybragerone.api.client import ApiError, _ModulesConnectShape
 from pybragerone.models import Token
 
 API = "https://io.brager.pl"
@@ -275,6 +275,75 @@ async def test_modules_connect_never_reposts_stale_sid(api_client: BragerOneApiC
         assert body.get("wsid") in {"NS-NEW", "ENG-NEW"} or body.get("sid") in {"NS-NEW", "ENG-NEW"}
     # Preferred shape from the first success should be tried first with the *new* namespace SID.
     assert second_bodies[0].get("wsid") == "NS-NEW" or second_bodies[0].get("sid") == "NS-NEW"
+
+
+@pytest.mark.asyncio
+async def test_modules_connect_shape_can_include_and_skip_group_id(api_client: BragerOneApiClient, httpx_mock: HTTPXMock) -> None:
+    """The cached modules.connect shape must remember group_id inclusion."""
+    url = f"{API}/v1/modules/connect"
+
+    # 1) First bind: force success on the 3rd candidate (wsid+group_id body),
+    # so the cached shape includes group_id.
+    httpx_mock.add_response(method="POST", url=url, status_code=201, json={"message": "accepted-not-bound"})
+    httpx_mock.add_response(method="POST", url=url, status_code=201, json={"message": "accepted-not-bound"})
+    httpx_mock.add_response(method="POST", url=url, status_code=200, json={})
+    assert await api_client.modules_connect("NS-1", ["M1"], group_id=9, engine_sid="ENG-1") is True
+
+    # 2) Reconnect: call with group_id=None, so cached shape says "include_group_id=True"
+    # but _body_from_shape must *skip* adding group_id.
+    httpx_mock.add_response(method="POST", url=url, status_code=200, json={})
+    assert await api_client.modules_connect("NS-2", ["M1"], group_id=None, engine_sid="ENG-2") is True
+
+    # 3) Re-establish cached shape with "include_group_id=True".
+    # The previous call succeeded with group_id=None and can reset the cached
+    # shape to not include group_id. Force-bind on the 3rd candidate
+    # (wsid+group_id body) so the cache is flipped back to include_group_id.
+    httpx_mock.add_response(method="POST", url=url, status_code=201, json={"message": "accepted-not-bound"})
+    httpx_mock.add_response(method="POST", url=url, status_code=201, json={"message": "accepted-not-bound"})
+    httpx_mock.add_response(method="POST", url=url, status_code=200, json={})
+    assert await api_client.modules_connect("NS-3", ["M1"], group_id=9, engine_sid="ENG-3") is True
+
+    # 4) Now that cached shape includes group_id again, exercise the true branch
+    # in `_body_from_shape` where it actually writes body["group_id"].
+    httpx_mock.add_response(method="POST", url=url, status_code=200, json={})
+    assert await api_client.modules_connect("NS-4", ["M1"], group_id=9, engine_sid="ENG-4") is True
+
+    # 5) wsid_ns empty => skip the preferred-shape wsid branch and the wsid fallback.
+    httpx_mock.add_response(method="POST", url=url, status_code=200, json={})
+    assert await api_client.modules_connect("", ["M1"], group_id=9, engine_sid="ENG-5") is True
+
+    # 6) engine_sid == wsid_ns => skip the engine_sid branches.
+    httpx_mock.add_response(method="POST", url=url, status_code=200, json={})
+    assert await api_client.modules_connect("NS-6", ["M1"], group_id=9, engine_sid="NS-6") is True
+
+
+@pytest.mark.asyncio
+async def test_modules_connect_filters_non_string_sid_candidates(api_client: BragerOneApiClient, httpx_mock: HTTPXMock) -> None:
+    """Non-string SID values must be filtered out before POST retries."""
+    # Provide invalid runtime types (the signature says str, but we explicitly
+    # test the filtering branch that continues when body_sid is not a string).
+    wsid_bad = cast(str, 123)
+    engine_bad = cast(str, 456)
+    result = await api_client.modules_connect(
+        wsid_ns=wsid_bad,
+        modules=["M1"],
+        group_id=9,
+        engine_sid=engine_bad,
+    )
+    assert result is False
+    assert httpx_mock.get_requests() == []
+
+
+@pytest.mark.asyncio
+async def test_modules_connect_cached_shape_group_id_branch(api_client: BragerOneApiClient, httpx_mock: HTTPXMock) -> None:
+    """Force the cached-shape group_id branch in `_body_from_shape`."""
+    api_client._connect_shape = _ModulesConnectShape(sid_key="wsid", include_group_id=True)
+    url = f"{API}/v1/modules/connect"
+    httpx_mock.add_response(method="POST", url=url, status_code=200, json={})
+
+    assert await api_client.modules_connect("NS", ["M1"], group_id=9, engine_sid="ENG") is True
+    sent = json.loads(httpx_mock.get_requests()[-1].content)
+    assert sent["group_id"] == "9"
 
 
 @pytest.mark.asyncio

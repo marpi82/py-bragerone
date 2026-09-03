@@ -2311,6 +2311,25 @@ async def test_gateway_quarantine_skips_zombie_hard_reconnect(
     await gw.stop()
 
 
+async def test_gateway_quarantine_disabled_when_s_zero() -> None:
+    """When zombie_quarantine_s <= 0, _arm_zombie_quarantine must no-op."""
+    api = FakeApiClient()
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        zombie_quarantine_after=1,
+        zombie_quarantine_s=0,
+    )
+    gw._zombie_rebuild_count = 5
+    gw._arm_zombie_quarantine()
+    assert gw._zombie_quarantine_until is None
+    await gw.stop()
+
+
 async def test_gateway_rebuild_arms_quarantine_after_cap(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
