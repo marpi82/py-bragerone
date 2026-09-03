@@ -138,10 +138,15 @@ before proceeding when credentials are available; token-only gateway clients (no
 Transport recycle and manager rebuild then apply an exponential recovery cooldown
 (REST primes continue). A **successful** hard reconnect does not arm cooldown; when
 hard reconnect aborts because forced re-login failed, cooldown **is** armed so the
-poll loop does not thrash.
-A subscribed module returning online while still zombie clears the cooldown and
-triggers recovery immediately (failed auth/resubscribe re-arms cooldown). Recovery is skipped
-while every subscribed module is known offline. Numeric
+poll loop does not thrash. After the rebuild cap (default 3) the gateway enters
+**REST-only quarantine** (default 6 h) — WS recovery pauses, REST primes continue,
+cleared by live traffic or module-online recovery.
+``modules.connect`` caches only the body **shape** (``wsid``/``sid``, optional
+``group_id``), never a stale SID — each reconnect posts the current namespace SID.
+``resubscribe()`` is serialized and deduped per namespace SID.
+A subscribed module returning online while still zombie clears cooldown or
+quarantine and triggers recovery immediately (failed auth/resubscribe re-arms
+cooldown). Recovery is skipped while every subscribed module is known offline. Numeric
 event ``22`` (``SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED``) also triggers a
 per-module REST prime. ``BragerOneGateway.last_param_update_age_s()`` returns that gap for
 diagnostics.
