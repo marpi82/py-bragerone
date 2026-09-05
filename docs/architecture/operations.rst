@@ -100,6 +100,7 @@ Internally the implementation lives under ``pybragerone.gateway``:
 - ``connectivity.py`` — module↔cloud and library↔cloud session flips, outage snapshots, REST poll
 - ``session.py`` — ``resubscribe`` / SID bind, REST prime orchestration
 - ``recovery.py`` — zombie ladder, cooldown, quarantine, module-online recovery
+- ``base.py`` — typed shared state / cross-mixin method surface (keeps mixins under ``mypy --strict``)
 - ``helpers.py`` / ``protocols.py`` — pure helpers and client Protocols
 
 Behavior is unchanged; the split is for reviewability and focused tests.
