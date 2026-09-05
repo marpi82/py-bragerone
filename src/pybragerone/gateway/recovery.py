@@ -7,9 +7,9 @@ import time
 from typing import Any
 
 from ..api import BragerOneApiClient
+from .base import GatewayMixinBase
 
 LOG = logging.getLogger(__name__)
-
 
 # Cap for exponential recovery cooldown.
 _MAX_ZOMBIE_RECOVERY_COOLDOWN_S = 1800.0
@@ -18,33 +18,8 @@ _MAX_ZOMBIE_RECOVERY_COOLDOWN_S = 1800.0
 _MODULE_ONLINE_RECOVERY_DEBOUNCE_S = 90.0
 
 
-class RecoveryMixin:
+class RecoveryMixin(GatewayMixinBase):
     """Mixin providing recovery behavior for BragerOneGateway."""
-
-    # Attributes owned by BragerOneGateway.__init__
-    _last_live_param_publish_monotonic: float | None
-    _last_param_publish_monotonic: float | None
-    _module_online: dict[str, bool]
-    _owns_ws: bool
-    _stale_prime_after_s: float
-    _ws_hooks_registered: bool
-    _ws_session_up: bool
-    _zombie_full_recycle_after: int
-    _zombie_hard_restart_streak: int
-    _zombie_last_module_online_recovery_monotonic: float | None
-    _zombie_module_online_recovery_inflight: bool
-    _zombie_prime_streak: int
-    _zombie_quarantine_after: int
-    _zombie_quarantine_s: float
-    _zombie_quarantine_until: float | None
-    _zombie_rebuild_after: int
-    _zombie_rebuild_count: int
-    _zombie_recovery_cooldown_s: float
-    _zombie_recovery_cooldown_until: float | None
-    _zombie_recycle_streak: int
-    api: Any
-    modules: list[str]
-    ws: Any
 
     def _zombie_param_update_age_s(self) -> float | None:
         """Age used for zombie-session detection.

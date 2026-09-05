@@ -5,33 +5,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any
 
+from .base import GatewayMixinBase
 from .protocols import RealtimeManagerClient
 
 LOG = logging.getLogger(__name__)
-
 
 # How long ``resubscribe`` waits for a namespace SID after reconnect.
 _RESUBSCRIBE_SID_WAIT_S = 2.0
 
 
-class SessionMixin:
+class SessionMixin(GatewayMixinBase):
     """Mixin providing session behavior for BragerOneGateway."""
-
-    # Attributes owned by BragerOneGateway.__init__
-    _alarm_quantity_rest_seq: int
-    _alarm_quantity_rest_seq_lock: Any
-    _alarm_quantity_ws_rev: dict[str, int]
-    _bound_ns_sid: str | None
-    _prime_done: Any
-    _prime_seq: int | None
-    _resubscribe_lock: Any
-    api: Any
-    bus: Any
-    modules: list[str]
-    object_id: int
-    ws: Any
 
     async def resubscribe(self) -> bool:
         """Call after WS reconnect to re-bind modules + prime again.

@@ -16,6 +16,7 @@ from pybragerone.api.client import ApiError, BragerOneApiClient
 from pybragerone.gateway import (
     ApiClient,
     BragerOneGateway,
+    ConnectivitySource,
     RealtimeManagerClient,
     _gateway_as_dict,
     _is_api_dispatch_timeout,
@@ -578,7 +579,7 @@ async def test_gateway_ws_reconnect_and_poll_exception_paths() -> None:
 
     tick_hits = 0
 
-    async def _boom_refresh(*, source: str) -> None:
+    async def _boom_refresh(*, source: ConnectivitySource = "rest") -> None:
         nonlocal tick_hits
         _ = source
         tick_hits += 1

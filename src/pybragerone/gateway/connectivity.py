@@ -9,6 +9,7 @@ from typing import Any
 
 from ..api.client import format_expected_failure_reason, is_expected_upstream_unavailable
 from ..models.events import CloudSessionConnectivity, ModuleConnectivity
+from .base import GatewayMixinBase
 from .helpers import (
     CloudSessionSource,
     ConnectivitySource,
@@ -25,36 +26,8 @@ from .helpers import (
 LOG = logging.getLogger(__name__)
 
 
-class ConnectivityMixin:
+class ConnectivityMixin(GatewayMixinBase):
     """Mixin providing connectivity behavior for BragerOneGateway."""
-
-    # Attributes owned by BragerOneGateway.__init__
-    _bound_ns_sid: str | None
-    _cloud_down_reason: Any
-    _cloud_down_since_mono: float | None
-    _cloud_down_since_wall: float | None
-    _cloud_last_down_for_s: float | None
-    _cloud_last_reason: Any
-    _connectivity_generation: int
-    _connectivity_poll_interval: float
-    _module_connected_at: dict[str, int]
-    _module_down_reason: dict[str, Any]
-    _module_down_since_mono: dict[str, float]
-    _module_down_since_wall: dict[str, float]
-    _module_gateway: dict[str, dict[str, Any]]
-    _module_last_down_for_s: dict[str, float]
-    _module_last_reason: dict[str, Any]
-    _module_online: dict[str, bool]
-    _on_cloud_session: list[Any]
-    _on_module_connectivity: list[Any]
-    _stale_prime_after_s: float
-    _started: bool
-    _ws_session_up: bool
-    _zombie_hard_restart_after: int
-    _zombie_prime_streak: int
-    api: Any
-    modules: list[str]
-    object_id: int
 
     def cloud_session_outage(self) -> dict[str, float | str | None]:
         """Return cloud-session outage snapshot for diagnostics / HA attributes.
@@ -272,7 +245,7 @@ class ConnectivityMixin:
                 else:
                     LOG.exception("REST re-prime (socket down or stale ParamUpdates) failed")
 
-    async def _refresh_module_connectivity(self, *, source: ConnectivitySource) -> None:
+    async def _refresh_module_connectivity(self, *, source: ConnectivitySource = "rest") -> None:
         """Pull ``get_modules`` and apply online state for subscribed devids.
 
         A failed or empty fetch does **not** mark every module offline — that would
