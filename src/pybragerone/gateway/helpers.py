@@ -36,7 +36,12 @@ def _as_cloud_outage_reason(value: object) -> CloudOutageReason | None:
 
 
 def _cloud_outage_reason_from_source(source: CloudSessionSource) -> CloudOutageReason:
-    """Map a session flip source to an outage reason (never ``connect``)."""
+    """Map a session flip source to a persisted outage reason.
+
+    ``stop`` stays ``stop``. ``disconnect`` and ``connect`` both become
+    ``disconnect`` — ``connect`` appears on the restore path as a fallback when
+    no prior reason was stored; outage reasons themselves never include ``connect``.
+    """
     if source == "stop":
         return "stop"
     return "disconnect"
