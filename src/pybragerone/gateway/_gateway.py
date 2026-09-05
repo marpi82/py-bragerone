@@ -19,7 +19,7 @@ from ..models.events import (
     ModuleOutageReason,
     ParamUpdate,
 )
-from .connectivity import _DEFAULT_CONNECTIVITY_POLL_INTERVAL_S, ConnectivityMixin
+from .connectivity import ConnectivityMixin
 from .helpers import (
     AlarmQuantityCb,
     CloudSessionCb,
@@ -32,19 +32,31 @@ from .helpers import (
     _parse_alarm_quantity,
 )
 from .protocols import ApiClient, RealtimeManagerClient
-from .recovery import (
-    _DEFAULT_STALE_PRIME_AFTER_S,
-    _DEFAULT_ZOMBIE_FULL_RECYCLE_AFTER,
-    _DEFAULT_ZOMBIE_HARD_RESTART_AFTER,
-    _DEFAULT_ZOMBIE_QUARANTINE_AFTER,
-    _DEFAULT_ZOMBIE_QUARANTINE_S,
-    _DEFAULT_ZOMBIE_REBUILD_AFTER,
-    _DEFAULT_ZOMBIE_RECOVERY_COOLDOWN_S,
-    RecoveryMixin,
-)
+from .recovery import RecoveryMixin
 from .session import SessionMixin
 
 LOG = logging.getLogger(__name__)
+
+# Default REST poll interval for module connectedAt refresh (seconds).
+_DEFAULT_CONNECTIVITY_POLL_INTERVAL_S = 60.0
+# REST-prime when no ParamUpdate has been published for this long while WS claims up.
+_DEFAULT_STALE_PRIME_AFTER_S = 180.0
+# After this many consecutive zombie REST-primes, force a hard WS restart (SPA-style
+# reconnect → modules.connect + REST parameters). ``0`` disables hard restart.
+_DEFAULT_ZOMBIE_HARD_RESTART_AFTER = 2
+# After this many hard restarts without live WS ``ParamUpdate`` traffic, drop and
+# reopen the Socket.IO session (full disconnect → connect → resubscribe). ``0`` disables.
+_DEFAULT_ZOMBIE_FULL_RECYCLE_AFTER = 3
+# After this many recycles without live traffic, rebuild ``RealtimeManager`` (new
+# Socket.IO client + hooks) — mirrors the recovery path of a full HA restart.
+_DEFAULT_ZOMBIE_REBUILD_AFTER = 2
+# Base cooldown after a recycle/rebuild before the next WS recovery attempt.
+_DEFAULT_ZOMBIE_RECOVERY_COOLDOWN_S = 300.0
+# After this many RealtimeManager rebuilds without live WS traffic, enter REST-only
+# quarantine so recovery cannot thrash the cloud session forever.
+_DEFAULT_ZOMBIE_QUARANTINE_AFTER = 3
+# REST-only pause after the rebuild cap (seconds).
+_DEFAULT_ZOMBIE_QUARANTINE_S = 6 * 3600.0
 
 
 class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):

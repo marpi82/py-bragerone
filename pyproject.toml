@@ -124,6 +124,8 @@ unfixable = []
 "scripts/**" = ["S101", "S603", "S607"]
 "docs/**" = ["S102"]
 "examples/**" = ["S101"]
+# Protocol stubs use ellipsis bodies; Google docstrings are not useful here.
+"src/pybragerone/gateway/protocols.py" = ["D102"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -184,6 +186,8 @@ source = ["src/pybragerone"]
 omit = [
   "*/pybragerone/cli.py",
   "*/pybragerone/__main__.py",
+  # Protocol stub modules have no runtime bodies worth measuring.
+  "*/pybragerone/gateway/protocols.py",
 ]
 
 

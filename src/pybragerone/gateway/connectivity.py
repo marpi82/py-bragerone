@@ -25,10 +25,6 @@ from .helpers import (
 LOG = logging.getLogger(__name__)
 
 
-# Default REST poll interval for module connectedAt refresh (seconds).
-_DEFAULT_CONNECTIVITY_POLL_INTERVAL_S = 60.0
-
-
 class ConnectivityMixin:
     """Mixin providing connectivity behavior for BragerOneGateway."""
 

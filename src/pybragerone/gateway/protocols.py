@@ -15,71 +15,54 @@ class ApiClient(Protocol):
     """
 
     @property
-    def access_token(self) -> str:  # noqa: D102
-        raise NotImplementedError
+    def access_token(self) -> str: ...
 
-    async def modules_connect(  # noqa: D102
+    async def modules_connect(
         self,
         wsid_ns: str,
         modules: list[str],
         group_id: int | None = None,
         engine_sid: str | None = None,
-    ) -> bool:
-        raise NotImplementedError
+    ) -> bool: ...
 
-    async def modules_parameters_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:  # noqa: D102
-        raise NotImplementedError
+    async def modules_parameters_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool: ...
 
-    async def modules_activity_quantity_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:  # noqa: D102
-        raise NotImplementedError
+    async def modules_activity_quantity_prime(
+        self, modules: list[str], *, return_data: bool = False
+    ) -> tuple[int, Any] | bool: ...
 
-    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:  # noqa: D102
-        raise NotImplementedError
+    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool: ...
 
-    async def get_modules(self, object_id: int) -> list[Module]:  # noqa: D102
-        raise NotImplementedError
+    async def get_modules(self, object_id: int) -> list[Module]: ...
 
-    async def close(self) -> None:  # noqa: D102
-        raise NotImplementedError
+    async def close(self) -> None: ...
 
 
 class RealtimeManagerClient(Protocol):
     """Protocol for the WS client used by the gateway."""
 
     @property
-    def group_id(self) -> int | None:  # noqa: D102
-        raise NotImplementedError
+    def group_id(self) -> int | None: ...
 
     @group_id.setter
-    def group_id(self, group_id: int | None) -> None:
-        raise NotImplementedError
+    def group_id(self, group_id: int | None) -> None: ...
 
-    def on_event(self, handler: Any) -> None:  # noqa: D102
-        raise NotImplementedError
+    def on_event(self, handler: Any) -> None: ...
 
-    async def connect(self) -> None:  # noqa: D102
-        raise NotImplementedError
+    async def connect(self) -> None: ...
 
-    async def disconnect(self) -> None:  # noqa: D102
-        raise NotImplementedError
+    async def disconnect(self) -> None: ...
 
-    def add_on_connected(self, cb: Callable[[], Awaitable[None] | None]) -> None:  # noqa: D102
-        raise NotImplementedError
+    def add_on_connected(self, cb: Callable[[], Awaitable[None] | None]) -> None: ...
 
-    def add_on_disconnected(self, cb: Callable[[], Awaitable[None] | None]) -> None:  # noqa: D102
-        raise NotImplementedError
+    def add_on_disconnected(self, cb: Callable[[], Awaitable[None] | None]) -> None: ...
 
-    def sid(self) -> str | None:  # noqa: D102
-        raise NotImplementedError
+    def sid(self) -> str | None: ...
 
-    def engine_sid(self) -> str | None:  # noqa: D102
-        raise NotImplementedError
+    def engine_sid(self) -> str | None: ...
 
-    async def subscribe(self, modules: list[str]) -> None:  # noqa: D102
-        raise NotImplementedError
+    async def subscribe(self, modules: list[str]) -> None: ...
 
-    async def force_reconnect(self) -> None:  # noqa: D102
-        raise NotImplementedError
+    async def force_reconnect(self) -> None: ...
 
-    async def hard_reset(self) -> None:  # noqa: D102
-        raise NotImplementedError
+    async def hard_reset(self) -> None: ...

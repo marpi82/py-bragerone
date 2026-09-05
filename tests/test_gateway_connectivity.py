@@ -490,24 +490,11 @@ def test_parse_connected_at_and_gateway_helpers() -> None:
     assert _gateway_as_dict("not-a-gateway") is None
 
 
-@pytest.mark.asyncio
-async def test_protocol_stubs_raise_not_implemented() -> None:
-    """Protocol default bodies exist so structural typing stays explicit."""
-
-    class _Probe:
-        pass
-
-    probe = _Probe()
-    with pytest.raises(NotImplementedError):
-        await ApiClient.get_modules(probe, 1)  # type: ignore[arg-type]
-    with pytest.raises(NotImplementedError):
-        await ApiClient.modules_alarms_quantity(probe, ["M1"], return_data=True)  # type: ignore[arg-type]
-    with pytest.raises(NotImplementedError):
-        RealtimeManagerClient.add_on_disconnected(probe, lambda: None)  # type: ignore[arg-type]
-    with pytest.raises(NotImplementedError):
-        await RealtimeManagerClient.force_reconnect(probe)  # type: ignore[arg-type]
-    with pytest.raises(NotImplementedError):
-        await RealtimeManagerClient.hard_reset(probe)  # type: ignore[arg-type]
+def test_protocol_surfaces_are_importable() -> None:
+    """Gateway Protocols stay part of the public typing surface for fakes/tests."""
+    assert callable(ApiClient.get_modules)
+    assert callable(RealtimeManagerClient.hard_reset)
+    assert callable(RealtimeManagerClient.add_on_disconnected)
 
 
 @pytest.mark.asyncio
@@ -639,6 +626,29 @@ async def test_gateway_start_registers_ws_hooks_once() -> None:
     await gw.start()
     assert len(ws._on_connected) == 1
     await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_start_requires_realtime_manager() -> None:
+    """start() must fail when owned WS construction returns no client."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=None, connectivity_poll_interval=0)
+    gw._make_realtime_manager = lambda: None  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="RealtimeManager is not initialized"):
+        await gw.start()
+
+
+@pytest.mark.asyncio
+async def test_gateway_start_requires_namespace_sid() -> None:
+    """start() must fail when Socket.IO reports no namespace SID after connect."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    ws.sid = lambda: None  # type: ignore[method-assign]
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    with pytest.raises(RuntimeError, match="No namespace SID"):
+        await gw.start()
 
 
 @pytest.mark.asyncio

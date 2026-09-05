@@ -11,26 +11,8 @@ from ..api import BragerOneApiClient
 LOG = logging.getLogger(__name__)
 
 
-# REST-prime when no ParamUpdate has been published for this long while WS claims up.
-_DEFAULT_STALE_PRIME_AFTER_S = 180.0
-# After this many consecutive zombie REST-primes, force a hard WS restart (SPA-style
-# reconnect → modules.connect + REST parameters). ``0`` disables hard restart.
-_DEFAULT_ZOMBIE_HARD_RESTART_AFTER = 2
-# After this many hard restarts without live WS ``ParamUpdate`` traffic, drop and
-# reopen the Socket.IO session (full disconnect → connect → resubscribe). ``0`` disables.
-_DEFAULT_ZOMBIE_FULL_RECYCLE_AFTER = 3
-# After this many recycles without live traffic, rebuild ``RealtimeManager`` (new
-# Socket.IO client + hooks) — mirrors the recovery path of a full HA restart.
-_DEFAULT_ZOMBIE_REBUILD_AFTER = 2
-# Base cooldown after a recycle/rebuild before the next WS recovery attempt.
-_DEFAULT_ZOMBIE_RECOVERY_COOLDOWN_S = 300.0
 # Cap for exponential recovery cooldown.
 _MAX_ZOMBIE_RECOVERY_COOLDOWN_S = 1800.0
-# After this many RealtimeManager rebuilds without live WS traffic, enter REST-only
-# quarantine so recovery cannot thrash the cloud session forever.
-_DEFAULT_ZOMBIE_QUARANTINE_AFTER = 3
-# REST-only pause after the rebuild cap (seconds).
-_DEFAULT_ZOMBIE_QUARANTINE_S = 6 * 3600.0
 # Debounce module-online → zombie recovery so one get_modules pass cannot rebuild twice.
 # Strictly above the default connectivity poll interval (60s).
 _MODULE_ONLINE_RECOVERY_DEBOUNCE_S = 90.0
