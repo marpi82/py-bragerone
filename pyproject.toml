@@ -124,7 +124,7 @@ unfixable = []
 "scripts/**" = ["S101", "S603", "S607"]
 "docs/**" = ["S102"]
 "examples/**" = ["S101"]
-# Protocol stubs use ellipsis bodies; Google docstrings are not useful here.
+# Protocol / mixin-base stubs omit per-method Google docstrings.
 "src/pybragerone/gateway/protocols.py" = ["D102"]
 "src/pybragerone/gateway/base.py" = ["D102"]
 

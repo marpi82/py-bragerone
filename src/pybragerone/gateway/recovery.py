@@ -68,7 +68,7 @@ class RecoveryMixin(GatewayMixinBase):
         Resolves ``RealtimeManager`` via the package so tests can monkeypatch
         ``pybragerone.gateway.RealtimeManager``.
         """
-        from pybragerone import gateway as gateway_pkg
+        from .. import gateway as gateway_pkg
 
         manager_cls = gateway_pkg.RealtimeManager
         if isinstance(self.api, BragerOneApiClient):

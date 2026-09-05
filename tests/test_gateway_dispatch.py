@@ -172,6 +172,45 @@ def test_flatten_parameters_skips_invalid_shapes_and_keeps_meta() -> None:
     assert by_idx[2].value == 7
     assert by_idx[2].meta["unit"] == 1
 
+    meta_only = gw.flatten_parameters({"DEV2": {"P5": {"v3": {"unit": 9}}}}, source="unit")
+    assert len(meta_only) == 1
+    assert meta_only[0].idx == 3
+    assert meta_only[0].value is None
+    assert meta_only[0].meta["unit"] == 9
+
+
+@pytest.mark.asyncio
+async def test_prime_skips_non_success_and_non_dict_payloads() -> None:
+    """``_prime`` ignores bad parameter/activity shapes without raising."""
+
+    class _OddPrimeApi(FakeApiClient):
+        async def modules_parameters_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+            self._prime_params_calls.append(list(modules))
+            if not return_data:
+                return True
+            return 200, "not-a-dict"
+
+        async def modules_activity_quantity_prime(
+            self, modules: list[str], *, return_data: bool = False
+        ) -> tuple[int, Any] | bool:
+            self._prime_activity_calls.append(list(modules))
+            if not return_data:
+                return True
+            return 500, {"activityQuantity": {}}
+
+        async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+            _ = modules
+            if return_data:
+                return 200, {"alarmsQuantity": {}}
+            return True
+
+    gw = BragerOneGateway(
+        api=_OddPrimeApi(), object_id=1, modules=["DEV1"], ws=FakeRealtimeManager(), connectivity_poll_interval=0
+    )
+    ok_params, ok_act = await gw._prime()
+    assert ok_params is False
+    assert ok_act is False
+
 
 @pytest.mark.asyncio
 async def test_start_is_idempotent_and_wait_for_prime() -> None:

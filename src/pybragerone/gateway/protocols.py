@@ -15,7 +15,8 @@ class ApiClient(Protocol):
     """
 
     @property
-    def access_token(self) -> str: ...
+    def access_token(self) -> str:
+        raise NotImplementedError
 
     async def modules_connect(
         self,
@@ -23,46 +24,62 @@ class ApiClient(Protocol):
         modules: list[str],
         group_id: int | None = None,
         engine_sid: str | None = None,
-    ) -> bool: ...
+    ) -> bool:
+        raise NotImplementedError
 
-    async def modules_parameters_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool: ...
+    async def modules_parameters_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        raise NotImplementedError
 
-    async def modules_activity_quantity_prime(
-        self, modules: list[str], *, return_data: bool = False
-    ) -> tuple[int, Any] | bool: ...
+    async def modules_activity_quantity_prime(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        raise NotImplementedError
 
-    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool: ...
+    async def modules_alarms_quantity(self, modules: list[str], *, return_data: bool = False) -> tuple[int, Any] | bool:
+        raise NotImplementedError
 
-    async def get_modules(self, object_id: int) -> list[Module]: ...
+    async def get_modules(self, object_id: int) -> list[Module]:
+        raise NotImplementedError
 
-    async def close(self) -> None: ...
+    async def close(self) -> None:
+        raise NotImplementedError
 
 
 class RealtimeManagerClient(Protocol):
     """Protocol for the WS client used by the gateway."""
 
     @property
-    def group_id(self) -> int | None: ...
+    def group_id(self) -> int | None:
+        raise NotImplementedError
 
     @group_id.setter
-    def group_id(self, group_id: int | None) -> None: ...
+    def group_id(self, group_id: int | None) -> None:
+        raise NotImplementedError
 
-    def on_event(self, handler: Any) -> None: ...
+    def on_event(self, handler: Any) -> None:
+        raise NotImplementedError
 
-    async def connect(self) -> None: ...
+    async def connect(self) -> None:
+        raise NotImplementedError
 
-    async def disconnect(self) -> None: ...
+    async def disconnect(self) -> None:
+        raise NotImplementedError
 
-    def add_on_connected(self, cb: Callable[[], Awaitable[None] | None]) -> None: ...
+    def add_on_connected(self, cb: Callable[[], Awaitable[None] | None]) -> None:
+        raise NotImplementedError
 
-    def add_on_disconnected(self, cb: Callable[[], Awaitable[None] | None]) -> None: ...
+    def add_on_disconnected(self, cb: Callable[[], Awaitable[None] | None]) -> None:
+        raise NotImplementedError
 
-    def sid(self) -> str | None: ...
+    def sid(self) -> str | None:
+        raise NotImplementedError
 
-    def engine_sid(self) -> str | None: ...
+    def engine_sid(self) -> str | None:
+        raise NotImplementedError
 
-    async def subscribe(self, modules: list[str]) -> None: ...
+    async def subscribe(self, modules: list[str]) -> None:
+        raise NotImplementedError
 
-    async def force_reconnect(self) -> None: ...
+    async def force_reconnect(self) -> None:
+        raise NotImplementedError
 
-    async def hard_reset(self) -> None: ...
+    async def hard_reset(self) -> None:
+        raise NotImplementedError
