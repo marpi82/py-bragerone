@@ -68,15 +68,21 @@ CloudSessionSource = Literal["connect", "disconnect", "stop"]
 
 def _as_cloud_outage_reason(value: object) -> CloudOutageReason | None:
     """Narrow a snapshot value to a cloud outage reason literal."""
-    if value == "disconnect" or value == "stop":
-        return value
+    if value == "disconnect":
+        return "disconnect"
+    if value == "stop":
+        return "stop"
     return None
 
 
 def _as_module_outage_reason(value: object) -> ModuleOutageReason | None:
     """Narrow a snapshot value to a module outage reason literal."""
-    if value == "rest" or value == "ws" or value == "derived":
-        return value
+    if value == "rest":
+        return "rest"
+    if value == "ws":
+        return "ws"
+    if value == "derived":
+        return "derived"
     return None
 
 
