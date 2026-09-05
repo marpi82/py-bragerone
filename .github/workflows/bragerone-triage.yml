@@ -10,7 +10,9 @@ permissions:
   issues: write
   pull-requests: write
   contents: read
-  projects: write
+  # Projects v2 updates use secrets.PROJECTS_TOKEN (PAT). Do not set
+  # ``projects: write`` — it is not a valid GITHUB_TOKEN permission and
+  # invalidates the whole workflow (startup_failure on every push).
 
 jobs:
   triage-issue:
