@@ -117,6 +117,7 @@ class ConnectivityMixin(GatewayMixinBase):
         # so restart cannot inherit it (do not clobber prior-cycle last_* with ~0s).
         if source == "stop" and not up:
             self._clear_active_cloud_outage()
+        self._publish_live_push_health()
 
     def _cloud_outage_snapshot(self) -> dict[str, float | str | None]:
         """Build the current cloud-session outage attribute dict."""
@@ -204,6 +205,7 @@ class ConnectivityMixin(GatewayMixinBase):
             if session_up:
                 if stale_after <= 0 or age is None or age < stale_after:
                     continue
+                self._publish_live_push_health()
                 if not self._any_subscribed_module_online():
                     LOG.debug(
                         "Skipping zombie WS recovery while all subscribed modules are offline (age=%.0fs)",

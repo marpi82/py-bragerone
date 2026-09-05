@@ -113,7 +113,9 @@ Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so exist
    # gateway.ws_session_up() -> bool  # library↔cloud Socket.IO
    # gateway.cloud_session_outage() -> dict  # down_since / down_for_s / reason / last_*
    # gateway.module_outage(devid) -> dict  # same keys for module↔cloud
+   # gateway.live_push_health() -> dict  # push_healthy / live_stale_for_s / last_resumed_after_s
    # gateway.last_param_update_age_s() -> float | None
+   # gateway.last_live_param_update_age_s() -> float | None
 
 ``reason`` on these outage snapshots is the **client observation source**
 (``disconnect`` / ``stop`` for the Socket.IO session; ``rest`` / ``ws`` /
@@ -121,8 +123,16 @@ Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so exist
 Live ``down_for_s`` is measured with a monotonic clock while ``down_since`` is
 wall-clock ``time.time()`` for Home Assistant attributes. A restore logs
 ``Cloud session restored after …s`` / ``Module connectivity restored after …s``.
-This is separate from zombie / live-stale push health (Socket.IO up but no
-``ParamUpdate``), which is not folded into these outage fields.
+
+Three distinct layers (do not conflate):
+
+1. **Library ↔ cloud** — ``ws_session_up`` / ``CloudSessionConnectivity`` (+ outage attrs).
+2. **Module ↔ cloud** — ``module_online`` / ``ModuleConnectivity`` (+ outage attrs).
+3. **Live push health** — ``live_push_health()`` / ``LivePushHealth`` / ``on_live_push``:
+   age since the last **live** ``ParamUpdate`` while the Socket.IO session is up
+   (``push_healthy`` / ``live_stale_for_s``). A zombie is session-up with
+   ``push_healthy=False``. Resume logs ``live ParamUpdate resumed after …s`` and
+   sets ``last_resumed_after_s``.
 The gateway primes from ``GET /v1/modules`` (``connectedAt != 0`` means online —
 same truthiness check as the SPA card/modal) and listens for the official Socket.IO
 push ``app:module:connection:status:changed`` (payload

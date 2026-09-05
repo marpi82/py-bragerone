@@ -24,6 +24,7 @@ from .helpers import (
     AlarmQuantityCb,
     CloudSessionCb,
     GenericCb,
+    LivePushCb,
     ModuleConnectivityCb,
     ParametersCb,
     SnapshotCb,
@@ -149,6 +150,8 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._bound_ns_sid: str | None = None
         self._last_param_publish_monotonic: float | None = None
         self._last_live_param_publish_monotonic: float | None = None
+        self._live_push_healthy: bool | None = None
+        self._last_live_resumed_after_s: float | None = None
 
         self._tasks: set[asyncio.Task[Any]] = set()
         self._started = False
@@ -165,6 +168,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._on_module_connectivity: list[ModuleConnectivityCb] = []
         self._on_cloud_session: list[CloudSessionCb] = []
         self._on_alarm_quantity: list[AlarmQuantityCb] = []
+        self._on_live_push: list[LivePushCb] = []
 
         # Module↔cloud (REST/WS connectedAt) vs library↔cloud (Socket.IO session).
         # The session bit never forces module offline (SPA parity).
@@ -279,6 +283,15 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         a new count for a subscribed module.
         """
         self._on_alarm_quantity.append(cb)
+
+    def on_live_push(self, cb: LivePushCb) -> None:
+        """Register callback for live ``ParamUpdate`` push-health flips.
+
+        Callbacks receive :class:`~pybragerone.models.events.LivePushHealth`.
+        Distinct from :meth:`on_cloud_session`: Socket.IO can stay up while push
+        goes stale (zombie). Prefer :meth:`live_push_health` for polling.
+        """
+        self._on_live_push.append(cb)
 
     def module_online(self, devid: str) -> bool | None:
         """Return current online state for *devid*, or ``None`` if not yet known."""

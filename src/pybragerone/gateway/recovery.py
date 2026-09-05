@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from ..api import BragerOneApiClient
+from ..models.events import LivePushHealth
 from .base import GatewayMixinBase
 
 LOG = logging.getLogger(__name__)
@@ -39,6 +40,54 @@ class RecoveryMixin(GatewayMixinBase):
             return True
         return any(known)
 
+    def live_push_health(self) -> dict[str, float | bool | None]:
+        """Return live-push health snapshot for diagnostics / HA attributes.
+
+        Keys: ``push_healthy``, ``live_stale_for_s``, ``last_resumed_after_s``.
+        Independent of :meth:`~BragerOneGateway.ws_session_up` / module online —
+        a zombie is session-up with ``push_healthy=False``.
+        """
+        healthy, stale_for = self._compute_live_push_health()
+        return {
+            "push_healthy": healthy,
+            "live_stale_for_s": stale_for,
+            "last_resumed_after_s": self._last_live_resumed_after_s,
+        }
+
+    def _compute_live_push_health(self) -> tuple[bool | None, float | None]:
+        """Derive ``(push_healthy, live_stale_for_s)`` from session + live age."""
+        if not self._ws_session_up:
+            return None, None
+        threshold = self._stale_prime_after_s
+        if threshold <= 0:
+            return True, None
+        age = self.last_live_param_update_age_s()
+        if age is None:
+            return None, None
+        if age >= threshold:
+            return False, age
+        return True, None
+
+    def _publish_live_push_health(self, *, force_notify: bool = False) -> None:
+        """Update cached push-health bit and notify listeners on flips."""
+        healthy, stale_for = self._compute_live_push_health()
+        previous = self._live_push_healthy
+        changed = previous is not healthy
+        self._live_push_healthy = healthy
+        if not changed and not force_notify:
+            return
+        event = LivePushHealth(
+            healthy=healthy,
+            live_stale_for_s=stale_for,
+            last_resumed_after_s=self._last_live_resumed_after_s,
+            changed=changed,
+        )
+        if self._on_live_push:
+            self._spawn(
+                self._invoke_list(self._on_live_push, event),
+                name="gateway.on_live_push",
+            )
+
     def _touch_param_publish(self, count: int, *, live: bool = False) -> None:
         """Record that ``count`` parameter events were published.
 
@@ -53,6 +102,13 @@ class RecoveryMixin(GatewayMixinBase):
         now = time.monotonic()
         self._last_param_publish_monotonic = now
         if live:
+            resumed_after: float | None = None
+            prev_live = self._last_live_param_publish_monotonic
+            threshold = self._stale_prime_after_s
+            if self._ws_session_up and prev_live is not None and threshold > 0 and (now - prev_live) >= threshold:
+                resumed_after = now - prev_live
+                self._last_live_resumed_after_s = resumed_after
+                LOG.warning("live ParamUpdate resumed after %.1fs", resumed_after)
             self._last_live_param_publish_monotonic = now
             self._zombie_prime_streak = 0
             self._zombie_hard_restart_streak = 0
@@ -61,6 +117,7 @@ class RecoveryMixin(GatewayMixinBase):
             self._zombie_recovery_cooldown_until = None
             self._zombie_quarantine_until = None
             self._zombie_last_module_online_recovery_monotonic = None
+            self._publish_live_push_health(force_notify=resumed_after is not None)
 
     def _make_realtime_manager(self) -> Any:
         """Build a new Socket.IO client bound to the current API session.
