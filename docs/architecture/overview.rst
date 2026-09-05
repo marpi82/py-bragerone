@@ -18,6 +18,10 @@ Core Principles
 - Consistent, explicit parameter addressing: ``P<n>.<chan><idx>`` (e.g. ``P4.v1``).
 - Minimal coupling between WS flow and HA entities; HA entities rely on immutable references.
 
+``BragerOneGateway`` is a thin public facade; connectivity, session bind/prime, and zombie
+recovery live in focused modules under ``pybragerone.gateway`` (see
+:doc:`operations`).
+
 High-Level Architecture
 -----------------------
 

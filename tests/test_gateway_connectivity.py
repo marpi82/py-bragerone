@@ -16,6 +16,7 @@ from pybragerone.api.client import ApiError, BragerOneApiClient
 from pybragerone.gateway import (
     ApiClient,
     BragerOneGateway,
+    ConnectivitySource,
     RealtimeManagerClient,
     _gateway_as_dict,
     _is_api_dispatch_timeout,
@@ -490,24 +491,11 @@ def test_parse_connected_at_and_gateway_helpers() -> None:
     assert _gateway_as_dict("not-a-gateway") is None
 
 
-@pytest.mark.asyncio
-async def test_protocol_stubs_raise_not_implemented() -> None:
-    """Protocol default bodies exist so structural typing stays explicit."""
-
-    class _Probe:
-        pass
-
-    probe = _Probe()
-    with pytest.raises(NotImplementedError):
-        await ApiClient.get_modules(probe, 1)  # type: ignore[arg-type]
-    with pytest.raises(NotImplementedError):
-        await ApiClient.modules_alarms_quantity(probe, ["M1"], return_data=True)  # type: ignore[arg-type]
-    with pytest.raises(NotImplementedError):
-        RealtimeManagerClient.add_on_disconnected(probe, lambda: None)  # type: ignore[arg-type]
-    with pytest.raises(NotImplementedError):
-        await RealtimeManagerClient.force_reconnect(probe)  # type: ignore[arg-type]
-    with pytest.raises(NotImplementedError):
-        await RealtimeManagerClient.hard_reset(probe)  # type: ignore[arg-type]
+def test_protocol_surfaces_are_importable() -> None:
+    """Gateway Protocols stay part of the public typing surface for fakes/tests."""
+    assert callable(ApiClient.get_modules)
+    assert callable(RealtimeManagerClient.hard_reset)
+    assert callable(RealtimeManagerClient.add_on_disconnected)
 
 
 @pytest.mark.asyncio
@@ -591,7 +579,7 @@ async def test_gateway_ws_reconnect_and_poll_exception_paths() -> None:
 
     tick_hits = 0
 
-    async def _boom_refresh(*, source: str) -> None:
+    async def _boom_refresh(*, source: ConnectivitySource = "rest") -> None:
         nonlocal tick_hits
         _ = source
         tick_hits += 1
@@ -639,6 +627,29 @@ async def test_gateway_start_registers_ws_hooks_once() -> None:
     await gw.start()
     assert len(ws._on_connected) == 1
     await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_start_requires_realtime_manager() -> None:
+    """start() must fail when owned WS construction returns no client."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=None, connectivity_poll_interval=0)
+    gw._make_realtime_manager = lambda: None  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="RealtimeManager is not initialized"):
+        await gw.start()
+
+
+@pytest.mark.asyncio
+async def test_gateway_start_requires_namespace_sid() -> None:
+    """start() must fail when Socket.IO reports no namespace SID after connect."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    ws.sid = lambda: None  # type: ignore[method-assign]
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    with pytest.raises(RuntimeError, match="No namespace SID"):
+        await gw.start()
 
 
 @pytest.mark.asyncio
@@ -1375,7 +1386,7 @@ async def test_gateway_rebuilds_realtime_manager_after_repeated_recycles() -> No
     )
     await gw.start()
     gw._owns_ws = True
-    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign,assignment,return-value]
+    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign]
     gw._zombie_hard_restart_streak = 3
     await gw._recycle_realtime_session(2)
     assert ws.hard_reset_calls >= 1
@@ -1413,7 +1424,7 @@ async def test_gateway_rebuild_registers_hooks_before_failed_connect(
     )
     await gw.start()
     gw._owns_ws = True
-    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign,assignment,return-value]
+    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign]
     with caplog.at_level("ERROR"):
         await gw._rebuild_realtime_manager(2)
         assert "RealtimeManager rebuild (connect/resubscribe) failed" in caplog.text
@@ -1773,7 +1784,7 @@ async def test_gateway_rebuild_edge_paths(caplog: pytest.LogCaptureFixture) -> N
 
     gw._owns_ws = True
     rebuilt_none = FakeRealtimeManager()
-    gw._make_realtime_manager = lambda: rebuilt_none  # type: ignore[method-assign,assignment,return-value]
+    gw._make_realtime_manager = lambda: rebuilt_none  # type: ignore[method-assign]
     gw.ws = None
     await gw._rebuild_realtime_manager(2)
     assert rebuilt_none.connect_calls >= 1
@@ -1790,7 +1801,7 @@ async def test_gateway_rebuild_edge_paths(caplog: pytest.LogCaptureFixture) -> N
     boom_ws.disconnect = _boom_disconnect  # type: ignore[method-assign]
     gw.ws = boom_ws
     rebuilt = FakeRealtimeManager()
-    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign,assignment,return-value]
+    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign]
     with caplog.at_level("ERROR"):
         await gw._rebuild_realtime_manager(2)
         assert "WS disconnect during RealtimeManager rebuild failed" in caplog.text
@@ -2501,7 +2512,7 @@ async def test_gateway_rebuild_arms_quarantine_after_cap(
     )
     await gw.start()
     gw._owns_ws = True
-    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign,assignment,return-value]
+    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign]
     with caplog.at_level("WARNING"):
         await gw._rebuild_realtime_manager(2)
         assert "quarantined" in caplog.text

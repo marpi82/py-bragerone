@@ -90,6 +90,21 @@ Best Practices
 - In EventBus consumers (e.g., :class:`ParamStore`), **never** let exceptions kill the task:
   catch and log, continue processing.
 
+Gateway package layout
+~~~~~~~~~~~~~~~~~~~~~~
+
+``BragerOneGateway`` remains the public facade (``from pybragerone import BragerOneGateway``).
+Internally the implementation lives under ``pybragerone.gateway``:
+
+- ``_gateway.py`` — lifecycle (``start`` / ``stop``), EventBus wiring, ingest / WS dispatch
+- ``connectivity.py`` — module↔cloud and library↔cloud session flips, outage snapshots, REST poll
+- ``session.py`` — ``resubscribe`` / SID bind, REST prime orchestration
+- ``recovery.py`` — zombie ladder, cooldown, quarantine, module-online recovery
+- ``base.py`` — typed shared state / cross-mixin method surface (keeps mixins under ``mypy --strict``)
+- ``helpers.py`` / ``protocols.py`` — pure helpers and client Protocols
+
+Behavior is unchanged; the split is for reviewability and focused tests.
+
 Logging & Debugging
 -------------------
 
