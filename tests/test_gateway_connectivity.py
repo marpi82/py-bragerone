@@ -1375,7 +1375,7 @@ async def test_gateway_rebuilds_realtime_manager_after_repeated_recycles() -> No
     )
     await gw.start()
     gw._owns_ws = True
-    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign,assignment,return-value]
+    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign]
     gw._zombie_hard_restart_streak = 3
     await gw._recycle_realtime_session(2)
     assert ws.hard_reset_calls >= 1
@@ -1413,7 +1413,7 @@ async def test_gateway_rebuild_registers_hooks_before_failed_connect(
     )
     await gw.start()
     gw._owns_ws = True
-    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign,assignment,return-value]
+    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign]
     with caplog.at_level("ERROR"):
         await gw._rebuild_realtime_manager(2)
         assert "RealtimeManager rebuild (connect/resubscribe) failed" in caplog.text
@@ -1773,7 +1773,7 @@ async def test_gateway_rebuild_edge_paths(caplog: pytest.LogCaptureFixture) -> N
 
     gw._owns_ws = True
     rebuilt_none = FakeRealtimeManager()
-    gw._make_realtime_manager = lambda: rebuilt_none  # type: ignore[method-assign,assignment,return-value]
+    gw._make_realtime_manager = lambda: rebuilt_none  # type: ignore[method-assign]
     gw.ws = None
     await gw._rebuild_realtime_manager(2)
     assert rebuilt_none.connect_calls >= 1
@@ -1790,7 +1790,7 @@ async def test_gateway_rebuild_edge_paths(caplog: pytest.LogCaptureFixture) -> N
     boom_ws.disconnect = _boom_disconnect  # type: ignore[method-assign]
     gw.ws = boom_ws
     rebuilt = FakeRealtimeManager()
-    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign,assignment,return-value]
+    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign]
     with caplog.at_level("ERROR"):
         await gw._rebuild_realtime_manager(2)
         assert "WS disconnect during RealtimeManager rebuild failed" in caplog.text
@@ -2501,7 +2501,7 @@ async def test_gateway_rebuild_arms_quarantine_after_cap(
     )
     await gw.start()
     gw._owns_ws = True
-    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign,assignment,return-value]
+    gw._make_realtime_manager = lambda: rebuilt  # type: ignore[method-assign]
     with caplog.at_level("WARNING"):
         await gw._rebuild_realtime_manager(2)
         assert "quarantined" in caplog.text

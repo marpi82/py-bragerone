@@ -153,6 +153,15 @@ plugins = ["pydantic.mypy"]
 module = "socketio.*"
 ignore_missing_imports = true
 
+# Gateway mixins access facade-owned state / sibling methods via shared ``self``.
+[[tool.mypy.overrides]]
+module = [
+  "pybragerone.gateway.connectivity",
+  "pybragerone.gateway.recovery",
+  "pybragerone.gateway.session",
+]
+disable_error_code = ["attr-defined", "assignment", "has-type", "unreachable", "no-any-return"]
+
 # ---------------- pytest ----------------
 [tool.pytest.ini_options]
 minversion = "8.0"
