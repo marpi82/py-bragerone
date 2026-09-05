@@ -24,9 +24,11 @@ from .models.events import (
     MODULE_CONNECTION_STATUS_CHANGED,
     MODULE_MEMORY_UPDATED,
     AlarmQuantityChanged,
+    CloudOutageReason,
     CloudSessionConnectivity,
     EventBus,
     ModuleConnectivity,
+    ModuleOutageReason,
     ParamUpdate,
 )
 
@@ -62,6 +64,21 @@ _MODULE_ONLINE_RECOVERY_DEBOUNCE_S = 90.0
 
 ConnectivitySource = Literal["rest", "ws", "derived"]
 CloudSessionSource = Literal["connect", "disconnect", "stop"]
+
+
+def _as_cloud_outage_reason(value: object) -> CloudOutageReason | None:
+    """Narrow a snapshot value to a cloud outage reason literal."""
+    if value == "disconnect" or value == "stop":
+        return value
+    return None
+
+
+def _as_module_outage_reason(value: object) -> ModuleOutageReason | None:
+    """Narrow a snapshot value to a module outage reason literal."""
+    if value == "rest" or value == "ws" or value == "derived":
+        return value
+    return None
+
 
 # Callback signatures
 ParametersCb = Callable[[str, dict[str, Any]], Awaitable[None] | None]  # (event_name, payload)
@@ -362,14 +379,14 @@ class BragerOneGateway:
         # Outage clocks (monotonic for duration, wall for down_since attributes).
         self._cloud_down_since_mono: float | None = None
         self._cloud_down_since_wall: float | None = None
-        self._cloud_down_reason: str | None = None
+        self._cloud_down_reason: CloudOutageReason | None = None
         self._cloud_last_down_for_s: float | None = None
-        self._cloud_last_reason: str | None = None
+        self._cloud_last_reason: CloudOutageReason | None = None
         self._module_down_since_mono: dict[str, float] = {}
         self._module_down_since_wall: dict[str, float] = {}
-        self._module_down_reason: dict[str, str] = {}
+        self._module_down_reason: dict[str, ModuleOutageReason] = {}
         self._module_last_down_for_s: dict[str, float] = {}
-        self._module_last_reason: dict[str, str] = {}
+        self._module_last_reason: dict[str, ModuleOutageReason] = {}
         self._alarm_quantity_cache: dict[str, int | None] = {}
         self._alarm_quantity_ws_rev: dict[str, int] = {}
         self._alarm_quantity_ingest_lock = asyncio.Lock()
@@ -739,10 +756,10 @@ class BragerOneGateway:
         if not up:
             self._cloud_down_since_mono = time.monotonic()
             self._cloud_down_since_wall = time.time()
-            self._cloud_down_reason = source
+            self._cloud_down_reason = source if source != "connect" else "disconnect"
         elif self._cloud_down_since_mono is not None:
             duration = max(0.0, time.monotonic() - self._cloud_down_since_mono)
-            ended_reason = self._cloud_down_reason or source
+            ended_reason = self._cloud_down_reason or (source if source != "connect" else "disconnect")
             self._cloud_last_down_for_s = duration
             self._cloud_last_reason = ended_reason
             LOG.warning(
@@ -761,9 +778,9 @@ class BragerOneGateway:
             changed=True,
             down_since=snapshot["down_since"] if isinstance(snapshot["down_since"], float) else None,
             down_for_s=snapshot["down_for_s"] if isinstance(snapshot["down_for_s"], float) else None,
-            reason=snapshot["reason"] if isinstance(snapshot["reason"], str) else None,
+            reason=_as_cloud_outage_reason(snapshot["reason"]),
             last_down_for_s=snapshot["last_down_for_s"] if isinstance(snapshot["last_down_for_s"], float) else None,
-            last_reason=snapshot["last_reason"] if isinstance(snapshot["last_reason"], str) else None,
+            last_reason=_as_cloud_outage_reason(snapshot["last_reason"]),
         )
         LOG.info("Cloud session: up=%s source=%s", up, source)
         if self._on_cloud_session:
@@ -1262,9 +1279,9 @@ class BragerOneGateway:
             metadata_changed=metadata_changed,
             down_since=snapshot["down_since"] if isinstance(snapshot["down_since"], float) else None,
             down_for_s=snapshot["down_for_s"] if isinstance(snapshot["down_for_s"], float) else None,
-            reason=snapshot["reason"] if isinstance(snapshot["reason"], str) else None,
+            reason=_as_module_outage_reason(snapshot["reason"]),
             last_down_for_s=snapshot["last_down_for_s"] if isinstance(snapshot["last_down_for_s"], float) else None,
-            last_reason=snapshot["last_reason"] if isinstance(snapshot["last_reason"], str) else None,
+            last_reason=_as_module_outage_reason(snapshot["last_reason"]),
         )
         LOG.info(
             "Module connectivity: devid=%s online=%s source=%s connectedAt=%s online_changed=%s metadata_changed=%s",
