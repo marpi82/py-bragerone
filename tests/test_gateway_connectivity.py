@@ -697,7 +697,7 @@ async def test_gateway_cloud_session_callbacks_are_detectable() -> None:
 
 
 @pytest.mark.asyncio
-async def test_gateway_cloud_session_outage_duration_and_reason() -> None:
+async def test_gateway_cloud_session_outage_duration_and_reason(monkeypatch: pytest.MonkeyPatch) -> None:
     """Cloud session down→up records down_for_s / reason and logs restore."""
     from pybragerone.models.events import CloudSessionConnectivity
 
@@ -708,6 +708,10 @@ async def test_gateway_cloud_session_outage_duration_and_reason() -> None:
     sessions: list[CloudSessionConnectivity] = []
     gw.on_cloud_session(sessions.append)
 
+    clock = {"mono": 1000.0, "wall": 1_700_000_000.0}
+    monkeypatch.setattr(time, "monotonic", lambda: clock["mono"])
+    monkeypatch.setattr(time, "time", lambda: clock["wall"])
+
     await gw.start()
     sessions.clear()
     await ws.trigger_disconnected()
@@ -715,13 +719,14 @@ async def test_gateway_cloud_session_outage_duration_and_reason() -> None:
     down_event = sessions[-1]
     assert down_event.up is False
     assert down_event.reason == "disconnect"
-    assert isinstance(down_event.down_since, float)
-    assert down_event.down_for_s is not None and down_event.down_for_s >= 0.0
+    assert down_event.down_since == 1_700_000_000.0
+    assert down_event.down_for_s == 0.0
     snap = gw.cloud_session_outage()
     assert snap["reason"] == "disconnect"
-    assert isinstance(snap["down_since"], float)
+    assert snap["down_since"] == 1_700_000_000.0
 
-    await asyncio.sleep(0.05)
+    clock["mono"] = 1012.5
+    clock["wall"] = 1_700_000_012.5
     sessions.clear()
     await gw._on_ws_connected()
     assert gw.ws_session_up() is True
@@ -731,16 +736,16 @@ async def test_gateway_cloud_session_outage_duration_and_reason() -> None:
     assert up_event.down_for_s is None
     assert up_event.reason is None
     assert up_event.last_reason == "disconnect"
-    assert up_event.last_down_for_s is not None and up_event.last_down_for_s >= 0.05
+    assert up_event.last_down_for_s == 12.5
     snap = gw.cloud_session_outage()
     assert snap["down_since"] is None
     assert snap["last_reason"] == "disconnect"
-    assert isinstance(snap["last_down_for_s"], float)
+    assert snap["last_down_for_s"] == 12.5
     await gw.stop()
 
 
 @pytest.mark.asyncio
-async def test_gateway_module_outage_duration_and_reason() -> None:
+async def test_gateway_module_outage_duration_and_reason(monkeypatch: pytest.MonkeyPatch) -> None:
     """Module offline→online records outage duration without resetting on metadata-only updates."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway={"address": "a"})]
@@ -748,16 +753,22 @@ async def test_gateway_module_outage_duration_and_reason() -> None:
     gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
     events: list[ModuleConnectivity] = []
     gw.on_module_connectivity(events.append)
+
+    clock = {"mono": 2000.0, "wall": 1_700_000_100.0}
+    monkeypatch.setattr(time, "monotonic", lambda: clock["mono"])
+    monkeypatch.setattr(time, "time", lambda: clock["wall"])
+
     await gw.start()
     events.clear()
 
     await gw._apply_connectivity(devid="M1", online=False, source="ws", connected_at=0)
     assert events[-1].online is False
     assert events[-1].reason == "ws"
-    assert isinstance(events[-1].down_since, float)
+    assert events[-1].down_since == 1_700_000_100.0
     down_since = events[-1].down_since
 
-    await asyncio.sleep(0.05)
+    clock["mono"] = 2008.0
+    clock["wall"] = 1_700_000_108.0
     events.clear()
     await gw._apply_connectivity(
         devid="M1",
@@ -769,6 +780,7 @@ async def test_gateway_module_outage_duration_and_reason() -> None:
     assert events[-1].online_changed is False
     assert events[-1].reason == "ws"
     assert events[-1].down_since == down_since
+    assert events[-1].down_for_s == 8.0
 
     events.clear()
     await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=99)
@@ -777,7 +789,7 @@ async def test_gateway_module_outage_duration_and_reason() -> None:
     assert up.down_since is None
     assert up.reason is None
     assert up.last_reason == "ws"
-    assert up.last_down_for_s is not None and up.last_down_for_s >= 0.05
+    assert up.last_down_for_s == 8.0
     snap = gw.module_outage("M1")
     assert snap["last_reason"] == "ws"
     assert snap["down_for_s"] is None
