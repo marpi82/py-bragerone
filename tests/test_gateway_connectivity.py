@@ -745,6 +745,57 @@ async def test_gateway_cloud_session_outage_duration_and_reason(monkeypatch: pyt
 
 
 @pytest.mark.asyncio
+async def test_gateway_stop_while_down_does_not_carry_outage_across_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """stop() while already down must close the outage so restart→connect is not a restore."""
+    from pybragerone.models.events import CloudSessionConnectivity
+
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    sessions: list[CloudSessionConnectivity] = []
+    gw.on_cloud_session(sessions.append)
+
+    clock = {"mono": 3000.0, "wall": 1_700_000_200.0}
+    monkeypatch.setattr(time, "monotonic", lambda: clock["mono"])
+    monkeypatch.setattr(time, "time", lambda: clock["wall"])
+
+    await gw.start()
+    sessions.clear()
+    await ws.trigger_disconnected()
+    assert gw.ws_session_up() is False
+    assert gw.cloud_session_outage()["reason"] == "disconnect"
+    assert gw.cloud_session_outage()["down_since"] == 1_700_000_200.0
+
+    clock["mono"] = 3010.0
+    clock["wall"] = 1_700_000_210.0
+    await gw.stop()
+    snap = gw.cloud_session_outage()
+    assert snap["down_since"] is None
+    assert snap["down_for_s"] is None
+    assert snap["reason"] is None
+    assert snap["last_reason"] == "disconnect"
+    assert snap["last_down_for_s"] == 10.0
+
+    clock["mono"] = 3500.0
+    clock["wall"] = 1_700_000_700.0
+    sessions.clear()
+    await gw.start()
+    assert gw.ws_session_up() is True
+    up_event = sessions[0]
+    assert up_event.up is True
+    assert up_event.last_down_for_s == 10.0
+    assert up_event.last_reason == "disconnect"
+    # Must not report a "restore" that includes intentional stop downtime (~500s).
+    assert up_event.down_since is None
+    assert gw.cloud_session_outage()["down_since"] is None
+    assert gw.cloud_session_outage()["last_down_for_s"] == 10.0
+    await gw.stop()
+
+
+@pytest.mark.asyncio
 async def test_gateway_module_outage_duration_and_reason(monkeypatch: pytest.MonkeyPatch) -> None:
     """Module offline→online records outage duration without resetting on metadata-only updates."""
     api = FakeApiClient()

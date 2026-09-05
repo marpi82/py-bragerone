@@ -705,12 +705,36 @@ class BragerOneGateway:
             LOG.exception("Forced fresh auth failed")
             return False
 
+    def _finalize_cloud_outage_at_stop(self) -> None:
+        """Close an active cloud outage into ``last_*`` without a restore log.
+
+        Used when ``stop()`` runs while the session is already down so a later
+        ``start()``→connect does not report downtime that includes intentional stop.
+        """
+        if self._cloud_down_since_mono is None:
+            return
+        duration = max(0.0, time.monotonic() - self._cloud_down_since_mono)
+        self._cloud_last_down_for_s = duration
+        self._cloud_last_reason = self._cloud_down_reason or "stop"
+        self._cloud_down_since_mono = None
+        self._cloud_down_since_wall = None
+        self._cloud_down_reason = None
+
+    def _clear_active_cloud_outage(self) -> None:
+        """Drop a live outage window without updating ``last_*``."""
+        self._cloud_down_since_mono = None
+        self._cloud_down_since_wall = None
+        self._cloud_down_reason = None
+
     async def _set_ws_session_up(self, up: bool, *, source: CloudSessionSource) -> None:
         """Update library↔cloud session cache and notify listeners on flips."""
         previous = self._ws_session_up
         self._ws_session_up = up
         changed = previous is not up
         if not changed:
+            # stop() while already down: close the active window at the stop boundary.
+            if source == "stop" and not up:
+                self._finalize_cloud_outage_at_stop()
             return
         if not up:
             self._cloud_down_since_mono = time.monotonic()
@@ -744,6 +768,10 @@ class BragerOneGateway:
         LOG.info("Cloud session: up=%s source=%s", up, source)
         if self._on_cloud_session:
             await self._invoke_list(self._on_cloud_session, event)
+        # up→stop: notify with a momentary down snapshot, then drop the live window
+        # so restart cannot inherit it (do not clobber prior-cycle last_* with ~0s).
+        if source == "stop" and not up:
+            self._clear_active_cloud_outage()
 
     def _cloud_outage_snapshot(self) -> dict[str, float | str | None]:
         """Build the current cloud-session outage attribute dict."""
