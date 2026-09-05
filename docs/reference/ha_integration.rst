@@ -102,6 +102,8 @@ Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so exist
 
    def on_session(event: CloudSessionConnectivity) -> None:
        print("cloud session", "up" if event.up else "down", event.source)
+       # Outage attrs (additive): event.down_since / down_for_s / reason while down;
+       # event.last_down_for_s / last_reason after restore.
 
    gateway.on_module_connectivity(on_module)
    gateway.on_cloud_session(on_session)
@@ -109,8 +111,18 @@ Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so exist
    # gateway.module_online(devid) -> True | False | None
    # gateway.module_connected_at(devid) -> int | None  # REST connectedAt
    # gateway.ws_session_up() -> bool  # library↔cloud Socket.IO
+   # gateway.cloud_session_outage() -> dict  # down_since / down_for_s / reason / last_*
+   # gateway.module_outage(devid) -> dict  # same keys for module↔cloud
    # gateway.last_param_update_age_s() -> float | None
 
+``reason`` on these outage snapshots is the **client observation source**
+(``disconnect`` / ``stop`` for the Socket.IO session; ``rest`` / ``ws`` /
+``derived`` for module ``connectedAt``) — not a diagnosis of boiler or LAN hardware.
+Live ``down_for_s`` is measured with a monotonic clock while ``down_since`` is
+wall-clock ``time.time()`` for Home Assistant attributes. A restore logs
+``Cloud session restored after …s`` / ``Module connectivity restored after …s``.
+This is separate from zombie / live-stale push health (Socket.IO up but no
+``ParamUpdate``), which is not folded into these outage fields.
 The gateway primes from ``GET /v1/modules`` (``connectedAt != 0`` means online —
 same truthiness check as the SPA card/modal) and listens for the official Socket.IO
 push ``app:module:connection:status:changed`` (payload

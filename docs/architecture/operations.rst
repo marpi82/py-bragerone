@@ -44,7 +44,12 @@ Best Practices
 - WS reconnect should **always** re-run prime via REST (no WS snapshot available).
 - Treat **module↔cloud** (``connectedAt``) and **library↔cloud** (Socket.IO session)
   as separate signals: observe/wait for the former; detect + self-heal the latter
-  (``on_cloud_session`` / ``ws_session_up``).
+  (``on_cloud_session`` / ``ws_session_up``). Session and module online flips track
+  outage duration (``down_since`` / ``down_for_s`` / ``reason`` while down;
+  ``last_down_for_s`` / ``last_reason`` after restore) via
+  ``cloud_session_outage()`` / ``module_outage(devid)`` — ``reason`` is the
+  observation source, not plant diagnostics; zombie / live-stale push health is
+  separate.
 - While the Socket.IO session is down, the gateway REST-primes on the connectivity
   poll interval so consumers are not stuck on the last WS delta.
 - Engine.IO abort (for example aiohttp ``WSMsgType.CLOSED`` / packet type 257) can

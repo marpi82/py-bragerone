@@ -696,6 +696,94 @@ async def test_gateway_cloud_session_callbacks_are_detectable() -> None:
     assert [(e.up, e.source) for e in sessions] == [(False, "stop")]
 
 
+@pytest.mark.asyncio
+async def test_gateway_cloud_session_outage_duration_and_reason() -> None:
+    """Cloud session down→up records down_for_s / reason and logs restore."""
+    from pybragerone.models.events import CloudSessionConnectivity
+
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    sessions: list[CloudSessionConnectivity] = []
+    gw.on_cloud_session(sessions.append)
+
+    await gw.start()
+    sessions.clear()
+    await ws.trigger_disconnected()
+    assert gw.ws_session_up() is False
+    down_event = sessions[-1]
+    assert down_event.up is False
+    assert down_event.reason == "disconnect"
+    assert isinstance(down_event.down_since, float)
+    assert down_event.down_for_s is not None and down_event.down_for_s >= 0.0
+    snap = gw.cloud_session_outage()
+    assert snap["reason"] == "disconnect"
+    assert isinstance(snap["down_since"], float)
+
+    await asyncio.sleep(0.05)
+    sessions.clear()
+    await gw._on_ws_connected()
+    assert gw.ws_session_up() is True
+    up_event = sessions[0]
+    assert up_event.up is True
+    assert up_event.down_since is None
+    assert up_event.down_for_s is None
+    assert up_event.reason is None
+    assert up_event.last_reason == "disconnect"
+    assert up_event.last_down_for_s is not None and up_event.last_down_for_s >= 0.05
+    snap = gw.cloud_session_outage()
+    assert snap["down_since"] is None
+    assert snap["last_reason"] == "disconnect"
+    assert isinstance(snap["last_down_for_s"], float)
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_module_outage_duration_and_reason() -> None:
+    """Module offline→online records outage duration without resetting on metadata-only updates."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway={"address": "a"})]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    events: list[ModuleConnectivity] = []
+    gw.on_module_connectivity(events.append)
+    await gw.start()
+    events.clear()
+
+    await gw._apply_connectivity(devid="M1", online=False, source="ws", connected_at=0)
+    assert events[-1].online is False
+    assert events[-1].reason == "ws"
+    assert isinstance(events[-1].down_since, float)
+    down_since = events[-1].down_since
+
+    await asyncio.sleep(0.05)
+    events.clear()
+    await gw._apply_connectivity(
+        devid="M1",
+        online=False,
+        source="rest",
+        connected_at=0,
+        gateway={"address": "b"},
+    )
+    assert events[-1].online_changed is False
+    assert events[-1].reason == "ws"
+    assert events[-1].down_since == down_since
+
+    events.clear()
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=99)
+    up = events[-1]
+    assert up.online is True
+    assert up.down_since is None
+    assert up.reason is None
+    assert up.last_reason == "ws"
+    assert up.last_down_for_s is not None and up.last_down_for_s >= 0.05
+    snap = gw.module_outage("M1")
+    assert snap["last_reason"] == "ws"
+    assert snap["down_for_s"] is None
+    await gw.stop()
+
+
 async def test_gateway_duplicate_disconnect_does_not_bump_generation() -> None:
     """A second session-down while already down must not bump connectivity generation."""
     api = FakeApiClient()
