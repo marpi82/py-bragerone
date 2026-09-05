@@ -24,9 +24,11 @@ from .models.events import (
     MODULE_CONNECTION_STATUS_CHANGED,
     MODULE_MEMORY_UPDATED,
     AlarmQuantityChanged,
+    CloudOutageReason,
     CloudSessionConnectivity,
     EventBus,
     ModuleConnectivity,
+    ModuleOutageReason,
     ParamUpdate,
 )
 
@@ -62,6 +64,34 @@ _MODULE_ONLINE_RECOVERY_DEBOUNCE_S = 90.0
 
 ConnectivitySource = Literal["rest", "ws", "derived"]
 CloudSessionSource = Literal["connect", "disconnect", "stop"]
+
+
+def _as_cloud_outage_reason(value: object) -> CloudOutageReason | None:
+    """Narrow a snapshot value to a cloud outage reason literal."""
+    if value == "disconnect":
+        return "disconnect"
+    if value == "stop":
+        return "stop"
+    return None
+
+
+def _cloud_outage_reason_from_source(source: CloudSessionSource) -> CloudOutageReason:
+    """Map a session flip source to an outage reason (``connect`` maps to ``disconnect``)."""
+    if source == "stop":
+        return "stop"
+    return "disconnect"
+
+
+def _as_module_outage_reason(value: object) -> ModuleOutageReason | None:
+    """Narrow a snapshot value to a module outage reason literal."""
+    if value == "rest":
+        return "rest"
+    if value == "ws":
+        return "ws"
+    if value == "derived":
+        return "derived"
+    return None
+
 
 # Callback signatures
 ParametersCb = Callable[[str, dict[str, Any]], Awaitable[None] | None]  # (event_name, payload)
@@ -359,6 +389,17 @@ class BragerOneGateway:
         self._module_connected_at: dict[str, int] = {}
         self._module_online: dict[str, bool] = {}
         self._module_gateway: dict[str, dict[str, Any]] = {}
+        # Outage clocks (monotonic for duration, wall for down_since attributes).
+        self._cloud_down_since_mono: float | None = None
+        self._cloud_down_since_wall: float | None = None
+        self._cloud_down_reason: CloudOutageReason | None = None
+        self._cloud_last_down_for_s: float | None = None
+        self._cloud_last_reason: CloudOutageReason | None = None
+        self._module_down_since_mono: dict[str, float] = {}
+        self._module_down_since_wall: dict[str, float] = {}
+        self._module_down_reason: dict[str, ModuleOutageReason] = {}
+        self._module_last_down_for_s: dict[str, float] = {}
+        self._module_last_reason: dict[str, ModuleOutageReason] = {}
         self._alarm_quantity_cache: dict[str, int | None] = {}
         self._alarm_quantity_ws_rev: dict[str, int] = {}
         self._alarm_quantity_ingest_lock = asyncio.Lock()
@@ -470,6 +511,23 @@ class BragerOneGateway:
     def ws_session_up(self) -> bool:
         """Return whether this gateway's Socket.IO (library↔cloud) session is up."""
         return self._ws_session_up
+
+    def cloud_session_outage(self) -> dict[str, float | str | None]:
+        """Return cloud-session outage snapshot for diagnostics / HA attributes.
+
+        Keys: ``down_since``, ``down_for_s``, ``reason``, ``last_down_for_s``,
+        ``last_reason``. ``reason`` is the client observation source
+        (``disconnect`` / ``stop``), not plant hardware diagnostics.
+        """
+        return self._cloud_outage_snapshot()
+
+    def module_outage(self, devid: str) -> dict[str, float | str | None]:
+        """Return module↔cloud outage snapshot for *devid*.
+
+        Same keys as :meth:`cloud_session_outage`. ``reason`` is the observation
+        ``source`` (``rest`` / ``ws`` / ``derived``).
+        """
+        return self._module_outage_snapshot(devid)
 
     def _is_running(self) -> bool:
         """Return whether the gateway lifecycle is active (not stopped)."""
@@ -677,17 +735,103 @@ class BragerOneGateway:
             LOG.exception("Forced fresh auth failed")
             return False
 
+    def _finalize_cloud_outage_at_stop(self) -> None:
+        """Close an active cloud outage into ``last_*`` without a restore log.
+
+        Used when ``stop()`` runs while the session is already down so a later
+        ``start()``→connect does not report downtime that includes intentional stop.
+        """
+        if self._cloud_down_since_mono is None:
+            return
+        duration = max(0.0, time.monotonic() - self._cloud_down_since_mono)
+        self._cloud_last_down_for_s = duration
+        self._cloud_last_reason = self._cloud_down_reason or "stop"
+        self._cloud_down_since_mono = None
+        self._cloud_down_since_wall = None
+        self._cloud_down_reason = None
+
+    def _clear_active_cloud_outage(self) -> None:
+        """Drop a live outage window without updating ``last_*``."""
+        self._cloud_down_since_mono = None
+        self._cloud_down_since_wall = None
+        self._cloud_down_reason = None
+
     async def _set_ws_session_up(self, up: bool, *, source: CloudSessionSource) -> None:
         """Update library↔cloud session cache and notify listeners on flips."""
         previous = self._ws_session_up
         self._ws_session_up = up
         changed = previous is not up
         if not changed:
+            # stop() while already down: close the active window at the stop boundary.
+            if source == "stop" and not up:
+                self._finalize_cloud_outage_at_stop()
             return
-        event = CloudSessionConnectivity(up=up, source=source, changed=True)
+        if not up:
+            self._cloud_down_since_mono = time.monotonic()
+            self._cloud_down_since_wall = time.time()
+            self._cloud_down_reason = _cloud_outage_reason_from_source(source)
+        elif self._cloud_down_since_mono is not None:
+            duration = max(0.0, time.monotonic() - self._cloud_down_since_mono)
+            ended_reason = self._cloud_down_reason or _cloud_outage_reason_from_source(source)
+            self._cloud_last_down_for_s = duration
+            self._cloud_last_reason = ended_reason
+            LOG.warning(
+                "Cloud session restored after %.1fs (reason=%s, source=%s)",
+                duration,
+                ended_reason,
+                source,
+            )
+            self._cloud_down_since_mono = None
+            self._cloud_down_since_wall = None
+            self._cloud_down_reason = None
+        snapshot = self._cloud_outage_snapshot()
+        event = CloudSessionConnectivity(
+            up=up,
+            source=source,
+            changed=True,
+            down_since=snapshot["down_since"] if isinstance(snapshot["down_since"], float) else None,
+            down_for_s=snapshot["down_for_s"] if isinstance(snapshot["down_for_s"], float) else None,
+            reason=_as_cloud_outage_reason(snapshot["reason"]),
+            last_down_for_s=snapshot["last_down_for_s"] if isinstance(snapshot["last_down_for_s"], float) else None,
+            last_reason=_as_cloud_outage_reason(snapshot["last_reason"]),
+        )
         LOG.info("Cloud session: up=%s source=%s", up, source)
         if self._on_cloud_session:
             await self._invoke_list(self._on_cloud_session, event)
+        # up→stop: notify with a momentary down snapshot, then drop the live window
+        # so restart cannot inherit it (do not clobber prior-cycle last_* with ~0s).
+        if source == "stop" and not up:
+            self._clear_active_cloud_outage()
+
+    def _cloud_outage_snapshot(self) -> dict[str, float | str | None]:
+        """Build the current cloud-session outage attribute dict."""
+        down_since = self._cloud_down_since_wall
+        down_for_s: float | None = None
+        reason = self._cloud_down_reason
+        if self._cloud_down_since_mono is not None:
+            down_for_s = max(0.0, time.monotonic() - self._cloud_down_since_mono)
+        return {
+            "down_since": down_since,
+            "down_for_s": down_for_s,
+            "reason": reason,
+            "last_down_for_s": self._cloud_last_down_for_s,
+            "last_reason": self._cloud_last_reason,
+        }
+
+    def _module_outage_snapshot(self, devid: str) -> dict[str, float | str | None]:
+        """Build the current module outage attribute dict for *devid*."""
+        down_since = self._module_down_since_wall.get(devid)
+        down_for_s: float | None = None
+        mono = self._module_down_since_mono.get(devid)
+        if mono is not None:
+            down_for_s = max(0.0, time.monotonic() - mono)
+        return {
+            "down_since": down_since,
+            "down_for_s": down_for_s,
+            "reason": self._module_down_reason.get(devid),
+            "last_down_for_s": self._module_last_down_for_s.get(devid),
+            "last_reason": self._module_last_reason.get(devid),
+        }
 
     async def _on_ws_connected(self) -> None:
         """Re-bind modules after WS reconnect, then refresh connectedAt from REST."""
@@ -1117,6 +1261,27 @@ class BragerOneGateway:
             return
 
         self._module_online[devid] = online
+        if online_changed:
+            if not online:
+                self._module_down_since_mono[devid] = time.monotonic()
+                self._module_down_since_wall[devid] = time.time()
+                self._module_down_reason[devid] = source
+            elif devid in self._module_down_since_mono:
+                duration = max(0.0, time.monotonic() - self._module_down_since_mono[devid])
+                ended_reason = self._module_down_reason.get(devid, source)
+                self._module_last_down_for_s[devid] = duration
+                self._module_last_reason[devid] = ended_reason
+                LOG.warning(
+                    "Module connectivity restored after %.1fs (devid=%s reason=%s source=%s)",
+                    duration,
+                    devid,
+                    ended_reason,
+                    source,
+                )
+                self._module_down_since_mono.pop(devid, None)
+                self._module_down_since_wall.pop(devid, None)
+                self._module_down_reason.pop(devid, None)
+        snapshot = self._module_outage_snapshot(devid)
         event = ModuleConnectivity(
             devid=devid,
             online=online,
@@ -1125,6 +1290,11 @@ class BragerOneGateway:
             gateway=self.module_gateway(devid),
             online_changed=online_changed,
             metadata_changed=metadata_changed,
+            down_since=snapshot["down_since"] if isinstance(snapshot["down_since"], float) else None,
+            down_for_s=snapshot["down_for_s"] if isinstance(snapshot["down_for_s"], float) else None,
+            reason=_as_module_outage_reason(snapshot["reason"]),
+            last_down_for_s=snapshot["last_down_for_s"] if isinstance(snapshot["last_down_for_s"], float) else None,
+            last_reason=_as_module_outage_reason(snapshot["last_reason"]),
         )
         LOG.info(
             "Module connectivity: devid=%s online=%s source=%s connectedAt=%s online_changed=%s metadata_changed=%s",

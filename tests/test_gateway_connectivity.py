@@ -696,6 +696,157 @@ async def test_gateway_cloud_session_callbacks_are_detectable() -> None:
     assert [(e.up, e.source) for e in sessions] == [(False, "stop")]
 
 
+@pytest.mark.asyncio
+async def test_gateway_cloud_session_outage_duration_and_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cloud session down→up records down_for_s / reason and logs restore."""
+    from pybragerone.models.events import CloudSessionConnectivity
+
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    sessions: list[CloudSessionConnectivity] = []
+    gw.on_cloud_session(sessions.append)
+
+    clock = {"mono": 1000.0, "wall": 1_700_000_000.0}
+    monkeypatch.setattr(time, "monotonic", lambda: clock["mono"])
+    monkeypatch.setattr(time, "time", lambda: clock["wall"])
+
+    await gw.start()
+    sessions.clear()
+    await ws.trigger_disconnected()
+    assert gw.ws_session_up() is False
+    down_event = sessions[-1]
+    assert down_event.up is False
+    assert down_event.reason == "disconnect"
+    assert down_event.down_since == 1_700_000_000.0
+    assert down_event.down_for_s == 0.0
+    snap = gw.cloud_session_outage()
+    assert snap["reason"] == "disconnect"
+    assert snap["down_since"] == 1_700_000_000.0
+
+    clock["mono"] = 1012.5
+    clock["wall"] = 1_700_000_012.5
+    sessions.clear()
+    await gw._on_ws_connected()
+    assert gw.ws_session_up() is True
+    up_event = sessions[0]
+    assert up_event.up is True
+    assert up_event.down_since is None
+    assert up_event.down_for_s is None
+    assert up_event.reason is None
+    assert up_event.last_reason == "disconnect"
+    assert up_event.last_down_for_s == 12.5
+    snap = gw.cloud_session_outage()
+    assert snap["down_since"] is None
+    assert snap["last_reason"] == "disconnect"
+    assert snap["last_down_for_s"] == 12.5
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_stop_while_down_does_not_carry_outage_across_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """stop() while already down must close the outage so restart→connect is not a restore."""
+    from pybragerone.models.events import CloudSessionConnectivity
+
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    sessions: list[CloudSessionConnectivity] = []
+    gw.on_cloud_session(sessions.append)
+
+    clock = {"mono": 3000.0, "wall": 1_700_000_200.0}
+    monkeypatch.setattr(time, "monotonic", lambda: clock["mono"])
+    monkeypatch.setattr(time, "time", lambda: clock["wall"])
+
+    await gw.start()
+    sessions.clear()
+    await ws.trigger_disconnected()
+    assert gw.ws_session_up() is False
+    assert gw.cloud_session_outage()["reason"] == "disconnect"
+    assert gw.cloud_session_outage()["down_since"] == 1_700_000_200.0
+
+    clock["mono"] = 3010.0
+    clock["wall"] = 1_700_000_210.0
+    await gw.stop()
+    snap = gw.cloud_session_outage()
+    assert snap["down_since"] is None
+    assert snap["down_for_s"] is None
+    assert snap["reason"] is None
+    assert snap["last_reason"] == "disconnect"
+    assert snap["last_down_for_s"] == 10.0
+
+    clock["mono"] = 3500.0
+    clock["wall"] = 1_700_000_700.0
+    sessions.clear()
+    await gw.start()
+    assert gw.ws_session_up() is True
+    up_event = sessions[0]
+    assert up_event.up is True
+    assert up_event.last_down_for_s == 10.0
+    assert up_event.last_reason == "disconnect"
+    # Must not report a "restore" that includes intentional stop downtime (~500s).
+    assert up_event.down_since is None
+    assert gw.cloud_session_outage()["down_since"] is None
+    assert gw.cloud_session_outage()["last_down_for_s"] == 10.0
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_module_outage_duration_and_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Module offline→online records outage duration without resetting on metadata-only updates."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway={"address": "a"})]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    events: list[ModuleConnectivity] = []
+    gw.on_module_connectivity(events.append)
+
+    clock = {"mono": 2000.0, "wall": 1_700_000_100.0}
+    monkeypatch.setattr(time, "monotonic", lambda: clock["mono"])
+    monkeypatch.setattr(time, "time", lambda: clock["wall"])
+
+    await gw.start()
+    events.clear()
+
+    await gw._apply_connectivity(devid="M1", online=False, source="ws", connected_at=0)
+    assert events[-1].online is False
+    assert events[-1].reason == "ws"
+    assert events[-1].down_since == 1_700_000_100.0
+    down_since = events[-1].down_since
+
+    clock["mono"] = 2008.0
+    clock["wall"] = 1_700_000_108.0
+    events.clear()
+    await gw._apply_connectivity(
+        devid="M1",
+        online=False,
+        source="rest",
+        connected_at=0,
+        gateway={"address": "b"},
+    )
+    assert events[-1].online_changed is False
+    assert events[-1].reason == "ws"
+    assert events[-1].down_since == down_since
+    assert events[-1].down_for_s == 8.0
+
+    events.clear()
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=99)
+    up = events[-1]
+    assert up.online is True
+    assert up.down_since is None
+    assert up.reason is None
+    assert up.last_reason == "ws"
+    assert up.last_down_for_s == 8.0
+    snap = gw.module_outage("M1")
+    assert snap["last_reason"] == "ws"
+    assert snap["down_for_s"] is None
+    await gw.stop()
+
+
 async def test_gateway_duplicate_disconnect_does_not_bump_generation() -> None:
     """A second session-down while already down must not bump connectivity generation."""
     api = FakeApiClient()

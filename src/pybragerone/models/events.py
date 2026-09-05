@@ -9,6 +9,9 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+ModuleOutageReason = Literal["rest", "ws", "derived"]
+CloudOutageReason = Literal["disconnect", "stop"]
+
 
 @dataclass(frozen=True)
 class FeatureChanged:
@@ -56,6 +59,16 @@ class ModuleConnectivity:
     #: ``True`` when ``connected_at`` and/or ``gateway`` changed without an online flip.
     ts: float = field(default_factory=time.time)
     #: Timestamp when this signal was produced.
+    down_since: float | None = None
+    #: Wall-clock ``time.time()`` when the current offline outage started (``None`` if online).
+    down_for_s: float | None = None
+    #: Seconds offline so far while ``online`` is false; ``None`` when online.
+    reason: ModuleOutageReason | None = None
+    #: Client-side observation source for the current outage (``rest`` / ``ws`` / ``derived``).
+    last_down_for_s: float | None = None
+    #: Duration of the most recently completed offline outage.
+    last_reason: ModuleOutageReason | None = None
+    #: Observation source of the most recently completed offline outage.
 
 
 @dataclass(frozen=True)
@@ -96,6 +109,16 @@ class CloudSessionConnectivity:
     #: ``True`` when ``up`` flipped versus the previous cache.
     ts: float = field(default_factory=time.time)
     #: Timestamp when this signal was produced.
+    down_since: float | None = None
+    #: Wall-clock ``time.time()`` when the current session-down outage started (``None`` if up).
+    down_for_s: float | None = None
+    #: Seconds down so far while ``up`` is false; ``None`` when up.
+    reason: CloudOutageReason | None = None
+    #: Client-side reason/source for the current down (``disconnect`` / ``stop``); not plant diagnostics.
+    last_down_for_s: float | None = None
+    #: Duration of the most recently completed session-down outage.
+    last_reason: CloudOutageReason | None = None
+    #: Reason/source of the most recently completed session-down outage.
 
 
 # Official SPA Layout / ObjectsLayout event name.
