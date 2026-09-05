@@ -48,8 +48,12 @@ Best Practices
   outage duration (``down_since`` / ``down_for_s`` / ``reason`` while down;
   ``last_down_for_s`` / ``last_reason`` after restore) via
   ``cloud_session_outage()`` / ``module_outage(devid)`` — ``reason`` is the
-  observation source, not plant diagnostics; zombie / live-stale push health is
-  separate.
+  observation source, not plant diagnostics.
+- **Live push health** is a third layer: ``live_push_health()`` /
+  ``on_live_push`` expose ``push_healthy`` / ``live_stale_for_s`` while the
+  Socket.IO session is up but no live ``ParamUpdate`` arrives (zombie). Resume
+  logs ``live ParamUpdate resumed after …s``. Do not fold this into session or
+  module online bits.
 - While the Socket.IO session is down, the gateway REST-primes on the connectivity
   poll interval so consumers are not stuck on the last WS delta.
 - Engine.IO abort (for example aiohttp ``WSMsgType.CLOSED`` / packet type 257) can

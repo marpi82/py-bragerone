@@ -1642,6 +1642,73 @@ async def test_gateway_touch_param_publish_and_age() -> None:
     await gw.stop()
 
 
+async def test_gateway_live_push_health_stale_and_resume(caplog: pytest.LogCaptureFixture) -> None:
+    """live_push_health tracks zombie stale age and logs resume duration."""
+    from pybragerone.models.events import LivePushHealth
+
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=30.0,
+    )
+    events: list[LivePushHealth] = []
+    gw.on_live_push(lambda event: events.append(event))
+    await gw.start()
+
+    # Session up, no live traffic yet → unknown (not a zombie).
+    snap = gw.live_push_health()
+    assert snap["push_healthy"] is None
+    assert snap["live_stale_for_s"] is None
+
+    await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
+    await _wait_until(lambda: gw.live_push_health()["push_healthy"] is True)
+    assert gw.live_push_health()["live_stale_for_s"] is None
+
+    gw._last_live_param_publish_monotonic = time.monotonic() - 90.0
+    gw._publish_live_push_health()
+    await _wait_until(lambda: any(e.healthy is False for e in events))
+    snap = gw.live_push_health()
+    assert snap["push_healthy"] is False
+    assert snap["live_stale_for_s"] is not None
+    assert snap["live_stale_for_s"] >= 90.0
+
+    with caplog.at_level("WARNING"):
+        await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 2}}}})
+        await _wait_until(lambda: "live ParamUpdate resumed after" in caplog.text)
+    snap = gw.live_push_health()
+    assert snap["push_healthy"] is True
+    assert snap["live_stale_for_s"] is None
+    assert snap["last_resumed_after_s"] is not None
+    assert snap["last_resumed_after_s"] >= 90.0
+
+    await gw.stop()
+    assert gw.live_push_health()["push_healthy"] is None
+
+
+async def test_gateway_live_push_health_n_a_when_stale_disabled() -> None:
+    """When stale_prime_after_s is 0, session-up reports push_healthy=True."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=0,
+    )
+    await gw.start()
+    assert gw.live_push_health()["push_healthy"] is True
+    await gw.stop()
+
+
 def test_gateway_arm_zombie_recovery_cooldown_exponential() -> None:
     """Cooldown arms from base seconds and caps exponential growth."""
     gw = BragerOneGateway(

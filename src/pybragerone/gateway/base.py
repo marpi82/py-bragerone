@@ -13,6 +13,7 @@ from .helpers import (
     CloudSessionSource,
     ConnectivitySource,
     GenericCb,
+    LivePushCb,
     ModuleConnectivityCb,
     ParametersCb,
     SnapshotCb,
@@ -54,6 +55,8 @@ class GatewayMixinBase:
     _bound_ns_sid: str | None
     _last_param_publish_monotonic: float | None
     _last_live_param_publish_monotonic: float | None
+    _live_push_healthy: bool | None
+    _last_live_resumed_after_s: float | None
     _tasks: set[asyncio.Task[Any]]
     _started: bool
     _prime_done: asyncio.Event
@@ -65,6 +68,7 @@ class GatewayMixinBase:
     _on_module_connectivity: list[ModuleConnectivityCb]
     _on_cloud_session: list[CloudSessionCb]
     _on_alarm_quantity: list[AlarmQuantityCb]
+    _on_live_push: list[LivePushCb]
     _ws_session_up: bool
     _ws_hooks_registered: bool
     _connectivity_generation: int
@@ -95,6 +99,15 @@ class GatewayMixinBase:
         raise NotImplementedError
 
     def last_live_param_update_age_s(self) -> float | None:
+        raise NotImplementedError
+
+    def live_push_health(self) -> dict[str, float | bool | None]:
+        raise NotImplementedError
+
+    def _compute_live_push_health(self) -> tuple[bool | None, float | None]:
+        raise NotImplementedError
+
+    def _publish_live_push_health(self, *, force_notify: bool = False) -> None:
         raise NotImplementedError
 
     def module_gateway(self, devid: str) -> dict[str, Any] | None:
