@@ -75,6 +75,13 @@ def _as_cloud_outage_reason(value: object) -> CloudOutageReason | None:
     return None
 
 
+def _cloud_outage_reason_from_source(source: CloudSessionSource) -> CloudOutageReason:
+    """Map a session flip source to an outage reason (never ``connect``)."""
+    if source == "stop":
+        return "stop"
+    return "disconnect"
+
+
 def _as_module_outage_reason(value: object) -> ModuleOutageReason | None:
     """Narrow a snapshot value to a module outage reason literal."""
     if value == "rest":
@@ -762,10 +769,10 @@ class BragerOneGateway:
         if not up:
             self._cloud_down_since_mono = time.monotonic()
             self._cloud_down_since_wall = time.time()
-            self._cloud_down_reason = source if source != "connect" else "disconnect"
+            self._cloud_down_reason = _cloud_outage_reason_from_source(source)
         elif self._cloud_down_since_mono is not None:
             duration = max(0.0, time.monotonic() - self._cloud_down_since_mono)
-            ended_reason = self._cloud_down_reason or (source if source != "connect" else "disconnect")
+            ended_reason = self._cloud_down_reason or _cloud_outage_reason_from_source(source)
             self._cloud_last_down_for_s = duration
             self._cloud_last_reason = ended_reason
             LOG.warning(
