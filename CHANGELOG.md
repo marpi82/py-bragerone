@@ -7,8 +7,12 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.9.2rc2] - 2026-09-06
+
 ### Added
 
+- Connectivity outage duration + reason on cloud-session / module online flips
+  (``down_since`` / ``down_for_s`` / ``reason`` / ``last_*``) (#376).
 - Live ``ParamUpdate`` push health via ``live_push_health()`` / ``on_live_push`` /
   :class:`LivePushHealth` — ``push_healthy`` / ``live_stale_for_s`` while Socket.IO
   is up, plus ``last_resumed_after_s`` and a resume log when live traffic returns
@@ -18,6 +22,10 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   outage ``reason`` / ``last_reason`` (#380).
 - ``connectivity_episodes()`` ring buffer of recent completed cloud / module /
   live-stale outages for diagnostics export (#379).
+
+### Changed
+
+- Split ``BragerOneGateway`` into helper mixins under ``pybragerone.gateway`` (#377).
 
 ## [2026.9.1] - 2026-09-01
 
@@ -324,7 +332,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.1...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc2...HEAD
+[2026.9.2rc2]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc1...2026.9.2rc2
 [2026.9.1]: https://github.com/marpi82/py-bragerone/releases/tag/2026.9.1
 [2026.9.0]: https://github.com/marpi82/py-bragerone/releases/tag/2026.9.0
 [2026.8.9]: https://github.com/marpi82/py-bragerone/releases/tag/2026.8.9
