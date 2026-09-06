@@ -10,6 +10,7 @@ from ..models.events import (
     AlarmQuantityChanged,
     CloudOutageReason,
     CloudSessionConnectivity,
+    LivePushHealth,
     ModuleConnectivity,
     ModuleOutageReason,
 )
@@ -24,6 +25,7 @@ GenericCb = Callable[[str, Any], Awaitable[None] | None]
 ModuleConnectivityCb = Callable[[ModuleConnectivity], Awaitable[None] | None]
 CloudSessionCb = Callable[[CloudSessionConnectivity], Awaitable[None] | None]
 AlarmQuantityCb = Callable[[AlarmQuantityChanged], Awaitable[None] | None]
+LivePushCb = Callable[[LivePushHealth], Awaitable[None] | None]
 
 
 def _as_cloud_outage_reason(value: object) -> CloudOutageReason | None:

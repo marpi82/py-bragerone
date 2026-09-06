@@ -121,6 +121,28 @@ class CloudSessionConnectivity:
     #: Reason/source of the most recently completed session-down outage.
 
 
+@dataclass(frozen=True)
+class LivePushHealth:
+    """Live ``ParamUpdate`` push health while the Socket.IO session is up.
+
+    Distinct from :class:`CloudSessionConnectivity` (transport up/down) and
+    :class:`ModuleConnectivity` (module ``connectedAt``). A zombie session is
+    ``up=True`` with ``healthy=False`` / ``live_stale_for_s`` set.
+    """
+
+    healthy: bool | None
+    #: ``True`` when live push is fresh; ``False`` when stale; ``None`` when N/A
+    #: (session down) or unknown (session up but no live ``ParamUpdate`` yet).
+    live_stale_for_s: float | None = None
+    #: Seconds since the last live ``ParamUpdate`` while push is unhealthy.
+    last_resumed_after_s: float | None = None
+    #: Duration of the most recently completed live-stale episode (after resume).
+    changed: bool = True
+    #: ``True`` when ``healthy`` flipped versus the previous cache.
+    ts: float = field(default_factory=time.time)
+    #: Timestamp when this signal was produced.
+
+
 # Official SPA Layout / ObjectsLayout event name.
 MODULE_CONNECTION_STATUS_CHANGED = "app:module:connection:status:changed"
 # SPA EventChannel.SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED (0x16). Payload ``{devid}``;

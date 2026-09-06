@@ -7,6 +7,13 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Added
+
+- Live ``ParamUpdate`` push health via ``live_push_health()`` / ``on_live_push`` /
+  :class:`LivePushHealth` — ``push_healthy`` / ``live_stale_for_s`` while Socket.IO
+  is up, plus ``last_resumed_after_s`` and a resume log when live traffic returns
+  after a zombie gap (#378). Distinct from cloud-session and module online bits.
+
 ## [2026.9.1] - 2026-09-01
 
 ### Changed
