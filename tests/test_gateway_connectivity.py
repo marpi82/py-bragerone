@@ -1670,6 +1670,14 @@ async def test_gateway_live_push_health_stale_and_resume(caplog: pytest.LogCaptu
     await _wait_until(lambda: gw.live_push_health()["push_healthy"] is True)
     assert gw.live_push_health()["live_stale_for_s"] is None
 
+    # Prior-session live stamp must not count as zombie after reconnect.
+    gw._last_live_param_publish_monotonic = time.monotonic() - 500.0
+    gw._ws_session_up_since_mono = time.monotonic()
+    snap = gw.live_push_health()
+    assert snap["push_healthy"] is None
+    assert snap["live_stale_for_s"] is None
+
+    gw._ws_session_up_since_mono = time.monotonic() - 120.0
     gw._last_live_param_publish_monotonic = time.monotonic() - 90.0
     gw._publish_live_push_health()
     await _wait_until(lambda: any(e.healthy is False for e in events))
@@ -1691,7 +1699,7 @@ async def test_gateway_live_push_health_stale_and_resume(caplog: pytest.LogCaptu
     assert gw.live_push_health()["push_healthy"] is None
 
 
-async def test_gateway_live_push_health_n_a_when_stale_disabled() -> None:
+async def test_gateway_live_push_health_true_when_stale_disabled() -> None:
     """When stale_prime_after_s is 0, session-up reports push_healthy=True."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]

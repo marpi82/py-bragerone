@@ -55,15 +55,22 @@ class RecoveryMixin(GatewayMixinBase):
         }
 
     def _compute_live_push_health(self) -> tuple[bool | None, float | None]:
-        """Derive ``(push_healthy, live_stale_for_s)`` from session + live age."""
+        """Derive ``(push_healthy, live_stale_for_s)`` from session + live age.
+
+        Only live publishes stamped **during the current** Socket.IO up window
+        count. A stamp from a prior session is treated as unknown so session
+        downtime is not folded into zombie push-stale gaps.
+        """
         if not self._ws_session_up:
             return None, None
         threshold = self._stale_prime_after_s
         if threshold <= 0:
             return True, None
-        age = self.last_live_param_update_age_s()
-        if age is None:
+        session_since = self._ws_session_up_since_mono
+        stamped = self._last_live_param_publish_monotonic
+        if session_since is None or stamped is None or stamped < session_since:
             return None, None
+        age = time.monotonic() - stamped
         if age >= threshold:
             return False, age
         return True, None
@@ -105,7 +112,15 @@ class RecoveryMixin(GatewayMixinBase):
             resumed_after: float | None = None
             prev_live = self._last_live_param_publish_monotonic
             threshold = self._stale_prime_after_s
-            if self._ws_session_up and prev_live is not None and threshold > 0 and (now - prev_live) >= threshold:
+            session_since = self._ws_session_up_since_mono
+            if (
+                self._ws_session_up
+                and session_since is not None
+                and prev_live is not None
+                and prev_live >= session_since
+                and threshold > 0
+                and (now - prev_live) >= threshold
+            ):
                 resumed_after = now - prev_live
                 self._last_live_resumed_after_s = resumed_after
                 LOG.warning("live ParamUpdate resumed after %.1fs", resumed_after)

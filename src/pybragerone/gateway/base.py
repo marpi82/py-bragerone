@@ -57,6 +57,7 @@ class GatewayMixinBase:
     _last_live_param_publish_monotonic: float | None
     _live_push_healthy: bool | None
     _last_live_resumed_after_s: float | None
+    _ws_session_up_since_mono: float | None
     _tasks: set[asyncio.Task[Any]]
     _started: bool
     _prime_done: asyncio.Event

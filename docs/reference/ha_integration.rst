@@ -133,6 +133,7 @@ Three distinct layers (do not conflate):
    (``push_healthy`` / ``live_stale_for_s``). A zombie is session-up with
    ``push_healthy=False``. Resume logs ``live ParamUpdate resumed after …s`` and
    sets ``last_resumed_after_s``.
+
 The gateway primes from ``GET /v1/modules`` (``connectedAt != 0`` means online —
 same truthiness check as the SPA card/modal) and listens for the official Socket.IO
 push ``app:module:connection:status:changed`` (payload

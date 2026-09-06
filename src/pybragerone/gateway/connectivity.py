@@ -81,6 +81,10 @@ class ConnectivityMixin(GatewayMixinBase):
             if source == "stop" and not up:
                 self._finalize_cloud_outage_at_stop()
             return
+        if up:
+            self._ws_session_up_since_mono = time.monotonic()
+        else:
+            self._ws_session_up_since_mono = None
         if not up:
             self._cloud_down_since_mono = time.monotonic()
             self._cloud_down_since_wall = time.time()

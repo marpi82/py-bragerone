@@ -152,6 +152,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._last_live_param_publish_monotonic: float | None = None
         self._live_push_healthy: bool | None = None
         self._last_live_resumed_after_s: float | None = None
+        self._ws_session_up_since_mono: float | None = None
 
         self._tasks: set[asyncio.Task[Any]] = set()
         self._started = False
