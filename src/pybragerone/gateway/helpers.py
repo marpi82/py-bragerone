@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import Any, Literal, cast, get_args
 
 from ..api.client import ApiError
 from ..models.events import (
@@ -30,10 +30,8 @@ LivePushCb = Callable[[LivePushHealth], Awaitable[None] | None]
 
 def _as_cloud_outage_reason(value: object) -> CloudOutageReason | None:
     """Narrow a snapshot value to a cloud outage reason literal."""
-    if value == "disconnect":
-        return "disconnect"
-    if value == "stop":
-        return "stop"
+    if isinstance(value, str) and value in get_args(CloudOutageReason):
+        return cast(CloudOutageReason, value)
     return None
 
 

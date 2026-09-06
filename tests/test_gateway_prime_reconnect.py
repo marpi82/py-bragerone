@@ -127,6 +127,10 @@ class FakeRealtimeManager:
         """Return an engine SID."""
         return self._engine_sid
 
+    def last_disconnect_reason(self) -> str | None:
+        """Return the last classified disconnect reason."""
+        return None
+
     async def subscribe(self, modules: Iterable[str]) -> None:
         """Record a subscribe call."""
         self.subscribe_calls.append(list(modules))

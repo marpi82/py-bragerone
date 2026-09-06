@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, Literal
 
-from ..models.events import CloudOutageReason, EventBus, ModuleOutageReason
+from ..models.events import CloudOutageReason, ConnectivityEpisodeLayer, EventBus, ModuleOutageReason
 from .helpers import (
     AlarmQuantityCb,
     CloudSessionCb,
@@ -86,6 +87,8 @@ class GatewayMixinBase:
     _module_down_reason: dict[str, ModuleOutageReason]
     _module_last_down_for_s: dict[str, float]
     _module_last_reason: dict[str, ModuleOutageReason]
+    _connectivity_episode_limit: int
+    _connectivity_episodes: deque[dict[str, float | str | None]]
     _alarm_quantity_cache: dict[str, int | None]
     _alarm_quantity_ws_rev: dict[str, int]
     _alarm_quantity_ingest_lock: asyncio.Lock
@@ -118,6 +121,21 @@ class GatewayMixinBase:
         raise NotImplementedError
 
     def module_outage(self, devid: str) -> dict[str, float | str | None]:
+        raise NotImplementedError
+
+    def connectivity_episodes(self) -> list[dict[str, float | str | None]]:
+        raise NotImplementedError
+
+    def _record_connectivity_episode(
+        self,
+        *,
+        layer: ConnectivityEpisodeLayer,
+        started_at: float,
+        ended_at: float,
+        down_for_s: float,
+        reason: str | None,
+        devid: str | None = None,
+    ) -> None:
         raise NotImplementedError
 
     def _cloud_outage_snapshot(self) -> dict[str, float | str | None]:
@@ -165,7 +183,13 @@ class GatewayMixinBase:
     async def refresh_module_connectivity(self) -> None:
         raise NotImplementedError
 
-    async def _set_ws_session_up(self, up: bool, *, source: CloudSessionSource) -> None:
+    async def _set_ws_session_up(
+        self,
+        up: bool,
+        *,
+        source: CloudSessionSource,
+        reason: CloudOutageReason | None = None,
+    ) -> None:
         raise NotImplementedError
 
     async def _on_ws_connected(self) -> None:

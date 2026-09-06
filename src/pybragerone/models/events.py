@@ -10,7 +10,20 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 ModuleOutageReason = Literal["rest", "ws", "derived"]
-CloudOutageReason = Literal["disconnect", "stop"]
+CloudOutageReason = Literal[
+    "disconnect",
+    "stop",
+    "handshake_503",
+    "connect_error",
+    "empty_queue",
+    "server_stop",
+    "eio_close",
+    "reconnect_error",
+    "supervisor_stale",
+    "force_reconnect",
+    "hard_reset",
+]
+ConnectivityEpisodeLayer = Literal["cloud", "module", "live_stale"]
 
 
 @dataclass(frozen=True)
@@ -114,11 +127,32 @@ class CloudSessionConnectivity:
     down_for_s: float | None = None
     #: Seconds down so far while ``up`` is false; ``None`` when up.
     reason: CloudOutageReason | None = None
-    #: Client-side reason/source for the current down (``disconnect`` / ``stop``); not plant diagnostics.
+    #: Client-side reason for the current down (coarse ``disconnect`` / ``stop`` or
+    #: finer WS tokens such as ``handshake_503`` / ``eio_close``); not plant diagnostics.
     last_down_for_s: float | None = None
     #: Duration of the most recently completed session-down outage.
     last_reason: CloudOutageReason | None = None
-    #: Reason/source of the most recently completed session-down outage.
+    #: Reason of the most recently completed session-down outage.
+
+
+@dataclass(frozen=True)
+class ConnectivityEpisode:
+    """One completed connectivity outage episode for diagnostics history (#379)."""
+
+    layer: ConnectivityEpisodeLayer
+    #: Which connectivity layer this episode belongs to.
+    started_at: float
+    #: Wall-clock ``time.time()`` when the outage started.
+    ended_at: float
+    #: Wall-clock ``time.time()`` when the outage ended.
+    down_for_s: float
+    #: Duration of the outage in seconds.
+    reason: str | None = None
+    #: Observation/source reason (cloud WS tokens, module source, or ``live_stale``).
+    devid: str | None = None
+    #: Module id when ``layer`` is ``module``; otherwise ``None``.
+    episode_id: str | None = None
+    #: Opaque id for correlating logs with diagnostics.
 
 
 @dataclass(frozen=True)

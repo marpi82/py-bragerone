@@ -75,6 +75,9 @@ class RealtimeManagerClient(Protocol):
     def engine_sid(self) -> str | None:
         raise NotImplementedError
 
+    def last_disconnect_reason(self) -> str | None:
+        raise NotImplementedError
+
     async def subscribe(self, modules: list[str]) -> None:
         raise NotImplementedError
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from typing import Any, Literal
 
@@ -58,6 +59,8 @@ _DEFAULT_ZOMBIE_RECOVERY_COOLDOWN_S = 300.0
 _DEFAULT_ZOMBIE_QUARANTINE_AFTER = 3
 # REST-only pause after the rebuild cap (seconds).
 _DEFAULT_ZOMBIE_QUARANTINE_S = 6 * 3600.0
+# Recent completed connectivity episodes retained for diagnostics (#379).
+_DEFAULT_CONNECTIVITY_EPISODE_LIMIT = 20
 
 
 class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
@@ -90,6 +93,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         zombie_recovery_cooldown_s: float = _DEFAULT_ZOMBIE_RECOVERY_COOLDOWN_S,
         zombie_quarantine_after: int = _DEFAULT_ZOMBIE_QUARANTINE_AFTER,
         zombie_quarantine_s: float = _DEFAULT_ZOMBIE_QUARANTINE_S,
+        connectivity_episode_limit: int = _DEFAULT_CONNECTIVITY_EPISODE_LIMIT,
     ) -> None:
         """Initialize the gateway but do not start it yet.
 
@@ -120,6 +124,8 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
                 before REST-only quarantine. Use ``0`` to disable quarantine.
             zombie_quarantine_s: Seconds to skip WS recovery while quarantined
                 (REST primes still run). Use ``0`` to disable the pause duration.
+            connectivity_episode_limit: Max completed outage episodes retained for
+                :meth:`connectivity_episodes` diagnostics. Use ``0`` to disable.
         """
         self.object_id = int(object_id)
         self.modules = sorted(set(modules))
@@ -138,6 +144,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._zombie_recovery_cooldown_s = float(zombie_recovery_cooldown_s)
         self._zombie_quarantine_after = int(zombie_quarantine_after)
         self._zombie_quarantine_s = float(zombie_quarantine_s)
+        self._connectivity_episode_limit = max(0, int(connectivity_episode_limit))
         self._zombie_prime_streak = 0
         self._zombie_hard_restart_streak = 0
         self._zombie_recycle_streak = 0
@@ -190,6 +197,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._module_down_reason: dict[str, ModuleOutageReason] = {}
         self._module_last_down_for_s: dict[str, float] = {}
         self._module_last_reason: dict[str, ModuleOutageReason] = {}
+        self._connectivity_episodes: deque[dict[str, float | str | None]] = deque(maxlen=self._connectivity_episode_limit or None)
         self._alarm_quantity_cache: dict[str, int | None] = {}
         self._alarm_quantity_ws_rev: dict[str, int] = {}
         self._alarm_quantity_ingest_lock = asyncio.Lock()
