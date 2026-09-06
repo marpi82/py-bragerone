@@ -195,13 +195,15 @@ class RealtimeManager:
                 The supervisor reconnect loop and Socket.IO ``disconnect`` pass False
                 so a wedged client does not spam session-down callbacks.
             reason: Optional stable outage token retained for :meth:`last_disconnect_reason`.
+                Ignored when this call is suppressed (already notified and ``force`` is False)
+                so a coarse follow-up cannot clobber a finer reason already recorded.
         """
+        if self._disconnect_notified and not force:
+            return
         if reason is not None:
             self._last_disconnect_reason = reason
         elif self._last_disconnect_reason is None:
             self._last_disconnect_reason = "disconnect"
-        if self._disconnect_notified and not force:
-            return
         self._disconnect_notified = True
         for cb in list(self._on_disconnected):
             try:

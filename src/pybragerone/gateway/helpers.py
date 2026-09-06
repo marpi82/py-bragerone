@@ -31,6 +31,8 @@ LivePushCb = Callable[[LivePushHealth], Awaitable[None] | None]
 def _as_cloud_outage_reason(value: object) -> CloudOutageReason | None:
     """Narrow a snapshot value to a cloud outage reason literal."""
     if isinstance(value, str) and value in get_args(CloudOutageReason):
+        # Membership against ``get_args(CloudOutageReason)`` is the guard; cast only
+        # tells mypy the Literal union after that runtime check.
         return cast(CloudOutageReason, value)
     return None
 

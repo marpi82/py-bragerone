@@ -2714,3 +2714,45 @@ async def test_connectivity_episodes_ring_buffer_overflow_and_layers() -> None:
     assert episodes[-1]["reason"] == "live_stale"
     assert episodes[-1]["devid"] is None
     await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_connectivity_episodes_disabled_and_finalize_at_stop() -> None:
+    """Episode limit 0 skips recording; stop-while-down finalizes into last_* + buffer."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=1_700_000_000, gateway=None)]
+    ws = FakeRealtimeManager()
+    disabled = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        connectivity_episode_limit=0,
+    )
+    await disabled.start()
+    await ws.trigger_disconnected(reason="empty_queue")
+    await disabled._on_ws_connected()
+    assert disabled.connectivity_episodes() == []
+    await disabled.stop()
+
+    ws2 = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws2,
+        connectivity_poll_interval=0,
+        connectivity_episode_limit=5,
+    )
+    await gw.start()
+    await ws2.trigger_disconnected(reason="supervisor_stale")
+    assert gw.ws_session_up() is False
+    # Simulate missing wall stamp so finalize uses ended_at - duration.
+    gw._cloud_down_since_wall = None
+    await gw.stop()
+    assert gw.cloud_session_outage()["last_reason"] in {"supervisor_stale", "stop"}
+    episodes = gw.connectivity_episodes()
+    assert len(episodes) == 1
+    assert episodes[0]["layer"] == "cloud"
+    assert episodes[0]["reason"] in {"supervisor_stale", "stop"}

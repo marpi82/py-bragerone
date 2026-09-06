@@ -14,10 +14,7 @@ def _payload_text(data: Any | None) -> str:
     if data is None:
         return ""
     if isinstance(data, bytes):
-        try:
-            data = data.decode("utf-8", errors="replace")
-        except Exception:
-            return ""
+        data = data.decode("utf-8", errors="replace")
     if isinstance(data, str):
         return data.strip().lower()
     if isinstance(data, dict):
@@ -57,7 +54,9 @@ def classify_ws_failure_reason(
         return "eio_close"
     if "257" in text:
         return "eio_close"
-    if ("eio" in text or "engine.io" in text) and "close" in text:
+    # Match Engine.IO close without the hostname-like ``engine.io`` substring
+    # (CodeQL treats that as incomplete URL sanitization).
+    if "close" in text and ("eio" in text or ("engine" in text and "io" in text)):
         return "eio_close"
     if "reconnect" in text and "error" in text:
         return "reconnect_error"

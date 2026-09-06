@@ -171,17 +171,22 @@ async def test_lifecycle_handlers_and_connect_callbacks(monkeypatch: pytest.Monk
 
     disc.clear()
     # connect_error while already disconnected does not re-fire disconnect callbacks
+    # and must not clobber the finer reason already stored.
+    assert manager.last_disconnect_reason() == "connect_error"
     await manager._on_connect_error("still-down")
     await _drain_spawned()
     assert disc == []
+    assert manager.last_disconnect_reason() == "connect_error"
 
     disc.clear()
     await manager._on_disconnect()
     await _drain_spawned()
     assert disc == []
+    assert manager.last_disconnect_reason() == "connect_error"
     await manager._on_reconnect()
     await manager._on_reconnect_attempt(2)
     await manager._on_reconnect_error("err")
+    assert manager.last_disconnect_reason() == "reconnect_error"
     await manager._on_error("err")
     await manager._on_message("hi")
 
