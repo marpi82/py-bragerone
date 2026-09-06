@@ -194,6 +194,17 @@ async def test_lifecycle_handlers_and_connect_callbacks(monkeypatch: pytest.Monk
     assert manager.sid() is None
     assert manager.engine_sid() == "ENG-SID"
 
+    # Cover reason=None defaults and the elif that keeps an existing token.
+    manager._disconnect_notified = False
+    manager._last_disconnect_reason = None
+    manager._notify_disconnected()
+    assert manager.last_disconnect_reason() == "disconnect"
+    manager._disconnect_notified = False
+    manager._notify_disconnected()  # reason None, last already set → elif skipped
+    assert manager.last_disconnect_reason() == "disconnect"
+    manager._notify_disconnected(force=True, reason="force_reconnect")
+    assert manager.last_disconnect_reason() == "force_reconnect"
+
 
 async def test_subscribe_emits_variants_and_skips_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     """Subscribe is a no-op for no modules and emits listen variants with group_id."""

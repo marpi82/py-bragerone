@@ -6,7 +6,7 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable, Iterable
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from httpx import ReadTimeout, TimeoutException
@@ -2756,3 +2756,27 @@ async def test_connectivity_episodes_disabled_and_finalize_at_stop() -> None:
     assert len(episodes) == 1
     assert episodes[0]["layer"] == "cloud"
     assert episodes[0]["reason"] in {"supervisor_stale", "stop"}
+
+
+@pytest.mark.asyncio
+async def test_ws_disconnect_reason_branches_without_callable_getter() -> None:
+    """Cover ws=None and non-callable last_disconnect_reason getattr paths."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=1_700_000_000, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+
+    # Attribute present but not callable → skip getter, fall back to disconnect.
+    gw.ws = cast(Any, SimpleNamespace(last_disconnect_reason="handshake_503"))
+    gw._ws_session_up = True
+    await gw._on_ws_disconnected()
+    assert gw.cloud_session_outage()["reason"] == "disconnect"
+    await gw._set_ws_session_up(True, source="connect")
+
+    gw.ws = None
+    gw._ws_session_up = True
+    await gw._on_ws_disconnected()
+    assert gw.ws_session_up() is False
+    assert gw.cloud_session_outage()["reason"] == "disconnect"
+    await gw.stop()
