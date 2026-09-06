@@ -15,10 +15,11 @@ from typing import (
 
 import socketio
 
-from ..models.events import MODULE_CONNECTION_STATUS_CHANGED, MODULE_MEMORY_UPDATED
+from ..models.events import MODULE_CONNECTION_STATUS_CHANGED, MODULE_MEMORY_UPDATED, CloudOutageReason
 from ..utils import spawn
 from .client import format_expected_failure_reason, is_expected_upstream_unavailable
 from .constants import IO_BASE, ONE_BASE, SOCK_PATH, WS_NAMESPACE
+from .ws_reasons import classify_ws_failure_reason
 
 log = logging.getLogger(__name__)
 sio_log = logging.getLogger(__name__ + ".sio")
@@ -138,6 +139,7 @@ class RealtimeManager:
         self._disconnect_timeout_s = max(0.05, min(5.0, float(connect_timeout_s)))
         # True until the first successful connect, then after each disconnect notify.
         self._disconnect_notified = True
+        self._last_disconnect_reason: CloudOutageReason | None = None
 
         # Reconnection is owned exclusively by our supervisor loop (with fresh-token
         # resolution and a hard connect timeout); the built-in socket.io reconnect
@@ -165,30 +167,43 @@ class RealtimeManager:
                 log.exception("Error in on_connected callback")
 
         self._disconnect_notified = False
+        self._last_disconnect_reason = None
         self._connected.set()
 
     async def _on_disconnect(self) -> None:
         log.info("WS disconnected")
         self._connected.clear()
-        self._notify_disconnected()
+        self._notify_disconnected(reason="disconnect")
 
     async def _on_connect_error(self, data: Any | None = None) -> None:
         log.warning("WS connect_error: %s", data)
         was_connected = self._connected.is_set()
         self._connected.clear()
         if was_connected:
-            self._notify_disconnected()
+            self._notify_disconnected(reason=classify_ws_failure_reason(data, default="connect_error"))
 
-    def _notify_disconnected(self, *, force: bool = False) -> None:
+    def _notify_disconnected(
+        self,
+        *,
+        force: bool = False,
+        reason: CloudOutageReason | None = None,
+    ) -> None:
         """Invoke disconnect callbacks (sync or async).
 
         Args:
             force: When True, notify even if a previous drop was already reported.
                 The supervisor reconnect loop and Socket.IO ``disconnect`` pass False
                 so a wedged client does not spam session-down callbacks.
+            reason: Optional stable outage token retained for :meth:`last_disconnect_reason`.
+                Ignored when this call is suppressed (already notified and ``force`` is False)
+                so a coarse follow-up cannot clobber a finer reason already recorded.
         """
         if self._disconnect_notified and not force:
             return
+        if reason is not None:
+            self._last_disconnect_reason = reason
+        elif self._last_disconnect_reason is None:
+            self._last_disconnect_reason = "disconnect"
         self._disconnect_notified = True
         for cb in list(self._on_disconnected):
             try:
@@ -206,6 +221,7 @@ class RealtimeManager:
 
     async def _on_reconnect_error(self, data: Any | None = None) -> None:
         log.warning("WS reconnect_error: %s", data)
+        self._last_disconnect_reason = classify_ws_failure_reason(data, default="reconnect_error")
 
     async def _on_error(self, data: Any) -> None:
         log.error("WS ERROR: %s", data)
@@ -289,7 +305,7 @@ class RealtimeManager:
         safely ``sid()`` / ``modules.connect`` immediately afterwards.
         """
         log.warning("Forcing WS hard reconnect (zombie session recovery)")
-        self._notify_disconnected(force=True)
+        self._notify_disconnected(force=True, reason="force_reconnect")
         # Clear the namespace-joined bit so ``_ensure_connected`` does not treat a
         # wedged ``sio.connected=True`` session as healthy.
         self._connected.clear()
@@ -314,7 +330,7 @@ class RealtimeManager:
         ``ParamUpdate`` traffic.
         """
         log.warning("Hard-resetting WS transport (zombie session recovery)")
-        self._notify_disconnected(force=True)
+        self._notify_disconnected(force=True, reason="hard_reset")
         self._supervisor_running = False
         task = self._supervisor_task
         self._supervisor_task = None
@@ -521,7 +537,7 @@ class RealtimeManager:
                 # Engine.IO abort often skips the Socket.IO disconnect callback.
                 # Notify now so CloudSession goes down and REST-prime can run even if
                 # leftover disconnect() is still wedged.
-                self._notify_disconnected()
+                self._notify_disconnected(reason="supervisor_stale")
                 try:
                     await self._ensure_connected(initial=False)
                 except Exception:
@@ -540,6 +556,10 @@ class RealtimeManager:
     def engine_sid(self) -> str | None:
         """Return the underlying Engine.IO SID (transport-level)."""
         return getattr(self._sio, "sid", None)
+
+    def last_disconnect_reason(self) -> CloudOutageReason | None:
+        """Return the most recent classified disconnect reason, if any."""
+        return self._last_disconnect_reason
 
     async def disconnect(self) -> None:
         """Close the Socket.IO connection if open."""

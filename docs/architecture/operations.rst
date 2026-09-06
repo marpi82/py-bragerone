@@ -47,8 +47,11 @@ Best Practices
   (``on_cloud_session`` / ``ws_session_up``). Session and module online flips track
   outage duration (``down_since`` / ``down_for_s`` / ``reason`` while down;
   ``last_down_for_s`` / ``last_reason`` after restore) via
-  ``cloud_session_outage()`` / ``module_outage(devid)`` — ``reason`` is the
-  observation source, not plant diagnostics.
+  ``cloud_session_outage()`` / ``module_outage(devid)`` — ``reason`` is a client
+  observation token (coarse ``disconnect`` / ``stop`` or finer WS tokens such as
+  ``handshake_503`` / ``eio_close``), not plant diagnostics. Completed episodes
+  across cloud / module / live-stale layers are retained in
+  ``connectivity_episodes()`` for support dumps.
 - **Live push health** is a third layer: ``live_push_health()`` /
   ``on_live_push`` expose ``push_healthy`` / ``live_stale_for_s`` while the
   Socket.IO session is up but no live ``ParamUpdate`` arrives (zombie). Resume

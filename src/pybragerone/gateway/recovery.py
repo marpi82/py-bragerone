@@ -123,6 +123,14 @@ class RecoveryMixin(GatewayMixinBase):
             ):
                 resumed_after = now - prev_live
                 self._last_live_resumed_after_s = resumed_after
+                ended_at = time.time()
+                self._record_connectivity_episode(
+                    layer="live_stale",
+                    started_at=ended_at - resumed_after,
+                    ended_at=ended_at,
+                    down_for_s=resumed_after,
+                    reason="live_stale",
+                )
                 LOG.warning("live ParamUpdate resumed after %.1fs", resumed_after)
             self._last_live_param_publish_monotonic = now
             self._zombie_prime_streak = 0

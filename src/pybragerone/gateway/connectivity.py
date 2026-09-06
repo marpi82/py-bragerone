@@ -5,10 +5,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
 from typing import Any
 
 from ..api.client import format_expected_failure_reason, is_expected_upstream_unavailable
-from ..models.events import CloudSessionConnectivity, ModuleConnectivity
+from ..models.events import (
+    CloudOutageReason,
+    CloudSessionConnectivity,
+    ConnectivityEpisodeLayer,
+    ModuleConnectivity,
+)
 from .base import GatewayMixinBase
 from .helpers import (
     CloudSessionSource,
@@ -33,8 +39,9 @@ class ConnectivityMixin(GatewayMixinBase):
         """Return cloud-session outage snapshot for diagnostics / HA attributes.
 
         Keys: ``down_since``, ``down_for_s``, ``reason``, ``last_down_for_s``,
-        ``last_reason``. ``reason`` is the client observation source
-        (``disconnect`` / ``stop``), not plant hardware diagnostics.
+        ``last_reason``. ``reason`` is a client observation token (coarse
+        ``disconnect`` / ``stop`` or finer WS tokens such as ``handshake_503``),
+        not plant hardware diagnostics.
         """
         return self._cloud_outage_snapshot()
 
@@ -45,6 +52,40 @@ class ConnectivityMixin(GatewayMixinBase):
         ``source`` (``rest`` / ``ws`` / ``derived``).
         """
         return self._module_outage_snapshot(devid)
+
+    def connectivity_episodes(self) -> list[dict[str, float | str | None]]:
+        """Return recent completed connectivity episodes (oldest → newest).
+
+        Each dict has ``layer`` (``cloud`` / ``module`` / ``live_stale``),
+        ``started_at`` / ``ended_at`` (wall-clock), ``down_for_s``, ``reason``,
+        optional ``devid``, and ``episode_id``. No credentials.
+        """
+        return [dict(item) for item in self._connectivity_episodes]
+
+    def _record_connectivity_episode(
+        self,
+        *,
+        layer: ConnectivityEpisodeLayer,
+        started_at: float,
+        ended_at: float,
+        down_for_s: float,
+        reason: str | None,
+        devid: str | None = None,
+    ) -> None:
+        """Append one completed outage episode to the ring buffer."""
+        if self._connectivity_episode_limit <= 0:
+            return
+        self._connectivity_episodes.append(
+            {
+                "layer": layer,
+                "started_at": float(started_at),
+                "ended_at": float(ended_at),
+                "down_for_s": float(down_for_s),
+                "reason": reason,
+                "devid": devid,
+                "episode_id": f"{layer}-{uuid.uuid4().hex[:8]}",
+            }
+        )
 
     async def refresh_module_connectivity(self) -> None:
         """Refresh module↔cloud connectivity from REST ``get_modules``."""
@@ -59,8 +100,18 @@ class ConnectivityMixin(GatewayMixinBase):
         if self._cloud_down_since_mono is None:
             return
         duration = max(0.0, time.monotonic() - self._cloud_down_since_mono)
+        ended_at = time.time()
+        started_at = self._cloud_down_since_wall if self._cloud_down_since_wall is not None else ended_at - duration
+        reason = self._cloud_down_reason or "stop"
         self._cloud_last_down_for_s = duration
-        self._cloud_last_reason = self._cloud_down_reason or "stop"
+        self._cloud_last_reason = reason
+        self._record_connectivity_episode(
+            layer="cloud",
+            started_at=started_at,
+            ended_at=ended_at,
+            down_for_s=duration,
+            reason=reason,
+        )
         self._cloud_down_since_mono = None
         self._cloud_down_since_wall = None
         self._cloud_down_reason = None
@@ -71,7 +122,13 @@ class ConnectivityMixin(GatewayMixinBase):
         self._cloud_down_since_wall = None
         self._cloud_down_reason = None
 
-    async def _set_ws_session_up(self, up: bool, *, source: CloudSessionSource) -> None:
+    async def _set_ws_session_up(
+        self,
+        up: bool,
+        *,
+        source: CloudSessionSource,
+        reason: CloudOutageReason | None = None,
+    ) -> None:
         """Update library↔cloud session cache and notify listeners on flips."""
         previous = self._ws_session_up
         self._ws_session_up = up
@@ -88,12 +145,21 @@ class ConnectivityMixin(GatewayMixinBase):
         if not up:
             self._cloud_down_since_mono = time.monotonic()
             self._cloud_down_since_wall = time.time()
-            self._cloud_down_reason = _cloud_outage_reason_from_source(source)
+            self._cloud_down_reason = reason or _cloud_outage_reason_from_source(source)
         elif self._cloud_down_since_mono is not None:
             duration = max(0.0, time.monotonic() - self._cloud_down_since_mono)
-            ended_reason = self._cloud_down_reason or _cloud_outage_reason_from_source(source)
+            ended_reason = self._cloud_down_reason or reason or _cloud_outage_reason_from_source(source)
+            ended_at = time.time()
+            started_at = self._cloud_down_since_wall if self._cloud_down_since_wall is not None else ended_at - duration
             self._cloud_last_down_for_s = duration
             self._cloud_last_reason = ended_reason
+            self._record_connectivity_episode(
+                layer="cloud",
+                started_at=started_at,
+                ended_at=ended_at,
+                down_for_s=duration,
+                reason=ended_reason,
+            )
             LOG.warning(
                 "Cloud session restored after %.1fs (reason=%s, source=%s)",
                 duration,
@@ -181,7 +247,14 @@ class ConnectivityMixin(GatewayMixinBase):
         # Bump generation so any stale disconnect work cannot clobber a reconnect.
         self._connectivity_generation += 1
         # Keep last connectedAt; REST poll / reconnect refresh remains authoritative.
-        await self._set_ws_session_up(False, source="disconnect")
+        ws_reason: CloudOutageReason | None = None
+        ws = self.ws
+        if ws is not None:
+            getter = getattr(ws, "last_disconnect_reason", None)
+            if callable(getter):
+                raw = getter()
+                ws_reason = _as_cloud_outage_reason(raw)
+        await self._set_ws_session_up(False, source="disconnect", reason=ws_reason)
 
     async def _connectivity_poll_loop(self) -> None:
         """Periodically refresh REST connectedAt while the gateway is running.
@@ -348,8 +421,18 @@ class ConnectivityMixin(GatewayMixinBase):
             elif devid in self._module_down_since_mono:
                 duration = max(0.0, time.monotonic() - self._module_down_since_mono[devid])
                 ended_reason = self._module_down_reason.get(devid, source)
+                ended_at = time.time()
+                started_at = self._module_down_since_wall.get(devid, ended_at - duration)
                 self._module_last_down_for_s[devid] = duration
                 self._module_last_reason[devid] = ended_reason
+                self._record_connectivity_episode(
+                    layer="module",
+                    started_at=started_at,
+                    ended_at=ended_at,
+                    down_for_s=duration,
+                    reason=ended_reason,
+                    devid=devid,
+                )
                 LOG.warning(
                     "Module connectivity restored after %.1fs (devid=%s reason=%s source=%s)",
                     duration,

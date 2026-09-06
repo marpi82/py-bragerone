@@ -116,13 +116,22 @@ Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so exist
    # gateway.live_push_health() -> dict  # push_healthy / live_stale_for_s / last_resumed_after_s
    # gateway.last_param_update_age_s() -> float | None
    # gateway.last_live_param_update_age_s() -> float | None
+   # gateway.connectivity_episodes() -> list[dict]  # recent completed outages (ring buffer)
 
-``reason`` on these outage snapshots is the **client observation source**
-(``disconnect`` / ``stop`` for the Socket.IO session; ``rest`` / ``ws`` /
-``derived`` for module ``connectedAt``) — not a diagnosis of boiler or LAN hardware.
-Live ``down_for_s`` is measured with a monotonic clock while ``down_since`` is
-wall-clock ``time.time()`` for Home Assistant attributes. A restore logs
-``Cloud session restored after …s`` / ``Module connectivity restored after …s``.
+``reason`` on these outage snapshots is a **client observation token**
+(``disconnect`` / ``stop``, or finer Socket.IO tokens such as ``handshake_503``,
+``empty_queue``, ``server_stop``, ``eio_close``, ``connect_error``,
+``reconnect_error``, ``supervisor_stale``, ``force_reconnect``, ``hard_reset`` for
+the cloud session; ``rest`` / ``ws`` / ``derived`` for module ``connectedAt``) —
+not a diagnosis of boiler or LAN hardware. Live ``down_for_s`` is measured with a
+monotonic clock while ``down_since`` is wall-clock ``time.time()`` for Home
+Assistant attributes. A restore logs ``Cloud session restored after …s`` /
+``Module connectivity restored after …s``.
+
+Recent completed episodes (all three layers) are retained in a ring buffer via
+``gateway.connectivity_episodes()`` — oldest → newest dicts with ``layer``,
+``started_at`` / ``ended_at``, ``down_for_s``, ``reason``, optional ``devid``,
+and ``episode_id`` (suitable for HA diagnostics; no credentials).
 
 Three distinct layers (do not conflate):
 

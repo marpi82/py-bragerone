@@ -6,7 +6,7 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable, Iterable
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from httpx import ReadTimeout, TimeoutException
@@ -100,6 +100,7 @@ class FakeRealtimeManager:
         self.subscribe_calls: list[list[str]] = []
         self.force_reconnect_calls = 0
         self.hard_reset_calls = 0
+        self._last_disconnect_reason: str | None = None
 
     def on_event(self, cb: Callable[[str, Any], Awaitable[None] | None]) -> None:
         """Store the event callback."""
@@ -134,6 +135,10 @@ class FakeRealtimeManager:
         """Return an engine SID."""
         return "ENG-SID"
 
+    def last_disconnect_reason(self) -> str | None:
+        """Return the last classified disconnect reason."""
+        return self._last_disconnect_reason
+
     async def subscribe(self, modules: Iterable[str]) -> None:
         """Record a subscribe call."""
         self.subscribe_calls.append(list(modules))
@@ -153,8 +158,9 @@ class FakeRealtimeManager:
         await self.disconnect()
         await self.connect()
 
-    async def trigger_disconnected(self) -> None:
+    async def trigger_disconnected(self, *, reason: str | None = "disconnect") -> None:
         """Invoke disconnect callbacks."""
+        self._last_disconnect_reason = reason
         for cb in list(self._on_disconnected):
             res = cb()
             if asyncio.iscoroutine(res):
@@ -2635,4 +2641,142 @@ async def test_gateway_module_online_clears_quarantine(
         assert "cleared quarantine" in caplog.text
     assert resub_calls["n"] == 1
     assert gw._zombie_quarantine_until is None
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_cloud_session_propagates_ws_disconnect_reason() -> None:
+    """Structured WS reason tokens reach cloud-session outage metadata (#380)."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=1_700_000_000, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+    assert gw.ws_session_up() is True
+
+    await ws.trigger_disconnected(reason="handshake_503")
+    outage = gw.cloud_session_outage()
+    assert outage["reason"] == "handshake_503"
+    assert outage["down_for_s"] is not None
+
+    await gw._on_ws_connected()
+    restored = gw.cloud_session_outage()
+    assert restored["reason"] is None
+    assert restored["last_reason"] == "handshake_503"
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_connectivity_episodes_ring_buffer_overflow_and_layers() -> None:
+    """Ring buffer retains N completed episodes across cloud/module/live_stale (#379)."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=1_700_000_000, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        connectivity_episode_limit=3,
+        stale_prime_after_s=1.0,
+    )
+    await gw.start()
+
+    # Three cloud outage cycles → overflow keeps the newest three.
+    for _ in range(4):
+        await ws.trigger_disconnected(reason="eio_close")
+        await gw._on_ws_connected()
+
+    episodes = gw.connectivity_episodes()
+    assert len(episodes) == 3
+    assert all(ep["layer"] == "cloud" for ep in episodes)
+    assert all(ep["reason"] == "eio_close" for ep in episodes)
+    assert all(isinstance(ep["episode_id"], str) and ep["episode_id"] for ep in episodes)
+
+    # Module offline → online records a module episode.
+    await gw._apply_connectivity(devid="M1", online=False, source="rest", connected_at=0)
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=1_700_000_000)
+    episodes = gw.connectivity_episodes()
+    assert len(episodes) == 3
+    assert episodes[-1]["layer"] == "module"
+    assert episodes[-1]["devid"] == "M1"
+    assert episodes[-1]["reason"] == "rest"
+
+    # Live-stale resume records live_stale.
+    now = time.monotonic()
+    gw._ws_session_up = True
+    gw._ws_session_up_since_mono = now - 10.0
+    gw._last_live_param_publish_monotonic = now - 5.0
+    gw._touch_param_publish(1, live=True)
+    episodes = gw.connectivity_episodes()
+    assert episodes[-1]["layer"] == "live_stale"
+    assert episodes[-1]["reason"] == "live_stale"
+    assert episodes[-1]["devid"] is None
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_connectivity_episodes_disabled_and_finalize_at_stop() -> None:
+    """Episode limit 0 skips recording; stop-while-down finalizes into last_* + buffer."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=1_700_000_000, gateway=None)]
+    ws = FakeRealtimeManager()
+    disabled = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        connectivity_episode_limit=0,
+    )
+    await disabled.start()
+    await ws.trigger_disconnected(reason="empty_queue")
+    await disabled._on_ws_connected()
+    assert disabled.connectivity_episodes() == []
+    await disabled.stop()
+
+    ws2 = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws2,
+        connectivity_poll_interval=0,
+        connectivity_episode_limit=5,
+    )
+    await gw.start()
+    await ws2.trigger_disconnected(reason="supervisor_stale")
+    assert gw.ws_session_up() is False
+    # Simulate missing wall stamp so finalize uses ended_at - duration.
+    gw._cloud_down_since_wall = None
+    await gw.stop()
+    assert gw.cloud_session_outage()["last_reason"] in {"supervisor_stale", "stop"}
+    episodes = gw.connectivity_episodes()
+    assert len(episodes) == 1
+    assert episodes[0]["layer"] == "cloud"
+    assert episodes[0]["reason"] in {"supervisor_stale", "stop"}
+
+
+@pytest.mark.asyncio
+async def test_ws_disconnect_reason_branches_without_callable_getter() -> None:
+    """Cover ws=None and non-callable last_disconnect_reason getattr paths."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=1_700_000_000, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+
+    # Attribute present but not callable → skip getter, fall back to disconnect.
+    gw.ws = cast(Any, SimpleNamespace(last_disconnect_reason="handshake_503"))
+    gw._ws_session_up = True
+    await gw._on_ws_disconnected()
+    assert gw.cloud_session_outage()["reason"] == "disconnect"
+    await gw._set_ws_session_up(True, source="connect")
+
+    gw.ws = None
+    gw._ws_session_up = True
+    await gw._on_ws_disconnected()
+    assert gw.ws_session_up() is False
+    assert gw.cloud_session_outage()["reason"] == "disconnect"
     await gw.stop()

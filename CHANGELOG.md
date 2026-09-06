@@ -13,6 +13,11 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   :class:`LivePushHealth` — ``push_healthy`` / ``live_stale_for_s`` while Socket.IO
   is up, plus ``last_resumed_after_s`` and a resume log when live traffic returns
   after a zombie gap (#378). Distinct from cloud-session and module online bits.
+- Structured Socket.IO failure reason tokens (``handshake_503``, ``empty_queue``,
+  ``server_stop``, ``eio_close``, ``connect_error``, …) propagated into cloud-session
+  outage ``reason`` / ``last_reason`` (#380).
+- ``connectivity_episodes()`` ring buffer of recent completed cloud / module /
+  live-stale outages for diagnostics export (#379).
 
 ## [2026.9.1] - 2026-09-01
 
