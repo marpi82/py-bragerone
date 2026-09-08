@@ -370,10 +370,12 @@ async def test_from_credentials_owns_the_api_client(httpx_mock: HTTPXMock) -> No
         object_id=7,
         modules=["M1"],
         ws=ws,
+        get_modules_fail_offline_after=0,
     )
     assert gw._owns_api is True
     assert gw.object_id == 7
     assert gw.api.access_token == "T1"
+    assert gw._get_modules_fail_offline_after == 0
     await gw.stop()
     assert ws.disconnect_calls == 1
 

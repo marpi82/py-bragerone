@@ -232,6 +232,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         ws: RealtimeManagerClient | None = None,
         api: BragerOneApiClient | None = None,
         connectivity_poll_interval: float = _DEFAULT_CONNECTIVITY_POLL_INTERVAL_S,
+        get_modules_fail_offline_after: int = _DEFAULT_GET_MODULES_FAIL_OFFLINE_AFTER,
     ) -> BragerOneGateway:
         """Create a gateway from credentials.
 
@@ -246,6 +247,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
             ws: Optional WS client instance (testing).
             api: Optional API client instance (testing/customization).
             connectivity_poll_interval: See :meth:`__init__`.
+            get_modules_fail_offline_after: See :meth:`__init__` (``0`` disables fail-close).
 
         Returns:
             An initialized gateway (not started).
@@ -265,6 +267,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
             ws=ws,
             owns_api=owned_api,
             connectivity_poll_interval=connectivity_poll_interval,
+            get_modules_fail_offline_after=get_modules_fail_offline_after,
         )
 
     # ------------------------- Public API -------------------------
