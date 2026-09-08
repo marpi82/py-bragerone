@@ -340,28 +340,30 @@ class ConnectivityMixin(GatewayMixinBase):
         the gateway fail-closes every subscribed module to offline. Refreshes
         are serialized so overlapping poll/reconnect completions cannot rebuild
         the streak after a newer success. In-flight HTTP completions after
-        ``stop()`` (connectivity generation bump) are discarded.
+        ``stop()`` (lifecycle generation bump) are discarded; ordinary WS
+        disconnect bumps only the session generation and must not drop a
+        concurrent ``get_modules`` failure from the fail-close streak.
         """
         if not self._started:
             return
-        generation = self._connectivity_generation
+        lifecycle_generation = self._lifecycle_generation
         pending: list[tuple[int, ModuleConnectivity]] = []
         async with self._get_modules_refresh_lock:
-            if not self._started or generation != self._connectivity_generation:
+            if not self._started or lifecycle_generation != self._lifecycle_generation:
                 return
             await self._refresh_module_connectivity_locked(
                 source=source,
                 pending=pending,
-                generation=generation,
+                lifecycle_generation=lifecycle_generation,
             )
         if not self._is_started():
             return
         # Notify outside the lock so an async listener that re-enters refresh cannot deadlock.
         # Per-devid online-state sequence numbers drop events superseded by a nested
         # online/offline flip (metadata-only applies do not bump that sequence).
-        # Abort the batch only on stop() (``_started``). Ordinary WS disconnect also bumps
-        # ``_connectivity_generation``, but those events were already committed under the lock
-        # and must still be delivered — otherwise consumers stay stale until a later poll
+        # Abort the batch only on stop() (``_started``). Ordinary WS disconnect bumps
+        # ``_connectivity_generation`` only; REST commits already under the lock must
+        # still be delivered — otherwise consumers stay stale until a later poll
         # happens to change state again.
         for seq, event in pending:
             if not self._is_started():
@@ -373,7 +375,7 @@ class ConnectivityMixin(GatewayMixinBase):
         *,
         source: ConnectivitySource,
         pending: list[tuple[int, ModuleConnectivity]],
-        generation: int,
+        lifecycle_generation: int,
     ) -> None:
         """Apply one ``get_modules`` refresh while ``_get_modules_refresh_lock`` is held."""
         # Snapshot before HTTP so a concurrent WS observation can suppress fail-close.
@@ -381,12 +383,12 @@ class ConnectivityMixin(GatewayMixinBase):
         try:
             rows = await self.api.get_modules(self.object_id)
         except Exception as err:
-            if not self._started or generation != self._connectivity_generation:
+            if not self._started or lifecycle_generation != self._lifecycle_generation:
                 return
             await self._note_get_modules_failure(err, source=source, pending=pending, observed_at=observed_at)
             return
 
-        if not self._started or generation != self._connectivity_generation:
+        if not self._started or lifecycle_generation != self._lifecycle_generation:
             return
 
         rows_list = list(rows)
@@ -650,10 +652,12 @@ class ConnectivityMixin(GatewayMixinBase):
         metadata_changed = (connected_at is not None and connected_at != previous_connected_at) or (
             gateway is not None and gateway != previous_gateway
         )
+        # Confirming repeats (same connectedAt / gateway) still advance the observation
+        # revision so a concurrent REST fail-close cannot overwrite a WS reaffirmation.
+        self._bump_module_observation_seq(devid)
         if not online_changed and not metadata_changed:
             return
 
-        self._bump_module_observation_seq(devid)
         self._module_online[devid] = online
         if online_changed:
             if not online:

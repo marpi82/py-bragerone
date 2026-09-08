@@ -80,6 +80,7 @@ class GatewayMixinBase:
     _ws_session_up: bool
     _ws_hooks_registered: bool
     _connectivity_generation: int
+    _lifecycle_generation: int
     _module_connected_at: dict[str, int]
     _module_online: dict[str, bool]
     _module_gateway: dict[str, dict[str, Any]]
@@ -215,7 +216,7 @@ class GatewayMixinBase:
         *,
         source: ConnectivitySource,
         pending: list[tuple[int, ModuleConnectivity]],
-        generation: int,
+        lifecycle_generation: int,
     ) -> None:
         raise NotImplementedError
 

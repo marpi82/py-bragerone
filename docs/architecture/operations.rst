@@ -59,7 +59,9 @@ Best Practices
   ``(threshold - 1) * connectivity_poll_interval`` seconds since the first
   failure — the gateway **fail-closes** every subscribed module to offline
   (``connectedAt=0``), except modules that received a newer valid WS observation
-  while that HTTP call was in flight. Empty/unrecognised listings advance the same streak.
+  while that HTTP call was in flight (including no-op reaffirmations). Ordinary WS
+  disconnect does not drop an in-flight ``get_modules`` failure from the streak.
+  Empty/unrecognised listings advance the same streak.
   Refreshes are serialized so overlapping poll/reconnect completions cannot
   rebuild the streak after a newer success. Use ``0`` to disable fail-close.
 - **Live push health** is a third layer: ``live_push_health()`` /

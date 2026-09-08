@@ -197,6 +197,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._ws_session_up = False
         self._ws_hooks_registered = False
         self._connectivity_generation = 0
+        self._lifecycle_generation = 0
         self._module_connected_at: dict[str, int] = {}
         self._module_online: dict[str, bool] = {}
         self._module_gateway: dict[str, dict[str, Any]] = {}
@@ -416,6 +417,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
     async def stop(self) -> None:
         """Gracefully stop the gateway: drop WS and release HTTP resources."""
         self._started = False
+        self._lifecycle_generation += 1
         self._connectivity_generation += 1
         # Intentional downtime must not carry a half-finished fail-close window into the next start().
         self._get_modules_fail_streak = 0
