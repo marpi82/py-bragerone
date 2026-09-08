@@ -338,15 +338,24 @@ class ConnectivityMixin(GatewayMixinBase):
         """
         if not self._started:
             return
+        pending: list[ModuleConnectivity] = []
         async with self._get_modules_refresh_lock:
-            await self._refresh_module_connectivity_locked(source=source)
+            await self._refresh_module_connectivity_locked(source=source, pending=pending)
+        # Notify outside the lock so an async listener that re-enters refresh cannot deadlock.
+        for event in pending:
+            await self._emit_module_connectivity(event)
 
-    async def _refresh_module_connectivity_locked(self, *, source: ConnectivitySource) -> None:
+    async def _refresh_module_connectivity_locked(
+        self,
+        *,
+        source: ConnectivitySource,
+        pending: list[ModuleConnectivity],
+    ) -> None:
         """Apply one ``get_modules`` refresh while ``_get_modules_refresh_lock`` is held."""
         try:
             rows = await self.api.get_modules(self.object_id)
         except Exception as err:
-            await self._note_get_modules_failure(err, source=source)
+            await self._note_get_modules_failure(err, source=source, pending=pending)
             return
 
         rows_list = list(rows)
@@ -367,6 +376,7 @@ class ConnectivityMixin(GatewayMixinBase):
                 source=source,
                 connected_at=connected_at,
                 gateway=_gateway_as_dict(getattr(row, "gateway", None)),
+                pending=pending,
             )
 
         # Only derive offline / clear the fail streak when the listing contained at
@@ -383,6 +393,7 @@ class ConnectivityMixin(GatewayMixinBase):
                 await self._advance_get_modules_fail_streak(
                     source=source,
                     detail="no recognised subscribed modules",
+                    pending=pending,
                 )
             return
 
@@ -395,9 +406,16 @@ class ConnectivityMixin(GatewayMixinBase):
                 online=False,
                 source="derived",
                 connected_at=self._module_connected_at.get(devid, 0),
+                pending=pending,
             )
 
-    async def _note_get_modules_failure(self, err: Exception, *, source: ConnectivitySource) -> None:
+    async def _note_get_modules_failure(
+        self,
+        err: Exception,
+        *,
+        source: ConnectivitySource,
+        pending: list[ModuleConnectivity] | None = None,
+    ) -> None:
         """Record a failed ``get_modules`` poll and optionally fail-close modules."""
         expected = _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err)
         if expected:
@@ -405,6 +423,7 @@ class ConnectivityMixin(GatewayMixinBase):
                 source=source,
                 detail=format_expected_failure_reason(err),
                 level="warning",
+                pending=pending,
             )
         else:
             await self._advance_get_modules_fail_streak(
@@ -412,6 +431,7 @@ class ConnectivityMixin(GatewayMixinBase):
                 detail=f"{type(err).__name__}: {err}",
                 level="exception",
                 exc=err,
+                pending=pending,
             )
 
     async def _advance_get_modules_fail_streak(
@@ -421,6 +441,7 @@ class ConnectivityMixin(GatewayMixinBase):
         detail: str,
         level: str = "warning",
         exc: Exception | None = None,
+        pending: list[ModuleConnectivity] | None = None,
     ) -> None:
         """Bump the fail streak and fail-close when streak + elapsed window allow it."""
         now = time.monotonic()
@@ -468,9 +489,14 @@ class ConnectivityMixin(GatewayMixinBase):
             streak,
             source,
         )
-        await self._fail_close_subscribed_modules(source=source)
+        await self._fail_close_subscribed_modules(source=source, pending=pending)
 
-    async def _fail_close_subscribed_modules(self, *, source: ConnectivitySource) -> None:
+    async def _fail_close_subscribed_modules(
+        self,
+        *,
+        source: ConnectivitySource,
+        pending: list[ModuleConnectivity] | None = None,
+    ) -> None:
         """Mark every subscribed module offline after sustained ``get_modules`` failure."""
         for devid in list(self.modules):
             await self._apply_connectivity(
@@ -478,7 +504,15 @@ class ConnectivityMixin(GatewayMixinBase):
                 online=False,
                 source=source,
                 connected_at=0,
+                pending=pending,
             )
+
+    async def _emit_module_connectivity(self, event: ModuleConnectivity) -> None:
+        """Dispatch one module-connectivity event and optional online recovery."""
+        if self._on_module_connectivity:
+            await self._invoke_list(self._on_module_connectivity, event)
+        if event.online_changed and event.online and event.devid in self.modules:
+            await self._maybe_recover_after_module_online(event.devid)
 
     async def _apply_connectivity(
         self,
@@ -488,8 +522,13 @@ class ConnectivityMixin(GatewayMixinBase):
         source: ConnectivitySource,
         connected_at: int | None,
         gateway: dict[str, Any] | None = None,
+        pending: list[ModuleConnectivity] | None = None,
     ) -> None:
-        """Update cache and notify listeners when online or metadata changes."""
+        """Update cache and notify listeners when online or metadata changes.
+
+        When *pending* is provided, queue the event for the caller to emit after
+        releasing ``_get_modules_refresh_lock`` (avoids callback re-entrancy deadlock).
+        """
         previous_online = self._module_online.get(devid)
         previous_connected_at = self._module_connected_at.get(devid)
         previous_gateway = self._module_gateway.get(devid)
@@ -561,10 +600,10 @@ class ConnectivityMixin(GatewayMixinBase):
             online_changed,
             metadata_changed,
         )
-        if self._on_module_connectivity:
-            await self._invoke_list(self._on_module_connectivity, event)
-        if online_changed and online and devid in self.modules:
-            await self._maybe_recover_after_module_online(devid)
+        if pending is not None:
+            pending.append(event)
+            return
+        await self._emit_module_connectivity(event)
 
     async def _ingest_module_connection_status(self, payload: dict[str, Any]) -> None:
         """Apply SPA ``app:module:connection:status:changed`` payloads per devid."""

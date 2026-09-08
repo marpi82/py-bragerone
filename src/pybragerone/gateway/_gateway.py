@@ -415,6 +415,9 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         """Gracefully stop the gateway: drop WS and release HTTP resources."""
         self._started = False
         self._connectivity_generation += 1
+        # Intentional downtime must not carry a half-finished fail-close window into the next start().
+        self._get_modules_fail_streak = 0
+        self._get_modules_fail_since_mono = None
 
         # 1) disconnect WS first so disconnect hooks see ``_started is False`` and skip work.
         try:

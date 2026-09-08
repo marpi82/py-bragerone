@@ -432,9 +432,78 @@ async def test_gateway_get_modules_refresh_serialized_ignores_stale_failure() ->
     await asyncio.sleep(0)
     assert gw._get_modules_fail_streak == 0
     release_first.set()
-    await first
-    await second
+    # Bind gather results so CodeQL does not treat bare awaits as ineffectual.
+    _ = await asyncio.gather(first, second)
     assert gw._get_modules_fail_streak == 0
+    assert gw.module_online("M1") is True
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_get_modules_refresh_callback_reentry_no_deadlock() -> None:
+    """Async connectivity listeners may call refresh without deadlocking the lock."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    reentered = asyncio.Event()
+
+    async def _on_connectivity(event: ModuleConnectivity) -> None:
+        if event.online_changed and not event.online:
+            await gw.refresh_module_connectivity()
+            reentered.set()
+
+    gw.on_module_connectivity(_on_connectivity)
+    await gw.start()
+    api.get_modules_error = ReadTimeout("read timeout")
+    api.module_rows = []
+    # Force fail-close via three failures (poll_interval=0 skips the time window).
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._refresh_module_connectivity(source="rest")
+    assert gw.module_online("M1") is False
+    assert reentered.is_set()
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_get_modules_fail_streak_resets_on_stop() -> None:
+    """stop()/start() clears the fail-close window so prior downtime does not count."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=60.0,
+        get_modules_fail_offline_after=3,
+    )
+    await gw.start()
+    api.get_modules_error = ReadTimeout("read timeout")
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._refresh_module_connectivity(source="rest")
+    assert gw._get_modules_fail_streak == 2
+    fail_since_before_stop = gw._get_modules_fail_since_mono
+    assert fail_since_before_stop is not None
+    await gw.stop()
+    assert gw._get_modules_fail_streak == 0
+    assert gw._get_modules_fail_since_mono is None
+
+    api.get_modules_error = None
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    await gw.start()
+    api.get_modules_error = ReadTimeout("read timeout")
+    await gw._refresh_module_connectivity(source="rest")
+    assert gw._get_modules_fail_streak == 1
     assert gw.module_online("M1") is True
     await gw.stop()
 

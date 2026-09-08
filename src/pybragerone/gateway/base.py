@@ -208,10 +208,21 @@ class GatewayMixinBase:
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource = "rest") -> None:
         raise NotImplementedError
 
-    async def _refresh_module_connectivity_locked(self, *, source: ConnectivitySource) -> None:
+    async def _refresh_module_connectivity_locked(
+        self,
+        *,
+        source: ConnectivitySource,
+        pending: list[Any],
+    ) -> None:
         raise NotImplementedError
 
-    async def _note_get_modules_failure(self, err: Exception, *, source: ConnectivitySource) -> None:
+    async def _note_get_modules_failure(
+        self,
+        err: Exception,
+        *,
+        source: ConnectivitySource,
+        pending: list[Any] | None = None,
+    ) -> None:
         raise NotImplementedError
 
     async def _advance_get_modules_fail_streak(
@@ -221,10 +232,19 @@ class GatewayMixinBase:
         detail: str,
         level: str = "warning",
         exc: Exception | None = None,
+        pending: list[Any] | None = None,
     ) -> None:
         raise NotImplementedError
 
-    async def _fail_close_subscribed_modules(self, *, source: ConnectivitySource) -> None:
+    async def _fail_close_subscribed_modules(
+        self,
+        *,
+        source: ConnectivitySource,
+        pending: list[Any] | None = None,
+    ) -> None:
+        raise NotImplementedError
+
+    async def _emit_module_connectivity(self, event: Any) -> None:
         raise NotImplementedError
 
     async def _apply_connectivity(
@@ -235,6 +255,7 @@ class GatewayMixinBase:
         source: ConnectivitySource,
         connected_at: int | None,
         gateway: dict[str, Any] | None = None,
+        pending: list[Any] | None = None,
     ) -> None:
         raise NotImplementedError
 
