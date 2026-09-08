@@ -7,6 +7,20 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.9.2rc3] - 2026-09-08
+
+### Fixed
+
+- Sustained unusable ``get_modules`` results (errors or empty/unrecognised listings)
+  now fail-close subscribed modules after ``get_modules_fail_offline_after``
+  consecutive failures (default 3; ``0`` disables). A single hiccup still keeps
+  the previous online state. Configurable via ``BragerOneGateway`` /
+  ``from_credentials`` (#388).
+- Concurrent REST fail-close no longer overwrites a fresher WebSocket connectivity
+  observation (including identical connectedAt / gateway reaffirmations); ordinary
+  WS disconnect does not discard an in-flight ``get_modules`` failure from the
+  streak — only ``stop()`` invalidates that HTTP completion (#388).
+
 ## [2026.9.2rc2] - 2026-09-06
 
 ### Added
@@ -332,7 +346,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc2...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc3...HEAD
+[2026.9.2rc3]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc2...2026.9.2rc3
 [2026.9.2rc2]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc1...2026.9.2rc2
 [2026.9.1]: https://github.com/marpi82/py-bragerone/releases/tag/2026.9.1
 [2026.9.0]: https://github.com/marpi82/py-bragerone/releases/tag/2026.9.0
