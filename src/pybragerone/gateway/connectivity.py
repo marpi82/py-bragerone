@@ -376,12 +376,14 @@ class ConnectivityMixin(GatewayMixinBase):
         generation: int,
     ) -> None:
         """Apply one ``get_modules`` refresh while ``_get_modules_refresh_lock`` is held."""
+        # Snapshot before HTTP so a concurrent WS observation can suppress fail-close.
+        observed_at = {d: self._module_observation_seq.get(d, 0) for d in self.modules}
         try:
             rows = await self.api.get_modules(self.object_id)
         except Exception as err:
             if not self._started or generation != self._connectivity_generation:
                 return
-            await self._note_get_modules_failure(err, source=source, pending=pending)
+            await self._note_get_modules_failure(err, source=source, pending=pending, observed_at=observed_at)
             return
 
         if not self._started or generation != self._connectivity_generation:
@@ -429,6 +431,7 @@ class ConnectivityMixin(GatewayMixinBase):
                     source=source,
                     detail="no recognised subscribed modules",
                     pending=pending,
+                    observed_at=observed_at,
                 )
             return
 
@@ -450,6 +453,7 @@ class ConnectivityMixin(GatewayMixinBase):
         *,
         source: ConnectivitySource,
         pending: list[tuple[int, ModuleConnectivity]] | None = None,
+        observed_at: dict[str, int] | None = None,
     ) -> None:
         """Record a failed ``get_modules`` poll and optionally fail-close modules."""
         expected = _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err)
@@ -459,6 +463,7 @@ class ConnectivityMixin(GatewayMixinBase):
                 detail=format_expected_failure_reason(err),
                 level="warning",
                 pending=pending,
+                observed_at=observed_at,
             )
         else:
             await self._advance_get_modules_fail_streak(
@@ -467,6 +472,7 @@ class ConnectivityMixin(GatewayMixinBase):
                 level="exception",
                 exc=err,
                 pending=pending,
+                observed_at=observed_at,
             )
 
     async def _advance_get_modules_fail_streak(
@@ -477,6 +483,7 @@ class ConnectivityMixin(GatewayMixinBase):
         level: str = "warning",
         exc: Exception | None = None,
         pending: list[tuple[int, ModuleConnectivity]] | None = None,
+        observed_at: dict[str, int] | None = None,
     ) -> None:
         """Bump the fail streak and fail-close when streak + elapsed window allow it."""
         now = time.monotonic()
@@ -526,16 +533,29 @@ class ConnectivityMixin(GatewayMixinBase):
             streak,
             source,
         )
-        await self._fail_close_subscribed_modules(source=source, pending=pending)
+        await self._fail_close_subscribed_modules(source=source, pending=pending, observed_at=observed_at)
 
     async def _fail_close_subscribed_modules(
         self,
         *,
         source: ConnectivitySource,
         pending: list[tuple[int, ModuleConnectivity]] | None = None,
+        observed_at: dict[str, int] | None = None,
     ) -> None:
-        """Mark every subscribed module offline after sustained ``get_modules`` failure."""
+        """Mark subscribed modules offline after sustained ``get_modules`` failure.
+
+        Skip devids whose observation revision advanced since *observed_at* was
+        captured (typically a fresher WS ``connection:status`` while HTTP was in flight).
+        """
         for devid in list(self.modules):
+            if observed_at is not None:
+                current = self._module_observation_seq.get(devid, 0)
+                if current != observed_at.get(devid, 0):
+                    LOG.debug(
+                        "Skipping fail-close for devid=%s; newer connectivity observation arrived",
+                        devid,
+                    )
+                    continue
             await self._apply_connectivity(
                 devid=devid,
                 online=False,
@@ -548,6 +568,12 @@ class ConnectivityMixin(GatewayMixinBase):
         """Advance the per-module online-state sequence and return the new value."""
         nxt = self._module_online_seq.get(devid, 0) + 1
         self._module_online_seq[devid] = nxt
+        return nxt
+
+    def _bump_module_observation_seq(self, devid: str) -> int:
+        """Advance the per-module observation revision (any successful apply)."""
+        nxt = self._module_observation_seq.get(devid, 0) + 1
+        self._module_observation_seq[devid] = nxt
         return nxt
 
     def _coalesce_module_connectivity_event(self, event: ModuleConnectivity) -> ModuleConnectivity:
@@ -628,6 +654,7 @@ class ConnectivityMixin(GatewayMixinBase):
         if not online_changed and not metadata_changed:
             return
 
+        self._bump_module_observation_seq(devid)
         self._module_online[devid] = online
         if online_changed:
             if not online:

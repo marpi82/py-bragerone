@@ -451,7 +451,7 @@ async def test_gateway_get_modules_refresh_serialized_ignores_stale_failure() ->
             raise ReadTimeout("stale failure")
         return await original_get_modules(object_id)
 
-    api.get_modules = _gated_get_modules  # type: ignore[method-assign]
+    api.get_modules = _gated_get_modules  # type: ignore[method-assign]  # test double replaces async method
     first = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
     await entered_first.wait()
     second = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
@@ -558,7 +558,7 @@ async def test_gateway_get_modules_inflight_stop_discards_failure() -> None:
         await release.wait()
         raise ReadTimeout("after stop")
 
-    api.get_modules = _gated_get_modules  # type: ignore[method-assign]
+    api.get_modules = _gated_get_modules  # type: ignore[method-assign]  # test double replaces async method
     task = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
     await entered.wait()
     await gw.stop()
@@ -573,7 +573,7 @@ async def test_gateway_get_modules_inflight_stop_discards_failure() -> None:
             raise api.get_modules_error
         return list(api.module_rows)
 
-    api.get_modules = _ok_get_modules  # type: ignore[method-assign]
+    api.get_modules = _ok_get_modules  # type: ignore[method-assign]  # test double replaces async method
     api.get_modules_error = None
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     await gw.start()
@@ -609,7 +609,7 @@ async def test_gateway_get_modules_inflight_stop_discards_success() -> None:
         await release.wait()
         return [SimpleNamespace(devid="M1", connectedAt=999, gateway=None)]
 
-    api.get_modules = _gated_get_modules  # type: ignore[method-assign]
+    api.get_modules = _gated_get_modules  # type: ignore[method-assign]  # test double replaces async method
     task = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
     await entered.wait()
     await gw.stop()
@@ -651,7 +651,7 @@ async def test_gateway_get_modules_lock_waiter_discards_after_stop() -> None:
         second_http["n"] += 1
         return [SimpleNamespace(devid="M1", connectedAt=77, gateway=None)]
 
-    api.get_modules = _gated_get_modules  # type: ignore[method-assign]
+    api.get_modules = _gated_get_modules  # type: ignore[method-assign]  # test double replaces async method
     first = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
     await entered_first.wait()
     second = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
@@ -661,6 +661,56 @@ async def test_gateway_get_modules_lock_waiter_discards_after_stop() -> None:
     _ = await asyncio.gather(first, second)
     assert second_http["n"] == 0
     assert gw._get_modules_fail_streak == 0
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_fail_close_skips_fresher_ws_observation() -> None:
+    """Late get_modules fail-close must not overwrite a newer WS connectivity observation."""
+    api = FakeApiClient()
+    api.module_rows = [
+        SimpleNamespace(devid="M1", connectedAt=50, gateway=None),
+        SimpleNamespace(devid="M2", connectedAt=50, gateway=None),
+    ]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1", "M2"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    await gw.start()
+    assert gw.module_online("M1") is True
+    assert gw.module_online("M2") is True
+
+    api.get_modules_error = ReadTimeout("streak")
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._refresh_module_connectivity(source="rest")
+    assert gw._get_modules_fail_streak == 2
+
+    release = asyncio.Event()
+    entered = asyncio.Event()
+
+    async def _gated_get_modules(object_id: int) -> list[Any]:
+        entered.set()
+        await release.wait()
+        raise ReadTimeout("threshold failure")
+
+    api.get_modules_error = None
+    api.get_modules = _gated_get_modules  # type: ignore[method-assign]  # test double replaces async method
+    task = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
+    await entered.wait()
+    await gw._ingest_module_connection_status({"M1": {"connectedAt": 99, "gateway": {}}})
+    assert gw.module_online("M1") is True
+    assert gw.module_connected_at("M1") == 99
+    release.set()
+    _ = await asyncio.gather(task)
+    assert gw.module_online("M1") is True
+    assert gw.module_connected_at("M1") == 99
+    assert gw.module_online("M2") is False
+    assert gw.module_connected_at("M2") == 0
     await gw.stop()
 
 
@@ -889,7 +939,7 @@ async def test_gateway_emit_rechecks_seq_between_listeners_and_recovery() -> Non
 
     gw.on_module_connectivity(_first)
     gw.on_module_connectivity(_later)
-    gw._maybe_recover_after_module_online = _recover  # type: ignore[method-assign]
+    gw._maybe_recover_after_module_online = _recover  # type: ignore[method-assign]  # test double replaces async method
     await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=42)
     assert not any(event.online for event in later_events)
     assert recovered == []
@@ -927,7 +977,7 @@ async def test_gateway_emit_preserves_recovery_after_metadata_supersede() -> Non
         recovered.append(devid)
 
     gw.on_module_connectivity(_first)
-    gw._maybe_recover_after_module_online = _recover  # type: ignore[method-assign]
+    gw._maybe_recover_after_module_online = _recover  # type: ignore[method-assign]  # test double replaces async method
     await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=42)
     assert recovered == ["M1"]
     await gw.stop()

@@ -157,7 +157,9 @@ A single failed ``get_modules`` keeps the previous module state; after
 and with the default 60 s poll, only after roughly two poll intervals since the
 first failure — the gateway fail-closes subscribed modules to offline.
 Empty or unrecognised listings advance the same streak (they do not reset it)
-and still never wipe modules on a single tick. Refreshes are serialized so
+and still never wipe modules on a single tick. A fail-close skips modules that
+received a newer valid WS connectivity observation while that HTTP call was in
+flight. Refreshes are serialized so
 callbacks that re-enter refresh cannot rebuild the streak under the lock.
 ``Module`` validation coerces null ``connectedAt`` to ``0`` (offline); the
 gateway applies the same rule for duck-typed nulls. Corrupt rows skipped by
