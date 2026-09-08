@@ -356,7 +356,8 @@ class ConnectivityMixin(GatewayMixinBase):
         if not self._is_started():
             return
         # Notify outside the lock so an async listener that re-enters refresh cannot deadlock.
-        # Per-devid sequence numbers drop events superseded by a nested refresh.
+        # Per-devid online-state sequence numbers drop events superseded by a nested
+        # online/offline flip (metadata-only applies do not bump that sequence).
         # Abort the batch only on stop() (``_started``). Ordinary WS disconnect also bumps
         # ``_connectivity_generation``, but those events were already committed under the lock
         # and must still be delivered — otherwise consumers stay stale until a later poll
@@ -540,23 +541,24 @@ class ConnectivityMixin(GatewayMixinBase):
                 pending=pending,
             )
 
-    def _bump_module_connectivity_seq(self, devid: str) -> int:
-        """Advance the per-module connectivity event sequence and return the new value."""
-        nxt = self._module_connectivity_seq.get(devid, 0) + 1
-        self._module_connectivity_seq[devid] = nxt
+    def _bump_module_online_seq(self, devid: str) -> int:
+        """Advance the per-module online-state sequence and return the new value."""
+        nxt = self._module_online_seq.get(devid, 0) + 1
+        self._module_online_seq[devid] = nxt
         return nxt
 
     async def _emit_module_connectivity(self, event: ModuleConnectivity, *, seq: int) -> None:
         """Dispatch one module-connectivity event and optional online recovery.
 
-        Drops *listener* delivery when *seq* no longer matches the latest apply for
-        that devid (superseded mid-emit). If this event was an offline→online flip
-        and the module is still online, still run recovery — a metadata-only
-        successor has ``online_changed=False`` and would otherwise skip it.
+        *seq* tracks online-state revisions only (not metadata-only applies). A
+        nested gateway blob update must not suppress delivery of an in-flight
+        offline→online flip to later listeners. If this event was an offline→online
+        flip and the module is still online, still run recovery even when a later
+        online-state revision superseded listener delivery.
         """
-        if self._module_connectivity_seq.get(event.devid) == seq:
+        if self._module_online_seq.get(event.devid) == seq:
             for cb in list(self._on_module_connectivity):
-                if self._module_connectivity_seq.get(event.devid) != seq:
+                if self._module_online_seq.get(event.devid) != seq:
                     break
                 try:
                     res = cb(event)
@@ -657,7 +659,7 @@ class ConnectivityMixin(GatewayMixinBase):
             online_changed,
             metadata_changed,
         )
-        seq = self._bump_module_connectivity_seq(devid)
+        seq = self._bump_module_online_seq(devid) if online_changed else self._module_online_seq.get(devid, 0)
         if pending is not None:
             pending.append((seq, event))
             return

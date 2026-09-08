@@ -537,8 +537,7 @@ async def test_gateway_get_modules_inflight_stop_discards_failure() -> None:
     await entered.wait()
     await gw.stop()
     release.set()
-    done, _pending = await asyncio.wait({task})
-    assert done
+    _ = await asyncio.gather(task)
     assert gw._get_modules_fail_streak == 0
     assert gw._get_modules_fail_since_mono is None
 
@@ -589,8 +588,7 @@ async def test_gateway_get_modules_inflight_stop_discards_success() -> None:
     await entered.wait()
     await gw.stop()
     release.set()
-    done, _pending = await asyncio.wait({task})
-    assert done
+    _ = await asyncio.gather(task)
     # Late success must not mutate cache after stop().
     assert gw.module_connected_at("M1") == 50
     await gw.stop()
@@ -634,8 +632,7 @@ async def test_gateway_get_modules_lock_waiter_discards_after_stop() -> None:
     await asyncio.sleep(0)
     await gw.stop()
     release_first.set()
-    done, _pending = await asyncio.wait({first, second})
-    assert len(done) == 2
+    _ = await asyncio.gather(first, second)
     assert second_http["n"] == 0
     assert gw._get_modules_fail_streak == 0
     await gw.stop()
@@ -875,7 +872,7 @@ async def test_gateway_emit_rechecks_seq_between_listeners_and_recovery() -> Non
 
 @pytest.mark.asyncio
 async def test_gateway_emit_preserves_recovery_after_metadata_supersede() -> None:
-    """Metadata-only seq bump must not drop offline→online recovery."""
+    """Metadata-only apply must not drop offline→online recovery."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
     ws = FakeRealtimeManager()
@@ -907,6 +904,43 @@ async def test_gateway_emit_preserves_recovery_after_metadata_supersede() -> Non
     gw._maybe_recover_after_module_online = _recover  # type: ignore[method-assign]
     await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=42)
     assert recovered == ["M1"]
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_later_listeners_see_online_flip_despite_metadata() -> None:
+    """Metadata nested during emit must not hide the online transition from later listeners."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    await gw.start()
+    later_events: list[ModuleConnectivity] = []
+
+    async def _first(event: ModuleConnectivity) -> None:
+        if event.online_changed and event.online:
+            await gw._apply_connectivity(
+                devid="M1",
+                online=True,
+                source="rest",
+                connected_at=42,
+                gateway={"address": "9.9.9.9"},
+            )
+
+    def _later(event: ModuleConnectivity) -> None:
+        later_events.append(event)
+
+    gw.on_module_connectivity(_first)
+    gw.on_module_connectivity(_later)
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=42)
+    assert any(event.online_changed and event.online for event in later_events)
     await gw.stop()
 
 
