@@ -225,7 +225,7 @@ class GatewayMixinBase:
         *,
         source: ConnectivitySource,
         pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int] | None = None,
+        observed_at: dict[str, int],
     ) -> None:
         raise NotImplementedError
 
@@ -237,7 +237,7 @@ class GatewayMixinBase:
         level: str = "warning",
         exc: Exception | None = None,
         pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int] | None = None,
+        observed_at: dict[str, int],
     ) -> None:
         raise NotImplementedError
 
@@ -246,7 +246,7 @@ class GatewayMixinBase:
         *,
         source: ConnectivitySource,
         pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int] | None = None,
+        observed_at: dict[str, int],
     ) -> None:
         raise NotImplementedError
 

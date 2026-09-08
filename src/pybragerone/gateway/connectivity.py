@@ -453,7 +453,7 @@ class ConnectivityMixin(GatewayMixinBase):
         *,
         source: ConnectivitySource,
         pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int] | None = None,
+        observed_at: dict[str, int],
     ) -> None:
         """Record a failed ``get_modules`` poll and optionally fail-close modules."""
         expected = _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err)
@@ -483,7 +483,7 @@ class ConnectivityMixin(GatewayMixinBase):
         level: str = "warning",
         exc: Exception | None = None,
         pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int] | None = None,
+        observed_at: dict[str, int],
     ) -> None:
         """Bump the fail streak and fail-close when streak + elapsed window allow it."""
         now = time.monotonic()
@@ -540,7 +540,7 @@ class ConnectivityMixin(GatewayMixinBase):
         *,
         source: ConnectivitySource,
         pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int] | None = None,
+        observed_at: dict[str, int],
     ) -> None:
         """Mark subscribed modules offline after sustained ``get_modules`` failure.
 
@@ -548,14 +548,13 @@ class ConnectivityMixin(GatewayMixinBase):
         captured (typically a fresher WS ``connection:status`` while HTTP was in flight).
         """
         for devid in list(self.modules):
-            if observed_at is not None:
-                current = self._module_observation_seq.get(devid, 0)
-                if current != observed_at.get(devid, 0):
-                    LOG.debug(
-                        "Skipping fail-close for devid=%s; newer connectivity observation arrived",
-                        devid,
-                    )
-                    continue
+            current = self._module_observation_seq.get(devid, 0)
+            if current != observed_at.get(devid, 0):
+                LOG.debug(
+                    "Skipping fail-close for devid=%s; newer connectivity observation arrived",
+                    devid,
+                )
+                continue
             await self._apply_connectivity(
                 devid=devid,
                 online=False,
