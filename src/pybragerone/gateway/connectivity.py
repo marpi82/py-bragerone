@@ -327,15 +327,22 @@ class ConnectivityMixin(GatewayMixinBase):
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource = "rest") -> None:
         """Pull ``get_modules`` and apply online state for subscribed devids.
 
-        A single failed fetch keeps the previous module state (avoids turning one
-        HTTP hiccup into a plant-wide outage). After
-        ``get_modules_fail_offline_after`` consecutive failures the gateway
-        fail-closes every subscribed module to offline so HA does not keep
-        stale ``connectedAt=online`` through a prolonged network outage.
-        An empty listing still does not wipe modules.
+        A single failed or empty fetch keeps the previous module state (avoids
+        turning one HTTP hiccup into a plant-wide outage). After
+        ``get_modules_fail_offline_after`` consecutive unusable results — and,
+        when the connectivity poll interval is enabled, after roughly
+        ``(threshold - 1) * poll_interval`` seconds since the first failure —
+        the gateway fail-closes every subscribed module to offline. Refreshes
+        are serialized so overlapping poll/reconnect completions cannot rebuild
+        the streak after a newer success.
         """
         if not self._started:
             return
+        async with self._get_modules_refresh_lock:
+            await self._refresh_module_connectivity_locked(source=source)
+
+    async def _refresh_module_connectivity_locked(self, *, source: ConnectivitySource) -> None:
+        """Apply one ``get_modules`` refresh while ``_get_modules_refresh_lock`` is held."""
         try:
             rows = await self.api.get_modules(self.object_id)
         except Exception as err:
@@ -380,6 +387,7 @@ class ConnectivityMixin(GatewayMixinBase):
             return
 
         self._get_modules_fail_streak = 0
+        self._get_modules_fail_since_mono = None
 
         for devid in wanted - seen:
             await self._apply_connectivity(
@@ -414,8 +422,11 @@ class ConnectivityMixin(GatewayMixinBase):
         level: str = "warning",
         exc: Exception | None = None,
     ) -> None:
-        """Bump the fail streak and fail-close when the threshold is reached."""
+        """Bump the fail streak and fail-close when streak + elapsed window allow it."""
+        now = time.monotonic()
         self._get_modules_fail_streak += 1
+        if self._get_modules_fail_since_mono is None:
+            self._get_modules_fail_since_mono = now
         streak = self._get_modules_fail_streak
         threshold = self._get_modules_fail_offline_after
         if level == "exception":
@@ -437,6 +448,20 @@ class ConnectivityMixin(GatewayMixinBase):
             )
         if threshold <= 0 or streak < threshold:
             return
+        interval = self._connectivity_poll_interval
+        if interval > 0:
+            started = self._get_modules_fail_since_mono or now
+            elapsed = max(0.0, now - started)
+            min_elapsed = (threshold - 1) * interval
+            if elapsed + 1e-9 < min_elapsed:
+                LOG.debug(
+                    "Deferring get_modules fail-close; streak=%s/%s but elapsed=%.1fs < %.1fs poll window",
+                    streak,
+                    threshold,
+                    elapsed,
+                    min_elapsed,
+                )
+                return
         LOG.warning(
             "Fail-closing %s subscribed module(s) after %s consecutive get_modules failures (source=%s)",
             len(self.modules),

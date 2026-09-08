@@ -367,6 +367,79 @@ async def test_gateway_get_modules_fail_closes_after_streak() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gateway_get_modules_fail_close_waits_for_poll_window() -> None:
+    """With a real poll interval, rapid failures do not fail-close until elapsed time allows."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=60.0,
+        get_modules_fail_offline_after=3,
+    )
+    await gw.start()
+    api.get_modules_error = ReadTimeout("read timeout")
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._refresh_module_connectivity(source="rest")
+    assert gw.module_online("M1") is True
+    assert gw._get_modules_fail_streak == 3
+
+    gw._get_modules_fail_since_mono = time.monotonic() - 120.0
+    await gw._refresh_module_connectivity(source="rest")
+    assert gw.module_online("M1") is False
+    assert gw.module_connected_at("M1") == 0
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_get_modules_refresh_serialized_ignores_stale_failure() -> None:
+    """A failure that finishes after a newer success must not rebuild the streak."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    await gw.start()
+
+    release_first = asyncio.Event()
+    entered_first = asyncio.Event()
+    call_count = 0
+    original_get_modules = api.get_modules
+
+    async def _gated_get_modules(object_id: int) -> list[Any]:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            entered_first.set()
+            await release_first.wait()
+            raise ReadTimeout("stale failure")
+        return await original_get_modules(object_id)
+
+    api.get_modules = _gated_get_modules  # type: ignore[method-assign]
+    first = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
+    await entered_first.wait()
+    second = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
+    await asyncio.sleep(0)
+    assert gw._get_modules_fail_streak == 0
+    release_first.set()
+    await first
+    await second
+    assert gw._get_modules_fail_streak == 0
+    assert gw.module_online("M1") is True
+    await gw.stop()
+
+
+@pytest.mark.asyncio
 async def test_gateway_connectivity_timeout_errors_are_warn_only(caplog: pytest.LogCaptureFixture) -> None:
     """Expected timeout-like failures should not emit full traceback spam."""
     api = FakeApiClient()

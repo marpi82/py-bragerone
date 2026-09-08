@@ -148,6 +148,8 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._stale_prime_after_s = float(stale_prime_after_s)
         self._get_modules_fail_offline_after = max(0, int(get_modules_fail_offline_after))
         self._get_modules_fail_streak = 0
+        self._get_modules_fail_since_mono: float | None = None
+        self._get_modules_refresh_lock = asyncio.Lock()
         self._zombie_hard_restart_after = int(zombie_hard_restart_after)
         self._zombie_full_recycle_after = int(zombie_full_recycle_after)
         self._zombie_rebuild_after = int(zombie_rebuild_after)
