@@ -542,27 +542,27 @@ class ConnectivityMixin(GatewayMixinBase):
     async def _emit_module_connectivity(self, event: ModuleConnectivity, *, seq: int) -> None:
         """Dispatch one module-connectivity event and optional online recovery.
 
-        Drops events whose *seq* no longer matches the latest apply for that devid
-        (superseded by a nested refresh while an earlier batch was still emitting).
-        Re-checks *seq* between awaited listeners and again before recovery so a
-        re-entrant callback cannot leave stale events for later consumers.
+        Drops *listener* delivery when *seq* no longer matches the latest apply for
+        that devid (superseded mid-emit). If this event was an offline→online flip
+        and the module is still online, still run recovery — a metadata-only
+        successor has ``online_changed=False`` and would otherwise skip it.
         """
-        if self._module_connectivity_seq.get(event.devid) != seq:
+        if self._module_connectivity_seq.get(event.devid) == seq:
+            for cb in list(self._on_module_connectivity):
+                if self._module_connectivity_seq.get(event.devid) != seq:
+                    break
+                try:
+                    res = cb(event)
+                    if asyncio.iscoroutine(res):
+                        # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
+                        _ = await res
+                except Exception:
+                    LOG.exception("Module connectivity callback error")
+        if not (event.online_changed and event.online and event.devid in self.modules):
             return
-        for cb in list(self._on_module_connectivity):
-            if self._module_connectivity_seq.get(event.devid) != seq:
-                return
-            try:
-                res = cb(event)
-                if asyncio.iscoroutine(res):
-                    # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
-                    _ = await res
-            except Exception:
-                LOG.exception("Module connectivity callback error")
-        if self._module_connectivity_seq.get(event.devid) != seq:
+        if self._module_online.get(event.devid) is not True:
             return
-        if event.online_changed and event.online and event.devid in self.modules:
-            await self._maybe_recover_after_module_online(event.devid)
+        await self._maybe_recover_after_module_online(event.devid)
 
     async def _apply_connectivity(
         self,

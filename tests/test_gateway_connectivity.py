@@ -797,7 +797,7 @@ async def test_gateway_pending_emit_aborts_after_stop_mid_batch() -> None:
 
 @pytest.mark.asyncio
 async def test_gateway_emit_rechecks_seq_between_listeners_and_recovery() -> None:
-    """A re-entrant first listener must not leave stale events for later listeners/recovery."""
+    """A re-entrant first listener must not leave stale events for later listeners."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
     ws = FakeRealtimeManager()
@@ -815,7 +815,8 @@ async def test_gateway_emit_rechecks_seq_between_listeners_and_recovery() -> Non
 
     async def _first(event: ModuleConnectivity) -> None:
         if event.online:
-            gw._bump_module_connectivity_seq(event.devid)
+            # Offline successor: later listeners skip and recovery must not run.
+            await gw._apply_connectivity(devid="M1", online=False, source="rest", connected_at=0)
 
     def _later(event: ModuleConnectivity) -> None:
         later_events.append(event)
@@ -827,8 +828,45 @@ async def test_gateway_emit_rechecks_seq_between_listeners_and_recovery() -> Non
     gw.on_module_connectivity(_later)
     gw._maybe_recover_after_module_online = _recover  # type: ignore[method-assign]
     await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=42)
-    assert later_events == []
+    assert not any(event.online for event in later_events)
     assert recovered == []
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_emit_preserves_recovery_after_metadata_supersede() -> None:
+    """Metadata-only seq bump must not drop offline→online recovery."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    await gw.start()
+    recovered: list[str] = []
+
+    async def _first(event: ModuleConnectivity) -> None:
+        if event.online_changed and event.online:
+            await gw._apply_connectivity(
+                devid="M1",
+                online=True,
+                source="rest",
+                connected_at=42,
+                gateway={"address": "1.2.3.4"},
+            )
+
+    async def _recover(devid: str) -> None:
+        recovered.append(devid)
+
+    gw.on_module_connectivity(_first)
+    gw._maybe_recover_after_module_online = _recover  # type: ignore[method-assign]
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=42)
+    assert recovered == ["M1"]
     await gw.stop()
 
 
