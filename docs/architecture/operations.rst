@@ -52,6 +52,12 @@ Best Practices
   ``handshake_503`` / ``eio_close``), not plant diagnostics. Completed episodes
   across cloud / module / live-stale layers are retained in
   ``connectivity_episodes()`` for support dumps.
+- A single failed ``get_modules`` poll still keeps the previous module online
+  state (avoids one HTTP hiccup becoming a plant-wide outage). After
+  ``get_modules_fail_offline_after`` consecutive failures (default 3, ~3 min at
+  the 60 s poll), the gateway **fail-closes** every subscribed module to offline
+  (``connectedAt=0``) so consumers are not stuck on a stale ``online`` through a
+  prolonged HA/network outage. Use ``0`` to disable fail-close.
 - **Live push health** is a third layer: ``live_push_health()`` /
   ``on_live_push`` expose ``push_healthy`` / ``live_stale_for_s`` while the
   Socket.IO session is up but no live ``ParamUpdate`` arrives (zombie). Resume

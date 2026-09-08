@@ -272,7 +272,7 @@ async def _wait_until(predicate: Callable[[], bool], *, timeout: float = 2.0) ->
 
 @pytest.mark.asyncio
 async def test_gateway_connectivity_poll_loop_and_get_modules_error() -> None:
-    """Background poll refreshes state; get_modules failures are logged and ignored."""
+    """Background poll refreshes state; a single get_modules failure keeps last state."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     ws = FakeRealtimeManager()
@@ -282,6 +282,7 @@ async def test_gateway_connectivity_poll_loop_and_get_modules_error() -> None:
         modules=["M1"],
         ws=ws,
         connectivity_poll_interval=0.05,
+        get_modules_fail_offline_after=0,
     )
     await gw.start()
     assert gw.module_online("M1") is True
@@ -294,6 +295,48 @@ async def test_gateway_connectivity_poll_loop_and_get_modules_error() -> None:
     api.get_modules_error = RuntimeError("modules down")
     await _wait_until(lambda: api.get_modules_calls > calls_before_error)
     assert gw.module_online("M1") is False
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_get_modules_fail_closes_after_streak() -> None:
+    """Sustained get_modules failures fail-close subscribed modules to offline."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    events: list[ModuleConnectivity] = []
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    gw.on_module_connectivity(events.append)
+    await gw.start()
+    assert gw.module_online("M1") is True
+
+    api.get_modules_error = ReadTimeout("read timeout")
+    await gw._refresh_module_connectivity(source="rest")
+    assert gw.module_online("M1") is True
+    assert gw._get_modules_fail_streak == 1
+
+    await gw._refresh_module_connectivity(source="rest")
+    assert gw.module_online("M1") is True
+    assert gw._get_modules_fail_streak == 2
+
+    await gw._refresh_module_connectivity(source="rest")
+    assert gw.module_online("M1") is False
+    assert gw.module_connected_at("M1") == 0
+    assert gw._get_modules_fail_streak == 3
+    assert any(event.devid == "M1" and event.online is False and event.source == "rest" for event in events)
+
+    api.get_modules_error = None
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=99, gateway=None)]
+    await gw._refresh_module_connectivity(source="rest")
+    assert gw._get_modules_fail_streak == 0
+    assert gw.module_online("M1") is True
     await gw.stop()
 
 

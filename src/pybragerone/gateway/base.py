@@ -38,6 +38,8 @@ class GatewayMixinBase:
     _owns_api: bool
     _connectivity_poll_interval: float
     _stale_prime_after_s: float
+    _get_modules_fail_offline_after: int
+    _get_modules_fail_streak: int
     _zombie_hard_restart_after: int
     _zombie_full_recycle_after: int
     _zombie_rebuild_after: int
@@ -202,6 +204,12 @@ class GatewayMixinBase:
         raise NotImplementedError
 
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource = "rest") -> None:
+        raise NotImplementedError
+
+    async def _note_get_modules_failure(self, err: Exception, *, source: ConnectivitySource) -> None:
+        raise NotImplementedError
+
+    async def _fail_close_subscribed_modules(self, *, source: ConnectivitySource) -> None:
         raise NotImplementedError
 
     async def _apply_connectivity(

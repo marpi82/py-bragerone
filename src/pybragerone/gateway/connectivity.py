@@ -327,27 +327,22 @@ class ConnectivityMixin(GatewayMixinBase):
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource = "rest") -> None:
         """Pull ``get_modules`` and apply online state for subscribed devids.
 
-        A failed or empty fetch does **not** mark every module offline — that would
-        turn HTTP errors / empty payloads into false plant-wide outages.
+        A single failed fetch keeps the previous module state (avoids turning one
+        HTTP hiccup into a plant-wide outage). After
+        ``get_modules_fail_offline_after`` consecutive failures the gateway
+        fail-closes every subscribed module to offline so HA does not keep
+        stale ``connectedAt=online`` through a prolonged network outage.
+        An empty listing still does not wipe modules.
         """
         if not self._started:
             return
         try:
             rows = await self.api.get_modules(self.object_id)
         except Exception as err:
-            if _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err):
-                # Upstream hiccups are expected from time to time; keep last known
-                # module states and avoid flooding logs with traceback noise.
-                LOG.warning(
-                    "get_modules unavailable/timeout during connectivity refresh; "
-                    "keeping previous module state (source=%s, reason=%s)",
-                    source,
-                    format_expected_failure_reason(err),
-                )
-            else:
-                LOG.exception("get_modules failed during connectivity refresh")
+            await self._note_get_modules_failure(err, source=source)
             return
 
+        self._get_modules_fail_streak = 0
         rows_list = list(rows)
         wanted = set(self.modules)
         seen: set[str] = set()
@@ -384,6 +379,49 @@ class ConnectivityMixin(GatewayMixinBase):
                 online=False,
                 source="derived",
                 connected_at=self._module_connected_at.get(devid, 0),
+            )
+
+    async def _note_get_modules_failure(self, err: Exception, *, source: ConnectivitySource) -> None:
+        """Record a failed ``get_modules`` poll and optionally fail-close modules."""
+        self._get_modules_fail_streak += 1
+        streak = self._get_modules_fail_streak
+        threshold = self._get_modules_fail_offline_after
+        expected = _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err)
+        if expected:
+            LOG.warning(
+                "get_modules unavailable/timeout during connectivity refresh; fail_streak=%s/%s (source=%s, reason=%s)",
+                streak,
+                threshold if threshold > 0 else "off",
+                source,
+                format_expected_failure_reason(err),
+            )
+        else:
+            LOG.exception(
+                "get_modules failed during connectivity refresh (fail_streak=%s/%s, source=%s)",
+                streak,
+                threshold if threshold > 0 else "off",
+                source,
+            )
+        if threshold <= 0 or streak < threshold:
+            if expected:
+                LOG.debug("Keeping previous module state after get_modules failure (streak below fail-close)")
+            return
+        LOG.warning(
+            "Fail-closing %s subscribed module(s) after %s consecutive get_modules failures (source=%s)",
+            len(self.modules),
+            streak,
+            source,
+        )
+        await self._fail_close_subscribed_modules(source=source)
+
+    async def _fail_close_subscribed_modules(self, *, source: ConnectivitySource) -> None:
+        """Mark every subscribed module offline after sustained ``get_modules`` failure."""
+        for devid in list(self.modules):
+            await self._apply_connectivity(
+                devid=devid,
+                online=False,
+                source=source,
+                connected_at=0,
             )
 
     async def _apply_connectivity(
