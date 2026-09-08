@@ -325,6 +325,32 @@ async def test_gateway_connectivity_poll_loop_and_get_modules_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gateway_get_modules_fail_offline_after_zero_disables_fail_close() -> None:
+    """``get_modules_fail_offline_after=0`` must leave an online module online after many failures."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=0,
+    )
+    await gw.start()
+    assert gw.module_online("M1") is True
+
+    api.get_modules_error = ReadTimeout("read timeout")
+    for _ in range(5):
+        await gw._refresh_module_connectivity(source="rest")
+    assert gw.module_online("M1") is True
+    assert gw.module_connected_at("M1") == 50
+    assert gw._get_modules_fail_streak == 5
+    await gw.stop()
+
+
+@pytest.mark.asyncio
 async def test_gateway_get_modules_fail_closes_after_streak() -> None:
     """Sustained get_modules failures fail-close subscribed modules to offline."""
     api = FakeApiClient()
@@ -941,6 +967,9 @@ async def test_gateway_later_listeners_see_online_flip_despite_metadata() -> Non
     gw.on_module_connectivity(_later)
     await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=42)
     assert any(event.online_changed and event.online for event in later_events)
+    assert any(
+        isinstance(event.gateway, dict) and event.gateway.get("address") == "9.9.9.9" for event in later_events if event.online
+    )
     await gw.stop()
 
 

@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 import uuid
+from dataclasses import replace
 from typing import Any
 
 from ..api.client import format_expected_failure_reason, is_expected_upstream_unavailable
@@ -480,8 +481,10 @@ class ConnectivityMixin(GatewayMixinBase):
         """Bump the fail streak and fail-close when streak + elapsed window allow it."""
         now = time.monotonic()
         self._get_modules_fail_streak += 1
-        if self._get_modules_fail_since_mono is None:
-            self._get_modules_fail_since_mono = now
+        fail_since = self._get_modules_fail_since_mono
+        if fail_since is None:
+            fail_since = now
+            self._get_modules_fail_since_mono = fail_since
         streak = self._get_modules_fail_streak
         threshold = self._get_modules_fail_offline_after
         if level == "exception":
@@ -505,8 +508,8 @@ class ConnectivityMixin(GatewayMixinBase):
             return
         interval = self._connectivity_poll_interval
         if interval > 0:
-            started = self._get_modules_fail_since_mono or now
-            elapsed = max(0.0, now - started)
+            # Use the local float (may be 0.0); never ``x or now`` — monotonic epoch can be zero.
+            elapsed = max(0.0, now - fail_since)
             min_elapsed = (threshold - 1) * interval
             if elapsed + 1e-9 < min_elapsed:
                 LOG.debug(
@@ -547,21 +550,42 @@ class ConnectivityMixin(GatewayMixinBase):
         self._module_online_seq[devid] = nxt
         return nxt
 
+    def _coalesce_module_connectivity_event(self, event: ModuleConnectivity) -> ModuleConnectivity:
+        """Overlay current cache metadata onto *event*, preserving ``online_changed``.
+
+        Lets later listeners observe an in-flight online flip while still seeing the
+        latest ``connected_at`` / ``gateway`` if a nested metadata apply raced ahead.
+        """
+        devid = event.devid
+        snapshot = self._module_outage_snapshot(devid)
+        return replace(
+            event,
+            online=self._module_online.get(devid, event.online),
+            connected_at=self._module_connected_at.get(devid, event.connected_at),
+            gateway=self.module_gateway(devid),
+            down_since=snapshot["down_since"] if isinstance(snapshot["down_since"], float) else None,
+            down_for_s=snapshot["down_for_s"] if isinstance(snapshot["down_for_s"], float) else None,
+            reason=_as_module_outage_reason(snapshot["reason"]),
+            last_down_for_s=snapshot["last_down_for_s"] if isinstance(snapshot["last_down_for_s"], float) else None,
+            last_reason=_as_module_outage_reason(snapshot["last_reason"]),
+        )
+
     async def _emit_module_connectivity(self, event: ModuleConnectivity, *, seq: int) -> None:
         """Dispatch one module-connectivity event and optional online recovery.
 
         *seq* tracks online-state revisions only (not metadata-only applies). A
         nested gateway blob update must not suppress delivery of an in-flight
-        offline→online flip to later listeners. If this event was an offline→online
-        flip and the module is still online, still run recovery even when a later
-        online-state revision superseded listener delivery.
+        offline→online flip to later listeners; coalescing refreshes metadata on
+        the way out. If this event was an offline→online flip and the module is
+        still online, still run recovery even when a later online-state revision
+        superseded listener delivery.
         """
         if self._module_online_seq.get(event.devid) == seq:
             for cb in list(self._on_module_connectivity):
                 if self._module_online_seq.get(event.devid) != seq:
                     break
                 try:
-                    res = cb(event)
+                    res = cb(self._coalesce_module_connectivity_event(event))
                     if asyncio.iscoroutine(res):
                         # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
                         _ = await res
