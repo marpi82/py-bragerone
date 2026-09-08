@@ -642,12 +642,40 @@ async def test_gateway_get_modules_lock_waiter_discards_after_stop() -> None:
 
 
 @pytest.mark.asyncio
-async def test_gateway_mixed_listing_keeps_unusable_module_state() -> None:
-    """A sibling with unusable connectedAt must not be derived offline."""
+async def test_gateway_module_null_connected_at_is_offline() -> None:
+    """``Module`` null connectedAt coerces to 0 and is applied offline (SPA parity)."""
+    from pybragerone.models.api.modules import Module
+
+    def _module(*, devid: str, connected_at: int | None) -> Module:
+        return Module.model_validate(
+            {
+                "devid": devid,
+                "name": devid,
+                "gateway": {},
+                "deviceMenu": 0,
+                "deviceLanguageVariant": 0,
+                "devices": [],
+                "services": [],
+                "permissions": [],
+                "acceptedAt": 0,
+                "connectedAt": connected_at,
+                "moduleAlarms": 0,
+                "parameterSchemas": [],
+                "id": 1,
+                "moduleAddress": "",
+                "moduleInterface": "",
+                "moduleVersion": "",
+                "moduleServices": [],
+                "moduleTitle": devid,
+                "isAcceptedAt": "2026-04-06T00:00:00Z",
+                "isConnectedAt": None,
+            }
+        )
+
     api = FakeApiClient()
     api.module_rows = [
-        SimpleNamespace(devid="M1", connectedAt=50, gateway=None),
-        SimpleNamespace(devid="M2", connectedAt=60, gateway=None),
+        _module(devid="M1", connected_at=50),
+        _module(devid="M2", connected_at=60),
     ]
     ws = FakeRealtimeManager()
     gw = BragerOneGateway(
@@ -663,14 +691,23 @@ async def test_gateway_mixed_listing_keeps_unusable_module_state() -> None:
     assert gw.module_online("M2") is True
 
     api.module_rows = [
-        SimpleNamespace(devid="M1", connectedAt=70, gateway=None),
-        SimpleNamespace(devid="M2", connectedAt=None, gateway=None),
+        _module(devid="M1", connected_at=70),
+        _module(devid="M2", connected_at=None),
     ]
     await gw.refresh_module_connectivity()
     assert gw.module_online("M1") is True
     assert gw.module_connected_at("M1") == 70
-    assert gw.module_online("M2") is True
-    assert gw.module_connected_at("M2") == 60
+    assert gw.module_online("M2") is False
+    assert gw.module_connected_at("M2") == 0
+
+    # Duck-typed null (pre-Module) follows the same offline rule as Module validation.
+    api.module_rows = [
+        SimpleNamespace(devid="M1", connectedAt=70, gateway=None),
+        SimpleNamespace(devid="M2", connectedAt=None, gateway=None),
+    ]
+    await gw.refresh_module_connectivity()
+    assert gw.module_online("M2") is False
+    assert gw.module_connected_at("M2") == 0
     await gw.stop()
 
 
@@ -989,7 +1026,8 @@ async def test_gateway_connectivity_edge_paths() -> None:
     assert gw.module_gateway("M1") == {"address": "9.9.9.9"}
     events.clear()
 
-    # Unusable connectedAt rows are skipped (no false offline).
+    # Non-numeric connectedAt is skipped (same as get_modules dropping corrupt rows);
+    # with no usable sibling this keeps previous state and advances the fail streak.
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt="bad", gateway=None)]
     await gw.refresh_module_connectivity()
     assert gw.module_online("M1") is True

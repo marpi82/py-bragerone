@@ -378,16 +378,20 @@ class ConnectivityMixin(GatewayMixinBase):
         rows_list = list(rows)
         wanted = set(self.modules)
         seen: set[str] = set()
-        unusable: set[str] = set()
         for row in rows_list:
             devid = str(getattr(row, "devid", "") or "")
             if not devid or devid not in wanted:
                 continue
-            connected_at = _parse_connected_at(getattr(row, "connectedAt", None))
+            raw_connected_at = getattr(row, "connectedAt", None)
+            connected_at = _parse_connected_at(raw_connected_at)
             if connected_at is None:
-                LOG.warning("Skipping connectivity row with unusable connectedAt for devid=%s", devid)
-                unusable.add(devid)
-                continue
+                if raw_connected_at is None:
+                    # Parity with ``Module`` validation: upstream null means disconnected.
+                    connected_at = 0
+                else:
+                    # Non-numeric junk mirrors ``get_modules`` dropping invalid rows.
+                    LOG.warning("Skipping connectivity row with unusable connectedAt for devid=%s", devid)
+                    continue
             seen.add(devid)
             await self._apply_connectivity(
                 devid=devid,
@@ -401,8 +405,7 @@ class ConnectivityMixin(GatewayMixinBase):
         # Only derive offline / clear the fail streak when the listing contained at
         # least one recognised subscribed module. Empty or odd shapes keep the
         # previous online cache and preserve/advance the streak so sustained
-        # unusable listings can still fail-close (same threshold as hard errors).
-        # Rows present but with unusable connectedAt stay on prior state (not derived).
+        # empty listings can still fail-close (same threshold as hard errors).
         if not seen:
             if wanted:
                 LOG.warning(
@@ -420,7 +423,7 @@ class ConnectivityMixin(GatewayMixinBase):
         self._get_modules_fail_streak = 0
         self._get_modules_fail_since_mono = None
 
-        for devid in wanted - seen - unusable:
+        for devid in wanted - seen:
             await self._apply_connectivity(
                 devid=devid,
                 online=False,
