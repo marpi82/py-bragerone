@@ -17,7 +17,7 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   the previous online state. Configurable via ``BragerOneGateway`` /
   ``from_credentials`` (#388).
 - Concurrent REST fail-close no longer overwrites a fresher WebSocket connectivity
-  observation (including identical connectedAt / gateway reaffirmations); ordinary
+  observation (including identical ``connectedAt`` / ``gateway`` reaffirmations); ordinary
   WS disconnect does not discard an in-flight ``get_modules`` failure from the
   streak — only ``stop()`` invalidates that HTTP completion (#388).
 
