@@ -353,7 +353,10 @@ class ConnectivityMixin(GatewayMixinBase):
             return
         # Notify outside the lock so an async listener that re-enters refresh cannot deadlock.
         # Per-devid sequence numbers drop events superseded by a nested refresh.
+        # Re-check generation each iteration: a callback may stop()/disconnect mid-batch.
         for seq, event in pending:
+            if not self._started or generation != self._connectivity_generation:
+                return
             await self._emit_module_connectivity(event, seq=seq)
 
     async def _refresh_module_connectivity_locked(

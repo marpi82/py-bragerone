@@ -758,6 +758,44 @@ async def test_gateway_pending_emit_skips_superseded_module_event() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gateway_pending_emit_aborts_after_stop_mid_batch() -> None:
+    """stop() during the first pending callback must not emit the rest of the batch."""
+    api = FakeApiClient()
+    api.module_rows = [
+        SimpleNamespace(devid="M1", connectedAt=50, gateway=None),
+        SimpleNamespace(devid="M2", connectedAt=50, gateway=None),
+    ]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1", "M2"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    seen: list[tuple[str, bool]] = []
+    stopped = asyncio.Event()
+
+    async def _on_connectivity(event: ModuleConnectivity) -> None:
+        seen.append((event.devid, event.online))
+        if event.devid == "M1" and event.online is False and not stopped.is_set():
+            stopped.set()
+            await gw.stop()
+
+    gw.on_module_connectivity(_on_connectivity)
+    await gw.start()
+    seen.clear()
+    api.get_modules_error = ReadTimeout("outage")
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._refresh_module_connectivity(source="rest")
+    assert stopped.is_set()
+    assert ("M1", False) in seen
+    assert ("M2", False) not in seen
+
+
+@pytest.mark.asyncio
 async def test_gateway_emit_rechecks_seq_between_listeners_and_recovery() -> None:
     """A re-entrant first listener must not leave stale events for later listeners/recovery."""
     api = FakeApiClient()
