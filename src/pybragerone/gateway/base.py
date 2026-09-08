@@ -7,7 +7,7 @@ from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, Literal
 
-from ..models.events import CloudOutageReason, ConnectivityEpisodeLayer, EventBus, ModuleOutageReason
+from ..models.events import CloudOutageReason, ConnectivityEpisodeLayer, EventBus, ModuleConnectivity, ModuleOutageReason
 from .helpers import (
     AlarmQuantityCb,
     CloudSessionCb,
@@ -38,6 +38,12 @@ class GatewayMixinBase:
     _owns_api: bool
     _connectivity_poll_interval: float
     _stale_prime_after_s: float
+    _get_modules_fail_offline_after: int
+    _get_modules_fail_streak: int
+    _get_modules_fail_since_mono: float | None
+    _get_modules_refresh_lock: asyncio.Lock
+    _module_online_seq: dict[str, int]
+    _module_observation_seq: dict[str, int]
     _zombie_hard_restart_after: int
     _zombie_full_recycle_after: int
     _zombie_rebuild_after: int
@@ -74,6 +80,7 @@ class GatewayMixinBase:
     _ws_session_up: bool
     _ws_hooks_registered: bool
     _connectivity_generation: int
+    _lifecycle_generation: int
     _module_connected_at: dict[str, int]
     _module_online: dict[str, bool]
     _module_gateway: dict[str, dict[str, Any]]
@@ -204,6 +211,49 @@ class GatewayMixinBase:
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource = "rest") -> None:
         raise NotImplementedError
 
+    async def _refresh_module_connectivity_locked(
+        self,
+        *,
+        source: ConnectivitySource,
+        pending: list[tuple[int, ModuleConnectivity]],
+        lifecycle_generation: int,
+    ) -> None:
+        raise NotImplementedError
+
+    async def _note_get_modules_failure(
+        self,
+        err: Exception,
+        *,
+        source: ConnectivitySource,
+        pending: list[tuple[int, ModuleConnectivity]] | None = None,
+        observed_at: dict[str, int],
+    ) -> None:
+        raise NotImplementedError
+
+    async def _advance_get_modules_fail_streak(
+        self,
+        *,
+        source: ConnectivitySource,
+        detail: str,
+        level: str = "warning",
+        exc: Exception | None = None,
+        pending: list[tuple[int, ModuleConnectivity]] | None = None,
+        observed_at: dict[str, int],
+    ) -> None:
+        raise NotImplementedError
+
+    async def _fail_close_subscribed_modules(
+        self,
+        *,
+        source: ConnectivitySource,
+        pending: list[tuple[int, ModuleConnectivity]] | None = None,
+        observed_at: dict[str, int],
+    ) -> None:
+        raise NotImplementedError
+
+    async def _emit_module_connectivity(self, event: ModuleConnectivity, *, seq: int) -> None:
+        raise NotImplementedError
+
     async def _apply_connectivity(
         self,
         *,
@@ -212,6 +262,7 @@ class GatewayMixinBase:
         source: ConnectivitySource,
         connected_at: int | None,
         gateway: dict[str, Any] | None = None,
+        pending: list[tuple[int, ModuleConnectivity]] | None = None,
     ) -> None:
         raise NotImplementedError
 

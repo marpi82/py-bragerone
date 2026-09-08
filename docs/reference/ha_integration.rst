@@ -141,7 +141,9 @@ Three distinct layers (do not conflate):
    age since the last **live** ``ParamUpdate`` while the Socket.IO session is up
    (``push_healthy`` / ``live_stale_for_s``). A zombie is session-up with
    ``push_healthy=False``. Resume logs ``live ParamUpdate resumed after …s`` and
-   sets ``last_resumed_after_s``.
+   sets ``last_resumed_after_s``. Home Assistant parameter entities treat
+   session-down and ``push_healthy=False`` as unavailable (fail-closed) so
+   history shows a gap instead of a flat stale line.
 
 The gateway primes from ``GET /v1/modules`` (``connectedAt != 0`` means online —
 same truthiness check as the SPA card/modal) and listens for the official Socket.IO
@@ -150,9 +152,22 @@ push ``app:module:connection:status:changed`` (payload
 app). The client's own Socket.IO session is tracked separately and does **not**
 force modules offline (SPA parity). A background REST poll (default 60s;
 ``connectivity_poll_interval=0`` disables it) continues even while WS is down.
-Failed or empty ``get_modules`` responses never wipe every module to offline.
-Degraded rows (empty ``gateway``, null ``connectedAt``) parse as offline
-(``connectedAt == 0``) instead of being dropped from the listing.
+A single failed ``get_modules`` keeps the previous module state; after
+``get_modules_fail_offline_after`` consecutive unusable results (default 3) —
+and with the default 60 s poll, only after roughly two poll intervals since the
+first failure — the gateway fail-closes subscribed modules to offline.
+Empty or unrecognised listings advance the same streak (they do not reset it)
+and still never wipe modules on a single tick. A fail-close skips modules that
+received a newer valid WS connectivity observation while that HTTP call was in
+flight (including identical connectedAt / gateway reaffirmations). Ordinary WS
+disconnect does not discard an in-flight ``get_modules`` failure from the streak
+— only ``stop()`` invalidates that HTTP completion. Refreshes are serialized so
+callbacks that re-enter refresh cannot rebuild the streak under the lock.
+``Module`` validation coerces null ``connectedAt`` to ``0`` (offline); the
+gateway applies the same rule for duck-typed nulls. Corrupt rows skipped by
+``get_modules`` (or non-numeric duck-typed values) are absent from the listing —
+when at least one sibling row is usable, missing subscribed modules are derived
+offline; empty ``gateway`` blobs are still applied when ``connectedAt`` is usable.
 
 While the client's Socket.IO session is down, the same poll **REST-primes**
 parameters so Home Assistant entities keep receiving ``ParamUpdate`` events (WS
