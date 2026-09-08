@@ -35,6 +35,10 @@ LOG = logging.getLogger(__name__)
 class ConnectivityMixin(GatewayMixinBase):
     """Mixin providing connectivity behavior for BragerOneGateway."""
 
+    def _is_started(self) -> bool:
+        """Return whether the gateway is running (avoids mypy attribute narrowing across awaits)."""
+        return self._started
+
     def cloud_session_outage(self) -> dict[str, float | str | None]:
         """Return cloud-session outage snapshot for diagnostics / HA attributes.
 
@@ -349,13 +353,16 @@ class ConnectivityMixin(GatewayMixinBase):
                 pending=pending,
                 generation=generation,
             )
-        if not self._started or generation != self._connectivity_generation:
+        if not self._is_started():
             return
         # Notify outside the lock so an async listener that re-enters refresh cannot deadlock.
         # Per-devid sequence numbers drop events superseded by a nested refresh.
-        # Re-check generation each iteration: a callback may stop()/disconnect mid-batch.
+        # Abort the batch only on stop() (``_started``). Ordinary WS disconnect also bumps
+        # ``_connectivity_generation``, but those events were already committed under the lock
+        # and must still be delivered — otherwise consumers stay stale until a later poll
+        # happens to change state again.
         for seq, event in pending:
-            if not self._started or generation != self._connectivity_generation:
+            if not self._is_started():
                 return
             await self._emit_module_connectivity(event, seq=seq)
 

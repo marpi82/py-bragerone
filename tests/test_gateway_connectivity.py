@@ -796,6 +796,46 @@ async def test_gateway_pending_emit_aborts_after_stop_mid_batch() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gateway_pending_emit_continues_after_ws_disconnect_mid_batch() -> None:
+    """Ordinary WS disconnect must not suppress remaining committed REST events."""
+    api = FakeApiClient()
+    api.module_rows = [
+        SimpleNamespace(devid="M1", connectedAt=50, gateway=None),
+        SimpleNamespace(devid="M2", connectedAt=50, gateway=None),
+    ]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1", "M2"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    seen: list[tuple[str, bool]] = []
+    disconnected = asyncio.Event()
+
+    async def _on_connectivity(event: ModuleConnectivity) -> None:
+        seen.append((event.devid, event.online))
+        if event.devid == "M1" and event.online is False and not disconnected.is_set():
+            disconnected.set()
+            await gw._on_ws_disconnected()
+
+    gw.on_module_connectivity(_on_connectivity)
+    await gw.start()
+    seen.clear()
+    api.get_modules_error = ReadTimeout("outage")
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._refresh_module_connectivity(source="rest")
+    assert disconnected.is_set()
+    assert ("M1", False) in seen
+    assert ("M2", False) in seen
+    assert gw._started is True
+    await gw.stop()
+
+
+@pytest.mark.asyncio
 async def test_gateway_emit_rechecks_seq_between_listeners_and_recovery() -> None:
     """A re-entrant first listener must not leave stale events for later listeners."""
     api = FakeApiClient()
