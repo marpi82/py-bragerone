@@ -334,33 +334,51 @@ class ConnectivityMixin(GatewayMixinBase):
         ``(threshold - 1) * poll_interval`` seconds since the first failure —
         the gateway fail-closes every subscribed module to offline. Refreshes
         are serialized so overlapping poll/reconnect completions cannot rebuild
-        the streak after a newer success.
+        the streak after a newer success. In-flight HTTP completions after
+        ``stop()`` (connectivity generation bump) are discarded.
         """
         if not self._started:
             return
-        pending: list[ModuleConnectivity] = []
+        generation = self._connectivity_generation
+        pending: list[tuple[int, ModuleConnectivity]] = []
         async with self._get_modules_refresh_lock:
-            await self._refresh_module_connectivity_locked(source=source, pending=pending)
+            if not self._started or generation != self._connectivity_generation:
+                return
+            await self._refresh_module_connectivity_locked(
+                source=source,
+                pending=pending,
+                generation=generation,
+            )
+        if not self._started or generation != self._connectivity_generation:
+            return
         # Notify outside the lock so an async listener that re-enters refresh cannot deadlock.
-        for event in pending:
-            await self._emit_module_connectivity(event)
+        # Per-devid sequence numbers drop events superseded by a nested refresh.
+        for seq, event in pending:
+            await self._emit_module_connectivity(event, seq=seq)
 
     async def _refresh_module_connectivity_locked(
         self,
         *,
         source: ConnectivitySource,
-        pending: list[ModuleConnectivity],
+        pending: list[tuple[int, ModuleConnectivity]],
+        generation: int,
     ) -> None:
         """Apply one ``get_modules`` refresh while ``_get_modules_refresh_lock`` is held."""
         try:
             rows = await self.api.get_modules(self.object_id)
         except Exception as err:
+            if not self._started or generation != self._connectivity_generation:
+                return
             await self._note_get_modules_failure(err, source=source, pending=pending)
+            return
+
+        if not self._started or generation != self._connectivity_generation:
             return
 
         rows_list = list(rows)
         wanted = set(self.modules)
         seen: set[str] = set()
+        unusable: set[str] = set()
         for row in rows_list:
             devid = str(getattr(row, "devid", "") or "")
             if not devid or devid not in wanted:
@@ -368,6 +386,7 @@ class ConnectivityMixin(GatewayMixinBase):
             connected_at = _parse_connected_at(getattr(row, "connectedAt", None))
             if connected_at is None:
                 LOG.warning("Skipping connectivity row with unusable connectedAt for devid=%s", devid)
+                unusable.add(devid)
                 continue
             seen.add(devid)
             await self._apply_connectivity(
@@ -383,6 +402,7 @@ class ConnectivityMixin(GatewayMixinBase):
         # least one recognised subscribed module. Empty or odd shapes keep the
         # previous online cache and preserve/advance the streak so sustained
         # unusable listings can still fail-close (same threshold as hard errors).
+        # Rows present but with unusable connectedAt stay on prior state (not derived).
         if not seen:
             if wanted:
                 LOG.warning(
@@ -400,7 +420,7 @@ class ConnectivityMixin(GatewayMixinBase):
         self._get_modules_fail_streak = 0
         self._get_modules_fail_since_mono = None
 
-        for devid in wanted - seen:
+        for devid in wanted - seen - unusable:
             await self._apply_connectivity(
                 devid=devid,
                 online=False,
@@ -414,7 +434,7 @@ class ConnectivityMixin(GatewayMixinBase):
         err: Exception,
         *,
         source: ConnectivitySource,
-        pending: list[ModuleConnectivity] | None = None,
+        pending: list[tuple[int, ModuleConnectivity]] | None = None,
     ) -> None:
         """Record a failed ``get_modules`` poll and optionally fail-close modules."""
         expected = _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err)
@@ -441,7 +461,7 @@ class ConnectivityMixin(GatewayMixinBase):
         detail: str,
         level: str = "warning",
         exc: Exception | None = None,
-        pending: list[ModuleConnectivity] | None = None,
+        pending: list[tuple[int, ModuleConnectivity]] | None = None,
     ) -> None:
         """Bump the fail streak and fail-close when streak + elapsed window allow it."""
         now = time.monotonic()
@@ -495,7 +515,7 @@ class ConnectivityMixin(GatewayMixinBase):
         self,
         *,
         source: ConnectivitySource,
-        pending: list[ModuleConnectivity] | None = None,
+        pending: list[tuple[int, ModuleConnectivity]] | None = None,
     ) -> None:
         """Mark every subscribed module offline after sustained ``get_modules`` failure."""
         for devid in list(self.modules):
@@ -507,8 +527,20 @@ class ConnectivityMixin(GatewayMixinBase):
                 pending=pending,
             )
 
-    async def _emit_module_connectivity(self, event: ModuleConnectivity) -> None:
-        """Dispatch one module-connectivity event and optional online recovery."""
+    def _bump_module_connectivity_seq(self, devid: str) -> int:
+        """Advance the per-module connectivity event sequence and return the new value."""
+        nxt = self._module_connectivity_seq.get(devid, 0) + 1
+        self._module_connectivity_seq[devid] = nxt
+        return nxt
+
+    async def _emit_module_connectivity(self, event: ModuleConnectivity, *, seq: int) -> None:
+        """Dispatch one module-connectivity event and optional online recovery.
+
+        Drops events whose *seq* no longer matches the latest apply for that devid
+        (superseded by a nested refresh while an earlier batch was still emitting).
+        """
+        if self._module_connectivity_seq.get(event.devid) != seq:
+            return
         if self._on_module_connectivity:
             await self._invoke_list(self._on_module_connectivity, event)
         if event.online_changed and event.online and event.devid in self.modules:
@@ -522,11 +554,11 @@ class ConnectivityMixin(GatewayMixinBase):
         source: ConnectivitySource,
         connected_at: int | None,
         gateway: dict[str, Any] | None = None,
-        pending: list[ModuleConnectivity] | None = None,
+        pending: list[tuple[int, ModuleConnectivity]] | None = None,
     ) -> None:
         """Update cache and notify listeners when online or metadata changes.
 
-        When *pending* is provided, queue the event for the caller to emit after
+        When *pending* is provided, queue ``(seq, event)`` for the caller to emit after
         releasing ``_get_modules_refresh_lock`` (avoids callback re-entrancy deadlock).
         """
         previous_online = self._module_online.get(devid)
@@ -600,10 +632,11 @@ class ConnectivityMixin(GatewayMixinBase):
             online_changed,
             metadata_changed,
         )
+        seq = self._bump_module_connectivity_seq(devid)
         if pending is not None:
-            pending.append(event)
+            pending.append((seq, event))
             return
-        await self._emit_module_connectivity(event)
+        await self._emit_module_connectivity(event, seq=seq)
 
     async def _ingest_module_connection_status(self, payload: dict[str, Any]) -> None:
         """Apply SPA ``app:module:connection:status:changed`` payloads per devid."""

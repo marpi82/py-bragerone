@@ -7,7 +7,7 @@ from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, Literal
 
-from ..models.events import CloudOutageReason, ConnectivityEpisodeLayer, EventBus, ModuleOutageReason
+from ..models.events import CloudOutageReason, ConnectivityEpisodeLayer, EventBus, ModuleConnectivity, ModuleOutageReason
 from .helpers import (
     AlarmQuantityCb,
     CloudSessionCb,
@@ -42,6 +42,7 @@ class GatewayMixinBase:
     _get_modules_fail_streak: int
     _get_modules_fail_since_mono: float | None
     _get_modules_refresh_lock: asyncio.Lock
+    _module_connectivity_seq: dict[str, int]
     _zombie_hard_restart_after: int
     _zombie_full_recycle_after: int
     _zombie_rebuild_after: int
@@ -212,7 +213,8 @@ class GatewayMixinBase:
         self,
         *,
         source: ConnectivitySource,
-        pending: list[Any],
+        pending: list[tuple[int, ModuleConnectivity]],
+        generation: int,
     ) -> None:
         raise NotImplementedError
 
@@ -221,7 +223,7 @@ class GatewayMixinBase:
         err: Exception,
         *,
         source: ConnectivitySource,
-        pending: list[Any] | None = None,
+        pending: list[tuple[int, ModuleConnectivity]] | None = None,
     ) -> None:
         raise NotImplementedError
 
@@ -232,7 +234,7 @@ class GatewayMixinBase:
         detail: str,
         level: str = "warning",
         exc: Exception | None = None,
-        pending: list[Any] | None = None,
+        pending: list[tuple[int, ModuleConnectivity]] | None = None,
     ) -> None:
         raise NotImplementedError
 
@@ -240,11 +242,11 @@ class GatewayMixinBase:
         self,
         *,
         source: ConnectivitySource,
-        pending: list[Any] | None = None,
+        pending: list[tuple[int, ModuleConnectivity]] | None = None,
     ) -> None:
         raise NotImplementedError
 
-    async def _emit_module_connectivity(self, event: Any) -> None:
+    async def _emit_module_connectivity(self, event: ModuleConnectivity, *, seq: int) -> None:
         raise NotImplementedError
 
     async def _apply_connectivity(
@@ -255,7 +257,7 @@ class GatewayMixinBase:
         source: ConnectivitySource,
         connected_at: int | None,
         gateway: dict[str, Any] | None = None,
-        pending: list[Any] | None = None,
+        pending: list[tuple[int, ModuleConnectivity]] | None = None,
     ) -> None:
         raise NotImplementedError
 

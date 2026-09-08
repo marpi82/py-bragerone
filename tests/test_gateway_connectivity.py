@@ -509,6 +509,136 @@ async def test_gateway_get_modules_fail_streak_resets_on_stop() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gateway_get_modules_inflight_stop_discards_failure() -> None:
+    """stop() during an in-flight get_modules must not rebuild the fail streak."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    await gw.start()
+
+    release = asyncio.Event()
+    entered = asyncio.Event()
+
+    async def _gated_get_modules(object_id: int) -> list[Any]:
+        entered.set()
+        await release.wait()
+        raise ReadTimeout("after stop")
+
+    api.get_modules = _gated_get_modules  # type: ignore[method-assign]
+    task = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
+    await entered.wait()
+    await gw.stop()
+    release.set()
+    done, _pending = await asyncio.wait({task})
+    assert done
+    assert gw._get_modules_fail_streak == 0
+    assert gw._get_modules_fail_since_mono is None
+
+    async def _ok_get_modules(object_id: int) -> list[Any]:
+        api.get_modules_calls += 1
+        if api.get_modules_error is not None:
+            raise api.get_modules_error
+        return list(api.module_rows)
+
+    api.get_modules = _ok_get_modules  # type: ignore[method-assign]
+    api.get_modules_error = None
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    await gw.start()
+    api.get_modules_error = ReadTimeout("fresh")
+    await gw._refresh_module_connectivity(source="rest")
+    assert gw._get_modules_fail_streak == 1
+    assert gw.module_online("M1") is True
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_mixed_listing_keeps_unusable_module_state() -> None:
+    """A sibling with unusable connectedAt must not be derived offline."""
+    api = FakeApiClient()
+    api.module_rows = [
+        SimpleNamespace(devid="M1", connectedAt=50, gateway=None),
+        SimpleNamespace(devid="M2", connectedAt=60, gateway=None),
+    ]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1", "M2"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    await gw.start()
+    assert gw.module_online("M1") is True
+    assert gw.module_online("M2") is True
+
+    api.module_rows = [
+        SimpleNamespace(devid="M1", connectedAt=70, gateway=None),
+        SimpleNamespace(devid="M2", connectedAt=None, gateway=None),
+    ]
+    await gw.refresh_module_connectivity()
+    assert gw.module_online("M1") is True
+    assert gw.module_connected_at("M1") == 70
+    assert gw.module_online("M2") is True
+    assert gw.module_connected_at("M2") == 60
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_pending_emit_skips_superseded_module_event() -> None:
+    """Nested refresh during emit must not deliver a stale offline event afterward."""
+    api = FakeApiClient()
+    api.module_rows = [
+        SimpleNamespace(devid="M1", connectedAt=50, gateway=None),
+        SimpleNamespace(devid="M2", connectedAt=50, gateway=None),
+    ]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1", "M2"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    seen: list[tuple[str, bool]] = []
+    reentered = asyncio.Event()
+
+    async def _on_connectivity(event: ModuleConnectivity) -> None:
+        seen.append((event.devid, event.online))
+        if event.devid == "M1" and event.online is False and not reentered.is_set():
+            api.get_modules_error = None
+            api.module_rows = [
+                SimpleNamespace(devid="M1", connectedAt=80, gateway=None),
+                SimpleNamespace(devid="M2", connectedAt=80, gateway=None),
+            ]
+            await gw.refresh_module_connectivity()
+            reentered.set()
+
+    gw.on_module_connectivity(_on_connectivity)
+    await gw.start()
+    seen.clear()
+    api.get_modules_error = ReadTimeout("outage")
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._refresh_module_connectivity(source="rest")
+    assert reentered.is_set()
+    assert gw.module_online("M1") is True
+    assert gw.module_online("M2") is True
+    # After nested restore, no trailing offline for M2 from the outer fail-close batch.
+    assert ("M2", False) not in seen[seen.index(("M1", False)) + 1 :]
+    await gw.stop()
+
+
+@pytest.mark.asyncio
 async def test_gateway_connectivity_timeout_errors_are_warn_only(caplog: pytest.LogCaptureFixture) -> None:
     """Expected timeout-like failures should not emit full traceback spam."""
     api = FakeApiClient()

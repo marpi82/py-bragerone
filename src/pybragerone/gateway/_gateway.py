@@ -150,6 +150,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._get_modules_fail_streak = 0
         self._get_modules_fail_since_mono: float | None = None
         self._get_modules_refresh_lock = asyncio.Lock()
+        self._module_connectivity_seq: dict[str, int] = {}
         self._zombie_hard_restart_after = int(zombie_hard_restart_after)
         self._zombie_full_recycle_after = int(zombie_full_recycle_after)
         self._zombie_rebuild_after = int(zombie_rebuild_after)

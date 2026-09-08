@@ -159,8 +159,9 @@ first failure — the gateway fail-closes subscribed modules to offline.
 Empty or unrecognised listings advance the same streak (they do not reset it)
 and still never wipe modules on a single tick. Refreshes are serialized so
 callbacks that re-enter refresh cannot rebuild the streak under the lock.
-Rows with null/unusable ``connectedAt`` are **skipped** (previous state kept);
-empty ``gateway`` blobs are still applied when ``connectedAt`` is usable.
+Rows with null/unusable ``connectedAt`` keep their previous state (they are not
+derived offline when a sibling row in the same listing is usable); empty
+``gateway`` blobs are still applied when ``connectedAt`` is usable.
 
 While the client's Socket.IO session is down, the same poll **REST-primes**
 parameters so Home Assistant entities keep receiving ``ParamUpdate`` events (WS
