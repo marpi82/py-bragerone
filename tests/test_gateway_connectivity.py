@@ -560,6 +560,88 @@ async def test_gateway_get_modules_inflight_stop_discards_failure() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gateway_get_modules_inflight_stop_discards_success() -> None:
+    """stop() during get_modules must discard a late successful listing too."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    await gw.start()
+    assert gw.module_connected_at("M1") == 50
+
+    release = asyncio.Event()
+    entered = asyncio.Event()
+
+    async def _gated_get_modules(object_id: int) -> list[Any]:
+        entered.set()
+        await release.wait()
+        return [SimpleNamespace(devid="M1", connectedAt=999, gateway=None)]
+
+    api.get_modules = _gated_get_modules  # type: ignore[method-assign]
+    task = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
+    await entered.wait()
+    await gw.stop()
+    release.set()
+    done, _pending = await asyncio.wait({task})
+    assert done
+    # Late success must not mutate cache after stop().
+    assert gw.module_connected_at("M1") == 50
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_get_modules_lock_waiter_discards_after_stop() -> None:
+    """A refresh waiting on the lock after stop() must exit without HTTP/state work."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    await gw.start()
+
+    release_first = asyncio.Event()
+    entered_first = asyncio.Event()
+    second_http = {"n": 0}
+    call_count = 0
+
+    async def _gated_get_modules(object_id: int) -> list[Any]:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            entered_first.set()
+            await release_first.wait()
+            return [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+        second_http["n"] += 1
+        return [SimpleNamespace(devid="M1", connectedAt=77, gateway=None)]
+
+    api.get_modules = _gated_get_modules  # type: ignore[method-assign]
+    first = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
+    await entered_first.wait()
+    second = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
+    await asyncio.sleep(0)
+    await gw.stop()
+    release_first.set()
+    done, _pending = await asyncio.wait({first, second})
+    assert len(done) == 2
+    assert second_http["n"] == 0
+    assert gw._get_modules_fail_streak == 0
+    await gw.stop()
+
+
+@pytest.mark.asyncio
 async def test_gateway_mixed_listing_keeps_unusable_module_state() -> None:
     """A sibling with unusable connectedAt must not be derived offline."""
     api = FakeApiClient()
