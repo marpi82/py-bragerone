@@ -158,11 +158,11 @@ and with the default 60 s poll, only after roughly two poll intervals since the
 first failure — the gateway fail-closes subscribed modules to offline.
 Empty or unrecognised listings advance the same streak (they do not reset it)
 and still never wipe modules on a single tick. A fail-close skips modules that
-  received a newer valid WS connectivity observation while that HTTP call was in
-  flight (including identical connectedAt / gateway reaffirmations). Ordinary WS
-  disconnect does not discard an in-flight ``get_modules`` failure from the streak
-  — only ``stop()`` invalidates that HTTP completion. Refreshes are serialized so
-  callbacks that re-enter refresh cannot rebuild the streak under the lock.
+received a newer valid WS connectivity observation while that HTTP call was in
+flight (including identical connectedAt / gateway reaffirmations). Ordinary WS
+disconnect does not discard an in-flight ``get_modules`` failure from the streak
+— only ``stop()`` invalidates that HTTP completion. Refreshes are serialized so
+callbacks that re-enter refresh cannot rebuild the streak under the lock.
 ``Module`` validation coerces null ``connectedAt`` to ``0`` (offline); the
 gateway applies the same rule for duck-typed nulls. Corrupt rows skipped by
 ``get_modules`` (or non-numeric duck-typed values) are absent from the listing —
