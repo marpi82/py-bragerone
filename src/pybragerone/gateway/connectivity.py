@@ -342,7 +342,6 @@ class ConnectivityMixin(GatewayMixinBase):
             await self._note_get_modules_failure(err, source=source)
             return
 
-        self._get_modules_fail_streak = 0
         rows_list = list(rows)
         wanted = set(self.modules)
         seen: set[str] = set()
@@ -363,15 +362,24 @@ class ConnectivityMixin(GatewayMixinBase):
                 gateway=_gateway_as_dict(getattr(row, "gateway", None)),
             )
 
-        # Only derive offline for missing devids when the listing contained at least
-        # one recognised subscribed module (avoids treating [] / odd shapes as wipe).
+        # Only derive offline / clear the fail streak when the listing contained at
+        # least one recognised subscribed module. Empty or odd shapes keep the
+        # previous online cache and preserve/advance the streak so sustained
+        # unusable listings can still fail-close (same threshold as hard errors).
         if not seen:
             if wanted:
                 LOG.warning(
-                    "get_modules returned no recognised subscribed modules (wanted=%s); skipping derived offline",
+                    "get_modules returned no recognised subscribed modules (wanted=%s); "
+                    "keeping previous module state and advancing fail_streak",
                     sorted(wanted),
                 )
+                await self._advance_get_modules_fail_streak(
+                    source=source,
+                    detail="no recognised subscribed modules",
+                )
             return
+
+        self._get_modules_fail_streak = 0
 
         for devid in wanted - seen:
             await self._apply_connectivity(
@@ -383,28 +391,51 @@ class ConnectivityMixin(GatewayMixinBase):
 
     async def _note_get_modules_failure(self, err: Exception, *, source: ConnectivitySource) -> None:
         """Record a failed ``get_modules`` poll and optionally fail-close modules."""
+        expected = _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err)
+        if expected:
+            await self._advance_get_modules_fail_streak(
+                source=source,
+                detail=format_expected_failure_reason(err),
+                level="warning",
+            )
+        else:
+            await self._advance_get_modules_fail_streak(
+                source=source,
+                detail=f"{type(err).__name__}: {err}",
+                level="exception",
+                exc=err,
+            )
+
+    async def _advance_get_modules_fail_streak(
+        self,
+        *,
+        source: ConnectivitySource,
+        detail: str,
+        level: str = "warning",
+        exc: Exception | None = None,
+    ) -> None:
+        """Bump the fail streak and fail-close when the threshold is reached."""
         self._get_modules_fail_streak += 1
         streak = self._get_modules_fail_streak
         threshold = self._get_modules_fail_offline_after
-        expected = _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err)
-        if expected:
-            LOG.warning(
-                "get_modules unavailable/timeout during connectivity refresh; fail_streak=%s/%s (source=%s, reason=%s)",
+        if level == "exception":
+            LOG.error(
+                "get_modules failed during connectivity refresh (fail_streak=%s/%s, source=%s, detail=%s)",
                 streak,
                 threshold if threshold > 0 else "off",
                 source,
-                format_expected_failure_reason(err),
+                detail,
+                exc_info=exc,
             )
         else:
-            LOG.exception(
-                "get_modules failed during connectivity refresh (fail_streak=%s/%s, source=%s)",
+            LOG.warning(
+                "get_modules unavailable during connectivity refresh; fail_streak=%s/%s (source=%s, detail=%s)",
                 streak,
                 threshold if threshold > 0 else "off",
                 source,
+                detail,
             )
         if threshold <= 0 or streak < threshold:
-            if expected:
-                LOG.debug("Keeping previous module state after get_modules failure (streak below fail-close)")
             return
         LOG.warning(
             "Fail-closing %s subscribed module(s) after %s consecutive get_modules failures (source=%s)",

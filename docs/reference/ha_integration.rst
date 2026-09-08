@@ -154,8 +154,9 @@ force modules offline (SPA parity). A background REST poll (default 60s;
 ``connectivity_poll_interval=0`` disables it) continues even while WS is down.
 A single failed ``get_modules`` keeps the previous module state; after
 ``get_modules_fail_offline_after`` consecutive failures (default 3) the gateway
-fail-closes subscribed modules to offline. Empty listings still never wipe every
-module to offline. Degraded rows (empty ``gateway``, null ``connectedAt``) parse as
+fail-closes subscribed modules to offline. Empty or unrecognised listings advance
+the same streak (they do not reset it) and still never wipe modules on a single
+tick. Degraded rows (empty ``gateway``, null ``connectedAt``) parse as
 offline (``connectedAt == 0``) instead of being dropped from the listing.
 
 While the client's Socket.IO session is down, the same poll **REST-primes**

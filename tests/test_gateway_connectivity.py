@@ -246,7 +246,7 @@ async def test_gateway_connectivity_from_rest_and_ws_disconnect_preserves_online
 
 @pytest.mark.asyncio
 async def test_gateway_connectivity_empty_listing_does_not_wipe() -> None:
-    """An empty get_modules result must not mark every module offline."""
+    """An empty get_modules result must not mark every module offline on one tick."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     ws = FakeRealtimeManager()
@@ -257,6 +257,32 @@ async def test_gateway_connectivity_empty_listing_does_not_wipe() -> None:
     api.module_rows = []
     await gw.refresh_module_connectivity()
     assert gw.module_online("M1") is True
+    assert gw._get_modules_fail_streak == 1
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_empty_listing_fail_closes_after_streak() -> None:
+    """Sustained empty/unusable listings fail-close like hard get_modules errors."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    await gw.start()
+    api.module_rows = []
+    await gw.refresh_module_connectivity()
+    await gw.refresh_module_connectivity()
+    assert gw.module_online("M1") is True
+    await gw.refresh_module_connectivity()
+    assert gw.module_online("M1") is False
+    assert gw.module_connected_at("M1") == 0
     await gw.stop()
 
 
@@ -352,7 +378,7 @@ async def test_gateway_connectivity_timeout_errors_are_warn_only(caplog: pytest.
     with caplog.at_level("WARNING"):
         api.get_modules_error = ReadTimeout("read timeout")
         await gw.refresh_module_connectivity()
-    assert "get_modules unavailable/timeout during connectivity refresh" in caplog.text
+    assert "get_modules unavailable during connectivity refresh" in caplog.text
     assert not any(record.exc_info for record in caplog.records)
 
     caplog.clear()
@@ -363,7 +389,7 @@ async def test_gateway_connectivity_timeout_errors_are_warn_only(caplog: pytest.
             {},
         )
         await gw.refresh_module_connectivity()
-    assert "get_modules unavailable/timeout during connectivity refresh" in caplog.text
+    assert "get_modules unavailable during connectivity refresh" in caplog.text
     assert not any(record.exc_info for record in caplog.records)
 
     await gw.stop()
@@ -381,7 +407,7 @@ async def test_gateway_connectivity_503_errors_are_warn_only(caplog: pytest.LogC
     with caplog.at_level("WARNING"):
         api.get_modules_error = ApiError(503, "<html>Service Unavailable</html>", {})
         await gw.refresh_module_connectivity()
-    assert "get_modules unavailable/timeout during connectivity refresh" in caplog.text
+    assert "get_modules unavailable during connectivity refresh" in caplog.text
     assert not any(record.exc_info for record in caplog.records)
     assert gw.module_online("M1") is True
 

@@ -209,6 +209,16 @@ class GatewayMixinBase:
     async def _note_get_modules_failure(self, err: Exception, *, source: ConnectivitySource) -> None:
         raise NotImplementedError
 
+    async def _advance_get_modules_fail_streak(
+        self,
+        *,
+        source: ConnectivitySource,
+        detail: str,
+        level: str = "warning",
+        exc: Exception | None = None,
+    ) -> None:
+        raise NotImplementedError
+
     async def _fail_close_subscribed_modules(self, *, source: ConnectivitySource) -> None:
         raise NotImplementedError
 
