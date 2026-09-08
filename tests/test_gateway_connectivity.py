@@ -721,6 +721,43 @@ async def test_gateway_pending_emit_skips_superseded_module_event() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gateway_emit_rechecks_seq_between_listeners_and_recovery() -> None:
+    """A re-entrant first listener must not leave stale events for later listeners/recovery."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        get_modules_fail_offline_after=3,
+    )
+    await gw.start()
+    later_events: list[ModuleConnectivity] = []
+    recovered: list[str] = []
+
+    async def _first(event: ModuleConnectivity) -> None:
+        if event.online:
+            gw._bump_module_connectivity_seq(event.devid)
+
+    def _later(event: ModuleConnectivity) -> None:
+        later_events.append(event)
+
+    async def _recover(devid: str) -> None:
+        recovered.append(devid)
+
+    gw.on_module_connectivity(_first)
+    gw.on_module_connectivity(_later)
+    gw._maybe_recover_after_module_online = _recover  # type: ignore[method-assign]
+    await gw._apply_connectivity(devid="M1", online=True, source="rest", connected_at=42)
+    assert later_events == []
+    assert recovered == []
+    await gw.stop()
+
+
+@pytest.mark.asyncio
 async def test_gateway_connectivity_timeout_errors_are_warn_only(caplog: pytest.LogCaptureFixture) -> None:
     """Expected timeout-like failures should not emit full traceback spam."""
     api = FakeApiClient()

@@ -538,11 +538,23 @@ class ConnectivityMixin(GatewayMixinBase):
 
         Drops events whose *seq* no longer matches the latest apply for that devid
         (superseded by a nested refresh while an earlier batch was still emitting).
+        Re-checks *seq* between awaited listeners and again before recovery so a
+        re-entrant callback cannot leave stale events for later consumers.
         """
         if self._module_connectivity_seq.get(event.devid) != seq:
             return
-        if self._on_module_connectivity:
-            await self._invoke_list(self._on_module_connectivity, event)
+        for cb in list(self._on_module_connectivity):
+            if self._module_connectivity_seq.get(event.devid) != seq:
+                return
+            try:
+                res = cb(event)
+                if asyncio.iscoroutine(res):
+                    # Bind the discarded None so CodeQL does not treat bare ``await`` as ineffectual.
+                    _ = await res
+            except Exception:
+                LOG.exception("Module connectivity callback error")
+        if self._module_connectivity_seq.get(event.devid) != seq:
+            return
         if event.online_changed and event.online and event.devid in self.modules:
             await self._maybe_recover_after_module_online(event.devid)
 
