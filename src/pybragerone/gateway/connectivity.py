@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import types
 import uuid
 from dataclasses import replace
 from typing import Any
@@ -486,13 +487,16 @@ class ConnectivityMixin(GatewayMixinBase):
             self._get_modules_fail_since_mono = now
         streak = self._get_modules_fail_streak
         if level == "exception":
+            # ``exc_info`` needs True/False or (type, value, tb) — not an Exception instance.
+            exc_info: tuple[type[BaseException], BaseException, types.TracebackType | None] | None
+            exc_info = (type(exc), exc, exc.__traceback__) if exc is not None else None
             LOG.error(
                 "get_modules failed during connectivity refresh (fail_streak=%s, source=%s, detail=%s); "
                 "keeping last-known module online state",
                 streak,
                 source,
                 detail,
-                exc_info=exc,
+                exc_info=exc_info,
             )
         else:
             LOG.warning(

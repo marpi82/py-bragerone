@@ -1126,6 +1126,27 @@ async def test_gateway_connectivity_503_errors_are_warn_only(caplog: pytest.LogC
     await gw.stop()
 
 
+@pytest.mark.asyncio
+async def test_gateway_connectivity_unexpected_errors_log_exc_info(caplog: pytest.LogCaptureFixture) -> None:
+    """Unexpected get_modules failures log ERROR with an explicit exc_info tuple."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+
+    with caplog.at_level("ERROR"):
+        api.get_modules_error = RuntimeError("boom")
+        await gw.refresh_module_connectivity()
+    assert "get_modules failed during connectivity refresh" in caplog.text
+    error_records = [r for r in caplog.records if r.levelno >= 40 and "get_modules failed" in r.getMessage()]
+    assert error_records
+    assert error_records[0].exc_info is not None
+    assert error_records[0].exc_info[0] is RuntimeError
+    assert gw.module_online("M1") is True
+    await gw.stop()
+
+
 def test_gateway_timeout_error_helpers() -> None:
     """Timeout helpers classify only expected timeout-like exceptions."""
     assert _is_http_timeout_error(ReadTimeout("t")) is True
