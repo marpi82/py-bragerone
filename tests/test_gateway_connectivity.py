@@ -1157,6 +1157,33 @@ async def test_gateway_connectivity_unexpected_errors_log_exc_info(caplog: pytes
     await gw.stop()
 
 
+@pytest.mark.asyncio
+async def test_gateway_connectivity_unexpected_error_after_expected_still_errors(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """First unexpected exception in a window logs ERROR even after expected failures."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+
+    with caplog.at_level("DEBUG"):
+        api.get_modules_error = ReadTimeout("read timeout")
+        await gw.refresh_module_connectivity()
+        api.get_modules_error = RuntimeError("boom")
+        await gw.refresh_module_connectivity()
+    warnings = [r for r in caplog.records if r.levelname == "WARNING" and "get_modules unavailable" in r.getMessage()]
+    assert len(warnings) == 1
+    error_records = [r for r in caplog.records if r.levelno >= 40 and "get_modules failed" in r.getMessage()]
+    assert len(error_records) == 1
+    assert error_records[0].exc_info is not None
+    assert error_records[0].exc_info[0] is RuntimeError
+    assert gw._get_modules_fail_streak == 2
+    assert gw._get_modules_fail_logged_exception is True
+    await gw.stop()
+
+
 def test_gateway_timeout_error_helpers() -> None:
     """Timeout helpers classify only expected timeout-like exceptions."""
     assert _is_http_timeout_error(ReadTimeout("t")) is True

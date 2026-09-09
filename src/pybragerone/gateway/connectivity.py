@@ -430,6 +430,7 @@ class ConnectivityMixin(GatewayMixinBase):
 
         self._get_modules_fail_streak = 0
         self._get_modules_fail_since_mono = None
+        self._get_modules_fail_logged_exception = False
 
         for devid in wanted - seen:
             await self._apply_connectivity(
@@ -476,20 +477,22 @@ class ConnectivityMixin(GatewayMixinBase):
         offline. Authoritative plant offline still arrives via ``connectedAt``
         on a usable listing or WS ``connection:status``.
 
-        Warning/error logs fire once per outage window (streak == 1); later
-        polls in the same window stay at DEBUG to avoid poll-interval spam.
+        Expected (WARNING) failures log once per outage window (streak == 1),
+        then DEBUG. Unexpected exceptions always emit one ERROR with traceback
+        the first time they appear in the window — even if the window started
+        with expected failures — so real bugs are not hidden in DEBUG.
         """
         now = time.monotonic()
         self._get_modules_fail_streak += 1
         if self._get_modules_fail_since_mono is None:
             self._get_modules_fail_since_mono = now
         streak = self._get_modules_fail_streak
-        log_once = streak == 1
         # ``exc_info`` needs True/False or (type, value, tb) — not an Exception instance.
         exc_info: tuple[type[BaseException], BaseException, types.TracebackType | None] | None
         exc_info = (type(exc), exc, exc.__traceback__) if exc is not None else None
         if level == "exception":
-            if log_once:
+            if not self._get_modules_fail_logged_exception:
+                self._get_modules_fail_logged_exception = True
                 LOG.error(
                     "get_modules failed during connectivity refresh (fail_streak=%s, source=%s, detail=%s); "
                     "keeping last-known module online state",
@@ -506,7 +509,7 @@ class ConnectivityMixin(GatewayMixinBase):
                     detail,
                     exc_info=exc_info,
                 )
-        elif log_once:
+        elif streak == 1:
             LOG.warning(
                 "get_modules unavailable during connectivity refresh; fail_streak=%s "
                 "(source=%s, detail=%s); keeping last-known module online state",
