@@ -225,8 +225,6 @@ class GatewayMixinBase:
         err: Exception,
         *,
         source: ConnectivitySource,
-        pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int],
     ) -> None:
         raise NotImplementedError
 
@@ -237,17 +235,6 @@ class GatewayMixinBase:
         detail: str,
         level: str = "warning",
         exc: Exception | None = None,
-        pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int],
-    ) -> None:
-        raise NotImplementedError
-
-    async def _fail_close_subscribed_modules(
-        self,
-        *,
-        source: ConnectivitySource,
-        pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int],
     ) -> None:
         raise NotImplementedError
 

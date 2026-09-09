@@ -7,6 +7,14 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Fixed
+
+- Unusable ``get_modules`` results (transport errors or empty/unrecognised
+  listings) no longer mark subscribed modules offline. Keep last-known module
+  online; authoritative offline remains ``connectedAt`` / WS ``connection:status``
+  so library↔cloud loss is not reported as module↔cloud offline (#393).
+  ``get_modules_fail_offline_after`` is retained as a deprecated no-op.
+
 ## [2026.9.2rc3] - 2026-09-08
 
 ### Fixed

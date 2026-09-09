@@ -131,9 +131,10 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
                 (REST primes still run). Use ``0`` to disable the pause duration.
             connectivity_episode_limit: Max completed outage episodes retained for
                 :meth:`connectivity_episodes` diagnostics. Use ``0`` to disable.
-            get_modules_fail_offline_after: Consecutive failed ``get_modules`` polls
-                before marking every subscribed module offline (fail-closed). A single
-                hiccup still keeps the previous state. Use ``0`` to never fail-close.
+            get_modules_fail_offline_after: Deprecated no-op retained for call-site
+                compatibility. Unusable ``get_modules`` results never mark modules
+                offline (keep last-known); authoritative offline comes from
+                ``connectedAt`` / WS ``connection:status``.
         """
         self.object_id = int(object_id)
         self.modules = sorted(set(modules))
@@ -247,7 +248,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
             ws: Optional WS client instance (testing).
             api: Optional API client instance (testing/customization).
             connectivity_poll_interval: See :meth:`__init__`.
-            get_modules_fail_offline_after: See :meth:`__init__` (``0`` disables fail-close).
+            get_modules_fail_offline_after: Deprecated no-op; see :meth:`__init__`.
 
         Returns:
             An initialized gateway (not started).
