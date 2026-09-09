@@ -66,9 +66,10 @@ Best Practices
   constructor argument is a deprecated no-op kept for call-site compatibility.
 - **Live push health** is a third layer: ``live_push_health()`` /
   ``on_live_push`` expose ``push_healthy`` / ``live_stale_for_s`` while the
-  Socket.IO session is up but no live ``ParamUpdate`` arrives (zombie). Resume
-  logs ``live ParamUpdate resumed after …s``. Do not fold this into session or
-  module online bits.
+  Socket.IO session is up but no live ``ParamUpdate`` arrives (zombie). When the
+  session is down, ``push_healthy`` is ``False`` (no live stream — not a stale
+  ``True``). Resume logs ``live ParamUpdate resumed after …s``. Do not fold this
+  into session or module online bits.
 - While the Socket.IO session is down, the gateway REST-primes on the connectivity
   poll interval so consumers are not stuck on the last WS delta.
 - Engine.IO abort (for example aiohttp ``WSMsgType.CLOSED`` / packet type 257) can

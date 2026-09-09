@@ -422,11 +422,6 @@ class ConnectivityMixin(GatewayMixinBase):
         # plant-offline from an unusable observation).
         if not seen:
             if wanted:
-                LOG.warning(
-                    "get_modules returned no recognised subscribed modules (wanted=%s); "
-                    "keeping previous module state and advancing fail_streak",
-                    sorted(wanted),
-                )
                 await self._advance_get_modules_fail_streak(
                     source=source,
                     detail="no recognised subscribed modules",
@@ -480,28 +475,48 @@ class ConnectivityMixin(GatewayMixinBase):
         Library↔cloud transport loss must not be reported as module↔cloud
         offline. Authoritative plant offline still arrives via ``connectedAt``
         on a usable listing or WS ``connection:status``.
+
+        Warning/error logs fire once per outage window (streak == 1); later
+        polls in the same window stay at DEBUG to avoid poll-interval spam.
         """
         now = time.monotonic()
         self._get_modules_fail_streak += 1
         if self._get_modules_fail_since_mono is None:
             self._get_modules_fail_since_mono = now
         streak = self._get_modules_fail_streak
+        log_once = streak == 1
+        # ``exc_info`` needs True/False or (type, value, tb) — not an Exception instance.
+        exc_info: tuple[type[BaseException], BaseException, types.TracebackType | None] | None
+        exc_info = (type(exc), exc, exc.__traceback__) if exc is not None else None
         if level == "exception":
-            # ``exc_info`` needs True/False or (type, value, tb) — not an Exception instance.
-            exc_info: tuple[type[BaseException], BaseException, types.TracebackType | None] | None
-            exc_info = (type(exc), exc, exc.__traceback__) if exc is not None else None
-            LOG.error(
-                "get_modules failed during connectivity refresh (fail_streak=%s, source=%s, detail=%s); "
-                "keeping last-known module online state",
-                streak,
-                source,
-                detail,
-                exc_info=exc_info,
-            )
-        else:
+            if log_once:
+                LOG.error(
+                    "get_modules failed during connectivity refresh (fail_streak=%s, source=%s, detail=%s); "
+                    "keeping last-known module online state",
+                    streak,
+                    source,
+                    detail,
+                    exc_info=exc_info,
+                )
+            else:
+                LOG.debug(
+                    "get_modules still failing (fail_streak=%s, source=%s, detail=%s)",
+                    streak,
+                    source,
+                    detail,
+                    exc_info=exc_info,
+                )
+        elif log_once:
             LOG.warning(
                 "get_modules unavailable during connectivity refresh; fail_streak=%s "
                 "(source=%s, detail=%s); keeping last-known module online state",
+                streak,
+                source,
+                detail,
+            )
+        else:
+            LOG.debug(
+                "get_modules still unavailable (fail_streak=%s, source=%s, detail=%s)",
                 streak,
                 source,
                 detail,

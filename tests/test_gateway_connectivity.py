@@ -1092,6 +1092,12 @@ async def test_gateway_connectivity_timeout_errors_are_warn_only(caplog: pytest.
     assert "get_modules unavailable during connectivity refresh" in caplog.text
     assert not any(record.exc_info for record in caplog.records)
 
+    # Recover so the next expected failure starts a fresh log window.
+    api.get_modules_error = None
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    await gw.refresh_module_connectivity()
+    assert gw._get_modules_fail_streak == 0
+
     caplog.clear()
     with caplog.at_level("WARNING"):
         api.get_modules_error = ApiError(
@@ -1127,22 +1133,27 @@ async def test_gateway_connectivity_503_errors_are_warn_only(caplog: pytest.LogC
 
 @pytest.mark.asyncio
 async def test_gateway_connectivity_unexpected_errors_log_exc_info(caplog: pytest.LogCaptureFixture) -> None:
-    """Unexpected get_modules failures log ERROR with an explicit exc_info tuple."""
+    """Unexpected get_modules failures log ERROR once, then DEBUG, with exc_info tuples."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     ws = FakeRealtimeManager()
     gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
     await gw.start()
 
-    with caplog.at_level("ERROR"):
+    with caplog.at_level("DEBUG"):
         api.get_modules_error = RuntimeError("boom")
+        await gw.refresh_module_connectivity()
         await gw.refresh_module_connectivity()
     assert "get_modules failed during connectivity refresh" in caplog.text
     error_records = [r for r in caplog.records if r.levelno >= 40 and "get_modules failed" in r.getMessage()]
-    assert error_records
+    assert len(error_records) == 1
     assert error_records[0].exc_info is not None
     assert error_records[0].exc_info[0] is RuntimeError
+    debug_records = [r for r in caplog.records if r.levelname == "DEBUG" and "get_modules still failing" in r.getMessage()]
+    assert len(debug_records) == 1
+    assert debug_records[0].exc_info is not None
     assert gw.module_online("M1") is True
+    assert gw._get_modules_fail_streak == 2
     await gw.stop()
 
 
@@ -2504,7 +2515,53 @@ async def test_gateway_live_push_health_stale_and_resume(caplog: pytest.LogCaptu
     assert snap["last_resumed_after_s"] >= 90.0
 
     await gw.stop()
-    assert gw.live_push_health()["push_healthy"] is None
+    assert gw.live_push_health()["push_healthy"] is False
+
+
+async def test_gateway_live_push_health_session_down_is_unhealthy() -> None:
+    """Session-down must report push_healthy=False (never a stale True)."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=30.0,
+    )
+    await gw.start()
+    await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
+    await _wait_until(lambda: gw.live_push_health()["push_healthy"] is True)
+    await gw._on_ws_disconnected()
+    assert gw.ws_session_up() is False
+    assert gw.live_push_health()["push_healthy"] is False
+    await gw.stop()
+
+
+async def test_gateway_get_modules_fail_streak_logs_once_per_window(caplog: pytest.LogCaptureFixture) -> None:
+    """Transport fail streak warns once per outage window, then DEBUG."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+    )
+    await gw.start()
+    api.get_modules_error = ReadTimeout("read timeout")
+    with caplog.at_level("DEBUG"):
+        await gw._refresh_module_connectivity(source="rest")
+        await gw._refresh_module_connectivity(source="rest")
+        await gw._refresh_module_connectivity(source="rest")
+    warnings = [r for r in caplog.records if r.levelname == "WARNING" and "get_modules unavailable" in r.getMessage()]
+    assert len(warnings) == 1
+    assert gw._get_modules_fail_streak == 3
+    await gw.stop()
 
 
 async def test_gateway_live_push_health_true_when_stale_disabled() -> None:
