@@ -420,7 +420,6 @@ async def test_gateway_get_modules_transport_streak_with_poll_interval_keeps_onl
     assert gw.module_online("M1") is True
     assert gw._get_modules_fail_streak == 3
 
-    gw._get_modules_fail_since_mono = time.monotonic() - 120.0
     await gw._refresh_module_connectivity(source="rest")
     assert gw.module_online("M1") is True
     assert gw.module_connected_at("M1") == 50
