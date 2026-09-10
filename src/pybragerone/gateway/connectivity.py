@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import time
 import types
@@ -139,8 +138,7 @@ class ConnectivityMixin(GatewayMixinBase):
         self._cloud_down_pending_source = None
         if task is not None and not task.done():
             task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+            _ = await asyncio.gather(task, return_exceptions=True)
         return pending
 
     async def _cloud_down_hysteresis_fire(self) -> None:
