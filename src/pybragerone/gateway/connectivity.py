@@ -531,12 +531,6 @@ class ConnectivityMixin(GatewayMixinBase):
         self._module_online_seq[devid] = nxt
         return nxt
 
-    def _bump_module_observation_seq(self, devid: str) -> int:
-        """Advance the per-module observation revision (any successful apply)."""
-        nxt = self._module_observation_seq.get(devid, 0) + 1
-        self._module_observation_seq[devid] = nxt
-        return nxt
-
     def _coalesce_module_connectivity_event(self, event: ModuleConnectivity) -> ModuleConnectivity:
         """Overlay current cache metadata onto *event*, preserving ``online_changed``.
 
@@ -612,9 +606,6 @@ class ConnectivityMixin(GatewayMixinBase):
         metadata_changed = (connected_at is not None and connected_at != previous_connected_at) or (
             gateway is not None and gateway != previous_gateway
         )
-        # Confirming repeats (same connectedAt / gateway) still advance the observation
-        # revision so a concurrent REST fail-close cannot overwrite a WS reaffirmation.
-        self._bump_module_observation_seq(devid)
         if not online_changed and not metadata_changed:
             return
 

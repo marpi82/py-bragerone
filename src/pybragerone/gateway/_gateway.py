@@ -61,9 +61,9 @@ _DEFAULT_ZOMBIE_QUARANTINE_AFTER = 3
 _DEFAULT_ZOMBIE_QUARANTINE_S = 6 * 3600.0
 # Recent completed connectivity episodes retained for diagnostics (#379).
 _DEFAULT_CONNECTIVITY_EPISODE_LIMIT = 20
-# Consecutive failed ``get_modules`` polls before fail-closing subscribed modules
-# to offline (HA/network outages that cannot refresh ``connectedAt``). ``0`` keeps
-# the previous optimistic "retain last online" behaviour forever.
+# Deprecated compatibility knob retained on BragerOneGateway / from_credentials.
+# Unusable ``get_modules`` results never mark modules offline (keep last-known);
+# the value is ignored.
 _DEFAULT_GET_MODULES_FAIL_OFFLINE_AFTER = 3
 
 
@@ -153,7 +153,6 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._get_modules_fail_logged_exception = False
         self._get_modules_refresh_lock = asyncio.Lock()
         self._module_online_seq: dict[str, int] = {}
-        self._module_observation_seq: dict[str, int] = {}
         self._zombie_hard_restart_after = int(zombie_hard_restart_after)
         self._zombie_full_recycle_after = int(zombie_full_recycle_after)
         self._zombie_rebuild_after = int(zombie_rebuild_after)
@@ -424,7 +423,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._started = False
         self._lifecycle_generation += 1
         self._connectivity_generation += 1
-        # Intentional downtime must not carry a half-finished fail-close window into the next start().
+        # Intentional downtime must not carry a half-finished diagnostic fail streak into the next start().
         self._get_modules_fail_streak = 0
         self._get_modules_fail_since_mono = None
         self._get_modules_fail_logged_exception = False
