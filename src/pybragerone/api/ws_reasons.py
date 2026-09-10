@@ -50,6 +50,10 @@ def classify_ws_failure_reason(
         return "empty_queue"
     if "server has stopped communicating" in text or "stopped communicating" in text:
         return "server_stop"
+    # python-engineio abort paths surface these strings on the Socket.IO disconnect
+    # event (empty-queue / ping-timeout / WS close all collapse to TRANSPORT_ERROR).
+    if text in {"transport error", "transport close"} or "transport error" in text or "transport close" in text:
+        return "eio_close"
     if "wsmsgtype.closed" in text or "msgtype.closed" in text:
         return "eio_close"
     if "257" in text:
@@ -62,4 +66,7 @@ def classify_ws_failure_reason(
         return "reconnect_error"
     if ("connect" in text and "error" in text) or "connection error" in text or "connection refused" in text:
         return "connect_error"
+    # Intentional Socket.IO / Engine.IO disconnect reasons stay coarse.
+    if text in {"server disconnect", "client disconnect"}:
+        return "disconnect"
     return default

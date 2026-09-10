@@ -51,7 +51,9 @@ Best Practices
   observation token (coarse ``disconnect`` / ``stop`` or finer WS tokens such as
   ``handshake_503`` / ``eio_close``), not plant diagnostics. Completed episodes
   across cloud / module / live-stale layers are retained in
-  ``connectivity_episodes()`` for support dumps.
+  ``connectivity_episodes()`` for support dumps. Socket.IO ``disconnect`` forwards
+  the Engine.IO reason string into that classifier (``transport error`` maps to
+  ``eio_close``) so field dumps are not stuck on generic ``disconnect``.
 - A single failed ``get_modules`` poll still keeps the previous module online
   state (avoids one HTTP hiccup becoming a plant-wide outage). Sustained
   unusable results (errors or empty/unrecognised listings) also **keep
