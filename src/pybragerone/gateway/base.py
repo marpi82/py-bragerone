@@ -43,7 +43,6 @@ class GatewayMixinBase:
     _get_modules_fail_since_mono: float | None
     _get_modules_refresh_lock: asyncio.Lock
     _module_online_seq: dict[str, int]
-    _module_observation_seq: dict[str, int]
     _zombie_hard_restart_after: int
     _zombie_full_recycle_after: int
     _zombie_rebuild_after: int
@@ -225,8 +224,6 @@ class GatewayMixinBase:
         err: Exception,
         *,
         source: ConnectivitySource,
-        pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int],
     ) -> None:
         raise NotImplementedError
 
@@ -237,17 +234,6 @@ class GatewayMixinBase:
         detail: str,
         level: str = "warning",
         exc: Exception | None = None,
-        pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int],
-    ) -> None:
-        raise NotImplementedError
-
-    async def _fail_close_subscribed_modules(
-        self,
-        *,
-        source: ConnectivitySource,
-        pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int],
     ) -> None:
         raise NotImplementedError
 

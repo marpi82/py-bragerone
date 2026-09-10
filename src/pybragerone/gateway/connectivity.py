@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import types
 import uuid
 from dataclasses import replace
 from typing import Any
@@ -332,17 +333,16 @@ class ConnectivityMixin(GatewayMixinBase):
     async def _refresh_module_connectivity(self, *, source: ConnectivitySource = "rest") -> None:
         """Pull ``get_modules`` and apply online state for subscribed devids.
 
-        A single failed or empty fetch keeps the previous module state (avoids
-        turning one HTTP hiccup into a plant-wide outage). After
-        ``get_modules_fail_offline_after`` consecutive unusable results — and,
-        when the connectivity poll interval is enabled, after roughly
-        ``(threshold - 1) * poll_interval`` seconds since the first failure —
-        the gateway fail-closes every subscribed module to offline. Refreshes
+        Unusable fetches (HTTP errors or empty/unrecognised listings) keep the
+        previous module online cache — transport loss must not look like the
+        plant went offline. Authoritative ``online=False`` still comes from a
+        successful row with ``connectedAt=0``, a derived-missing sibling when
+        other subscribed rows were seen, or WS ``connection:status``. Refreshes
         are serialized so overlapping poll/reconnect completions cannot rebuild
-        the streak after a newer success. In-flight HTTP completions after
-        ``stop()`` (lifecycle generation bump) are discarded; ordinary WS
-        disconnect bumps only the session generation and must not drop a
-        concurrent ``get_modules`` failure from the fail-close streak.
+        the diagnostic fail streak after a newer success. In-flight HTTP
+        completions after ``stop()`` (lifecycle generation bump) are discarded;
+        ordinary WS disconnect bumps only the session generation and must not
+        drop a concurrent ``get_modules`` failure from the streak.
         """
         if not self._started:
             return
@@ -378,14 +378,12 @@ class ConnectivityMixin(GatewayMixinBase):
         lifecycle_generation: int,
     ) -> None:
         """Apply one ``get_modules`` refresh while ``_get_modules_refresh_lock`` is held."""
-        # Snapshot before HTTP so a concurrent WS observation can suppress fail-close.
-        observed_at = {d: self._module_observation_seq.get(d, 0) for d in self.modules}
         try:
             rows = await self.api.get_modules(self.object_id)
         except Exception as err:
             if not self._started or lifecycle_generation != self._lifecycle_generation:
                 return
-            await self._note_get_modules_failure(err, source=source, pending=pending, observed_at=observed_at)
+            await self._note_get_modules_failure(err, source=source)
             return
 
         if not self._started or lifecycle_generation != self._lifecycle_generation:
@@ -420,8 +418,8 @@ class ConnectivityMixin(GatewayMixinBase):
 
         # Only derive offline / clear the fail streak when the listing contained at
         # least one recognised subscribed module. Empty or odd shapes keep the
-        # previous online cache and preserve/advance the streak so sustained
-        # empty listings can still fail-close (same threshold as hard errors).
+        # previous online cache and advance the diagnostic streak (never invent
+        # plant-offline from an unusable observation).
         if not seen:
             if wanted:
                 LOG.warning(
@@ -432,8 +430,6 @@ class ConnectivityMixin(GatewayMixinBase):
                 await self._advance_get_modules_fail_streak(
                     source=source,
                     detail="no recognised subscribed modules",
-                    pending=pending,
-                    observed_at=observed_at,
                 )
             return
 
@@ -454,18 +450,14 @@ class ConnectivityMixin(GatewayMixinBase):
         err: Exception,
         *,
         source: ConnectivitySource,
-        pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int],
     ) -> None:
-        """Record a failed ``get_modules`` poll and optionally fail-close modules."""
+        """Record a failed ``get_modules`` poll; keep last-known module online state."""
         expected = _is_http_timeout_error(err) or _is_api_dispatch_timeout(err) or is_expected_upstream_unavailable(err)
         if expected:
             await self._advance_get_modules_fail_streak(
                 source=source,
                 detail=format_expected_failure_reason(err),
                 level="warning",
-                pending=pending,
-                observed_at=observed_at,
             )
         else:
             await self._advance_get_modules_fail_streak(
@@ -473,8 +465,6 @@ class ConnectivityMixin(GatewayMixinBase):
                 detail=f"{type(err).__name__}: {err}",
                 level="exception",
                 exc=err,
-                pending=pending,
-                observed_at=observed_at,
             )
 
     async def _advance_get_modules_fail_streak(
@@ -484,97 +474,43 @@ class ConnectivityMixin(GatewayMixinBase):
         detail: str,
         level: str = "warning",
         exc: Exception | None = None,
-        pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int],
     ) -> None:
-        """Bump the fail streak and fail-close when streak + elapsed window allow it."""
+        """Bump the diagnostic fail streak without marking modules offline.
+
+        Library↔cloud transport loss must not be reported as module↔cloud
+        offline. Authoritative plant offline still arrives via ``connectedAt``
+        on a usable listing or WS ``connection:status``.
+        """
         now = time.monotonic()
         self._get_modules_fail_streak += 1
-        fail_since = self._get_modules_fail_since_mono
-        if fail_since is None:
-            fail_since = now
-            self._get_modules_fail_since_mono = fail_since
+        if self._get_modules_fail_since_mono is None:
+            self._get_modules_fail_since_mono = now
         streak = self._get_modules_fail_streak
-        threshold = self._get_modules_fail_offline_after
         if level == "exception":
+            # ``exc_info`` needs True/False or (type, value, tb) — not an Exception instance.
+            exc_info: tuple[type[BaseException], BaseException, types.TracebackType | None] | None
+            exc_info = (type(exc), exc, exc.__traceback__) if exc is not None else None
             LOG.error(
-                "get_modules failed during connectivity refresh (fail_streak=%s/%s, source=%s, detail=%s)",
+                "get_modules failed during connectivity refresh (fail_streak=%s, source=%s, detail=%s); "
+                "keeping last-known module online state",
                 streak,
-                threshold if threshold > 0 else "off",
                 source,
                 detail,
-                exc_info=exc,
+                exc_info=exc_info,
             )
         else:
             LOG.warning(
-                "get_modules unavailable during connectivity refresh; fail_streak=%s/%s (source=%s, detail=%s)",
+                "get_modules unavailable during connectivity refresh; fail_streak=%s "
+                "(source=%s, detail=%s); keeping last-known module online state",
                 streak,
-                threshold if threshold > 0 else "off",
                 source,
                 detail,
-            )
-        if threshold <= 0 or streak < threshold:
-            return
-        interval = self._connectivity_poll_interval
-        if interval > 0:
-            # Use the local float (may be 0.0); never ``x or now`` — monotonic epoch can be zero.
-            elapsed = max(0.0, now - fail_since)
-            min_elapsed = (threshold - 1) * interval
-            if elapsed + 1e-9 < min_elapsed:
-                LOG.debug(
-                    "Deferring get_modules fail-close; streak=%s/%s but elapsed=%.1fs < %.1fs poll window",
-                    streak,
-                    threshold,
-                    elapsed,
-                    min_elapsed,
-                )
-                return
-        LOG.warning(
-            "Fail-closing %s subscribed module(s) after %s consecutive get_modules failures (source=%s)",
-            len(self.modules),
-            streak,
-            source,
-        )
-        await self._fail_close_subscribed_modules(source=source, pending=pending, observed_at=observed_at)
-
-    async def _fail_close_subscribed_modules(
-        self,
-        *,
-        source: ConnectivitySource,
-        pending: list[tuple[int, ModuleConnectivity]] | None = None,
-        observed_at: dict[str, int],
-    ) -> None:
-        """Mark subscribed modules offline after sustained ``get_modules`` failure.
-
-        Skip devids whose observation revision advanced since *observed_at* was
-        captured (typically a fresher WS ``connection:status`` while HTTP was in flight).
-        """
-        for devid in list(self.modules):
-            current = self._module_observation_seq.get(devid, 0)
-            if current != observed_at.get(devid, 0):
-                LOG.debug(
-                    "Skipping fail-close for devid=%s; newer connectivity observation arrived",
-                    devid,
-                )
-                continue
-            await self._apply_connectivity(
-                devid=devid,
-                online=False,
-                source=source,
-                connected_at=0,
-                pending=pending,
             )
 
     def _bump_module_online_seq(self, devid: str) -> int:
         """Advance the per-module online-state sequence and return the new value."""
         nxt = self._module_online_seq.get(devid, 0) + 1
         self._module_online_seq[devid] = nxt
-        return nxt
-
-    def _bump_module_observation_seq(self, devid: str) -> int:
-        """Advance the per-module observation revision (any successful apply)."""
-        nxt = self._module_observation_seq.get(devid, 0) + 1
-        self._module_observation_seq[devid] = nxt
         return nxt
 
     def _coalesce_module_connectivity_event(self, event: ModuleConnectivity) -> ModuleConnectivity:
@@ -652,9 +588,6 @@ class ConnectivityMixin(GatewayMixinBase):
         metadata_changed = (connected_at is not None and connected_at != previous_connected_at) or (
             gateway is not None and gateway != previous_gateway
         )
-        # Confirming repeats (same connectedAt / gateway) still advance the observation
-        # revision so a concurrent REST fail-close cannot overwrite a WS reaffirmation.
-        self._bump_module_observation_seq(devid)
         if not online_changed and not metadata_changed:
             return
 

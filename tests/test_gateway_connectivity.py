@@ -262,8 +262,8 @@ async def test_gateway_connectivity_empty_listing_does_not_wipe() -> None:
 
 
 @pytest.mark.asyncio
-async def test_gateway_empty_listing_fail_closes_after_streak() -> None:
-    """Sustained empty/unusable listings fail-close like hard get_modules errors."""
+async def test_gateway_empty_listing_keeps_last_known_after_streak() -> None:
+    """Sustained empty/unusable listings keep last-known module online (not plant offline)."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     ws = FakeRealtimeManager()
@@ -279,10 +279,10 @@ async def test_gateway_empty_listing_fail_closes_after_streak() -> None:
     api.module_rows = []
     await gw.refresh_module_connectivity()
     await gw.refresh_module_connectivity()
-    assert gw.module_online("M1") is True
     await gw.refresh_module_connectivity()
-    assert gw.module_online("M1") is False
-    assert gw.module_connected_at("M1") == 0
+    assert gw.module_online("M1") is True
+    assert gw.module_connected_at("M1") == 50
+    assert gw._get_modules_fail_streak == 3
     await gw.stop()
 
 
@@ -325,8 +325,8 @@ async def test_gateway_connectivity_poll_loop_and_get_modules_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_gateway_get_modules_fail_offline_after_zero_disables_fail_close() -> None:
-    """``get_modules_fail_offline_after=0`` must leave an online module online after many failures."""
+async def test_gateway_get_modules_fail_offline_after_zero_keeps_online() -> None:
+    """Deprecated ``get_modules_fail_offline_after=0`` still keeps last-known online after failures."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     ws = FakeRealtimeManager()
@@ -351,8 +351,8 @@ async def test_gateway_get_modules_fail_offline_after_zero_disables_fail_close()
 
 
 @pytest.mark.asyncio
-async def test_gateway_get_modules_fail_closes_after_streak() -> None:
-    """Sustained get_modules failures fail-close subscribed modules to offline."""
+async def test_gateway_get_modules_keeps_last_known_after_streak() -> None:
+    """Sustained get_modules failures keep last-known online; recovery clears the streak."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     ws = FakeRealtimeManager()
@@ -379,22 +379,28 @@ async def test_gateway_get_modules_fail_closes_after_streak() -> None:
     assert gw._get_modules_fail_streak == 2
 
     await gw._refresh_module_connectivity(source="rest")
-    assert gw.module_online("M1") is False
-    assert gw.module_connected_at("M1") == 0
+    assert gw.module_online("M1") is True
+    assert gw.module_connected_at("M1") == 50
     assert gw._get_modules_fail_streak == 3
-    assert any(event.devid == "M1" and event.online is False and event.source == "rest" for event in events)
+    assert not any(event.devid == "M1" and event.online is False for event in events)
 
     api.get_modules_error = None
-    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=99, gateway=None)]
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
     await gw._refresh_module_connectivity(source="rest")
     assert gw._get_modules_fail_streak == 0
+    assert gw.module_online("M1") is False
+    assert gw.module_connected_at("M1") == 0
+    assert any(event.devid == "M1" and event.online is False and event.source == "rest" for event in events)
+
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=99, gateway=None)]
+    await gw._refresh_module_connectivity(source="rest")
     assert gw.module_online("M1") is True
     await gw.stop()
 
 
 @pytest.mark.asyncio
-async def test_gateway_get_modules_fail_close_waits_for_poll_window() -> None:
-    """With a real poll interval, rapid failures do not fail-close until elapsed time allows."""
+async def test_gateway_get_modules_transport_streak_with_poll_interval_keeps_online() -> None:
+    """With a real poll interval, sustained transport failures still keep last-known online."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     ws = FakeRealtimeManager()
@@ -414,10 +420,10 @@ async def test_gateway_get_modules_fail_close_waits_for_poll_window() -> None:
     assert gw.module_online("M1") is True
     assert gw._get_modules_fail_streak == 3
 
-    gw._get_modules_fail_since_mono = time.monotonic() - 120.0
     await gw._refresh_module_connectivity(source="rest")
-    assert gw.module_online("M1") is False
-    assert gw.module_connected_at("M1") == 0
+    assert gw.module_online("M1") is True
+    assert gw.module_connected_at("M1") == 50
+    assert gw._get_modules_fail_streak == 4
     await gw.stop()
 
 
@@ -488,12 +494,8 @@ async def test_gateway_get_modules_refresh_callback_reentry_no_deadlock() -> Non
 
     gw.on_module_connectivity(_on_connectivity)
     await gw.start()
-    api.get_modules_error = ReadTimeout("read timeout")
-    api.module_rows = []
-    # Force fail-close via three failures (poll_interval=0 skips the time window).
-    await gw._refresh_module_connectivity(source="rest")
-    await gw._refresh_module_connectivity(source="rest")
-    await gw._refresh_module_connectivity(source="rest")
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=0, gateway=None)]
+    await gw.refresh_module_connectivity()
     assert gw.module_online("M1") is False
     assert reentered.is_set()
     await gw.stop()
@@ -501,7 +503,7 @@ async def test_gateway_get_modules_refresh_callback_reentry_no_deadlock() -> Non
 
 @pytest.mark.asyncio
 async def test_gateway_get_modules_fail_streak_resets_on_stop() -> None:
-    """stop()/start() clears the fail-close window so prior downtime does not count."""
+    """stop()/start() clears the diagnostic fail streak so prior downtime does not count."""
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     ws = FakeRealtimeManager()
@@ -665,8 +667,8 @@ async def test_gateway_get_modules_lock_waiter_discards_after_stop() -> None:
 
 
 @pytest.mark.asyncio
-async def test_gateway_fail_close_skips_fresher_ws_observation() -> None:
-    """Late get_modules fail-close must not overwrite a newer WS connectivity observation."""
+async def test_gateway_transport_failures_keep_online_while_ws_can_go_offline() -> None:
+    """Cloud-cut REST streak keeps last-known; WS connection:status can still mark offline."""
     api = FakeApiClient()
     api.module_rows = [
         SimpleNamespace(devid="M1", connectedAt=50, gateway=None),
@@ -688,29 +690,16 @@ async def test_gateway_fail_close_skips_fresher_ws_observation() -> None:
     api.get_modules_error = ReadTimeout("streak")
     await gw._refresh_module_connectivity(source="rest")
     await gw._refresh_module_connectivity(source="rest")
-    assert gw._get_modules_fail_streak == 2
-
-    release = asyncio.Event()
-    entered = asyncio.Event()
-
-    async def _gated_get_modules(object_id: int) -> list[Any]:
-        entered.set()
-        await release.wait()
-        raise ReadTimeout("threshold failure")
-
-    api.get_modules_error = None
-    api.get_modules = _gated_get_modules  # type: ignore[method-assign]  # test double replaces async method
-    task = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
-    await entered.wait()
-    await gw._ingest_module_connection_status({"M1": {"connectedAt": 99, "gateway": {}}})
+    await gw._refresh_module_connectivity(source="rest")
+    assert gw._get_modules_fail_streak == 3
     assert gw.module_online("M1") is True
-    assert gw.module_connected_at("M1") == 99
-    release.set()
-    _ = await asyncio.gather(task)
-    assert gw.module_online("M1") is True
-    assert gw.module_connected_at("M1") == 99
-    assert gw.module_online("M2") is False
-    assert gw.module_connected_at("M2") == 0
+    assert gw.module_online("M2") is True
+
+    await gw._ingest_module_connection_status({"M1": {"connectedAt": 0, "gateway": {}}})
+    assert gw.module_online("M1") is False
+    assert gw.module_connected_at("M1") == 0
+    assert gw.module_online("M2") is True
+    assert gw.module_connected_at("M2") == 50
     await gw.stop()
 
 
@@ -752,50 +741,28 @@ async def test_gateway_ws_disconnect_during_get_modules_still_counts_failure() -
 
 
 @pytest.mark.asyncio
-async def test_gateway_fail_close_skips_noop_ws_reaffirmation() -> None:
-    """Identical WS connectedAt/gateway must still shield fail-close via observation seq."""
+async def test_gateway_transport_streak_plus_ws_session_down_keeps_module_online() -> None:
+    """Layer split: cloud session down + REST streak must not invent module offline."""
     api = FakeApiClient()
-    api.module_rows = [
-        SimpleNamespace(devid="M1", connectedAt=50, gateway=None),
-        SimpleNamespace(devid="M2", connectedAt=50, gateway=None),
-    ]
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     ws = FakeRealtimeManager()
     gw = BragerOneGateway(
         api=api,
         object_id=1,
-        modules=["M1", "M2"],
+        modules=["M1"],
         ws=ws,
         connectivity_poll_interval=0,
         get_modules_fail_offline_after=3,
     )
     await gw.start()
-
     api.get_modules_error = ReadTimeout("streak")
     await gw._refresh_module_connectivity(source="rest")
     await gw._refresh_module_connectivity(source="rest")
-    assert gw._get_modules_fail_streak == 2
-
-    release = asyncio.Event()
-    entered = asyncio.Event()
-
-    async def _gated_get_modules(object_id: int) -> list[Any]:
-        entered.set()
-        await release.wait()
-        raise ReadTimeout("threshold failure")
-
-    api.get_modules_error = None
-    api.get_modules = _gated_get_modules  # type: ignore[method-assign]  # test double replaces async method
-    task = asyncio.create_task(gw._refresh_module_connectivity(source="rest"))
-    await entered.wait()
-    # Same values as cache — previously a no-op that did not bump observation.
-    await gw._ingest_module_connection_status({"M1": {"connectedAt": 50}})
+    await gw._refresh_module_connectivity(source="rest")
+    await gw._on_ws_disconnected()
+    assert gw.ws_session_up() is False
     assert gw.module_online("M1") is True
     assert gw.module_connected_at("M1") == 50
-    release.set()
-    _ = await asyncio.gather(task)
-    assert gw.module_online("M1") is True
-    assert gw.module_connected_at("M1") == 50
-    assert gw.module_online("M2") is False
     await gw.stop()
 
 
@@ -892,7 +859,6 @@ async def test_gateway_pending_emit_skips_superseded_module_event() -> None:
     async def _on_connectivity(event: ModuleConnectivity) -> None:
         seen.append((event.devid, event.online))
         if event.devid == "M1" and event.online is False and not reentered.is_set():
-            api.get_modules_error = None
             api.module_rows = [
                 SimpleNamespace(devid="M1", connectedAt=80, gateway=None),
                 SimpleNamespace(devid="M2", connectedAt=80, gateway=None),
@@ -903,14 +869,15 @@ async def test_gateway_pending_emit_skips_superseded_module_event() -> None:
     gw.on_module_connectivity(_on_connectivity)
     await gw.start()
     seen.clear()
-    api.get_modules_error = ReadTimeout("outage")
-    await gw._refresh_module_connectivity(source="rest")
-    await gw._refresh_module_connectivity(source="rest")
-    await gw._refresh_module_connectivity(source="rest")
+    api.module_rows = [
+        SimpleNamespace(devid="M1", connectedAt=0, gateway=None),
+        SimpleNamespace(devid="M2", connectedAt=0, gateway=None),
+    ]
+    await gw.refresh_module_connectivity()
     assert reentered.is_set()
     assert gw.module_online("M1") is True
     assert gw.module_online("M2") is True
-    # After nested restore, no trailing offline for M2 from the outer fail-close batch.
+    # After nested restore, no trailing offline for M2 from the outer offline batch.
     assert ("M2", False) not in seen[seen.index(("M1", False)) + 1 :]
     await gw.stop()
 
@@ -944,10 +911,11 @@ async def test_gateway_pending_emit_aborts_after_stop_mid_batch() -> None:
     gw.on_module_connectivity(_on_connectivity)
     await gw.start()
     seen.clear()
-    api.get_modules_error = ReadTimeout("outage")
-    await gw._refresh_module_connectivity(source="rest")
-    await gw._refresh_module_connectivity(source="rest")
-    await gw._refresh_module_connectivity(source="rest")
+    api.module_rows = [
+        SimpleNamespace(devid="M1", connectedAt=0, gateway=None),
+        SimpleNamespace(devid="M2", connectedAt=0, gateway=None),
+    ]
+    await gw.refresh_module_connectivity()
     assert stopped.is_set()
     assert ("M1", False) in seen
     assert ("M2", False) not in seen
@@ -982,10 +950,11 @@ async def test_gateway_pending_emit_continues_after_ws_disconnect_mid_batch() ->
     gw.on_module_connectivity(_on_connectivity)
     await gw.start()
     seen.clear()
-    api.get_modules_error = ReadTimeout("outage")
-    await gw._refresh_module_connectivity(source="rest")
-    await gw._refresh_module_connectivity(source="rest")
-    await gw._refresh_module_connectivity(source="rest")
+    api.module_rows = [
+        SimpleNamespace(devid="M1", connectedAt=0, gateway=None),
+        SimpleNamespace(devid="M2", connectedAt=0, gateway=None),
+    ]
+    await gw.refresh_module_connectivity()
     assert disconnected.is_set()
     assert ("M1", False) in seen
     assert ("M2", False) in seen
@@ -1153,6 +1122,27 @@ async def test_gateway_connectivity_503_errors_are_warn_only(caplog: pytest.LogC
     assert not any(record.exc_info for record in caplog.records)
     assert gw.module_online("M1") is True
 
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_connectivity_unexpected_errors_log_exc_info(caplog: pytest.LogCaptureFixture) -> None:
+    """Unexpected get_modules failures log ERROR with an explicit exc_info tuple."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(api=api, object_id=1, modules=["M1"], ws=ws, connectivity_poll_interval=0)
+    await gw.start()
+
+    with caplog.at_level("ERROR"):
+        api.get_modules_error = RuntimeError("boom")
+        await gw.refresh_module_connectivity()
+    assert "get_modules failed during connectivity refresh" in caplog.text
+    error_records = [r for r in caplog.records if r.levelno >= 40 and "get_modules failed" in r.getMessage()]
+    assert error_records
+    assert error_records[0].exc_info is not None
+    assert error_records[0].exc_info[0] is RuntimeError
+    assert gw.module_online("M1") is True
     await gw.stop()
 
 

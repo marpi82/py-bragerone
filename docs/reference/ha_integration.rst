@@ -152,18 +152,18 @@ push ``app:module:connection:status:changed`` (payload
 app). The client's own Socket.IO session is tracked separately and does **not**
 force modules offline (SPA parity). A background REST poll (default 60s;
 ``connectivity_poll_interval=0`` disables it) continues even while WS is down.
-A single failed ``get_modules`` keeps the previous module state; after
-``get_modules_fail_offline_after`` consecutive unusable results (default 3) —
-and with the default 60 s poll, only after roughly two poll intervals since the
-first failure — the gateway fail-closes subscribed modules to offline.
-Empty or unrecognised listings advance the same streak (they do not reset it)
-and still never wipe modules on a single tick. A fail-close skips modules that
-received a newer valid WS connectivity observation while that HTTP call was in
-flight (including identical connectedAt / gateway reaffirmations). Ordinary WS
-disconnect does not discard an in-flight ``get_modules`` failure from the streak
-— only ``stop()`` invalidates that HTTP completion. Refreshes are serialized so
-callbacks that re-enter refresh cannot rebuild the streak under the lock.
-``Module`` validation coerces null ``connectedAt`` to ``0`` (offline); the
+A single failed ``get_modules`` keeps the previous module state; sustained
+unusable results (errors or empty/unrecognised listings) also keep last-known
+module online so a library↔cloud outage is not reported as module offline.
+Authoritative offline still comes from ``connectedAt=0`` on a usable listing,
+derived-missing when at least one sibling row is present, or WS
+``connection:status``. Empty listings never wipe modules on a single tick (or
+after a streak). Ordinary WS disconnect does not discard an in-flight
+``get_modules`` failure from the diagnostic streak — only ``stop()`` invalidates
+that HTTP completion. Refreshes are serialized so callbacks that re-enter
+refresh cannot rebuild the streak under the lock.
+``get_modules_fail_offline_after`` is a deprecated no-op retained for
+compatibility. ``Module`` validation coerces null ``connectedAt`` to ``0`` (offline); the
 gateway applies the same rule for duck-typed nulls. Corrupt rows skipped by
 ``get_modules`` (or non-numeric duck-typed values) are absent from the listing —
 when at least one sibling row is usable, missing subscribed modules are derived
