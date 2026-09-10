@@ -19,6 +19,11 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   session-down reports ``push_healthy=False`` so diagnostics never keep a stale
   healthy bit (#394).
 
+- Socket.IO ``disconnect`` now classifies the Engine.IO reason argument
+  (``transport error`` / ``transport close`` → ``eio_close``) instead of always
+  storing generic ``disconnect``, and a coarse follow-up no longer overwrites a
+  finer token already recorded (#396).
+
 ### Added
 
 - Configurable ``cloud_session_down_hysteresis_s`` (default 15s) delays publishing

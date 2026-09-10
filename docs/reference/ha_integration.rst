@@ -123,7 +123,9 @@ Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so exist
 ``empty_queue``, ``server_stop``, ``eio_close``, ``connect_error``,
 ``reconnect_error``, ``supervisor_stale``, ``force_reconnect``, ``hard_reset`` for
 the cloud session; ``rest`` / ``ws`` / ``derived`` for module ``connectedAt``) —
-not a diagnosis of boiler or LAN hardware. Live ``down_for_s`` is measured with a
+not a diagnosis of boiler or LAN hardware. Engine.IO abort reasons on the
+Socket.IO ``disconnect`` event (``transport error`` / ``transport close``) classify
+as ``eio_close`` rather than generic ``disconnect``. Live ``down_for_s`` is measured with a
 monotonic clock while ``down_since`` is wall-clock ``time.time()`` for Home
 Assistant attributes. A restore logs ``Cloud session restored after …s`` /
 ``Module connectivity restored after …s``.

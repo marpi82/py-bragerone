@@ -194,6 +194,21 @@ async def test_lifecycle_handlers_and_connect_callbacks(monkeypatch: pytest.Monk
     assert manager.sid() is None
     assert manager.engine_sid() == "ENG-SID"
 
+    # Engine.IO abort reasons must not collapse to generic disconnect (#396).
+    manager._disconnect_notified = False
+    manager._last_disconnect_reason = None
+    disc.clear()
+    await manager._on_disconnect("transport error")
+    await _drain_spawned()
+    assert "disc" in disc
+    assert manager.last_disconnect_reason() == "eio_close"
+
+    # A coarse follow-up must not clobber a finer token recorded before notify.
+    manager._disconnect_notified = False
+    manager._last_disconnect_reason = "empty_queue"
+    await manager._on_disconnect("client disconnect")
+    assert manager.last_disconnect_reason() == "empty_queue"
+
     # Cover reason=None defaults and the elif that keeps an existing token.
     manager._disconnect_notified = False
     manager._last_disconnect_reason = None

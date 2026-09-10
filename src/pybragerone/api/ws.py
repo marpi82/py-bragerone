@@ -170,10 +170,15 @@ class RealtimeManager:
         self._last_disconnect_reason = None
         self._connected.set()
 
-    async def _on_disconnect(self) -> None:
-        log.info("WS disconnected")
+    async def _on_disconnect(self, reason: Any | None = None) -> None:
+        """Handle Socket.IO ``disconnect`` (may include an Engine.IO reason string)."""
+        classified = classify_ws_failure_reason(reason, default="disconnect")
+        if reason is None:
+            log.info("WS disconnected")
+        else:
+            log.info("WS disconnected (%s → %s)", reason, classified)
         self._connected.clear()
-        self._notify_disconnected(reason="disconnect")
+        self._notify_disconnected(reason=classified)
 
     async def _on_connect_error(self, data: Any | None = None) -> None:
         log.warning("WS connect_error: %s", data)
@@ -195,13 +200,17 @@ class RealtimeManager:
                 The supervisor reconnect loop and Socket.IO ``disconnect`` pass False
                 so a wedged client does not spam session-down callbacks.
             reason: Optional stable outage token retained for :meth:`last_disconnect_reason`.
-                Ignored when this call is suppressed (already notified and ``force`` is False)
-                so a coarse follow-up cannot clobber a finer reason already recorded.
+                Ignored when this call is suppressed (already notified and ``force`` is False).
+                A coarse ``disconnect`` token does not overwrite a finer reason already
+                recorded (e.g. ``reconnect_error`` / ``empty_queue`` before notify).
         """
         if self._disconnect_notified and not force:
             return
         if reason is not None:
-            self._last_disconnect_reason = reason
+            existing = self._last_disconnect_reason
+            keep_finer = not force and reason == "disconnect" and existing is not None and existing != "disconnect"
+            if not keep_finer:
+                self._last_disconnect_reason = reason
         elif self._last_disconnect_reason is None:
             self._last_disconnect_reason = "disconnect"
         self._disconnect_notified = True
