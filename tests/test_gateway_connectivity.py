@@ -24,7 +24,14 @@ from pybragerone.gateway import (
     _parse_connected_at,
     module_connected_at_means_online,
 )
+from pybragerone.gateway import _gateway as _gateway_mod
 from pybragerone.models.events import ModuleConnectivity
+
+
+@pytest.fixture(autouse=True)
+def _default_cloud_session_hysteresis_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep unit tests on immediate session-down unless a test opts into hysteresis."""
+    monkeypatch.setattr(_gateway_mod, "_DEFAULT_CLOUD_SESSION_DOWN_HYSTERESIS_S", 0.0)
 
 
 class FakeApiClient:
@@ -2543,6 +2550,181 @@ async def test_gateway_live_push_health_stale_and_resume(caplog: pytest.LogCaptu
 
     await gw.stop()
     assert gw.live_push_health()["push_healthy"] is False
+
+
+@pytest.mark.asyncio
+async def test_gateway_cloud_session_down_hysteresis_absorbs_brief_blink() -> None:
+    """Reconnect before hysteresis expires must not publish session-down or last_*."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    events: list[Any] = []
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        cloud_session_down_hysteresis_s=0.5,
+    )
+    gw.on_cloud_session(events.append)
+    await gw.start()
+    assert gw.ws_session_up() is True
+    prior_last = gw.cloud_session_outage().get("last_down_for_s")
+
+    await gw._on_ws_disconnected()
+    pending = gw._cloud_down_hysteresis_task
+    assert pending is not None
+    # Let the timer enter sleep so cancel hits CancelledError in fire().
+    await asyncio.sleep(0)
+    assert gw.ws_session_up() is True  # still up during hysteresis
+    assert not any(getattr(e, "up", True) is False for e in events)
+
+    await gw._set_ws_session_up(True, source="connect")
+    assert gw._cloud_down_hysteresis_task is None
+    assert pending.cancelled() or pending.done()
+    assert gw.ws_session_up() is True
+    assert not any(getattr(e, "up", True) is False for e in events)
+    assert gw.cloud_session_outage().get("last_down_for_s") == prior_last
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_cloud_session_down_hysteresis_publishes_after_window() -> None:
+    """Sustained disconnect past hysteresis publishes down and protects last_* only then."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    events: list[Any] = []
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        cloud_session_down_hysteresis_s=0.05,
+    )
+    gw.on_cloud_session(events.append)
+    await gw.start()
+    await gw._on_ws_disconnected()
+    assert gw.ws_session_up() is True
+    await _wait_until(lambda: gw.ws_session_up() is False)
+    assert any(getattr(e, "up", True) is False for e in events)
+    outage = gw.cloud_session_outage()
+    down_for = outage.get("down_for_s")
+    assert isinstance(down_for, float)
+    assert down_for >= 0.05
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_cloud_session_hysteresis_refresh_reason_while_pending() -> None:
+    """A second disconnect while pending refreshes reason/source without a second timer."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        cloud_session_down_hysteresis_s=0.5,
+    )
+    await gw.start()
+    await gw._set_ws_session_up(False, source="disconnect", reason="empty_queue")
+    first = gw._cloud_down_hysteresis_task
+    assert first is not None
+    await gw._set_ws_session_up(False, source="disconnect", reason="eio_close")
+    assert gw._cloud_down_hysteresis_task is first
+    assert gw._cloud_down_pending_reason == "eio_close"
+    await gw._set_ws_session_up(False, source="disconnect", reason=None)
+    assert gw._cloud_down_hysteresis_task is first
+    assert gw._cloud_down_pending_reason == "eio_close"
+    assert gw._cloud_down_pending_source == "disconnect"
+    await gw._cancel_cloud_down_hysteresis()
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_cloud_session_hysteresis_fire_skips_when_stopped() -> None:
+    """If the gateway stops before the timer fires, do not publish a delayed down."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    events: list[Any] = []
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        cloud_session_down_hysteresis_s=0.05,
+    )
+    gw.on_cloud_session(events.append)
+    await gw.start()
+    await gw._on_ws_disconnected()
+    task = gw._cloud_down_hysteresis_task
+    assert task is not None
+    # Simulate stop clearing the started bit without awaiting cancel races.
+    gw._started = False
+    await _wait_until(lambda: task.done())
+    assert gw.ws_session_up() is True
+    assert not any(getattr(e, "up", True) is False and getattr(e, "source", None) == "disconnect" for e in events)
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_cloud_session_hysteresis_fire_skips_when_already_down() -> None:
+    """Timer no-ops if the session bit was already forced down before fire."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        cloud_session_down_hysteresis_s=0.05,
+    )
+    await gw.start()
+    await gw._on_ws_disconnected()
+    task = gw._cloud_down_hysteresis_task
+    assert task is not None
+    gw._ws_session_up = False
+    await _wait_until(lambda: task.done())
+    assert gw._cloud_down_since_mono is None
+    await gw.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_cloud_session_down_idempotent_with_hysteresis() -> None:
+    """Down while already down with hysteresis enabled is a no-op."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        cloud_session_down_hysteresis_s=0.2,
+    )
+    await gw.start()
+    await gw._set_ws_session_up(False, source="stop")
+    assert gw.ws_session_up() is False
+    await gw._set_ws_session_up(False, source="disconnect", reason="empty_queue")
+    assert gw._cloud_down_hysteresis_task is None
+    assert gw.ws_session_up() is False
+    # Already-down + non-stop source returns without finalize.
+    await gw._commit_ws_session_down(source="disconnect", reason="empty_queue")
+    assert gw.ws_session_up() is False
+    # Already-down + stop finalizes outage bookkeeping without re-publishing.
+    await gw._commit_ws_session_down(source="stop", reason="disconnect")
+    assert gw.cloud_session_outage()["down_since"] is None
+    await gw.stop()
 
 
 async def test_gateway_live_push_health_session_down_is_unhealthy() -> None:

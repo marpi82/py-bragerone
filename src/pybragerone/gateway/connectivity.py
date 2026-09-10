@@ -128,56 +128,82 @@ class ConnectivityMixin(GatewayMixinBase):
         self._cloud_down_since_wall = None
         self._cloud_down_reason = None
 
-    async def _set_ws_session_up(
+    async def _cancel_cloud_down_hysteresis(self) -> bool:
+        """Cancel a pending session-down publish. Return whether one was pending."""
+        task = self._cloud_down_hysteresis_task
+        pending = task is not None or self._cloud_down_pending_since_mono is not None
+        self._cloud_down_hysteresis_task = None
+        self._cloud_down_pending_since_mono = None
+        self._cloud_down_pending_reason = None
+        self._cloud_down_pending_source = None
+        if task is not None and not task.done():
+            task.cancel()
+            _ = await asyncio.gather(task, return_exceptions=True)
+        return pending
+
+    async def _cloud_down_hysteresis_fire(self) -> None:
+        """Publish a delayed session-down after the hysteresis window."""
+        try:
+            await asyncio.sleep(self._cloud_session_down_hysteresis_s)
+        except asyncio.CancelledError:
+            raise
+        if not self._started:
+            return
+        reason = self._cloud_down_pending_reason
+        source = self._cloud_down_pending_source or "disconnect"
+        since_mono = self._cloud_down_pending_since_mono
+        self._cloud_down_hysteresis_task = None
+        self._cloud_down_pending_since_mono = None
+        self._cloud_down_pending_reason = None
+        self._cloud_down_pending_source = None
+        if not self._ws_session_up:
+            return
+        await self._commit_ws_session_down(source=source, reason=reason, since_mono=since_mono)
+
+    async def _schedule_cloud_down_hysteresis(
         self,
-        up: bool,
         *,
         source: CloudSessionSource,
-        reason: CloudOutageReason | None = None,
+        reason: CloudOutageReason | None,
     ) -> None:
-        """Update library↔cloud session cache and notify listeners on flips."""
+        """Arm (or refresh reason for) a delayed session-down publish."""
+        if self._cloud_down_hysteresis_task is not None and not self._cloud_down_hysteresis_task.done():
+            if reason is not None:
+                self._cloud_down_pending_reason = reason
+            self._cloud_down_pending_source = source
+            return
+        self._cloud_down_pending_since_mono = time.monotonic()
+        self._cloud_down_pending_reason = reason or _cloud_outage_reason_from_source(source)
+        self._cloud_down_pending_source = source
+        self._cloud_down_hysteresis_task = self._spawn(
+            self._cloud_down_hysteresis_fire(),
+            name="gateway.cloud_down_hysteresis",
+        )
+
+    async def _commit_ws_session_down(
+        self,
+        *,
+        source: CloudSessionSource,
+        reason: CloudOutageReason | None,
+        since_mono: float | None = None,
+    ) -> None:
+        """Flip session to down and notify consumers (after hysteresis or immediate)."""
         previous = self._ws_session_up
-        self._ws_session_up = up
-        changed = previous is not up
-        if not changed:
-            # stop() while already down: close the active window at the stop boundary.
-            if source == "stop" and not up:
+        if not previous:
+            if source == "stop":
                 self._finalize_cloud_outage_at_stop()
             return
-        if up:
-            self._ws_session_up_since_mono = time.monotonic()
-        else:
-            self._ws_session_up_since_mono = None
-        if not up:
-            self._cloud_down_since_mono = time.monotonic()
-            self._cloud_down_since_wall = time.time()
-            self._cloud_down_reason = reason or _cloud_outage_reason_from_source(source)
-        elif self._cloud_down_since_mono is not None:
-            duration = max(0.0, time.monotonic() - self._cloud_down_since_mono)
-            ended_reason = self._cloud_down_reason or reason or _cloud_outage_reason_from_source(source)
-            ended_at = time.time()
-            started_at = self._cloud_down_since_wall if self._cloud_down_since_wall is not None else ended_at - duration
-            self._cloud_last_down_for_s = duration
-            self._cloud_last_reason = ended_reason
-            self._record_connectivity_episode(
-                layer="cloud",
-                started_at=started_at,
-                ended_at=ended_at,
-                down_for_s=duration,
-                reason=ended_reason,
-            )
-            LOG.warning(
-                "Cloud session restored after %.1fs (reason=%s, source=%s)",
-                duration,
-                ended_reason,
-                source,
-            )
-            self._cloud_down_since_mono = None
-            self._cloud_down_since_wall = None
-            self._cloud_down_reason = None
+        self._ws_session_up = False
+        self._ws_session_up_since_mono = None
+        now_mono = time.monotonic()
+        now_wall = time.time()
+        started_mono = since_mono if since_mono is not None else now_mono
+        self._cloud_down_since_mono = started_mono
+        self._cloud_down_since_wall = now_wall - max(0.0, now_mono - started_mono)
+        self._cloud_down_reason = reason or _cloud_outage_reason_from_source(source)
         snapshot = self._cloud_outage_snapshot()
         event = CloudSessionConnectivity(
-            up=up,
+            up=False,
             source=source,
             changed=True,
             down_since=snapshot["down_since"] if isinstance(snapshot["down_since"], float) else None,
@@ -186,14 +212,84 @@ class ConnectivityMixin(GatewayMixinBase):
             last_down_for_s=snapshot["last_down_for_s"] if isinstance(snapshot["last_down_for_s"], float) else None,
             last_reason=_as_cloud_outage_reason(snapshot["last_reason"]),
         )
-        LOG.info("Cloud session: up=%s source=%s", up, source)
+        LOG.info("Cloud session: up=%s source=%s", False, source)
         if self._on_cloud_session:
             await self._invoke_list(self._on_cloud_session, event)
-        # up→stop: notify with a momentary down snapshot, then drop the live window
-        # so restart cannot inherit it (do not clobber prior-cycle last_* with ~0s).
-        if source == "stop" and not up:
+        if source == "stop":
             self._clear_active_cloud_outage()
         self._publish_live_push_health()
+
+    async def _set_ws_session_up(
+        self,
+        up: bool,
+        *,
+        source: CloudSessionSource,
+        reason: CloudOutageReason | None = None,
+    ) -> None:
+        """Update library↔cloud session cache and notify listeners on flips.
+
+        Session-down may be deferred by ``cloud_session_down_hysteresis_s`` so brief
+        WS blinks do not flip consumers or overwrite ``last_*`` / episodes.
+        ``source="stop"`` and hysteresis ``0`` publish immediately.
+        """
+        if up:
+            absorbed = await self._cancel_cloud_down_hysteresis()
+            previous = self._ws_session_up
+            self._ws_session_up = True
+            changed = previous is not True
+            if not changed:
+                if absorbed:
+                    LOG.debug("Absorbed cloud session blink under hysteresis (source=%s)", source)
+                return
+            self._ws_session_up_since_mono = time.monotonic()
+            if self._cloud_down_since_mono is not None:
+                duration = max(0.0, time.monotonic() - self._cloud_down_since_mono)
+                ended_reason = self._cloud_down_reason or reason or _cloud_outage_reason_from_source(source)
+                ended_at = time.time()
+                started_at = self._cloud_down_since_wall if self._cloud_down_since_wall is not None else ended_at - duration
+                self._cloud_last_down_for_s = duration
+                self._cloud_last_reason = ended_reason
+                self._record_connectivity_episode(
+                    layer="cloud",
+                    started_at=started_at,
+                    ended_at=ended_at,
+                    down_for_s=duration,
+                    reason=ended_reason,
+                )
+                LOG.warning(
+                    "Cloud session restored after %.1fs (reason=%s, source=%s)",
+                    duration,
+                    ended_reason,
+                    source,
+                )
+                self._cloud_down_since_mono = None
+                self._cloud_down_since_wall = None
+                self._cloud_down_reason = None
+            snapshot = self._cloud_outage_snapshot()
+            event = CloudSessionConnectivity(
+                up=True,
+                source=source,
+                changed=True,
+                down_since=snapshot["down_since"] if isinstance(snapshot["down_since"], float) else None,
+                down_for_s=snapshot["down_for_s"] if isinstance(snapshot["down_for_s"], float) else None,
+                reason=_as_cloud_outage_reason(snapshot["reason"]),
+                last_down_for_s=snapshot["last_down_for_s"] if isinstance(snapshot["last_down_for_s"], float) else None,
+                last_reason=_as_cloud_outage_reason(snapshot["last_reason"]),
+            )
+            LOG.info("Cloud session: up=%s source=%s", True, source)
+            if self._on_cloud_session:
+                await self._invoke_list(self._on_cloud_session, event)
+            self._publish_live_push_health()
+            return
+
+        # Session-down path.
+        if source == "stop" or self._cloud_session_down_hysteresis_s <= 0:
+            await self._cancel_cloud_down_hysteresis()
+            await self._commit_ws_session_down(source=source, reason=reason)
+            return
+        if not self._ws_session_up:
+            return
+        await self._schedule_cloud_down_hysteresis(source=source, reason=reason)
 
     def _cloud_outage_snapshot(self) -> dict[str, float | str | None]:
         """Build the current cloud-session outage attribute dict."""
