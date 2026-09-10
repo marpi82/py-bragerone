@@ -41,6 +41,7 @@ class GatewayMixinBase:
     _get_modules_fail_offline_after: int
     _get_modules_fail_streak: int
     _get_modules_fail_since_mono: float | None
+    _get_modules_fail_logged_exception: bool
     _get_modules_refresh_lock: asyncio.Lock
     _module_online_seq: dict[str, int]
     _zombie_hard_restart_after: int

@@ -150,6 +150,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._get_modules_fail_offline_after = max(0, int(get_modules_fail_offline_after))
         self._get_modules_fail_streak = 0
         self._get_modules_fail_since_mono: float | None = None
+        self._get_modules_fail_logged_exception = False
         self._get_modules_refresh_lock = asyncio.Lock()
         self._module_online_seq: dict[str, int] = {}
         self._zombie_hard_restart_after = int(zombie_hard_restart_after)
@@ -425,6 +426,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         # Intentional downtime must not carry a half-finished diagnostic fail streak into the next start().
         self._get_modules_fail_streak = 0
         self._get_modules_fail_since_mono = None
+        self._get_modules_fail_logged_exception = False
 
         # 1) disconnect WS first so disconnect hooks see ``_started is False`` and skip work.
         try:

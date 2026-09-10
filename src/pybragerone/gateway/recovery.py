@@ -44,8 +44,9 @@ class RecoveryMixin(GatewayMixinBase):
         """Return live-push health snapshot for diagnostics / HA attributes.
 
         Keys: ``push_healthy``, ``live_stale_for_s``, ``last_resumed_after_s``.
-        Independent of :meth:`~BragerOneGateway.ws_session_up` / module online —
-        a zombie is session-up with ``push_healthy=False``.
+        When the Socket.IO session is down, ``push_healthy`` is ``False`` (no live
+        stream exists — not a zombie). A zombie is session-up with
+        ``push_healthy=False``.
         """
         healthy, stale_for = self._compute_live_push_health()
         return {
@@ -57,12 +58,12 @@ class RecoveryMixin(GatewayMixinBase):
     def _compute_live_push_health(self) -> tuple[bool | None, float | None]:
         """Derive ``(push_healthy, live_stale_for_s)`` from session + live age.
 
-        Only live publishes stamped **during the current** Socket.IO up window
-        count. A stamp from a prior session is treated as unknown so session
-        downtime is not folded into zombie push-stale gaps.
+        Session-down reports ``push_healthy=False`` so diagnostics never keep a
+        stale ``True`` from a prior up window. Only live publishes stamped
+        **during the current** Socket.IO up window count toward zombie detection.
         """
         if not self._ws_session_up:
-            return None, None
+            return False, None
         threshold = self._stale_prime_after_s
         if threshold <= 0:
             return True, None

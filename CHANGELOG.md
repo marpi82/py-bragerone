@@ -15,6 +15,10 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   so library↔cloud loss is not reported as module↔cloud offline (#393).
   ``get_modules_fail_offline_after`` is retained as a deprecated no-op.
 
+- Rate-limit sustained ``get_modules`` failure logs to once per outage window;
+  session-down reports ``push_healthy=False`` so diagnostics never keep a stale
+  healthy bit (#394).
+
 ## [2026.9.2rc3] - 2026-09-08
 
 ### Fixed
