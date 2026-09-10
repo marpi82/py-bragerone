@@ -19,6 +19,12 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   session-down reports ``push_healthy=False`` so diagnostics never keep a stale
   healthy bit (#394).
 
+### Added
+
+- Configurable ``cloud_session_down_hysteresis_s`` (default 15s) delays publishing
+  Socket.IO session-down so brief blinks / self-heal reconnects do not flip
+  consumers or overwrite cloud outage ``last_*`` / episodes (#395).
+
 ## [2026.9.2rc3] - 2026-09-08
 
 ### Fixed

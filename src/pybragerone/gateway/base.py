@@ -65,6 +65,11 @@ class GatewayMixinBase:
     _live_push_healthy: bool | None
     _last_live_resumed_after_s: float | None
     _ws_session_up_since_mono: float | None
+    _cloud_session_down_hysteresis_s: float
+    _cloud_down_hysteresis_task: asyncio.Task[None] | None
+    _cloud_down_pending_since_mono: float | None
+    _cloud_down_pending_reason: CloudOutageReason | None
+    _cloud_down_pending_source: CloudSessionSource | None
     _tasks: set[asyncio.Task[Any]]
     _started: bool
     _prime_done: asyncio.Event

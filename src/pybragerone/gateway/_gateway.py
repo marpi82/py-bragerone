@@ -24,6 +24,7 @@ from .connectivity import ConnectivityMixin
 from .helpers import (
     AlarmQuantityCb,
     CloudSessionCb,
+    CloudSessionSource,
     GenericCb,
     LivePushCb,
     ModuleConnectivityCb,
@@ -65,6 +66,10 @@ _DEFAULT_CONNECTIVITY_EPISODE_LIMIT = 20
 # Unusable ``get_modules`` results never mark modules offline (keep last-known);
 # the value is ignored.
 _DEFAULT_GET_MODULES_FAIL_OFFLINE_AFTER = 3
+# Delay before publishing library↔cloud session-down to consumers (seconds).
+# Brief WS blinks under this window keep the session bit up and do not update
+# cloud outage ``last_*`` / episodes. ``0`` publishes immediately.
+_DEFAULT_CLOUD_SESSION_DOWN_HYSTERESIS_S = 15.0
 
 
 class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
@@ -99,6 +104,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         zombie_quarantine_s: float = _DEFAULT_ZOMBIE_QUARANTINE_S,
         connectivity_episode_limit: int = _DEFAULT_CONNECTIVITY_EPISODE_LIMIT,
         get_modules_fail_offline_after: int = _DEFAULT_GET_MODULES_FAIL_OFFLINE_AFTER,
+        cloud_session_down_hysteresis_s: float | None = None,
     ) -> None:
         """Initialize the gateway but do not start it yet.
 
@@ -135,6 +141,11 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
                 compatibility. Unusable ``get_modules`` results never mark modules
                 offline (keep last-known); authoritative offline comes from
                 ``connectedAt`` / WS ``connection:status``.
+            cloud_session_down_hysteresis_s: Seconds to wait before publishing
+                Socket.IO session-down to consumers. Brief blinks under this window
+                keep the session bit up (stale plant values OK) and do not update
+                cloud ``last_*`` / episodes. ``None`` uses the library default
+                (15s); ``0`` publishes immediately.
         """
         self.object_id = int(object_id)
         self.modules = sorted(set(modules))
@@ -148,6 +159,15 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._connectivity_poll_interval = float(connectivity_poll_interval)
         self._stale_prime_after_s = float(stale_prime_after_s)
         self._get_modules_fail_offline_after = max(0, int(get_modules_fail_offline_after))
+        if cloud_session_down_hysteresis_s is None:
+            hysteresis = _DEFAULT_CLOUD_SESSION_DOWN_HYSTERESIS_S
+        else:
+            hysteresis = float(cloud_session_down_hysteresis_s)
+        self._cloud_session_down_hysteresis_s = max(0.0, hysteresis)
+        self._cloud_down_hysteresis_task: asyncio.Task[None] | None = None
+        self._cloud_down_pending_since_mono: float | None = None
+        self._cloud_down_pending_reason: CloudOutageReason | None = None
+        self._cloud_down_pending_source: CloudSessionSource | None = None
         self._get_modules_fail_streak = 0
         self._get_modules_fail_since_mono: float | None = None
         self._get_modules_fail_logged_exception = False

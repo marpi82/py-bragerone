@@ -150,7 +150,9 @@ same truthiness check as the SPA card/modal) and listens for the official Socket
 push ``app:module:connection:status:changed`` (payload
 ``{devid: {connectedAt, gateway}}``, applied by Layout / ObjectsLayout in the web
 app). The client's own Socket.IO session is tracked separately and does **not**
-force modules offline (SPA parity). A background REST poll (default 60s;
+force modules offline (SPA parity). Session-down publication is deferred by
+``cloud_session_down_hysteresis_s`` (default 15s) so brief WS blinks do not
+mark Home Assistant entities unavailable or overwrite cloud outage ``last_*``. A background REST poll (default 60s;
 ``connectivity_poll_interval=0`` disables it) continues even while WS is down.
 A single failed ``get_modules`` keeps the previous module state; sustained
 unusable results (errors or empty/unrecognised listings) also keep last-known

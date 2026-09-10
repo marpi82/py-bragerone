@@ -70,6 +70,11 @@ Best Practices
   session is down, ``push_healthy`` is ``False`` (no live stream — not a stale
   ``True``). Resume logs ``live ParamUpdate resumed after …s``. Do not fold this
   into session or module online bits.
+- Brief Socket.IO drops are deferred by ``cloud_session_down_hysteresis_s``
+  (default 15s). Consumers keep session-up (stale plant values OK) until the
+  window elapses; reconnect inside the window absorbs the blink without
+  updating cloud ``last_*`` / episodes. ``0`` publishes immediately; ``stop()``
+  always publishes immediately.
 - While the Socket.IO session is down, the gateway REST-primes on the connectivity
   poll interval so consumers are not stuck on the last WS delta.
 - Engine.IO abort (for example aiohttp ``WSMsgType.CLOSED`` / packet type 257) can
