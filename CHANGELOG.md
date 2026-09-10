@@ -7,6 +7,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.9.2rc4] - 2026-09-10
+
 ### Fixed
 
 - Unusable ``get_modules`` results (transport errors or empty/unrecognised
@@ -369,7 +371,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc3...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc4...HEAD
+[2026.9.2rc4]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc3...2026.9.2rc4
 [2026.9.2rc3]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc2...2026.9.2rc3
 [2026.9.2rc2]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc1...2026.9.2rc2
 [2026.9.1]: https://github.com/marpi82/py-bragerone/releases/tag/2026.9.1
