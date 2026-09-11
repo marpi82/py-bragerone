@@ -9,7 +9,12 @@ Baseline behaviour (self-hosted runner)::
 
     PYBO_BASELINE_DIR=/var/lib/gha/baselines  # default
     # missing live_contract.json → seed and exit 0
-    # present → structural compare; drift exits 1
+    # present → structural compare; drift is informational (exit 0, matched=false)
+    # collect/auth/parse failure → exit 1
+
+The live-contract workflow treats drift as a signal (diff + stats). Hard failure
+is reserved for collect errors and the separate library compat smoke; when that
+smoke passes after drift, the runner baseline is auto-reseeded.
 """
 
 from __future__ import annotations
@@ -282,6 +287,41 @@ def compare_contracts(baseline: Mapping[str, Any], current: Mapping[str, Any]) -
     return diffs
 
 
+_SYMBOL_DIFF_RE = re.compile(r"^([+\-~])\s+symbols\.([A-Z0-9_]+)")
+
+
+def summarize_diffs(diffs: Sequence[str]) -> dict[str, int]:
+    """Return coarse counters for a rolling-issue / step-summary table.
+
+    Counts added/removed top-level symbol keys and how many logical rows mention
+    ``path_kinds`` (typical SPA min/max shape churn).
+    """
+    added_symbols: set[str] = set()
+    removed_symbols: set[str] = set()
+    path_kinds_changes = 0
+    for item in diffs:
+        if "path_kinds" in item:
+            path_kinds_changes += 1
+        match = _SYMBOL_DIFF_RE.match(item)
+        if match is None:
+            continue
+        op, symbol = match.group(1), match.group(2)
+        # Only whole-symbol add/remove rows: "+ symbols.PARAM_X" / "- symbols.PARAM_X"
+        remainder = item[match.end() :]
+        if remainder not in ("",):
+            continue
+        if op == "+":
+            added_symbols.add(symbol)
+        elif op == "-":
+            removed_symbols.add(symbol)
+    return {
+        "diff_count": len(diffs),
+        "symbols_added": len(added_symbols),
+        "symbols_removed": len(removed_symbols),
+        "path_kinds_changes": path_kinds_changes,
+    }
+
+
 # Rolling-issue comments stay short; the full listing lives in the workflow artifact.
 _ISSUE_DIFF_PREVIEW_ITEMS = 20
 _ISSUE_DIFF_CHAR_BUDGET = 2_500
@@ -459,7 +499,14 @@ async def collect_live_contract(
         await client.close()
 
 
-def write_github_output(*, seeded: bool, matched: bool, symbol_count: int, diff_count: int) -> None:
+def write_github_output(
+    *,
+    seeded: bool,
+    matched: bool,
+    symbol_count: int,
+    diff_count: int,
+    summary: Mapping[str, int] | None = None,
+) -> None:
     """Append job outputs when running under GitHub Actions."""
     github_output = os.environ.get("GITHUB_OUTPUT")
     if not github_output:
@@ -469,13 +516,26 @@ def write_github_output(*, seeded: bool, matched: bool, symbol_count: int, diff_
         handle.write(f"matched={str(matched).lower()}\n")
         handle.write(f"symbol_count={symbol_count}\n")
         handle.write(f"diff_count={diff_count}\n")
+        if summary is not None:
+            handle.write(f"symbols_added={int(summary.get('symbols_added', 0))}\n")
+            handle.write(f"symbols_removed={int(summary.get('symbols_removed', 0))}\n")
+            handle.write(f"path_kinds_changes={int(summary.get('path_kinds_changes', 0))}\n")
 
 
-def write_step_summary(*, seeded: bool, matched: bool, symbol_count: int, diffs: Sequence[str], baseline: Path) -> None:
+def write_step_summary(
+    *,
+    seeded: bool,
+    matched: bool,
+    symbol_count: int,
+    diffs: Sequence[str],
+    baseline: Path,
+    summary: Mapping[str, int] | None = None,
+) -> None:
     """Write a short markdown summary for the Actions UI."""
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if not summary_path:
         return
+    stats = dict(summary) if summary is not None else summarize_diffs(diffs)
     lines = [
         "## Live contract",
         "",
@@ -486,6 +546,9 @@ def write_step_summary(*, seeded: bool, matched: bool, symbol_count: int, diffs:
         f"| matched | {str(matched).lower()} |",
         f"| symbols | {symbol_count} |",
         f"| diffs | {len(diffs)} |",
+        f"| symbols added | {stats.get('symbols_added', 0)} |",
+        f"| symbols removed | {stats.get('symbols_removed', 0)} |",
+        f"| path_kinds changes | {stats.get('path_kinds_changes', 0)} |",
         "",
     ]
     if diffs:
@@ -504,6 +567,7 @@ def write_diff_files(path: Path, diffs: Sequence[str]) -> None:
         format_diff_markdown(diffs, max_chars=None, max_items=None),
         encoding="utf-8",
     )
+    write_json(path.with_name(path.stem + "_summary.json"), summarize_diffs(diffs))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -568,13 +632,21 @@ def main(argv: list[str] | None = None) -> int:
         print(
             json.dumps({"seeded": True, "baseline": str(baseline_path), "symbol_count": contract["symbol_count"]}, sort_keys=True)
         )
-        write_github_output(seeded=True, matched=True, symbol_count=int(contract["symbol_count"]), diff_count=0)
+        empty_summary = summarize_diffs([])
+        write_github_output(
+            seeded=True,
+            matched=True,
+            symbol_count=int(contract["symbol_count"]),
+            diff_count=0,
+            summary=empty_summary,
+        )
         write_step_summary(
             seeded=True,
             matched=True,
             symbol_count=int(contract["symbol_count"]),
             diffs=[],
             baseline=baseline_path,
+            summary=empty_summary,
         )
         if args.write_diffs is not None:
             write_diff_files(args.write_diffs, [])
@@ -583,6 +655,7 @@ def main(argv: list[str] | None = None) -> int:
     baseline = read_json(baseline_path)
     diffs = compare_contracts(baseline, contract)
     matched = not diffs
+    summary = summarize_diffs(diffs)
     print(
         json.dumps(
             {
@@ -591,6 +664,7 @@ def main(argv: list[str] | None = None) -> int:
                 "baseline": str(baseline_path),
                 "symbol_count": contract["symbol_count"],
                 "diff_count": len(diffs),
+                "summary": summary,
                 "diffs": diffs[:100],
             },
             indent=2,
@@ -602,6 +676,7 @@ def main(argv: list[str] | None = None) -> int:
         matched=matched,
         symbol_count=int(contract["symbol_count"]),
         diff_count=len(diffs),
+        summary=summary,
     )
     write_step_summary(
         seeded=False,
@@ -609,12 +684,13 @@ def main(argv: list[str] | None = None) -> int:
         symbol_count=int(contract["symbol_count"]),
         diffs=diffs,
         baseline=baseline_path,
+        summary=summary,
     )
     if args.write_diffs is not None:
         write_diff_files(args.write_diffs, diffs)
     if diffs:
-        print(f"live contract drift: {len(diffs)} structural difference(s)", file=sys.stderr)
-        return 1
+        # Informational: workflow compat smoke decides hard-fail / auto-reseed.
+        print(f"live contract drift: {len(diffs)} structural difference(s) (informational)", file=sys.stderr)
     return 0
 
 

@@ -16,12 +16,15 @@ _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "live_contract.py"
 class _LiveContractScript(Protocol):
     """Subset of ``live_contract`` used by tests (attribute callables — no Ellipsis bodies)."""
 
+    _ISSUE_DIFF_PREVIEW_ITEMS: int
+    _ISSUE_DIFF_CHAR_BUDGET: int
     parse_modules: Callable[[str | None], list[str]]
     classify_path_kind: Callable[[Any], str]
     normalize_selector: Callable[[Mapping[str, Any]], dict[str, Any]]
     symbol_contract: Callable[..., dict[str, Any]]
     build_contract: Callable[..., dict[str, Any]]
     compare_contracts: Callable[[Mapping[str, Any], Mapping[str, Any]], list[str]]
+    summarize_diffs: Callable[[Sequence[str]], dict[str, int]]
     unified_diff_lines: Callable[[Sequence[str]], list[str]]
     format_diff_markdown: Callable[..., str]
     write_diff_files: Callable[[Path, Sequence[str]], None]
@@ -351,7 +354,7 @@ def test_format_diff_markdown_truncates_to_budget() -> None:
 
 
 def test_format_diff_markdown_truncates_to_preview_items() -> None:
-    """Default issue previews keep only the first N logical diffs."""
+    """Explicit max_items keeps only the first N logical diffs."""
     module = _load()
     diffs = [f"+ symbols.PARAM_{index:04d}" for index in range(25)]
     markdown = module.format_diff_markdown(diffs, max_chars=None, max_items=5)
@@ -363,6 +366,21 @@ def test_format_diff_markdown_truncates_to_preview_items() -> None:
     assert "diffs.txt" in markdown
 
 
+def test_format_diff_markdown_uses_default_preview_limits() -> None:
+    """Production callers (step summary) rely on default max_items and max_chars."""
+    module = _load()
+    preview_items = int(module._ISSUE_DIFF_PREVIEW_ITEMS)
+    char_budget = int(module._ISSUE_DIFF_CHAR_BUDGET)
+    diffs = [f"+ symbols.PARAM_{index:04d}" for index in range(40)]
+    markdown = module.format_diff_markdown(diffs)
+    assert "truncated" in markdown
+    assert "diffs.txt" in markdown
+    assert "PARAM_0000" in markdown
+    assert f"PARAM_{preview_items - 1:04d}" in markdown
+    assert f"PARAM_{preview_items:04d}" not in markdown
+    assert len(markdown) <= char_budget
+
+
 def test_format_diff_markdown_full_listing_for_artifact() -> None:
     """Artifact markdown keeps every diff when limits are disabled."""
     module = _load()
@@ -370,6 +388,25 @@ def test_format_diff_markdown_full_listing_for_artifact() -> None:
     markdown = module.format_diff_markdown(diffs, max_chars=None, max_items=None)
     assert "truncated" not in markdown
     assert "PARAM_0024" in markdown
+
+
+def test_summarize_diffs_counts_symbols_and_path_kinds() -> None:
+    """Rolling-issue stats count whole-symbol add/remove and path_kinds churn."""
+    summary = _load().summarize_diffs(
+        [
+            "+ symbols.PARAM_NEW",
+            "- symbols.PARAM_OLD",
+            "~ symbols.PARAM_0.path_kinds.max: 'empty' -> 'address_selector'",
+            "+ symbols.PARAM_0.paths.max",
+            "~ symbol_count: 10 -> 11",
+        ]
+    )
+    assert summary == {
+        "diff_count": 5,
+        "symbols_added": 1,
+        "symbols_removed": 1,
+        "path_kinds_changes": 1,
+    }
 
 
 def test_write_diff_files_writes_listing_and_markdown(tmp_path: Path) -> None:
@@ -381,6 +418,10 @@ def test_write_diff_files_writes_listing_and_markdown(tmp_path: Path) -> None:
     markdown = listing.with_suffix(".md").read_text(encoding="utf-8")
     assert "```diff" in markdown
     assert "+ symbols.PARAM_NEW" in markdown
+    summary = json.loads(listing.with_name("diffs_summary.json").read_text(encoding="utf-8"))
+    assert summary["symbols_added"] == 1
+    assert summary["symbols_removed"] == 1
     module.write_diff_files(listing, [])
     assert listing.read_text(encoding="utf-8") == ""
     assert listing.with_suffix(".md").read_text(encoding="utf-8") == ""
+    assert json.loads(listing.with_name("diffs_summary.json").read_text(encoding="utf-8"))["diff_count"] == 0

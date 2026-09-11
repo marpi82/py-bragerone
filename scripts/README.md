@@ -10,7 +10,8 @@ Utility scripts for development and system setup.
 - `github_project_setup.sh` - Print BragerOne GitHub Project v2 field/option IDs for Actions repository variables (triage bot)
 - `perf_bench.py` - Local wall-time micro-benchmarks, baseline compare, and real startup timing
 - `check_upstream_assets.py` - Unauthenticated probe of BragerOne `/system/version` + live `index-*.js` (used by the scheduled Upstream assets workflow). When the fingerprint changes (or `--always-parse`), the probe also requires a non-empty language config, units descriptor table, and `units` i18n namespace.
-- `live_contract.py` - Authenticated structural catalog contract for the self-hosted `bragerone-live` runner. Seeds `/var/lib/gha/baselines/live_contract.json` on first success; later runs compare structure only (no live register values).
+- `live_contract.py` - Authenticated structural catalog contract for the self-hosted `bragerone-live` runner. Seeds `/var/lib/gha/baselines/live_contract.json` on first success; later runs compare structure only (no live register values). Structural drift exits 0 (`matched=false`); collect failures exit 1. The workflow runs `live_compat_smoke.py` as the hard gate and auto-reseeds the baseline when drift is benign.
+- `live_compat_smoke.py` - Authenticated read-only library smoke (prime → panel groups → describe/resolve). Exit 1 only on hard failures; used by Live contract after a successful collect.
 - `probe_menu_routes.py` - Authenticated live probe of module menu routes, panel groups, and route visibility diagnostics (issue marpi82/ha-bragerone#192). Loads ``.env`` from the current working directory when ``python-dotenv`` is installed (same as ``pybragerone-cli``); otherwise set ``PYBO_*`` in the process environment.
 
 CPU-bound dispatch/catalog cases also live as pytest tests in `tests/test_bench_micro.py`
@@ -80,13 +81,17 @@ uv run python scripts/check_upstream_assets.py --always-parse
 # Live structural contract (needs PYBO_* on the process; self-hosted bragerone-live).
 # First run with an empty baseline dir seeds live_contract.json and exits 0.
 uv run python scripts/live_contract.py --write-current reports/live/contract.json
-# On drift, --write-diffs emits a full unified listing plus sibling .md for the workflow artifact;
-# the rolling issue comment only embeds a short preview and links that artifact:
+# Structural drift is informational (exit 0, matched=false). Full listing + sibling .md go to
+# the workflow artifact; the rolling issue embeds a short collapsed preview and links that artifact.
+# Hard failure is collect/auth/parse errors, or the separate live_compat_smoke.py gate.
 # uv run python scripts/live_contract.py --write-current reports/live/contract.json --write-diffs reports/live/diffs.txt
-# Overwrite an existing baseline (same as Actions → Live contract → seed_only):
+# Overwrite an existing baseline (same as Actions → Live contract → seed_only, or auto-reseed after compat OK):
 # uv run python scripts/live_contract.py --seed-only --write-current reports/live/contract.json
 # Optional override:
 # PYBO_BASELINE_DIR=/var/lib/gha/baselines uv run python scripts/live_contract.py
+
+# Library compat smoke (read-only prime → panels → describe/resolve). Exit 1 only on hard failure.
+# uv run python scripts/live_compat_smoke.py --write-json reports/live/compat.json
 ```
 
 ## Note

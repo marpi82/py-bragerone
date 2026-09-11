@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       seed_only:
-        description: Overwrite the runner baseline with the current live catalog (reseed)
+        description: Overwrite the runner baseline with the current live catalog (force reseed)
         type: boolean
         default: false
   repository_dispatch:
@@ -38,7 +38,7 @@ jobs:
       - name: Run live contract
         id: contract
         env:
-          # repository_dispatch must never reseed; only an explicit Actions checkbox.
+          # Manual checkbox force-reseeds immediately. Auto-reseed after compat is a later step.
           SEED_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_only || false }}
         run: |
           mkdir -p reports/live
@@ -51,13 +51,46 @@ jobs:
             --write-diffs reports/live/diffs.txt \
             "${extra[@]}"
 
+      - name: Run live compat smoke
+        id: compat
+        if: success() && steps.contract.outcome == 'success'
+        run: |
+          uv run python scripts/live_compat_smoke.py \
+            --write-json reports/live/compat.json
+
+      - name: Auto-reseed baseline after benign drift
+        id: reseed
+        if: >
+          success()
+          && steps.contract.outcome == 'success'
+          && steps.compat.outcome == 'success'
+          && steps.contract.outputs.matched == 'false'
+        run: |
+          BASELINE_DIR="${PYBO_BASELINE_DIR:-/var/lib/gha/baselines}"
+          mkdir -p "$BASELINE_DIR"
+          if [ ! -f reports/live/contract.json ]; then
+            echo "missing reports/live/contract.json; cannot auto-reseed" >&2
+            exit 1
+          fi
+          cp reports/live/contract.json "$BASELINE_DIR/live_contract.json"
+          echo "Auto-reseeded $BASELINE_DIR/live_contract.json from current contract"
+          echo "seeded=true" >> "$GITHUB_OUTPUT"
+          echo "reseed_reason=auto_compat_ok" >> "$GITHUB_OUTPUT"
+
       - name: Summarize
         if: always() && steps.contract.outputs.symbol_count != ''
         env:
-          SEEDED: ${{ steps.contract.outputs.seeded }}
+          SEEDED: ${{ steps.reseed.outputs.seeded || steps.contract.outputs.seeded }}
           MATCHED: ${{ steps.contract.outputs.matched }}
           SYMBOL_COUNT: ${{ steps.contract.outputs.symbol_count }}
           DIFF_COUNT: ${{ steps.contract.outputs.diff_count }}
+          SYMBOLS_ADDED: ${{ steps.contract.outputs.symbols_added }}
+          SYMBOLS_REMOVED: ${{ steps.contract.outputs.symbols_removed }}
+          PATH_KINDS_CHANGES: ${{ steps.contract.outputs.path_kinds_changes }}
+          COMPAT_OK: ${{ steps.compat.outputs.compat_ok }}
+          PANEL_COUNT: ${{ steps.compat.outputs.panel_count }}
+          SYMBOLS_DESCRIBED: ${{ steps.compat.outputs.symbols_described }}
+          RESEED_REASON: ${{ steps.reseed.outputs.reseed_reason }}
           SEED_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_only || false }}
         run: |
           {
@@ -69,6 +102,13 @@ jobs:
             echo "| matched | $MATCHED |"
             echo "| symbols | $SYMBOL_COUNT |"
             echo "| diffs | $DIFF_COUNT |"
+            echo "| symbols added | ${SYMBOLS_ADDED:-0} |"
+            echo "| symbols removed | ${SYMBOLS_REMOVED:-0} |"
+            echo "| path_kinds changes | ${PATH_KINDS_CHANGES:-0} |"
+            echo "| compat_ok | ${COMPAT_OK:-n/a} |"
+            echo "| panels | ${PANEL_COUNT:-n/a} |"
+            echo "| symbols described | ${SYMBOLS_DESCRIBED:-n/a} |"
+            echo "| reseed | ${RESEED_REASON:-none} |"
             echo "| seed_only | $SEED_ONLY |"
             if [ -n "${{ github.event.client_payload.fingerprint }}" ]; then
               echo "| upstream fingerprint | \`${{ github.event.client_payload.fingerprint }}\` |"
@@ -84,6 +124,8 @@ jobs:
             reports/live/contract.json
             reports/live/diffs.txt
             reports/live/diffs.md
+            reports/live/diffs_summary.json
+            reports/live/compat.json
           if-no-files-found: ignore
           retention-days: 30
 
@@ -93,12 +135,21 @@ jobs:
         if: always()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
-          SEEDED: ${{ steps.contract.outputs.seeded }}
+          SEEDED: ${{ steps.reseed.outputs.seeded || steps.contract.outputs.seeded }}
           MATCHED: ${{ steps.contract.outputs.matched }}
           SYMBOL_COUNT: ${{ steps.contract.outputs.symbol_count }}
           DIFF_COUNT: ${{ steps.contract.outputs.diff_count }}
+          SYMBOLS_ADDED: ${{ steps.contract.outputs.symbols_added }}
+          SYMBOLS_REMOVED: ${{ steps.contract.outputs.symbols_removed }}
+          PATH_KINDS_CHANGES: ${{ steps.contract.outputs.path_kinds_changes }}
           SEED_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_only || false }}
           CONTRACT_OK: ${{ steps.contract.outcome }}
+          COMPAT_OK: ${{ steps.compat.outcome == 'success' && (steps.compat.outputs.compat_ok || 'true') || steps.compat.outcome }}
+          COMPAT_OUTCOME: ${{ steps.compat.outcome }}
+          PANEL_COUNT: ${{ steps.compat.outputs.panel_count }}
+          SYMBOLS_DESCRIBED: ${{ steps.compat.outputs.symbols_described }}
+          SYMBOLS_RESOLVED: ${{ steps.compat.outputs.symbols_resolved }}
+          RESEED_REASON: ${{ steps.reseed.outputs.reseed_reason }}
           EVENT_NAME: ${{ github.event_name }}
           UPSTREAM_FP: ${{ github.event.client_payload.fingerprint }}
           UPSTREAM_PREV: ${{ github.event.client_payload.previous }}
@@ -114,17 +165,30 @@ jobs:
             const seeded = process.env.SEEDED || '';
             const matched = process.env.MATCHED || '';
             const contractOk = process.env.CONTRACT_OK || '';
+            const compatOutcome = process.env.COMPAT_OUTCOME || '';
+            const reseedReason = process.env.RESEED_REASON || '';
+            const seedOnly = process.env.SEED_ONLY === 'true';
+            const drifted = matched === 'false';
+            const compatPassed = compatOutcome === 'success';
+            const jobOk = contractOk === 'success' && (compatOutcome === '' || compatPassed);
+
             let statusLine;
-            // Prefer structured script outputs over step outcome: drift exits 1 but still
-            // publishes matched=false / diff_count>0 for this message.
-            if (process.env.SEED_ONLY === 'true') {
-              statusLine = 'Live catalog contract overwrote the runner baseline (manual reseed).';
+            if (seedOnly) {
+              statusLine = compatPassed
+                ? 'Live catalog contract overwrote the runner baseline (manual reseed); library compat smoke passed.'
+                : 'Live catalog contract overwrote the runner baseline (manual reseed); library compat smoke did not pass.';
+            } else if (seeded === 'true' && reseedReason === 'auto_compat_ok') {
+              statusLine = 'Live catalog contract reported informational structural drift; library compat smoke passed and the runner baseline was auto-reseeded.';
             } else if (seeded === 'true') {
               statusLine = 'Live catalog contract seeded a new baseline (first success).';
-            } else if (matched === 'false') {
-              statusLine = 'Live catalog contract reported structural drift against the baseline.';
-            } else if (matched === 'true') {
-              statusLine = 'Live catalog contract matched the baseline (no structural drift).';
+            } else if (drifted && compatPassed) {
+              statusLine = 'Live catalog contract reported informational structural drift; library compat smoke passed.';
+            } else if (drifted && compatOutcome === 'failure') {
+              statusLine = 'Live catalog contract reported structural drift and library compat smoke failed.';
+            } else if (matched === 'true' && compatPassed) {
+              statusLine = 'Live catalog contract matched the baseline (no structural drift); library compat smoke passed.';
+            } else if (matched === 'true' && compatOutcome === 'failure') {
+              statusLine = 'Live catalog contract matched the baseline, but library compat smoke failed.';
             } else if (contractOk !== 'success') {
               statusLine = 'Live catalog contract failed (missing env, catalog error, or runner fault).';
             } else {
@@ -133,11 +197,20 @@ jobs:
 
             const rows = [
               `| trigger | \`${process.env.EVENT_NAME}\` |`,
-              `| outcome | \`${contractOk}\` |`,
+              `| outcome | \`${jobOk ? 'success' : 'failure'}\` |`,
+              `| contract | \`${contractOk || 'n/a'}\` |`,
+              `| compat | \`${compatOutcome || 'n/a'}\` |`,
               `| seeded | ${seeded || 'n/a'} |`,
               `| matched | ${matched || 'n/a'} |`,
               `| symbols | ${process.env.SYMBOL_COUNT || 'n/a'} |`,
               `| diffs | ${process.env.DIFF_COUNT || 'n/a'} |`,
+              `| symbols added | ${process.env.SYMBOLS_ADDED || '0'} |`,
+              `| symbols removed | ${process.env.SYMBOLS_REMOVED || '0'} |`,
+              `| path_kinds changes | ${process.env.PATH_KINDS_CHANGES || '0'} |`,
+              `| panels | ${process.env.PANEL_COUNT || 'n/a'} |`,
+              `| symbols described | ${process.env.SYMBOLS_DESCRIBED || 'n/a'} |`,
+              `| symbols resolved | ${process.env.SYMBOLS_RESOLVED || 'n/a'} |`,
+              `| reseed | \`${reseedReason || (seedOnly ? 'manual' : 'none')}\` |`,
               `| seed_only | ${process.env.SEED_ONLY || 'n/a'} |`,
             ];
             if (process.env.UPSTREAM_FP) {
@@ -162,7 +235,7 @@ jobs:
             body +=
               '\n\nBaseline lives on the runner at `/var/lib/gha/baselines/live_contract.json` (not in git). This issue is separate from `[upstream-assets]`.';
 
-            if (matched === 'false') {
+            if (drifted) {
               const { owner, repo } = context.repo;
               let artifactUrl = '';
               try {
