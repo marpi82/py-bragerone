@@ -225,7 +225,7 @@ jobs:
             } else if (reseedReason === 'auto_compat_ok') {
               statusLine = 'Live catalog contract reported informational structural drift; library compat smoke passed and the runner baseline was auto-reseeded.';
             } else if (drifted && configDiffs > 0 && compatPassed) {
-              statusLine = 'Live catalog contract reported runner-config drift (object_id/lang/modules); library compat smoke passed, but baseline was not auto-reseeded — use the manual overwrite checkbox if intentional.';
+              statusLine = 'Live catalog contract reported non-catalog drift (runner inputs, schema_version, or other top-level fields); library compat smoke passed, but baseline was not auto-reseeded — use the manual overwrite checkbox if intentional.';
             } else if (drifted && compatPassed) {
               statusLine = 'Live catalog contract reported informational structural drift; library compat smoke passed.';
             } else if (drifted && compatOutcome === 'failure') {

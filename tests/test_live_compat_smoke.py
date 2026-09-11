@@ -194,7 +194,6 @@ class _FakeResolver:
         return True, "ok"
 
 
-@pytest.mark.asyncio
 async def test_smoke_module_happy_path_uses_unit_code(monkeypatch: pytest.MonkeyPatch) -> None:
     """smoke_module primes, builds panels, describes/resolves, and looks up unit_code."""
     module = _load()
@@ -223,7 +222,6 @@ async def test_smoke_module_happy_path_uses_unit_code(monkeypatch: pytest.Monkey
     assert module.evaluate_module_smoke(payload) == []
 
 
-@pytest.mark.asyncio
 async def test_smoke_module_rejects_empty_prime_payload() -> None:
     """Empty prime data for the module is a hard failure before resolver work."""
     module = _load()
@@ -242,7 +240,6 @@ async def test_smoke_module_rejects_empty_prime_payload() -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_run_compat_smoke_surfaces_module_failures(monkeypatch: pytest.MonkeyPatch) -> None:
     """run_compat_smoke marks compat_ok false when a module smoke payload fails evaluation."""
     module = _load()
@@ -288,7 +285,6 @@ async def test_run_compat_smoke_surfaces_module_failures(monkeypatch: pytest.Mon
     assert any("M1:" in item for item in report["errors"])
 
 
-@pytest.mark.asyncio
 async def test_run_compat_smoke_fails_when_configured_module_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     """Hard gate fails if PYBO_MODULES lists a devid absent from get_modules."""
     module = _load()
@@ -321,7 +317,6 @@ async def test_run_compat_smoke_fails_when_configured_module_missing(monkeypatch
     assert closed["done"] is True
 
 
-@pytest.mark.asyncio
 async def test_run_compat_smoke_success_path_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
     """Success path authenticates, filters modules, aggregates counts, and closes the client."""
     module = _load()
@@ -372,7 +367,6 @@ async def test_run_compat_smoke_success_path_closes_client(monkeypatch: pytest.M
     assert report["errors"] == []
 
 
-@pytest.mark.asyncio
 async def test_run_compat_smoke_closes_client_on_exception(monkeypatch: pytest.MonkeyPatch) -> None:
     """Client.close runs even when get_modules raises."""
     module = _load()

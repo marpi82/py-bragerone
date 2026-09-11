@@ -678,6 +678,11 @@ def main(argv: list[str] | None = None) -> int:
         write_json(baseline_path, contract)
         seeded = True
         pending_seed = False
+        # Immediate publish replaces the comparison target; clear stale diffs from
+        # the pre-overwrite baseline so outputs match the newly written file.
+        diffs = []
+        matched = True
+        summary = summarize_diffs(diffs)
 
     print(
         json.dumps(

@@ -446,7 +446,7 @@ def test_main_defer_baseline_state_machine(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """``--defer-baseline`` never writes the runner baseline; pending_seed drives publish."""
+    """``--defer-baseline`` stages publish; immediate ``--seed-only`` clears stale diffs."""
     module = _load()
     baseline_dir = tmp_path / "baselines"
     baseline_dir.mkdir()
@@ -567,6 +567,35 @@ def test_main_defer_baseline_state_machine(
     out = json.loads(capsys.readouterr().out)
     assert out["pending_seed"] is True
     assert out["seeded"] is False
+
+    # Immediate --seed-only (no defer) overwrites and clears pre-overwrite diffs.
+    drifted_baseline = module.build_contract(
+        lang="en",
+        object_id=1,
+        modules=["M1"],
+        fingerprint="1|index.js",
+        symbols={"PARAM_OLD": {"key": "PARAM_OLD"}},
+    )
+    module.write_json(baseline_dir / "live_contract.json", drifted_baseline)
+    monkeypatch.setattr(cast(Any, module), "collect_live_contract", _collect)
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--seed-only",
+        ]
+    )
+    assert code == 0
+    published = module.read_json(baseline_dir / "live_contract.json")
+    assert published["symbol_count"] == contract["symbol_count"]
+    out = json.loads(capsys.readouterr().out)
+    assert out["seeded"] is True
+    assert out["pending_seed"] is False
+    assert out["matched"] is True
+    assert out["diff_count"] == 0
+    assert out["summary"]["diff_count"] == 0
 
 
 def test_write_diff_files_writes_listing_and_markdown(tmp_path: Path) -> None:
