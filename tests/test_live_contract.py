@@ -8,6 +8,8 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+import pytest
+
 from pybragerone.models.catalog import ParamMap
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "live_contract.py"
@@ -16,18 +18,23 @@ _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "live_contract.py"
 class _LiveContractScript(Protocol):
     """Subset of ``live_contract`` used by tests (attribute callables — no Ellipsis bodies)."""
 
+    _ISSUE_DIFF_PREVIEW_ITEMS: int
+    _ISSUE_DIFF_CHAR_BUDGET: int
     parse_modules: Callable[[str | None], list[str]]
     classify_path_kind: Callable[[Any], str]
     normalize_selector: Callable[[Mapping[str, Any]], dict[str, Any]]
     symbol_contract: Callable[..., dict[str, Any]]
     build_contract: Callable[..., dict[str, Any]]
     compare_contracts: Callable[[Mapping[str, Any], Mapping[str, Any]], list[str]]
+    summarize_diffs: Callable[[Sequence[str]], dict[str, int]]
+    is_benign_catalog_drift: Callable[[Mapping[str, int]], bool]
     unified_diff_lines: Callable[[Sequence[str]], list[str]]
     format_diff_markdown: Callable[..., str]
     write_diff_files: Callable[[Path, Sequence[str]], None]
     collect_symbol_tokens: Callable[[Mapping[str, object], Sequence[str]], list[str]]
     write_json: Callable[[Path, Mapping[str, Any]], None]
     read_json: Callable[[Path], dict[str, Any]]
+    main: Callable[[list[str] | None], int]
 
 
 def _load() -> _LiveContractScript:
@@ -351,7 +358,7 @@ def test_format_diff_markdown_truncates_to_budget() -> None:
 
 
 def test_format_diff_markdown_truncates_to_preview_items() -> None:
-    """Default issue previews keep only the first N logical diffs."""
+    """Explicit max_items keeps only the first N logical diffs."""
     module = _load()
     diffs = [f"+ symbols.PARAM_{index:04d}" for index in range(25)]
     markdown = module.format_diff_markdown(diffs, max_chars=None, max_items=5)
@@ -363,6 +370,21 @@ def test_format_diff_markdown_truncates_to_preview_items() -> None:
     assert "diffs.txt" in markdown
 
 
+def test_format_diff_markdown_uses_default_preview_limits() -> None:
+    """Production callers (step summary) rely on default max_items and max_chars."""
+    module = _load()
+    preview_items = int(module._ISSUE_DIFF_PREVIEW_ITEMS)
+    char_budget = int(module._ISSUE_DIFF_CHAR_BUDGET)
+    diffs = [f"+ symbols.PARAM_{index:04d}" for index in range(40)]
+    markdown = module.format_diff_markdown(diffs)
+    assert "truncated" in markdown
+    assert "diffs.txt" in markdown
+    assert "PARAM_0000" in markdown
+    assert f"PARAM_{preview_items - 1:04d}" in markdown
+    assert f"PARAM_{preview_items:04d}" not in markdown
+    assert len(markdown) <= char_budget
+
+
 def test_format_diff_markdown_full_listing_for_artifact() -> None:
     """Artifact markdown keeps every diff when limits are disabled."""
     module = _load()
@@ -370,6 +392,247 @@ def test_format_diff_markdown_full_listing_for_artifact() -> None:
     markdown = module.format_diff_markdown(diffs, max_chars=None, max_items=None)
     assert "truncated" not in markdown
     assert "PARAM_0024" in markdown
+
+
+def test_summarize_diffs_counts_symbols_and_path_kinds() -> None:
+    """Rolling-issue stats count whole-symbol add/remove and path_kinds churn."""
+    summary = _load().summarize_diffs(
+        [
+            "+ symbols.PARAM_NEW",
+            "- symbols.PARAM_OLD",
+            "~ symbols.PARAM_0.path_kinds.max: 'empty' -> 'address_selector'",
+            "+ symbols.PARAM_0.paths.max",
+            "~ symbol_count: 10 -> 11",
+        ]
+    )
+    assert summary == {
+        "diff_count": 5,
+        "symbols_added": 1,
+        "symbols_removed": 1,
+        "path_kinds_changes": 1,
+        "catalog_diff_count": 5,
+        "config_diff_count": 0,
+    }
+
+
+def test_summarize_diffs_splits_config_from_catalog() -> None:
+    """Runner config / schema changes are counted separately from catalog churn."""
+    module = _load()
+    summary = module.summarize_diffs(
+        [
+            "~ object_id: 1 -> 2",
+            "~ lang: 'en' -> 'pl'",
+            "+ modules[0]",
+            "~ schema_version: 1 -> 2",
+            "+ symbols.PARAM_NEW",
+        ]
+    )
+    assert summary["config_diff_count"] == 4
+    assert summary["catalog_diff_count"] == 1
+    assert module.is_benign_catalog_drift(summary) is False
+    catalog_only = module.summarize_diffs(
+        [
+            "+ symbols.PARAM_NEW",
+            "~ symbols.PARAM_X.path_kinds.min: 'empty' -> 'address_selector'",
+        ]
+    )
+    assert module.is_benign_catalog_drift(catalog_only) is True
+    schema_only = module.summarize_diffs(["~ schema_version: 1 -> 2"])
+    assert module.is_benign_catalog_drift(schema_only) is False
+
+
+def test_main_defer_baseline_state_machine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``--defer-baseline`` stages publish; ``--seed-only`` skips baseline reads/overwrites."""
+    module = _load()
+    baseline_dir = tmp_path / "baselines"
+    baseline_dir.mkdir()
+    current = tmp_path / "contract.json"
+    contract: dict[str, Any] = module.build_contract(
+        lang="en",
+        object_id=1,
+        modules=["M1"],
+        fingerprint="1|index.js",
+        symbols={"PARAM_A": {"key": "PARAM_A"}},
+    )
+
+    async def _collect(**kwargs: Any) -> dict[str, Any]:
+        _ = kwargs
+        return contract
+
+    monkeypatch.setenv("PYBO_EMAIL", "a@b.c")
+    monkeypatch.setenv("PYBO_PASSWORD", "x")
+    monkeypatch.setenv("PYBO_OBJECT_ID", "1")
+    monkeypatch.setenv("PYBO_MODULES", "M1")
+    monkeypatch.setattr(cast(Any, module), "collect_live_contract", _collect)
+
+    # First seed: no baseline yet.
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--defer-baseline",
+        ]
+    )
+    assert code == 0
+    assert not (baseline_dir / "live_contract.json").exists()
+    assert current.is_file()
+    out = json.loads(capsys.readouterr().out)
+    assert out["pending_seed"] is True
+    assert out["seeded"] is False
+    assert out["matched"] is True
+
+    # Persist a baseline manually, then catalog-only drift with defer.
+    module.write_json(baseline_dir / "live_contract.json", contract)
+    drifted: dict[str, Any] = module.build_contract(
+        lang="en",
+        object_id=1,
+        modules=["M1"],
+        fingerprint="1|index.js",
+        symbols={"PARAM_A": {"key": "PARAM_A"}, "PARAM_B": {"key": "PARAM_B"}},
+    )
+
+    async def _collect_drifted(**kwargs: Any) -> dict[str, Any]:
+        _ = kwargs
+        return drifted
+
+    monkeypatch.setattr(cast(Any, module), "collect_live_contract", _collect_drifted)
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--defer-baseline",
+        ]
+    )
+    assert code == 0
+    preserved = module.read_json(baseline_dir / "live_contract.json")
+    assert preserved["symbol_count"] == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["pending_seed"] is False
+    assert out["matched"] is False
+    assert out["summary"]["catalog_diff_count"] > 0
+    assert out["summary"]["config_diff_count"] == 0
+    assert module.is_benign_catalog_drift(out["summary"]) is True
+
+    # Config drift (object_id) must not be benign.
+    config_drifted: dict[str, Any] = module.build_contract(
+        lang="en",
+        object_id=99,
+        modules=["M1"],
+        fingerprint="1|index.js",
+        symbols={"PARAM_A": {"key": "PARAM_A"}},
+    )
+
+    async def _collect_config(**kwargs: Any) -> dict[str, Any]:
+        _ = kwargs
+        return config_drifted
+
+    monkeypatch.setattr(cast(Any, module), "collect_live_contract", _collect_config)
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--defer-baseline",
+        ]
+    )
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["matched"] is False
+    assert module.is_benign_catalog_drift(out["summary"]) is False
+
+    # Manual seed-only with defer keeps the existing baseline until publish.
+    before = (baseline_dir / "live_contract.json").read_text(encoding="utf-8")
+    monkeypatch.setattr(cast(Any, module), "collect_live_contract", _collect)
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--defer-baseline",
+            "--seed-only",
+        ]
+    )
+    assert code == 0
+    assert (baseline_dir / "live_contract.json").read_text(encoding="utf-8") == before
+    out = json.loads(capsys.readouterr().out)
+    assert out["pending_seed"] is True
+    assert out["seeded"] is False
+
+    # Immediate --seed-only (no defer) overwrites and clears pre-overwrite diffs.
+    drifted_baseline = module.build_contract(
+        lang="en",
+        object_id=1,
+        modules=["M1"],
+        fingerprint="1|index.js",
+        symbols={"PARAM_OLD": {"key": "PARAM_OLD"}},
+    )
+    module.write_json(baseline_dir / "live_contract.json", drifted_baseline)
+    monkeypatch.setattr(cast(Any, module), "collect_live_contract", _collect)
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--seed-only",
+        ]
+    )
+    assert code == 0
+    published = module.read_json(baseline_dir / "live_contract.json")
+    assert published["symbol_count"] == contract["symbol_count"]
+    out = json.loads(capsys.readouterr().out)
+    assert out["seeded"] is True
+    assert out["pending_seed"] is False
+    assert out["matched"] is True
+    assert out["diff_count"] == 0
+    assert out["summary"]["diff_count"] == 0
+
+    # Malformed legacy baseline must still be recoverable via --seed-only.
+    (baseline_dir / "live_contract.json").write_text("{not-json", encoding="utf-8")
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--defer-baseline",
+            "--seed-only",
+        ]
+    )
+    assert code == 0
+    assert (baseline_dir / "live_contract.json").read_text(encoding="utf-8") == "{not-json"
+    out = json.loads(capsys.readouterr().out)
+    assert out["pending_seed"] is True
+    assert out["seeded"] is False
+    assert out["matched"] is True
+    assert out["diff_count"] == 0
+
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--seed-only",
+        ]
+    )
+    assert code == 0
+    published = module.read_json(baseline_dir / "live_contract.json")
+    assert published["symbol_count"] == contract["symbol_count"]
+    out = json.loads(capsys.readouterr().out)
+    assert out["seeded"] is True
+    assert out["pending_seed"] is False
+    assert out["matched"] is True
 
 
 def test_write_diff_files_writes_listing_and_markdown(tmp_path: Path) -> None:
@@ -381,6 +644,10 @@ def test_write_diff_files_writes_listing_and_markdown(tmp_path: Path) -> None:
     markdown = listing.with_suffix(".md").read_text(encoding="utf-8")
     assert "```diff" in markdown
     assert "+ symbols.PARAM_NEW" in markdown
+    summary = json.loads(listing.with_name("diffs_summary.json").read_text(encoding="utf-8"))
+    assert summary["symbols_added"] == 1
+    assert summary["symbols_removed"] == 1
     module.write_diff_files(listing, [])
     assert listing.read_text(encoding="utf-8") == ""
     assert listing.with_suffix(".md").read_text(encoding="utf-8") == ""
+    assert json.loads(listing.with_name("diffs_summary.json").read_text(encoding="utf-8"))["diff_count"] == 0
