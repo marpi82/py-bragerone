@@ -4,7 +4,20 @@ Core Components
 EventBus
 --------
 
-The EventBus handles real-time parameter updates with multicast delivery.
+The EventBus is **ParamUpdate-only**: multicast fan-out of parameter deltas for
+``ParamStore`` / Home Assistant parameter entities (per-subscriber queue, FIFO).
+
+Non-parameter signals use dedicated gateway callbacks instead (so typed
+``async for`` subscribers stay unbroken):
+
+- module ↔ cloud connectivity — ``on_module_connectivity``
+- library ↔ cloud Socket.IO session — ``on_cloud_session``
+- live push health (zombie) — ``on_live_push``
+- alarm badge quantity — ``on_alarm_quantity``
+
+Alarm/activity **row lists** stay REST; a future typed multi-event bus is tracked
+under GitHub issue #386 (Phase C) and must not break today's ParamUpdate loops.
+See :doc:`ha_integration` for the HA-facing boundary.
 
 .. code-block:: python
 

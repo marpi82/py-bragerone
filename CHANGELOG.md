@@ -7,6 +7,40 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.9.2] - 2026-09-12
+
+Connectivity-clarity train from ``2026.9.2rc4`` promoted to stable, plus EventBus
+scope documentation (#386 Phase A).
+
+### Fixed
+
+- Unusable ``get_modules`` results (transport errors or empty/unrecognised
+  listings) no longer mark subscribed modules offline. Keep last-known module
+  online; authoritative offline remains ``connectedAt`` / WS ``connection:status``
+  so library↔cloud loss is not reported as module↔cloud offline (#393).
+  ``get_modules_fail_offline_after`` is retained as a deprecated no-op.
+
+- Rate-limit sustained ``get_modules`` failure logs to once per outage window;
+  session-down reports ``push_healthy=False`` so diagnostics never keep a stale
+  healthy bit (#394).
+
+- Socket.IO ``disconnect`` now classifies the Engine.IO reason argument
+  (``transport error`` / ``transport close`` → ``eio_close``) instead of always
+  storing generic ``disconnect``, and a coarse follow-up no longer overwrites a
+  finer token already recorded (#396).
+
+### Added
+
+- Configurable ``cloud_session_down_hysteresis_s`` (default 15s) delays publishing
+  Socket.IO session-down so brief blinks / self-heal reconnects do not flip
+  consumers or overwrite cloud outage ``last_*`` / episodes (#395).
+
+### Documentation
+
+- Clarify that ``EventBus`` is ParamUpdate-only; connectivity, session, live-push,
+  and alarm quantity use gateway callbacks (#386 Phase A). Alarm/activity row lists
+  remain REST; a typed multi-event bus stays a later optional redesign.
+
 ## [2026.9.2rc4] - 2026-09-10
 
 ### Fixed
@@ -371,7 +405,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc4...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.2...HEAD
+[2026.9.2]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc4...2026.9.2
 [2026.9.2rc4]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc3...2026.9.2rc4
 [2026.9.2rc3]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc2...2026.9.2rc3
 [2026.9.2rc2]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc1...2026.9.2rc2

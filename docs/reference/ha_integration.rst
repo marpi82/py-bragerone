@@ -90,8 +90,10 @@ Two layers — do not conflate them:
 2. **Library ↔ cloud** (Socket.IO client session) — must be **detectable** and
    **self-healing** (transport reset, reconnect, REST re-prime while down).
 
-Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so existing
-``bus.subscribe()`` loops stay typed and unbroken). Use the dedicated gateway API:
+**EventBus boundary:** ``gateway.bus`` / ``EventBus.subscribe()`` delivers
+**ParamUpdate** only. Module online/offline, cloud session, live-push health, and
+alarm quantity are **not** on that bus (so existing typed ``bus.subscribe()`` loops
+stay unbroken). Use the dedicated gateway callbacks / poll APIs:
 
 .. code-block:: python
 
@@ -107,6 +109,8 @@ Per-module cloud online/offline is **not** on the ParamUpdate EventBus (so exist
 
    gateway.on_module_connectivity(on_module)
    gateway.on_cloud_session(on_session)
+   # gateway.on_live_push(...) / live_push_health()
+   # gateway.on_alarm_quantity(...)  # badge count; row lists remain REST
    # After start / refresh:
    # gateway.module_online(devid) -> True | False | None
    # gateway.module_connected_at(devid) -> int | None  # REST connectedAt
