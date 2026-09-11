@@ -14,6 +14,7 @@ class _LiveCompatSmokeScript(Protocol):
     """Subset of ``live_compat_smoke`` used by tests."""
 
     parse_modules: Callable[[str | None], list[str]]
+    prime_has_module_data: Callable[[Mapping[str, Any], str], bool]
     evaluate_module_smoke: Callable[[Mapping[str, Any]], list[str]]
     evaluate_smoke_report: Callable[[Mapping[str, Any]], list[str]]
 
@@ -31,6 +32,14 @@ def test_parse_modules_splits_and_dedupes() -> None:
     """Module filter parsing matches live_contract behaviour."""
     assert _load().parse_modules(None) == []
     assert _load().parse_modules(" b,a, a ") == ["a", "b"]
+
+
+def test_prime_has_module_data_requires_non_empty_bucket() -> None:
+    """Empty or missing module keys in the prime payload are rejected."""
+    module = _load()
+    assert module.prime_has_module_data({"M1": {"v": {"v1": 1}}}, "M1") is True
+    assert module.prime_has_module_data({"M1": {}}, "M1") is False
+    assert module.prime_has_module_data({}, "M1") is False
 
 
 def test_evaluate_module_smoke_accepts_healthy_payload() -> None:
@@ -69,10 +78,13 @@ def test_evaluate_module_smoke_flags_empty_panels_and_errors() -> None:
     assert any("zero panel symbols" in item for item in errors)
 
 
-def test_evaluate_smoke_report_aggregates_modules() -> None:
-    """Top-level report fails when any module smoke fails or no modules ran."""
+def test_evaluate_smoke_report_aggregates_modules_without_duplicating_errors() -> None:
+    """Top-level report fails when any module smoke fails; existing errors are not doubled."""
     module = _load()
     assert module.evaluate_smoke_report({"module_count": 0, "modules": [], "errors": []}) == ["no modules smoked"]
+    assert module.evaluate_smoke_report({"module_count": 0, "modules": [], "errors": ["RuntimeError: boom"]}) == [
+        "RuntimeError: boom"
+    ]
     ok = module.evaluate_smoke_report(
         {
             "module_count": 1,
@@ -85,7 +97,7 @@ def test_evaluate_smoke_report_aggregates_modules() -> None:
                     "symbols_resolved": 4,
                 }
             ],
-            "errors": [],
+            "errors": ["stale"],
         }
     )
     assert ok == []
@@ -101,10 +113,10 @@ def test_evaluate_smoke_report_aggregates_modules() -> None:
                     "symbols_resolved": 0,
                 }
             ],
-            "errors": ["top-level"],
+            "errors": ["stale-should-be-ignored"],
         }
     )
-    assert "top-level" in bad
+    assert "stale-should-be-ignored" not in bad
     assert any("M1:" in item for item in bad)
 
 

@@ -84,11 +84,11 @@ uv run python scripts/live_contract.py --write-current reports/live/contract.jso
 # Structural drift is informational (exit 0, matched=false). Full listing + sibling .md go to
 # the workflow artifact; the rolling issue embeds a short collapsed preview and links that artifact.
 # Hard failure is collect/auth/parse errors, or the separate live_compat_smoke.py gate.
-# uv run python scripts/live_contract.py --write-current reports/live/contract.json --write-diffs reports/live/diffs.txt
-# Overwrite an existing baseline (same as Actions → Live contract → seed_only, or auto-reseed after compat OK):
-# uv run python scripts/live_contract.py --seed-only --write-current reports/live/contract.json
+# Workflow always passes --defer-baseline so the runner baseline is published only after compat OK.
+# uv run python scripts/live_contract.py --write-current reports/live/contract.json --write-diffs reports/live/diffs.txt --defer-baseline
+# Overwrite intent (publish after compat): add --seed-only with --defer-baseline, or use the Actions checkbox.
 # Optional override:
-# PYBO_BASELINE_DIR=/var/lib/gha/baselines uv run python scripts/live_contract.py
+# PYBO_BASELINE_DIR=/var/lib/gha/baselines uv run python scripts/live_contract.py --defer-baseline
 
 # Library compat smoke (read-only prime → panels → describe/resolve). Exit 1 only on hard failure.
 # uv run python scripts/live_compat_smoke.py --write-json reports/live/compat.json

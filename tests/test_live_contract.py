@@ -25,6 +25,7 @@ class _LiveContractScript(Protocol):
     build_contract: Callable[..., dict[str, Any]]
     compare_contracts: Callable[[Mapping[str, Any], Mapping[str, Any]], list[str]]
     summarize_diffs: Callable[[Sequence[str]], dict[str, int]]
+    is_benign_catalog_drift: Callable[[Mapping[str, int]], bool]
     unified_diff_lines: Callable[[Sequence[str]], list[str]]
     format_diff_markdown: Callable[..., str]
     write_diff_files: Callable[[Path, Sequence[str]], None]
@@ -406,7 +407,32 @@ def test_summarize_diffs_counts_symbols_and_path_kinds() -> None:
         "symbols_added": 1,
         "symbols_removed": 1,
         "path_kinds_changes": 1,
+        "catalog_diff_count": 5,
+        "config_diff_count": 0,
     }
+
+
+def test_summarize_diffs_splits_config_from_catalog() -> None:
+    """Runner config changes are counted separately so auto-reseed can refuse them."""
+    module = _load()
+    summary = module.summarize_diffs(
+        [
+            "~ object_id: 1 -> 2",
+            "~ lang: 'en' -> 'pl'",
+            "+ modules[0]",
+            "+ symbols.PARAM_NEW",
+        ]
+    )
+    assert summary["config_diff_count"] == 3
+    assert summary["catalog_diff_count"] == 1
+    assert module.is_benign_catalog_drift(summary) is False
+    catalog_only = module.summarize_diffs(
+        [
+            "+ symbols.PARAM_NEW",
+            "~ symbols.PARAM_X.path_kinds.min: 'empty' -> 'address_selector'",
+        ]
+    )
+    assert module.is_benign_catalog_drift(catalog_only) is True
 
 
 def test_write_diff_files_writes_listing_and_markdown(tmp_path: Path) -> None:

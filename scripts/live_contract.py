@@ -288,18 +288,26 @@ def compare_contracts(baseline: Mapping[str, Any], current: Mapping[str, Any]) -
 
 
 _SYMBOL_DIFF_RE = re.compile(r"^([+\-~])\s+symbols\.([A-Z0-9_]+)")
+_CONFIG_DIFF_RE = re.compile(r"^[+\-~]\s+(object_id|lang|modules)\b")
 
 
 def summarize_diffs(diffs: Sequence[str]) -> dict[str, int]:
     """Return coarse counters for a rolling-issue / step-summary table.
 
-    Counts added/removed top-level symbol keys and how many logical rows mention
-    ``path_kinds`` (typical SPA min/max shape churn).
+    Counts added/removed top-level symbol keys, ``path_kinds`` churn, and splits
+    runner-config diffs (``object_id`` / ``lang`` / ``modules``) from catalog diffs
+    so auto-reseed can refuse configuration changes.
     """
     added_symbols: set[str] = set()
     removed_symbols: set[str] = set()
     path_kinds_changes = 0
+    config_diff_count = 0
+    catalog_diff_count = 0
     for item in diffs:
+        if _CONFIG_DIFF_RE.match(item):
+            config_diff_count += 1
+        else:
+            catalog_diff_count += 1
         if "path_kinds" in item:
             path_kinds_changes += 1
         match = _SYMBOL_DIFF_RE.match(item)
@@ -319,7 +327,14 @@ def summarize_diffs(diffs: Sequence[str]) -> dict[str, int]:
         "symbols_added": len(added_symbols),
         "symbols_removed": len(removed_symbols),
         "path_kinds_changes": path_kinds_changes,
+        "catalog_diff_count": catalog_diff_count,
+        "config_diff_count": config_diff_count,
     }
+
+
+def is_benign_catalog_drift(summary: Mapping[str, int]) -> bool:
+    """Return True when diffs are catalog-only (safe to auto-reseed after compat)."""
+    return int(summary.get("catalog_diff_count", 0)) > 0 and int(summary.get("config_diff_count", 0)) == 0
 
 
 # Rolling-issue comments stay short; the full listing lives in the workflow artifact.
@@ -506,6 +521,7 @@ def write_github_output(
     symbol_count: int,
     diff_count: int,
     summary: Mapping[str, int] | None = None,
+    pending_seed: bool = False,
 ) -> None:
     """Append job outputs when running under GitHub Actions."""
     github_output = os.environ.get("GITHUB_OUTPUT")
@@ -514,12 +530,16 @@ def write_github_output(
     with Path(github_output).open("a", encoding="utf-8") as handle:
         handle.write(f"seeded={str(seeded).lower()}\n")
         handle.write(f"matched={str(matched).lower()}\n")
+        handle.write(f"pending_seed={str(pending_seed).lower()}\n")
         handle.write(f"symbol_count={symbol_count}\n")
         handle.write(f"diff_count={diff_count}\n")
         if summary is not None:
             handle.write(f"symbols_added={int(summary.get('symbols_added', 0))}\n")
             handle.write(f"symbols_removed={int(summary.get('symbols_removed', 0))}\n")
             handle.write(f"path_kinds_changes={int(summary.get('path_kinds_changes', 0))}\n")
+            handle.write(f"catalog_diff_count={int(summary.get('catalog_diff_count', 0))}\n")
+            handle.write(f"config_diff_count={int(summary.get('config_diff_count', 0))}\n")
+            handle.write(f"benign_catalog_drift={str(is_benign_catalog_drift(summary)).lower()}\n")
 
 
 def write_step_summary(
@@ -530,6 +550,7 @@ def write_step_summary(
     diffs: Sequence[str],
     baseline: Path,
     summary: Mapping[str, int] | None = None,
+    pending_seed: bool = False,
 ) -> None:
     """Write a short markdown summary for the Actions UI."""
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -543,12 +564,15 @@ def write_step_summary(
         "| --- | --- |",
         f"| baseline | `{baseline}` |",
         f"| seeded | {str(seeded).lower()} |",
+        f"| pending_seed | {str(pending_seed).lower()} |",
         f"| matched | {str(matched).lower()} |",
         f"| symbols | {symbol_count} |",
         f"| diffs | {len(diffs)} |",
         f"| symbols added | {stats.get('symbols_added', 0)} |",
         f"| symbols removed | {stats.get('symbols_removed', 0)} |",
         f"| path_kinds changes | {stats.get('path_kinds_changes', 0)} |",
+        f"| catalog diffs | {stats.get('catalog_diff_count', 0)} |",
+        f"| config diffs | {stats.get('config_diff_count', 0)} |",
         "",
     ]
     if diffs:
@@ -594,7 +618,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--seed-only",
         action="store_true",
-        help="Always write the baseline from the current snapshot and exit 0.",
+        help="Request a baseline overwrite (with --defer-baseline, publish after compat).",
+    )
+    parser.add_argument(
+        "--defer-baseline",
+        action="store_true",
+        help="Never write the runner baseline here; only emit the candidate + compare outputs.",
     )
     args = parser.parse_args(argv)
 
@@ -626,40 +655,27 @@ def main(argv: list[str] | None = None) -> int:
         write_json(args.write_current, contract)
 
     baseline_path = args.baseline_dir / BASELINE_FILENAME
+    baseline_exists = baseline_path.is_file()
+    pending_seed = bool(args.seed_only or not baseline_exists)
 
-    if args.seed_only or not baseline_path.is_file():
-        write_json(baseline_path, contract)
-        print(
-            json.dumps({"seeded": True, "baseline": str(baseline_path), "symbol_count": contract["symbol_count"]}, sort_keys=True)
-        )
-        empty_summary = summarize_diffs([])
-        write_github_output(
-            seeded=True,
-            matched=True,
-            symbol_count=int(contract["symbol_count"]),
-            diff_count=0,
-            summary=empty_summary,
-        )
-        write_step_summary(
-            seeded=True,
-            matched=True,
-            symbol_count=int(contract["symbol_count"]),
-            diffs=[],
-            baseline=baseline_path,
-            summary=empty_summary,
-        )
-        if args.write_diffs is not None:
-            write_diff_files(args.write_diffs, [])
-        return 0
-
-    baseline = read_json(baseline_path)
-    diffs = compare_contracts(baseline, contract)
+    diffs: list[str] = []
+    if baseline_exists:
+        baseline = read_json(baseline_path)
+        diffs = compare_contracts(baseline, contract)
     matched = not diffs
     summary = summarize_diffs(diffs)
+
+    seeded = False
+    if pending_seed and not args.defer_baseline:
+        write_json(baseline_path, contract)
+        seeded = True
+        pending_seed = False
+
     print(
         json.dumps(
             {
-                "seeded": False,
+                "seeded": seeded,
+                "pending_seed": pending_seed,
                 "matched": matched,
                 "baseline": str(baseline_path),
                 "symbol_count": contract["symbol_count"],
@@ -672,19 +688,21 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     write_github_output(
-        seeded=False,
+        seeded=seeded,
         matched=matched,
         symbol_count=int(contract["symbol_count"]),
         diff_count=len(diffs),
         summary=summary,
+        pending_seed=pending_seed,
     )
     write_step_summary(
-        seeded=False,
+        seeded=seeded,
         matched=matched,
         symbol_count=int(contract["symbol_count"]),
         diffs=diffs,
         baseline=baseline_path,
         summary=summary,
+        pending_seed=pending_seed,
     )
     if args.write_diffs is not None:
         write_diff_files(args.write_diffs, diffs)

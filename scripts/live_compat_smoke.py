@@ -23,6 +23,7 @@ from typing import Any
 
 from pybragerone import BragerOneApiClient
 from pybragerone.api.server import Platform, server_for
+from pybragerone.models.catalog import LiveAssetsCatalog
 from pybragerone.models.param import ParamStore
 from pybragerone.models.param_resolver import ParamResolver
 
@@ -40,6 +41,15 @@ def require_env(name: str) -> str:
     if not value:
         raise SystemExit(f"Missing {name}: set it in the runner EnvironmentFile or process env.")
     return value
+
+
+def prime_has_module_data(payload: Mapping[str, Any], devid: str) -> bool:
+    """Return whether a modules/parameters prime payload includes non-empty data for *devid*."""
+    for key in (devid, str(devid)):
+        module_data = payload.get(key)
+        if isinstance(module_data, Mapping) and module_data:
+            return True
+    return False
 
 
 def evaluate_module_smoke(payload: Mapping[str, Any]) -> list[str]:
@@ -65,21 +75,22 @@ def evaluate_module_smoke(payload: Mapping[str, Any]) -> list[str]:
 
 def evaluate_smoke_report(report: Mapping[str, Any]) -> list[str]:
     """Return hard-failure reasons for a full smoke report (empty when OK)."""
+    modules = [module for module in (report.get("modules") or []) if isinstance(module, Mapping)]
+    if not modules:
+        explicit = report.get("errors")
+        if isinstance(explicit, list) and explicit:
+            return [str(item) for item in explicit if item]
+        return ["no modules smoked"]
     errors: list[str] = []
-    if int(report.get("module_count") or 0) <= 0:
-        errors.append("no modules smoked")
-    for module in report.get("modules") or []:
-        if isinstance(module, Mapping):
-            errors.extend(evaluate_module_smoke(module))
-    explicit = report.get("errors")
-    if isinstance(explicit, list):
-        errors.extend(str(item) for item in explicit if item)
+    for module in modules:
+        errors.extend(evaluate_module_smoke(module))
     return errors
 
 
 async def smoke_module(
     *,
     client: BragerOneApiClient,
+    catalog: LiveAssetsCatalog,
     devid: str,
     device_menu: int,
     permissions: Sequence[str],
@@ -94,10 +105,14 @@ async def smoke_module(
     status, data = prime
     if status not in (200, 204) or not isinstance(data, dict):
         raise RuntimeError(f"{devid}: modules_parameters_prime failed: status={status}")
+    if not prime_has_module_data(data, devid):
+        raise RuntimeError(f"{devid}: modules_parameters_prime returned no data for this module")
     store.ingest_prime_payload(data)
-    flat_values = store.flatten()
+    if not store.flatten_for_devid(devid):
+        raise RuntimeError(f"{devid}: prime ingest left an empty ParamStore bucket")
+    flat_values = store.flatten_for_devid(devid)
 
-    resolver = ParamResolver.from_api(api=client, store=store, lang=lang)
+    resolver = ParamResolver(store=store, assets=catalog, lang=lang)
     perms = [str(p) for p in permissions]
 
     groups_all = await resolver.build_panel_groups(
@@ -138,7 +153,7 @@ async def smoke_module(
             unit_code = None
             desc = descriptions.get(symbol)
             if isinstance(desc, Mapping):
-                unit_code = desc.get("unit")
+                unit_code = desc.get("unit_code")
             if unit_code is not None:
                 await resolver.resolve_unit(unit_code)
     except Exception as exc:
@@ -193,6 +208,7 @@ async def run_compat_smoke(
     module_payloads: list[dict[str, Any]] = []
     try:
         await client.ensure_auth(email, password)
+        catalog = LiveAssetsCatalog(client)
         mods = await client.get_modules(object_id)
         if not mods:
             raise RuntimeError("get_modules returned no modules for this object")
@@ -205,6 +221,7 @@ async def run_compat_smoke(
         for mod in mods:
             payload = await smoke_module(
                 client=client,
+                catalog=catalog,
                 devid=str(mod.devid),
                 device_menu=int(mod.deviceMenu),
                 permissions=list(getattr(mod, "permissions", []) or []),
@@ -325,7 +342,6 @@ def main(argv: list[str] | None = None) -> int:
         }
         print(f"live compat smoke failed: {exc}", file=sys.stderr)
 
-    # Re-evaluate in case module payloads were assembled without top-level errors.
     failures = evaluate_smoke_report(report)
     report = dict(report)
     report["errors"] = failures
