@@ -289,6 +289,39 @@ async def test_run_compat_smoke_surfaces_module_failures(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
+async def test_run_compat_smoke_fails_when_configured_module_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hard gate fails if PYBO_MODULES lists a devid absent from get_modules."""
+    module = _load()
+    closed = {"done": False}
+
+    class _Client:
+        async def ensure_auth(self, *args: Any, **kwargs: Any) -> None:
+            _ = args, kwargs
+
+        async def get_modules(self, object_id: int) -> list[SimpleNamespace]:
+            _ = object_id
+            return [SimpleNamespace(devid="M1", deviceMenu=1, permissions=["p"])]
+
+        async def close(self) -> None:
+            closed["done"] = True
+
+    monkeypatch.setattr(module, "BragerOneApiClient", lambda **kwargs: _Client())
+    monkeypatch.setattr(module, "LiveAssetsCatalog", lambda client: object())
+    monkeypatch.setattr(module, "server_for", lambda platform: object())
+
+    with pytest.raises(RuntimeError, match="not returned by get_modules"):
+        await module.run_compat_smoke(
+            email="a@b.c",
+            password="x",
+            object_id=1,
+            modules=["M1", "MISSING"],
+            lang="en",
+            platform="bragerone",
+        )
+    assert closed["done"] is True
+
+
+@pytest.mark.asyncio
 async def test_run_compat_smoke_success_path_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
     """Success path authenticates, filters modules, aggregates counts, and closes the client."""
     module = _load()

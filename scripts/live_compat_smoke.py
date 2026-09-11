@@ -214,9 +214,11 @@ async def run_compat_smoke(
             raise RuntimeError("get_modules returned no modules for this object")
         if modules:
             wanted = set(modules)
-            mods = [mod for mod in mods if mod.devid in wanted]
-            if not mods:
-                raise RuntimeError("No modules matched PYBO_MODULES filter (devid)")
+            by_devid = {str(mod.devid): mod for mod in mods}
+            missing = sorted(wanted - by_devid.keys())
+            if missing:
+                raise RuntimeError("PYBO_MODULES includes module(s) not returned by get_modules: " + ", ".join(missing))
+            mods = [by_devid[devid] for devid in sorted(wanted)]
 
         for mod in mods:
             payload = await smoke_module(
