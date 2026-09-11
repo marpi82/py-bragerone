@@ -446,7 +446,7 @@ def test_main_defer_baseline_state_machine(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """``--defer-baseline`` stages publish; immediate ``--seed-only`` clears stale diffs."""
+    """``--defer-baseline`` stages publish; ``--seed-only`` skips baseline reads/overwrites."""
     module = _load()
     baseline_dir = tmp_path / "baselines"
     baseline_dir.mkdir()
@@ -596,6 +596,43 @@ def test_main_defer_baseline_state_machine(
     assert out["matched"] is True
     assert out["diff_count"] == 0
     assert out["summary"]["diff_count"] == 0
+
+    # Malformed legacy baseline must still be recoverable via --seed-only.
+    (baseline_dir / "live_contract.json").write_text("{not-json", encoding="utf-8")
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--defer-baseline",
+            "--seed-only",
+        ]
+    )
+    assert code == 0
+    assert (baseline_dir / "live_contract.json").read_text(encoding="utf-8") == "{not-json"
+    out = json.loads(capsys.readouterr().out)
+    assert out["pending_seed"] is True
+    assert out["seeded"] is False
+    assert out["matched"] is True
+    assert out["diff_count"] == 0
+
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--seed-only",
+        ]
+    )
+    assert code == 0
+    published = module.read_json(baseline_dir / "live_contract.json")
+    assert published["symbol_count"] == contract["symbol_count"]
+    out = json.loads(capsys.readouterr().out)
+    assert out["seeded"] is True
+    assert out["pending_seed"] is False
+    assert out["matched"] is True
 
 
 def test_write_diff_files_writes_listing_and_markdown(tmp_path: Path) -> None:

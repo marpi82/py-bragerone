@@ -667,7 +667,8 @@ def main(argv: list[str] | None = None) -> int:
     pending_seed = bool(args.seed_only or not baseline_exists)
 
     diffs: list[str] = []
-    if baseline_exists:
+    # Force reseed must not depend on reading a possibly malformed baseline.
+    if baseline_exists and not args.seed_only:
         baseline = read_json(baseline_path)
         diffs = compare_contracts(baseline, contract)
     matched = not diffs
