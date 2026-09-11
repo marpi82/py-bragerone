@@ -79,7 +79,12 @@ jobs:
             echo "missing reports/live/contract.json; cannot publish baseline" >&2
             exit 1
           fi
-          cp reports/live/contract.json "$BASELINE_DIR/live_contract.json"
+          # Atomic replace: avoid truncating a known-good baseline if the copy is interrupted.
+          tmp="$(mktemp "$BASELINE_DIR/live_contract.json.XXXXXX")"
+          trap 'rm -f "$tmp"' EXIT
+          cp reports/live/contract.json "$tmp"
+          mv -f "$tmp" "$BASELINE_DIR/live_contract.json"
+          trap - EXIT
           echo "Published $BASELINE_DIR/live_contract.json from current contract"
           echo "seeded=true" >> "$GITHUB_OUTPUT"
           if [ "$SEED_ONLY" = "true" ]; then
@@ -175,6 +180,7 @@ jobs:
           SYMBOLS_DESCRIBED: ${{ steps.compat.outputs.symbols_described }}
           SYMBOLS_RESOLVED: ${{ steps.compat.outputs.symbols_resolved }}
           RESEED_REASON: ${{ steps.reseed.outputs.reseed_reason }}
+          RESEED_OUTCOME: ${{ steps.reseed.outcome }}
           EVENT_NAME: ${{ github.event_name }}
           UPSTREAM_FP: ${{ github.event.client_payload.fingerprint }}
           UPSTREAM_PREV: ${{ github.event.client_payload.previous }}
@@ -192,16 +198,24 @@ jobs:
             const pendingSeed = process.env.PENDING_SEED === 'true';
             const contractOk = process.env.CONTRACT_OK || '';
             const compatOutcome = process.env.COMPAT_OUTCOME || '';
+            const reseedOutcome = process.env.RESEED_OUTCOME || '';
             const reseedReason = process.env.RESEED_REASON || '';
             const seedOnly = process.env.SEED_ONLY === 'true';
             const configDiffs = Number.parseInt(process.env.CONFIG_DIFF_COUNT || '0', 10) || 0;
             const drifted = matched === 'false';
             const compatPassed = compatOutcome === 'success';
-            const jobOk = contractOk === 'success' && (compatOutcome === '' || compatPassed);
+            // skipped reseed is OK when no publish was needed; failure must fail the reported outcome.
+            const reseedOk = reseedOutcome === '' || reseedOutcome === 'skipped' || reseedOutcome === 'success';
+            const jobOk =
+              contractOk === 'success'
+              && (compatOutcome === '' || compatPassed)
+              && reseedOk;
 
             let statusLine;
             if (contractOk !== 'success') {
               statusLine = 'Live catalog contract failed (missing env, catalog error, or runner fault).';
+            } else if (reseedOutcome === 'failure') {
+              statusLine = 'Live catalog contract / compat smoke passed, but publishing the runner baseline failed.';
             } else if (seedOnly && reseedReason === 'manual' && compatPassed) {
               statusLine = 'Live catalog contract overwrote the runner baseline (manual reseed); library compat smoke passed.';
             } else if (seedOnly && !compatPassed) {
@@ -231,6 +245,7 @@ jobs:
               `| outcome | \`${jobOk ? 'success' : 'failure'}\` |`,
               `| contract | \`${contractOk || 'n/a'}\` |`,
               `| compat | \`${compatOutcome || 'n/a'}\` |`,
+              `| reseed step | \`${reseedOutcome || 'n/a'}\` |`,
               `| seeded | ${seeded || 'n/a'} |`,
               `| pending_seed | ${process.env.PENDING_SEED || 'n/a'} |`,
               `| matched | ${matched || 'n/a'} |`,
