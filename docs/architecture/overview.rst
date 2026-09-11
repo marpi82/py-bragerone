@@ -9,7 +9,9 @@ Core Principles
 ---------------
 
 - **Prime is mandatory** at startup and after reconnect. WebSocket does **not** provide a snapshot.
-- Runtime is **event-driven** with a **multicast EventBus** (per-subscriber queue, FIFO).
+- Runtime is **event-driven** with a **multicast EventBus** (per-subscriber queue, FIFO)
+  that carries **ParamUpdate** only. Connectivity, session, live-push, and alarm
+  quantity use gateway callbacks (see :doc:`../reference/ha_integration`).
 
 - **ParamStore** is runtime-light and stores raw parameter values only.
 - **ParamResolver** (config/CLI) uses LiveAssetsCatalog to resolve rich metadata (labels/units/enums/menu/computed STATUS)
