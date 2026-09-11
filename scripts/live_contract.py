@@ -288,15 +288,18 @@ def compare_contracts(baseline: Mapping[str, Any], current: Mapping[str, Any]) -
 
 
 _SYMBOL_DIFF_RE = re.compile(r"^([+\-~])\s+symbols\.([A-Z0-9_]+)")
-_CONFIG_DIFF_RE = re.compile(r"^[+\-~]\s+(object_id|lang|modules)\b")
+# Runner inputs + contract schema are never auto-reseed fodder.
+_NON_CATALOG_DIFF_RE = re.compile(r"^[+\-~]\s+(object_id|lang|modules|schema_version)\b")
+_CATALOG_DIFF_RE = re.compile(r"^[+\-~]\s+(symbols\.|symbol_count\b)")
 
 
 def summarize_diffs(diffs: Sequence[str]) -> dict[str, int]:
     """Return coarse counters for a rolling-issue / step-summary table.
 
     Counts added/removed top-level symbol keys, ``path_kinds`` churn, and splits
-    runner-config diffs (``object_id`` / ``lang`` / ``modules``) from catalog diffs
-    so auto-reseed can refuse configuration changes.
+    catalog diffs (``symbols.*`` / ``symbol_count``) from non-catalog diffs
+    (``object_id`` / ``lang`` / ``modules`` / ``schema_version``) so auto-reseed
+    only fires on benign catalog churn.
     """
     added_symbols: set[str] = set()
     removed_symbols: set[str] = set()
@@ -304,10 +307,13 @@ def summarize_diffs(diffs: Sequence[str]) -> dict[str, int]:
     config_diff_count = 0
     catalog_diff_count = 0
     for item in diffs:
-        if _CONFIG_DIFF_RE.match(item):
+        if _CATALOG_DIFF_RE.match(item):
+            catalog_diff_count += 1
+        elif _NON_CATALOG_DIFF_RE.match(item):
             config_diff_count += 1
         else:
-            catalog_diff_count += 1
+            # Unknown top-level keys (future fields) are treated as non-benign.
+            config_diff_count += 1
         if "path_kinds" in item:
             path_kinds_changes += 1
         match = _SYMBOL_DIFF_RE.match(item)
@@ -334,7 +340,9 @@ def summarize_diffs(diffs: Sequence[str]) -> dict[str, int]:
 
 def is_benign_catalog_drift(summary: Mapping[str, int]) -> bool:
     """Return True when diffs are catalog-only (safe to auto-reseed after compat)."""
-    return int(summary.get("catalog_diff_count", 0)) > 0 and int(summary.get("config_diff_count", 0)) == 0
+    catalog = int(summary.get("catalog_diff_count", 0))
+    other = int(summary.get("config_diff_count", 0))
+    return catalog > 0 and other == 0 and catalog == int(summary.get("diff_count", 0))
 
 
 # Rolling-issue comments stay short; the full listing lives in the workflow artifact.

@@ -8,6 +8,8 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+import pytest
+
 from pybragerone.models.catalog import ParamMap
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "live_contract.py"
@@ -32,6 +34,7 @@ class _LiveContractScript(Protocol):
     collect_symbol_tokens: Callable[[Mapping[str, object], Sequence[str]], list[str]]
     write_json: Callable[[Path, Mapping[str, Any]], None]
     read_json: Callable[[Path], dict[str, Any]]
+    main: Callable[[list[str] | None], int]
 
 
 def _load() -> _LiveContractScript:
@@ -413,17 +416,18 @@ def test_summarize_diffs_counts_symbols_and_path_kinds() -> None:
 
 
 def test_summarize_diffs_splits_config_from_catalog() -> None:
-    """Runner config changes are counted separately so auto-reseed can refuse them."""
+    """Runner config / schema changes are counted separately from catalog churn."""
     module = _load()
     summary = module.summarize_diffs(
         [
             "~ object_id: 1 -> 2",
             "~ lang: 'en' -> 'pl'",
             "+ modules[0]",
+            "~ schema_version: 1 -> 2",
             "+ symbols.PARAM_NEW",
         ]
     )
-    assert summary["config_diff_count"] == 3
+    assert summary["config_diff_count"] == 4
     assert summary["catalog_diff_count"] == 1
     assert module.is_benign_catalog_drift(summary) is False
     catalog_only = module.summarize_diffs(
@@ -433,6 +437,136 @@ def test_summarize_diffs_splits_config_from_catalog() -> None:
         ]
     )
     assert module.is_benign_catalog_drift(catalog_only) is True
+    schema_only = module.summarize_diffs(["~ schema_version: 1 -> 2"])
+    assert module.is_benign_catalog_drift(schema_only) is False
+
+
+def test_main_defer_baseline_state_machine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``--defer-baseline`` never writes the runner baseline; pending_seed drives publish."""
+    module = _load()
+    baseline_dir = tmp_path / "baselines"
+    baseline_dir.mkdir()
+    current = tmp_path / "contract.json"
+    contract: dict[str, Any] = module.build_contract(
+        lang="en",
+        object_id=1,
+        modules=["M1"],
+        fingerprint="1|index.js",
+        symbols={"PARAM_A": {"key": "PARAM_A"}},
+    )
+
+    async def _collect(**kwargs: Any) -> dict[str, Any]:
+        _ = kwargs
+        return contract
+
+    monkeypatch.setenv("PYBO_EMAIL", "a@b.c")
+    monkeypatch.setenv("PYBO_PASSWORD", "x")
+    monkeypatch.setenv("PYBO_OBJECT_ID", "1")
+    monkeypatch.setenv("PYBO_MODULES", "M1")
+    monkeypatch.setattr(cast(Any, module), "collect_live_contract", _collect)
+
+    # First seed: no baseline yet.
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--defer-baseline",
+        ]
+    )
+    assert code == 0
+    assert not (baseline_dir / "live_contract.json").exists()
+    assert current.is_file()
+    out = json.loads(capsys.readouterr().out)
+    assert out["pending_seed"] is True
+    assert out["seeded"] is False
+    assert out["matched"] is True
+
+    # Persist a baseline manually, then catalog-only drift with defer.
+    module.write_json(baseline_dir / "live_contract.json", contract)
+    drifted: dict[str, Any] = module.build_contract(
+        lang="en",
+        object_id=1,
+        modules=["M1"],
+        fingerprint="1|index.js",
+        symbols={"PARAM_A": {"key": "PARAM_A"}, "PARAM_B": {"key": "PARAM_B"}},
+    )
+
+    async def _collect_drifted(**kwargs: Any) -> dict[str, Any]:
+        _ = kwargs
+        return drifted
+
+    monkeypatch.setattr(cast(Any, module), "collect_live_contract", _collect_drifted)
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--defer-baseline",
+        ]
+    )
+    assert code == 0
+    preserved = module.read_json(baseline_dir / "live_contract.json")
+    assert preserved["symbol_count"] == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["pending_seed"] is False
+    assert out["matched"] is False
+    assert out["summary"]["catalog_diff_count"] > 0
+    assert out["summary"]["config_diff_count"] == 0
+    assert module.is_benign_catalog_drift(out["summary"]) is True
+
+    # Config drift (object_id) must not be benign.
+    config_drifted: dict[str, Any] = module.build_contract(
+        lang="en",
+        object_id=99,
+        modules=["M1"],
+        fingerprint="1|index.js",
+        symbols={"PARAM_A": {"key": "PARAM_A"}},
+    )
+
+    async def _collect_config(**kwargs: Any) -> dict[str, Any]:
+        _ = kwargs
+        return config_drifted
+
+    monkeypatch.setattr(cast(Any, module), "collect_live_contract", _collect_config)
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--defer-baseline",
+        ]
+    )
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["matched"] is False
+    assert module.is_benign_catalog_drift(out["summary"]) is False
+
+    # Manual seed-only with defer keeps the existing baseline until publish.
+    before = (baseline_dir / "live_contract.json").read_text(encoding="utf-8")
+    monkeypatch.setattr(cast(Any, module), "collect_live_contract", _collect)
+    code = module.main(
+        [
+            "--baseline-dir",
+            str(baseline_dir),
+            "--write-current",
+            str(current),
+            "--defer-baseline",
+            "--seed-only",
+        ]
+    )
+    assert code == 0
+    assert (baseline_dir / "live_contract.json").read_text(encoding="utf-8") == before
+    out = json.loads(capsys.readouterr().out)
+    assert out["pending_seed"] is True
+    assert out["seeded"] is False
 
 
 def test_write_diff_files_writes_listing_and_markdown(tmp_path: Path) -> None:

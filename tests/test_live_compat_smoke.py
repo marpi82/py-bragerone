@@ -286,3 +286,87 @@ async def test_run_compat_smoke_surfaces_module_failures(monkeypatch: pytest.Mon
     assert report["compat_ok"] is False
     assert report["module_count"] == 1
     assert any("M1:" in item for item in report["errors"])
+
+
+@pytest.mark.asyncio
+async def test_run_compat_smoke_success_path_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Success path authenticates, filters modules, aggregates counts, and closes the client."""
+    module = _load()
+    closed = {"done": False}
+
+    class _Client:
+        async def ensure_auth(self, *args: Any, **kwargs: Any) -> None:
+            _ = args, kwargs
+
+        async def get_modules(self, object_id: int) -> list[SimpleNamespace]:
+            _ = object_id
+            return [
+                SimpleNamespace(devid="M1", deviceMenu=1, permissions=["p"]),
+                SimpleNamespace(devid="SKIP", deviceMenu=2, permissions=[]),
+            ]
+
+        async def close(self) -> None:
+            closed["done"] = True
+
+    async def _ok_smoke(**kwargs: Any) -> dict[str, Any]:
+        assert kwargs["devid"] == "M1"
+        return {
+            "devid": "M1",
+            "panel_group_count_all": 2,
+            "panel_group_count_web_ui": 1,
+            "symbols_described": 3,
+            "symbols_resolved": 3,
+        }
+
+    monkeypatch.setattr(module, "BragerOneApiClient", lambda **kwargs: _Client())
+    monkeypatch.setattr(module, "LiveAssetsCatalog", lambda client: object())
+    monkeypatch.setattr(module, "server_for", lambda platform: object())
+    monkeypatch.setattr(module, "smoke_module", _ok_smoke)
+
+    report = await module.run_compat_smoke(
+        email="a@b.c",
+        password="x",
+        object_id=1,
+        modules=["M1"],
+        lang="en",
+        platform="bragerone",
+    )
+    assert closed["done"] is True
+    assert report["compat_ok"] is True
+    assert report["module_count"] == 1
+    assert report["panel_count"] == 2
+    assert report["symbols_described"] == 3
+    assert report["errors"] == []
+
+
+@pytest.mark.asyncio
+async def test_run_compat_smoke_closes_client_on_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Client.close runs even when get_modules raises."""
+    module = _load()
+    closed = {"done": False}
+
+    class _Client:
+        async def ensure_auth(self, *args: Any, **kwargs: Any) -> None:
+            _ = args, kwargs
+
+        async def get_modules(self, object_id: int) -> list[SimpleNamespace]:
+            _ = object_id
+            raise RuntimeError("modules down")
+
+        async def close(self) -> None:
+            closed["done"] = True
+
+    monkeypatch.setattr(module, "BragerOneApiClient", lambda **kwargs: _Client())
+    monkeypatch.setattr(module, "LiveAssetsCatalog", lambda client: object())
+    monkeypatch.setattr(module, "server_for", lambda platform: object())
+
+    with pytest.raises(RuntimeError, match="modules down"):
+        await module.run_compat_smoke(
+            email="a@b.c",
+            password="x",
+            object_id=1,
+            modules=["M1"],
+            lang="en",
+            platform="bragerone",
+        )
+    assert closed["done"] is True

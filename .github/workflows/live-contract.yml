@@ -230,12 +230,12 @@ jobs:
               statusLine = 'Live catalog contract reported informational structural drift; library compat smoke passed.';
             } else if (drifted && compatOutcome === 'failure') {
               statusLine = 'Live catalog contract reported structural drift and library compat smoke failed; baseline was not published.';
-            } else if (matched === 'true' && compatPassed) {
-              statusLine = 'Live catalog contract matched the baseline (no structural drift); library compat smoke passed.';
-            } else if (matched === 'true' && compatOutcome === 'failure') {
-              statusLine = 'Live catalog contract matched the baseline, but library compat smoke failed.';
             } else if (pendingSeed && !compatPassed) {
               statusLine = 'Live catalog contract collected a candidate baseline, but library compat smoke did not pass; baseline was not published.';
+            } else if (matched === 'true' && compatPassed && !pendingSeed) {
+              statusLine = 'Live catalog contract matched the baseline (no structural drift); library compat smoke passed.';
+            } else if (matched === 'true' && compatOutcome === 'failure' && !pendingSeed) {
+              statusLine = 'Live catalog contract matched the baseline, but library compat smoke failed.';
             } else {
               statusLine = 'Live catalog contract finished without structured seed/match outputs.';
             }
