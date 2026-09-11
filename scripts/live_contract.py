@@ -282,8 +282,9 @@ def compare_contracts(baseline: Mapping[str, Any], current: Mapping[str, Any]) -
     return diffs
 
 
-# GitHub issue comments are capped at 65536 characters; leave room for the status table.
-_ISSUE_DIFF_CHAR_BUDGET = 48_000
+# Rolling-issue comments stay short; the full listing lives in the workflow artifact.
+_ISSUE_DIFF_PREVIEW_ITEMS = 20
+_ISSUE_DIFF_CHAR_BUDGET = 2_500
 _UNIFIED_DIFF_HEADER = ("--- baseline", "+++ current")
 
 
@@ -313,20 +314,38 @@ def unified_diff_lines(diffs: Sequence[str]) -> list[str]:
     return out
 
 
-def format_diff_markdown(diffs: Sequence[str], *, max_chars: int = _ISSUE_DIFF_CHAR_BUDGET) -> str:
-    """Return a GitHub-flavored markdown section with a fenced diff, or ``""``."""
+def format_diff_markdown(
+    diffs: Sequence[str],
+    *,
+    max_chars: int | None = _ISSUE_DIFF_CHAR_BUDGET,
+    max_items: int | None = _ISSUE_DIFF_PREVIEW_ITEMS,
+) -> str:
+    """Return a GitHub-flavored markdown section with a fenced diff, or ``""``.
+
+    Defaults keep rolling-issue / step-summary previews short. Pass ``max_chars=None``
+    and ``max_items=None`` for a full listing (workflow artifact download).
+    """
     if not diffs:
         return ""
     heading = f"### Structural diffs ({len(diffs)})\n\n```diff\n" + "\n".join(_UNIFIED_DIFF_HEADER) + "\n"
 
     def render(source: Sequence[str], omitted: int) -> str:
         body = "\n".join(unified_diff_lines(source))
-        extra = f"\n… truncated, {omitted} more difference(s); full listing is in the workflow artifact.\n" if omitted else "\n"
+        extra = (
+            f"\n… truncated, {omitted} more difference(s); full listing is in the workflow artifact (``diffs.txt``).\n"
+            if omitted
+            else "\n"
+        )
         return f"{heading}{body}{extra}```\n"
 
     included = list(diffs)
     omitted = 0
+    if max_items is not None and len(included) > max_items:
+        omitted = len(included) - max_items
+        included = included[:max_items]
     text = render(included, omitted)
+    if max_chars is None:
+        return text
     while included and len(text) > max_chars:
         included.pop()
         omitted += 1
@@ -477,11 +496,14 @@ def write_step_summary(*, seeded: bool, matched: bool, symbol_count: int, diffs:
 
 
 def write_diff_files(path: Path, diffs: Sequence[str]) -> None:
-    """Write a full unified listing at *path* and a sibling ``.md`` comment body."""
+    """Write a full unified listing at *path* and a sibling full ``.md`` (artifact download)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     unified = unified_diff_lines(diffs)
     path.write_text(("\n".join(unified) + "\n") if unified else "", encoding="utf-8")
-    path.with_suffix(".md").write_text(format_diff_markdown(diffs), encoding="utf-8")
+    path.with_suffix(".md").write_text(
+        format_diff_markdown(diffs, max_chars=None, max_items=None),
+        encoding="utf-8",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -503,7 +525,7 @@ def main(argv: list[str] | None = None) -> int:
         "--write-diffs",
         type=Path,
         default=None,
-        help="Write a unified-diff-like listing (full, untruncated) and a sibling .md comment body.",
+        help="Write a unified-diff-like listing (full, untruncated) and a sibling full .md for artifacts.",
     )
     parser.add_argument(
         "--seed-only",

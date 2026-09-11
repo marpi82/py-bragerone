@@ -11,6 +11,7 @@ on:
     types: [upstream-catalog-changed]
 
 permissions:
+  actions: read
   contents: read
   issues: write
 
@@ -74,7 +75,20 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload contract artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: live-contract
+          path: |
+            reports/live/contract.json
+            reports/live/diffs.txt
+            reports/live/diffs.md
+          if-no-files-found: ignore
+          retention-days: 30
+
       # Self-hosted bragerone-live has no gh/jq; use the Actions API client instead.
+      # Runs after upload so the comment can link the artifact instead of inlining a huge diff.
       - name: Signal live contract result
         if: always()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
@@ -90,7 +104,8 @@ jobs:
           UPSTREAM_PREV: ${{ github.event.client_payload.previous }}
           WATCH_RUN_URL: ${{ github.event.client_payload.watch_run_url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          DIFF_MARKDOWN: reports/live/diffs.md
+          DIFF_LISTING: reports/live/diffs.txt
+          DIFF_PREVIEW_LINES: "20"
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -147,18 +162,53 @@ jobs:
             body +=
               '\n\nBaseline lives on the runner at `/var/lib/gha/baselines/live_contract.json` (not in git). This issue is separate from `[upstream-assets]`.';
 
-            const diffPath = process.env.DIFF_MARKDOWN;
-            const issueBodyMax = 65536;
-            if (matched === 'false' && diffPath && fs.existsSync(diffPath)) {
+            if (matched === 'false') {
+              const { owner, repo } = context.repo;
+              let artifactUrl = '';
               try {
-                const diffMarkdown = fs.readFileSync(diffPath, 'utf8').trimEnd();
-                if (diffMarkdown) {
-                  body += `\n\n${diffMarkdown}`;
+                const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+                  owner,
+                  repo,
+                  run_id: context.runId,
+                  per_page: 100,
+                });
+                const artifact = (data.artifacts || []).find((item) => item.name === 'live-contract');
+                if (artifact) {
+                  artifactUrl = `${process.env.RUN_URL}/artifacts/${artifact.id}`;
                 }
               } catch (err) {
-                body += `\n\n_(Could not attach structural diff: ${err.message})_`;
+                core.warning(`Could not resolve live-contract artifact URL: ${err.message}`);
+              }
+              if (artifactUrl) {
+                body += `\n\nFull structural diff: [live-contract artifact](${artifactUrl}) (\`diffs.txt\`).`;
+              } else {
+                body += `\n\nFull structural diff: download the \`live-contract\` artifact from the run above (\`diffs.txt\`).`;
+              }
+
+              const listingPath = process.env.DIFF_LISTING;
+              const previewLimit = Math.max(1, Number.parseInt(process.env.DIFF_PREVIEW_LINES || '20', 10) || 20);
+              if (listingPath && fs.existsSync(listingPath)) {
+                try {
+                  const lines = fs.readFileSync(listingPath, 'utf8').split(/\r?\n/).filter((line) => line.length > 0);
+                  if (lines.length) {
+                    const preview = lines.slice(0, previewLimit);
+                    const omitted = Math.max(0, lines.length - preview.length);
+                    const count = process.env.DIFF_COUNT || String(lines.length);
+                    let fence = `\`\`\`diff\n--- baseline\n+++ current\n${preview.join('\n')}\n`;
+                    if (omitted) {
+                      fence += `… truncated, ${omitted} more line(s); see the artifact.\n`;
+                    }
+                    fence += '```';
+                    // GitHub renders <details> collapsed by default (click the summary arrow to expand).
+                    body += `\n\n<details>\n<summary>Structural diffs preview (${count})</summary>\n\n${fence}\n</details>\n`;
+                  }
+                } catch (err) {
+                  body += `\n\n_(Could not attach structural diff preview: ${err.message})_`;
+                }
               }
             }
+
+            const issueBodyMax = 65536;
             if (body.length > issueBodyMax) {
               body = `${body.slice(0, issueBodyMax - 48)}\n\n… truncated for GitHub comment limit.`;
             }
@@ -206,15 +256,3 @@ jobs:
                 body,
               });
             }
-
-      - name: Upload contract artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: live-contract
-          path: |
-            reports/live/contract.json
-            reports/live/diffs.txt
-            reports/live/diffs.md
-          if-no-files-found: ignore
-          retention-days: 30

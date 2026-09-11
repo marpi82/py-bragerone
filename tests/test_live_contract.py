@@ -340,7 +340,7 @@ def test_format_diff_markdown_empty_and_fence() -> None:
 
 
 def test_format_diff_markdown_truncates_to_budget() -> None:
-    """Issue comments stay under GitHub's body cap by dropping trailing diffs."""
+    """Issue comments stay short by dropping trailing diffs past the char budget."""
     module = _load()
     diffs = [f"+ symbols.PARAM_{index:04d}" for index in range(40)]
     markdown = module.format_diff_markdown(diffs, max_chars=400)
@@ -350,8 +350,30 @@ def test_format_diff_markdown_truncates_to_budget() -> None:
     assert markdown.endswith("```\n")
 
 
+def test_format_diff_markdown_truncates_to_preview_items() -> None:
+    """Default issue previews keep only the first N logical diffs."""
+    module = _load()
+    diffs = [f"+ symbols.PARAM_{index:04d}" for index in range(25)]
+    markdown = module.format_diff_markdown(diffs, max_chars=None, max_items=5)
+    assert "truncated" in markdown
+    assert "PARAM_0000" in markdown
+    assert "PARAM_0004" in markdown
+    assert "PARAM_0005" not in markdown
+    assert "20 more difference(s)" in markdown
+    assert "diffs.txt" in markdown
+
+
+def test_format_diff_markdown_full_listing_for_artifact() -> None:
+    """Artifact markdown keeps every diff when limits are disabled."""
+    module = _load()
+    diffs = [f"+ symbols.PARAM_{index:04d}" for index in range(25)]
+    markdown = module.format_diff_markdown(diffs, max_chars=None, max_items=None)
+    assert "truncated" not in markdown
+    assert "PARAM_0024" in markdown
+
+
 def test_write_diff_files_writes_listing_and_markdown(tmp_path: Path) -> None:
-    """``--write-diffs`` emits the full listing plus a sibling markdown comment body."""
+    """``--write-diffs`` emits the full listing plus a sibling full markdown body."""
     module = _load()
     listing = tmp_path / "diffs.txt"
     module.write_diff_files(listing, ["+ symbols.PARAM_NEW", "- symbols.PARAM_OLD"])
