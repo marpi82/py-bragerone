@@ -207,10 +207,10 @@ class ParamUpdate:
 
 
 class EventBus:
-    """Event bus for managing parameter update events.
+    """Multicast bus for :class:`ParamUpdate` events only.
 
-    Provides publish-subscribe functionality for parameter updates with
-    sequence numbering and thread-safe operations.
+    Connectivity, cloud session, live-push, and alarm quantity use gateway
+    callbacks — not this bus — so typed ``subscribe()`` loops stay ParamUpdate-only.
     """
 
     def __init__(self) -> None:
