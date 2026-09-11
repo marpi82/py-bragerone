@@ -58,7 +58,9 @@ def test_evaluate_module_smoke_accepts_healthy_payload() -> None:
             "devid": "M1",
             "panel_group_count_all": 3,
             "panel_group_count_web_ui": 2,
+            "symbols_requested": 10,
             "symbols_described": 10,
+            "symbols_mapped": 10,
             "symbols_resolved": 10,
             "describe_error": None,
             "resolve_error": None,
@@ -75,7 +77,9 @@ def test_evaluate_module_smoke_flags_empty_panels_and_errors() -> None:
             "devid": "M1",
             "panel_group_count_all": 0,
             "panel_group_count_web_ui": 1,
+            "symbols_requested": 0,
             "symbols_described": 0,
+            "symbols_mapped": 0,
             "symbols_resolved": 0,
             "describe_error": "RuntimeError: boom",
             "resolve_error": None,
@@ -84,7 +88,7 @@ def test_evaluate_module_smoke_flags_empty_panels_and_errors() -> None:
     )
     assert any("no panels" in item for item in errors)
     assert any("describe_symbols failed" in item for item in errors)
-    assert any("zero panel symbols" in item for item in errors)
+    assert any("no panel symbols" in item for item in errors)
 
 
 def test_evaluate_smoke_report_aggregates_modules_without_duplicating_errors() -> None:
@@ -102,7 +106,9 @@ def test_evaluate_smoke_report_aggregates_modules_without_duplicating_errors() -
                     "devid": "M1",
                     "panel_group_count_all": 2,
                     "panel_group_count_web_ui": 1,
+                    "symbols_requested": 4,
                     "symbols_described": 4,
+                    "symbols_mapped": 4,
                     "symbols_resolved": 4,
                 }
             ],
@@ -118,7 +124,9 @@ def test_evaluate_smoke_report_aggregates_modules_without_duplicating_errors() -
                     "devid": "M1",
                     "panel_group_count_all": 0,
                     "panel_group_count_web_ui": 0,
+                    "symbols_requested": 0,
                     "symbols_described": 0,
+                    "symbols_mapped": 0,
                     "symbols_resolved": 0,
                 }
             ],
@@ -130,18 +138,51 @@ def test_evaluate_smoke_report_aggregates_modules_without_duplicating_errors() -
 
 
 def test_evaluate_module_smoke_allows_none_values_without_errors() -> None:
-    """None live values are not hard failures (only counts matter)."""
+    """None live values are not hard failures when ParamMap coverage is complete."""
     errors = _load().evaluate_module_smoke(
         {
             "devid": "M1",
             "panel_group_count_all": 1,
             "panel_group_count_web_ui": 1,
+            "symbols_requested": 5,
             "symbols_described": 5,
+            "symbols_mapped": 5,
             "symbols_resolved": 5,
             "symbols_resolved_none": 5,
         }
     )
     assert errors == []
+
+
+def test_evaluate_module_smoke_rejects_unmapped_or_partial_coverage() -> None:
+    """Missing ParamMap or incomplete describe/resolve coverage is a hard failure."""
+    module = _load()
+    unmapped = module.evaluate_module_smoke(
+        {
+            "devid": "M1",
+            "panel_group_count_all": 1,
+            "panel_group_count_web_ui": 1,
+            "symbols_requested": 3,
+            "symbols_described": 3,
+            "symbols_mapped": 0,
+            "symbols_resolved": 3,
+            "symbols_resolved_none": 3,
+        }
+    )
+    assert any("ParamMap missing" in item for item in unmapped)
+    partial = module.evaluate_module_smoke(
+        {
+            "devid": "M1",
+            "panel_group_count_all": 1,
+            "panel_group_count_web_ui": 1,
+            "symbols_requested": 3,
+            "symbols_described": 1,
+            "symbols_mapped": 1,
+            "symbols_resolved": 2,
+        }
+    )
+    assert any("describe_symbols covered 1/3" in item for item in partial)
+    assert any("resolve_value covered 2/3" in item for item in partial)
 
 
 class _FakeResolver:
@@ -156,8 +197,8 @@ class _FakeResolver:
         return {"panel": ["PARAM_1"]}
 
     async def describe_symbols(self, symbols: Sequence[str]) -> dict[str, dict[str, Any]]:
-        """Return describe payloads with a raw unit_code."""
-        return {symbol: {"unit": "°C", "unit_code": 1} for symbol in symbols}
+        """Return describe payloads with a raw unit_code and ParamMap details."""
+        return {symbol: {"unit": "°C", "unit_code": 1, "mapping": {"origin": "test"}} for symbol in symbols}
 
     async def resolve_value(self, symbol: str) -> ResolvedValue:
         """Return a resolved display value."""
@@ -215,11 +256,50 @@ async def test_smoke_module_happy_path_uses_unit_code(monkeypatch: pytest.Monkey
     assert payload["devid"] == "M1"
     assert payload["panel_group_count_all"] == 1
     assert payload["panel_group_count_web_ui"] == 1
+    assert payload["symbols_requested"] == 1
     assert payload["symbols_described"] == 1
+    assert payload["symbols_mapped"] == 1
     assert payload["symbols_resolved"] == 1
     assert payload["describe_error"] is None
     assert payload["resolve_error"] is None
     assert module.evaluate_module_smoke(payload) == []
+
+
+async def test_smoke_module_counts_unmapped_descriptions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Describe entries without ParamMap details are counted as unmapped."""
+    module = _load()
+
+    class _UnmappedResolver(_FakeResolver):
+        async def describe_symbols(self, symbols: Sequence[str]) -> dict[str, dict[str, Any]]:
+            return {symbol: {"unit": None, "unit_code": None, "mapping": None} for symbol in symbols}
+
+        async def resolve_value(self, symbol: str) -> ResolvedValue:
+            return ResolvedValue(
+                symbol=symbol,
+                kind="direct",
+                address=None,
+                value=None,
+                value_label=None,
+                unit=None,
+            )
+
+    monkeypatch.setattr(module, "ParamResolver", _UnmappedResolver)
+    client = AsyncMock()
+    client.modules_parameters_prime = AsyncMock(return_value=(200, {"M1": {"0": {"v1": {"value": 1}}}}))
+    payload = await module.smoke_module(
+        client=client,
+        catalog=object(),
+        devid="M1",
+        device_menu=1,
+        permissions=["perm"],
+        lang="en",
+        max_resolve=None,
+    )
+    assert payload["symbols_requested"] == 1
+    assert payload["symbols_described"] == 1
+    assert payload["symbols_mapped"] == 0
+    assert payload["symbols_resolved"] == 1
+    assert any("ParamMap missing" in item for item in module.evaluate_module_smoke(payload))
 
 
 async def test_smoke_module_rejects_empty_prime_payload() -> None:
@@ -342,7 +422,9 @@ async def test_run_compat_smoke_success_path_closes_client(monkeypatch: pytest.M
             "devid": "M1",
             "panel_group_count_all": 2,
             "panel_group_count_web_ui": 1,
+            "symbols_requested": 3,
             "symbols_described": 3,
+            "symbols_mapped": 3,
             "symbols_resolved": 3,
         }
 

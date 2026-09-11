@@ -3,8 +3,8 @@
 Logs into BragerOne with ``PYBO_*`` credentials and exercises the same catalog
 paths Home Assistant bootstrap depends on. Exit codes::
 
-    0 — smoke passed (individual ``None`` values are allowed)
-    1 — hard failure (auth/prime/menu/describe/resolve raised or invariants broken)
+    0 — smoke passed (live ``value=None`` is allowed when ParamMap exists)
+    1 — hard failure (auth/prime/menu/describe/resolve raised, incomplete coverage, or unmapped symbols)
 
 Structural catalog drift belongs to ``live_contract.py`` (informational). This
 script is the hard gate: when it passes after drift, the workflow may auto-reseed.
@@ -60,10 +60,22 @@ def evaluate_module_smoke(payload: Mapping[str, Any]) -> list[str]:
         errors.append(f"{devid}: build_panel_groups(all_panels) returned no panels")
     if int(payload.get("panel_group_count_web_ui") or 0) <= 0:
         errors.append(f"{devid}: build_panel_groups(web_ui_only) returned no panels")
-    if int(payload.get("symbols_described") or 0) <= 0:
-        errors.append(f"{devid}: describe_symbols covered zero panel symbols")
-    if int(payload.get("symbols_resolved") or 0) <= 0:
-        errors.append(f"{devid}: resolve_value covered zero panel symbols")
+    requested = int(payload.get("symbols_requested") or 0)
+    described = int(payload.get("symbols_described") or 0)
+    mapped = int(payload.get("symbols_mapped") or 0)
+    resolved = int(payload.get("symbols_resolved") or 0)
+    if requested <= 0:
+        errors.append(f"{devid}: no panel symbols to describe/resolve")
+    else:
+        if described < requested:
+            errors.append(f"{devid}: describe_symbols covered {described}/{requested} panel symbols")
+        if mapped < requested:
+            errors.append(
+                f"{devid}: ParamMap missing for {requested - mapped}/{requested} panel symbol(s) "
+                "(unmapped catalog cannot auto-reseed)"
+            )
+        if resolved < requested:
+            errors.append(f"{devid}: resolve_value covered {resolved}/{requested} panel symbols")
     if payload.get("describe_error"):
         errors.append(f"{devid}: describe_symbols failed: {payload['describe_error']}")
     if payload.get("resolve_error"):
@@ -131,13 +143,20 @@ async def smoke_module(
     )
     symbols = sorted({sym for group in groups_all.values() for sym in group})
     symbols_to_resolve = symbols[:max_resolve] if max_resolve is not None and max_resolve >= 0 else symbols
+    symbols_requested = len(symbols_to_resolve)
 
     describe_error: str | None = None
     described = 0
+    mapped = 0
     descriptions: dict[str, dict[str, Any]] = {}
     try:
         descriptions = await resolver.describe_symbols(symbols_to_resolve)
-        described = len(descriptions)
+        described = sum(1 for symbol in symbols_to_resolve if symbol in descriptions)
+        mapped = sum(
+            1
+            for symbol in symbols_to_resolve
+            if isinstance(descriptions.get(symbol), Mapping) and descriptions[symbol].get("mapping") is not None
+        )
     except Exception as exc:
         describe_error = f"{type(exc).__name__}: {exc}"
 
@@ -182,7 +201,9 @@ async def smoke_module(
         "panel_group_count_all": len(groups_all),
         "panel_group_count_web_ui": len(groups_web),
         "symbols_total": len(symbols),
+        "symbols_requested": symbols_requested,
         "symbols_described": described,
+        "symbols_mapped": mapped,
         "symbols_resolved": resolved,
         "symbols_resolved_none": resolved_none,
         "visibility_routes_checked": visibility_checked,
