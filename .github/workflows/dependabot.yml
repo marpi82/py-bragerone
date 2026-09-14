@@ -5,8 +5,8 @@ on:
     types: [opened, reopened, synchronize, labeled]
   workflow_dispatch:
 
+# Default token is read-only; each job escalates only the scopes it needs.
 permissions:
-  pull-requests: write
   contents: read
 
 concurrency:
@@ -18,6 +18,9 @@ jobs:
     name: Label & assign reviewer (Dependabot only)
     if: ${{ github.actor == 'dependabot[bot]' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Ensure base labels
         uses: actions-ecosystem/action-add-labels@18f1af5e3544586314bbe15c0273249c770b2daf # v1

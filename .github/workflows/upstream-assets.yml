@@ -5,10 +5,9 @@ on:
     - cron: "17 4 * * *"
   workflow_dispatch:
 
+# Default token is read-only; the watch job escalates only for issue updates + repository_dispatch.
 permissions:
-  contents: write
-  issues: write
-  actions: write
+  contents: read
 
 concurrency:
   group: upstream-assets
@@ -19,6 +18,9 @@ jobs:
     name: watch public catalog
     if: github.repository == 'marpi82/py-bragerone'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # repository_dispatch (POST /dispatches)
+      issues: write # rolling fingerprint issue create/comment + label
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

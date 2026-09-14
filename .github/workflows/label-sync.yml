@@ -6,6 +6,10 @@ on:
       - main
   workflow_dispatch:
 
+# Default token is read-only; label sync escalates only what crazy-max/ghaction-github-labeler needs.
+permissions:
+  contents: read
+
 jobs:
   labeler:
     name: Labeler
