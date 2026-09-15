@@ -101,6 +101,42 @@ class AlarmQuantityChanged:
 
 
 @dataclass(frozen=True)
+class AlarmFeedInvalidate:
+    """Signal that module alarm lists should be re-fetched from REST.
+
+    SPA Alarms UI listens to ``app:module:alarms:change`` / ``…:received`` and
+    reloads lists — it does **not** push row payloads on the Socket.IO event.
+    """
+
+    devid: str
+    #: Device identifier whose alarm feeds should refresh.
+    reason: Literal["change", "received"]
+    #: Which Socket.IO alarm signal triggered the invalidate.
+    source: Literal["ws"] = "ws"
+    #: Always ``ws`` for these invalidate signals.
+    ts: float = field(default_factory=time.time)
+    #: Timestamp when this signal was produced.
+
+
+@dataclass(frozen=True)
+class ActivityFeedInvalidate:
+    """Signal that module activity lists should be re-fetched from REST.
+
+    Activity rows stay on REST; Socket.IO only indicates that the feed may have
+    changed (quantity badge or task lifecycle events the SPA Activity page watches).
+    """
+
+    devid: str
+    #: Device identifier whose activity feed should refresh.
+    reason: Literal["quantity", "task"]
+    #: Which upstream signal triggered the invalidate.
+    source: Literal["ws"] = "ws"
+    #: Always ``ws`` for these invalidate signals.
+    ts: float = field(default_factory=time.time)
+    #: Timestamp when this signal was produced.
+
+
+@dataclass(frozen=True)
 class CloudSessionConnectivity:
     """Library ↔ Brager cloud Socket.IO session (client transport health).
 
@@ -182,6 +218,12 @@ MODULE_CONNECTION_STATUS_CHANGED = "app:module:connection:status:changed"
 # SPA EventChannel.SIGMA_NETWORK_EVENT_MODULE_MEMORY_UPDATED (0x16). Payload ``{devid}``;
 # Layout/ObjectsLayout respond with REST ``POST /modules/parameters`` for that module.
 MODULE_MEMORY_UPDATED = "22"
+# SPA Alarms UI: ``APP_MODULE_ALARMS_CHANGE`` / ``APP_MODULE_ALARMS_RECEIVED`` → REST reload.
+MODULE_ALARMS_CHANGE = "app:module:alarms:change"
+MODULE_ALARMS_RECEIVED = "app:module:alarms:received"
+# Quantity badge pushes after ``…:quantity:listen`` subscribe emits.
+MODULES_ALARMS_QUANTITY_CHANGE = "app:modules:alarms:quantity:change"
+MODULES_ACTIVITY_QUANTITY_CHANGE = "app:modules:activity:quantity:change"
 
 
 @dataclass(frozen=True)

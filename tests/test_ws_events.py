@@ -104,6 +104,10 @@ async def test_domain_handlers_dispatch_and_survive_callback_errors(
         await manager._on_app_modules_task_completed({"k": 7})
         await manager._on_app_module_connection_status_changed({"M1": {"connectedAt": 1}})
         await manager._on_module_memory_updated({"devid": "M1"})
+        await manager._on_app_module_alarms_change({"devid": "M1"})
+        await manager._on_app_module_alarms_received({"devid": "M1"})
+        await manager._on_app_modules_alarms_quantity_change({"alarmsQuantity": {"M1": 1}})
+        await manager._on_app_modules_activity_quantity_change({"activityQuantity": {"M1": 2}})
         await manager._on_ev60({"k": 8})
         await manager._on_ev61({"k": 9})
         await manager._on_ev63({"k": 10})
@@ -119,6 +123,10 @@ async def test_domain_handlers_dispatch_and_survive_callback_errors(
         "app:module:task:completed",
         "app:module:connection:status:changed",
         MODULE_MEMORY_UPDATED,
+        "app:module:alarms:change",
+        "app:module:alarms:received",
+        "app:modules:alarms:quantity:change",
+        "app:modules:activity:quantity:change",
         "app:module:task:status:changed",
         "app:module:task:created",
         "app:module:task:completed",

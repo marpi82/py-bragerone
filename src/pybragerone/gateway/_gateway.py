@@ -12,8 +12,13 @@ from typing import Any, Literal
 from ..api import BragerOneApiClient, ServerConfig
 from ..api.client import format_expected_failure_reason, is_expected_upstream_unavailable
 from ..models.events import (
+    MODULE_ALARMS_CHANGE,
+    MODULE_ALARMS_RECEIVED,
     MODULE_CONNECTION_STATUS_CHANGED,
     MODULE_MEMORY_UPDATED,
+    MODULES_ACTIVITY_QUANTITY_CHANGE,
+    ActivityFeedInvalidate,
+    AlarmFeedInvalidate,
     AlarmQuantityChanged,
     CloudOutageReason,
     EventBus,
@@ -22,6 +27,8 @@ from ..models.events import (
 )
 from .connectivity import ConnectivityMixin
 from .helpers import (
+    ActivityFeedInvalidateCb,
+    AlarmFeedInvalidateCb,
     AlarmQuantityCb,
     CloudSessionCb,
     CloudSessionSource,
@@ -30,6 +37,7 @@ from .helpers import (
     ModuleConnectivityCb,
     ParametersCb,
     SnapshotCb,
+    _extract_module_devids,
     _is_api_dispatch_timeout,
     _is_http_timeout_error,
     _parse_alarm_quantity,
@@ -211,6 +219,8 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         self._on_module_connectivity: list[ModuleConnectivityCb] = []
         self._on_cloud_session: list[CloudSessionCb] = []
         self._on_alarm_quantity: list[AlarmQuantityCb] = []
+        self._on_alarm_feed_invalidate: list[AlarmFeedInvalidateCb] = []
+        self._on_activity_feed_invalidate: list[ActivityFeedInvalidateCb] = []
         self._on_live_push: list[LivePushCb] = []
 
         # Module↔cloud (REST/WS connectedAt) vs library↔cloud (Socket.IO session).
@@ -331,6 +341,24 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         a new count for a subscribed module.
         """
         self._on_alarm_quantity.append(cb)
+
+    def on_alarm_feed_invalidate(self, cb: AlarmFeedInvalidateCb) -> None:
+        """Register callback when SPA signals alarm lists should re-fetch from REST.
+
+        Callbacks receive :class:`~pybragerone.models.events.AlarmFeedInvalidate` for
+        ``app:module:alarms:change`` / ``…:received``. Row payloads stay on REST —
+        this is not published on :attr:`bus`.
+        """
+        self._on_alarm_feed_invalidate.append(cb)
+
+    def on_activity_feed_invalidate(self, cb: ActivityFeedInvalidateCb) -> None:
+        """Register callback when SPA signals activity lists should re-fetch from REST.
+
+        Callbacks receive :class:`~pybragerone.models.events.ActivityFeedInvalidate`
+        for ``app:modules:activity:quantity:change`` or task lifecycle events the SPA
+        Activity page watches. Not published on :attr:`bus`.
+        """
+        self._on_activity_feed_invalidate.append(cb)
 
     def on_live_push(self, cb: LivePushCb) -> None:
         """Register callback for live ``ParamUpdate`` push-health flips.
@@ -502,6 +530,36 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         if isinstance(data, dict):
             LOG.debug("activityQuantity: %s", data.get("activityQuantity"))
 
+    async def _emit_alarm_feed_invalidate(
+        self,
+        payload: object,
+        *,
+        reason: Literal["change", "received"],
+    ) -> None:
+        """Notify ``on_alarm_feed_invalidate`` for devids in *payload* (or all modules)."""
+        if not self._on_alarm_feed_invalidate:
+            return
+        wanted = set(self.modules)
+        devids = [d for d in _extract_module_devids(payload, fallback=self.modules) if d in wanted]
+        for devid in devids:
+            event = AlarmFeedInvalidate(devid=devid, reason=reason)
+            await self._invoke_list(self._on_alarm_feed_invalidate, event)
+
+    async def _emit_activity_feed_invalidate(
+        self,
+        payload: object,
+        *,
+        reason: Literal["quantity", "task"],
+    ) -> None:
+        """Notify ``on_activity_feed_invalidate`` for devids in *payload* (or all modules)."""
+        if not self._on_activity_feed_invalidate:
+            return
+        wanted = set(self.modules)
+        devids = [d for d in _extract_module_devids(payload, fallback=self.modules) if d in wanted]
+        for devid in devids:
+            event = ActivityFeedInvalidate(devid=devid, reason=reason)
+            await self._invoke_list(self._on_activity_feed_invalidate, event)
+
     async def ingest_alarm_quantity(
         self,
         data: dict[str, Any] | None,
@@ -615,6 +673,38 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
                 await self.ingest_alarm_quantity(payload, source="ws")
 
             self._spawn(_alarms_quantity_changed(), name="gateway.ingest_alarm_quantity")
+            return None
+
+        # SPA Alarms UI: change/received → REST reload (no row payload on the wire).
+        if event_name in {MODULE_ALARMS_CHANGE, MODULE_ALARMS_RECEIVED}:
+            reason: Literal["change", "received"] = "received" if event_name == MODULE_ALARMS_RECEIVED else "change"
+
+            async def _alarm_feed_invalidate() -> None:
+                await self._emit_alarm_feed_invalidate(payload, reason=reason)
+
+            self._spawn(_alarm_feed_invalidate(), name="gateway.alarm_feed_invalidate")
+            return None
+
+        # Activity quantity badge → REST activity feed refresh.
+        if event_name == MODULES_ACTIVITY_QUANTITY_CHANGE or event_name.endswith("activity:quantity:change"):
+
+            async def _activity_quantity_invalidate() -> None:
+                await self._emit_activity_feed_invalidate(payload, reason="quantity")
+
+            self._spawn(_activity_quantity_invalidate(), name="gateway.activity_feed_invalidate")
+            return None
+
+        # SPA Activity page watches task lifecycle; refresh activity lists.
+        if (
+            event_name.endswith(":task:created")
+            or event_name.endswith(":task:status:changed")
+            or event_name.endswith(":task:completed")
+        ):
+
+            async def _activity_task_invalidate() -> None:
+                await self._emit_activity_feed_invalidate(payload, reason="task")
+
+            self._spawn(_activity_task_invalidate(), name="gateway.activity_task_invalidate")
             return None
 
         # SPA Layout/ObjectsLayout: EventChannel 0x16 → REST /modules/parameters for devid.

@@ -15,7 +15,15 @@ from typing import (
 
 import socketio
 
-from ..models.events import MODULE_CONNECTION_STATUS_CHANGED, MODULE_MEMORY_UPDATED, CloudOutageReason
+from ..models.events import (
+    MODULE_ALARMS_CHANGE,
+    MODULE_ALARMS_RECEIVED,
+    MODULE_CONNECTION_STATUS_CHANGED,
+    MODULE_MEMORY_UPDATED,
+    MODULES_ACTIVITY_QUANTITY_CHANGE,
+    MODULES_ALARMS_QUANTITY_CHANGE,
+    CloudOutageReason,
+)
 from ..utils import spawn
 from .client import format_expected_failure_reason, is_expected_upstream_unavailable
 from .constants import IO_BASE, ONE_BASE, SOCK_PATH, WS_NAMESPACE
@@ -290,6 +298,22 @@ class RealtimeManager:
         log.debug("WS EVENT %s → %s", MODULE_MEMORY_UPDATED, p)
         self._dispatch(MODULE_MEMORY_UPDATED, p)
 
+    async def _on_app_module_alarms_change(self, p: Any) -> None:
+        log.debug("WS EVENT %s → %s", MODULE_ALARMS_CHANGE, p)
+        self._dispatch(MODULE_ALARMS_CHANGE, p)
+
+    async def _on_app_module_alarms_received(self, p: Any) -> None:
+        log.debug("WS EVENT %s → %s", MODULE_ALARMS_RECEIVED, p)
+        self._dispatch(MODULE_ALARMS_RECEIVED, p)
+
+    async def _on_app_modules_alarms_quantity_change(self, p: Any) -> None:
+        log.debug("WS EVENT %s → %s", MODULES_ALARMS_QUANTITY_CHANGE, p)
+        self._dispatch(MODULES_ALARMS_QUANTITY_CHANGE, p)
+
+    async def _on_app_modules_activity_quantity_change(self, p: Any) -> None:
+        log.debug("WS EVENT %s → %s", MODULES_ACTIVITY_QUANTITY_CHANGE, p)
+        self._dispatch(MODULES_ACTIVITY_QUANTITY_CHANGE, p)
+
     # ---------------- Public API ----------------
 
     async def connect(self) -> None:
@@ -430,6 +454,26 @@ class RealtimeManager:
         self._sio.on(
             MODULE_MEMORY_UPDATED,
             self._on_module_memory_updated,
+            namespace=ns,
+        )
+        self._sio.on(
+            MODULE_ALARMS_CHANGE,
+            self._on_app_module_alarms_change,
+            namespace=ns,
+        )
+        self._sio.on(
+            MODULE_ALARMS_RECEIVED,
+            self._on_app_module_alarms_received,
+            namespace=ns,
+        )
+        self._sio.on(
+            MODULES_ALARMS_QUANTITY_CHANGE,
+            self._on_app_modules_alarms_quantity_change,
+            namespace=ns,
+        )
+        self._sio.on(
+            MODULES_ACTIVITY_QUANTITY_CHANGE,
+            self._on_app_modules_activity_quantity_change,
             namespace=ns,
         )
         self._sio.on("60", self._on_ev60, namespace=ns)

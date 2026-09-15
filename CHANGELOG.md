@@ -7,6 +7,15 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Added
+
+- ``BragerOneGateway.on_alarm_feed_invalidate`` / ``on_activity_feed_invalidate`` —
+  SPA-parity Socket.IO signals that alarm/activity **row lists** should re-fetch
+  from REST (``app:module:alarms:change`` / ``received``, activity quantity, task
+  lifecycle). Not published on ParamUpdate ``EventBus`` (#405 / #386 Phase B).
+  ``RealtimeManager`` now also registers ``…alarms:quantity:change`` and
+  ``…activity:quantity:change`` handlers (previously only ``…:listen`` emits).
+
 ## [2026.9.2] - 2026-09-12
 
 Connectivity-clarity train from ``2026.9.2rc4`` promoted to stable, plus EventBus
