@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import sys
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Protocol, TextIO, cast
 
@@ -54,46 +54,16 @@ class _UpstreamProbe(Protocol):
 
 
 class _UpstreamScript(Protocol):
-    """Typed surface of ``scripts/check_upstream_assets.py``."""
+    """Typed surface of ``scripts/check_upstream_assets.py`` (attribute callables — no Ellipsis bodies)."""
 
-    def build_fingerprint(self, *, api_version: str, index_asset: str) -> str:
-        """Build ``version|index-asset`` fingerprint."""
-        ...
-
-    def pick_sample_tokens(self, assets_by_basename: Mapping[str, object], *, limit: int) -> list[str]:
-        """Pick PARAM_* sample tokens."""
-        ...
-
-    def _count_mangled_param_semantics(self, param_maps: Mapping[str, ParamMap]) -> int:
-        """Count sampled PARAM_* maps that still carry leftover ``_0x`` text."""
-        ...
-
-    def write_github_output(self, probe: _UpstreamProbe, stream: TextIO) -> None:
-        """Write GitHub Actions output lines."""
-        ...
-
-    def require_one_line(self, value: str, *, field: str) -> str:
-        """Reject values that contain CR/LF."""
-        ...
-
-    def read_fingerprint(self, path: Path | None) -> str | None:
-        """Read a stored fingerprint file."""
-        ...
-
-    def assert_probe_ok(self, probe: _UpstreamProbe) -> None:
-        """Raise if the probe result is unusable."""
-        ...
-
-    async def probe_upstream(
-        self,
-        *,
-        previous_fingerprint: str | None = None,
-        sample_limit: int = 3,
-        always_parse: bool = False,
-        client: object | None = None,
-    ) -> _UpstreamProbe:
-        """Run the public catalog probe."""
-        ...
+    build_fingerprint: Callable[..., str]
+    pick_sample_tokens: Callable[..., list[str]]
+    _count_mangled_param_semantics: Callable[[Mapping[str, ParamMap]], int]
+    write_github_output: Callable[[_UpstreamProbe, TextIO], None]
+    require_one_line: Callable[..., str]
+    read_fingerprint: Callable[[Path | None], str | None]
+    assert_probe_ok: Callable[[_UpstreamProbe], None]
+    probe_upstream: Callable[..., Awaitable[_UpstreamProbe]]
 
 
 def _load_upstream() -> _UpstreamScript:
