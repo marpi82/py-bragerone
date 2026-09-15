@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -58,10 +58,10 @@ class _FakeWs:
 
 def _gateway(*, modules: list[str] | None = None) -> BragerOneGateway:
     return BragerOneGateway(
-        api=_FakeApi(),  # type: ignore[arg-type]
+        api=cast(Any, _FakeApi()),
         object_id=1,
         modules=modules or ["D1", "D2"],
-        ws=_FakeWs(),  # type: ignore[arg-type]
+        ws=cast(Any, _FakeWs()),
         connectivity_poll_interval=0,
     )
 
@@ -70,12 +70,20 @@ def test_extract_module_devids_shapes() -> None:
     """Extract devid from flat, nested, and quantity-map payloads."""
     assert _extract_module_devids({"devid": "A1"}) == ["A1"]
     assert _extract_module_devids({"devId": "B1"}) == ["B1"]
+    assert _extract_module_devids({"moduleDevId": "B2"}) == ["B2"]
     assert _extract_module_devids({"module": {"devid": "C1"}}) == ["C1"]
+    assert _extract_module_devids({"module": {"devId": "C2"}}) == ["C2"]
     assert _extract_module_devids({"alarmsQuantity": {"D1": 2, "D2": 0}}) == ["D1", "D2"]
     assert _extract_module_devids({"activityQuantity": {"E1": 1}}) == ["E1"]
-    assert _extract_module_devids({}, fallback=["F1", "F2"]) == ["F1", "F2"]
+    assert _extract_module_devids({"devid": "A1", "devId": "A1"}) == ["A1"]
+    assert _extract_module_devids({"devid": "  "}) == []
+    assert _extract_module_devids({"devid": 123}) == []
+    assert _extract_module_devids({"module": "not-a-dict"}) == []
+    assert _extract_module_devids({"alarmsQuantity": "not-a-dict"}) == []
+    assert _extract_module_devids({}, fallback=["F1", "", "F2", "F1"]) == ["F1", "F2"]
     assert _extract_module_devids("not-a-dict", fallback=["G1"]) == ["G1"]
     assert _extract_module_devids({}) == []
+    assert _extract_module_devids({}, fallback=None) == []
 
 
 async def test_ws_dispatch_alarm_change_and_received() -> None:
@@ -140,6 +148,16 @@ async def test_ws_dispatch_activity_quantity_and_task() -> None:
         ("D1", "task"),
         ("D2", "task"),
     ]
+
+
+async def test_ws_dispatch_feed_invalidate_noop_without_listeners() -> None:
+    """Feed invalidate dispatch is a no-op when no callbacks are registered."""
+    gateway = _gateway()
+    gateway._ws_dispatch(MODULE_ALARMS_CHANGE, {"devid": "D1"})
+    gateway._ws_dispatch(MODULES_ACTIVITY_QUANTITY_CHANGE, {"activityQuantity": {"D1": 1}})
+    gateway._ws_dispatch("app:module:task:created", {"devid": "D1"})
+    for _ in range(6):
+        await asyncio.sleep(0)
 
 
 async def test_feed_invalidate_callback_error_is_logged(caplog: pytest.LogCaptureFixture) -> None:

@@ -81,7 +81,7 @@ async def test_domain_handlers_dispatch_and_survive_callback_errors(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Snapshot/parameter/task handlers forward to on_event; callback errors are logged."""
-    manager, _fake = _manager(monkeypatch)
+    manager, fake = _manager(monkeypatch)
 
     class _Recorder:
         def __init__(self) -> None:
@@ -94,6 +94,17 @@ async def test_domain_handlers_dispatch_and_survive_callback_errors(
 
     recorder = _Recorder()
     manager.on_event(recorder)
+
+    ns = manager._namespace
+    registered = {
+        "app:module:alarms:change",
+        "app:module:alarms:received",
+        "app:modules:alarms:quantity:change",
+        "app:modules:activity:quantity:change",
+    }
+    for event_name in registered:
+        assert (ns, event_name) in fake._handlers
+
     with caplog.at_level("ERROR"):
         await manager._on_snapshot({"k": 1})
         await manager._on_app_modules_parameters_change({"k": 2})
@@ -104,10 +115,10 @@ async def test_domain_handlers_dispatch_and_survive_callback_errors(
         await manager._on_app_modules_task_completed({"k": 7})
         await manager._on_app_module_connection_status_changed({"M1": {"connectedAt": 1}})
         await manager._on_module_memory_updated({"devid": "M1"})
-        await manager._on_app_module_alarms_change({"devid": "M1"})
-        await manager._on_app_module_alarms_received({"devid": "M1"})
-        await manager._on_app_modules_alarms_quantity_change({"alarmsQuantity": {"M1": 1}})
-        await manager._on_app_modules_activity_quantity_change({"activityQuantity": {"M1": 2}})
+        await fake._handlers[(ns, "app:module:alarms:change")]({"devid": "M1"})
+        await fake._handlers[(ns, "app:module:alarms:received")]({"devid": "M1"})
+        await fake._handlers[(ns, "app:modules:alarms:quantity:change")]({"alarmsQuantity": {"M1": 1}})
+        await fake._handlers[(ns, "app:modules:activity:quantity:change")]({"activityQuantity": {"M1": 2}})
         await manager._on_ev60({"k": 8})
         await manager._on_ev61({"k": 9})
         await manager._on_ev63({"k": 10})
