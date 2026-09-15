@@ -9,6 +9,8 @@ from typing import Any, Literal
 
 from ..models.events import CloudOutageReason, ConnectivityEpisodeLayer, EventBus, ModuleConnectivity, ModuleOutageReason
 from .helpers import (
+    ActivityFeedInvalidateCb,
+    AlarmFeedInvalidateCb,
     AlarmQuantityCb,
     CloudSessionCb,
     CloudSessionSource,
@@ -81,6 +83,8 @@ class GatewayMixinBase:
     _on_module_connectivity: list[ModuleConnectivityCb]
     _on_cloud_session: list[CloudSessionCb]
     _on_alarm_quantity: list[AlarmQuantityCb]
+    _on_alarm_feed_invalidate: list[AlarmFeedInvalidateCb]
+    _on_activity_feed_invalidate: list[ActivityFeedInvalidateCb]
     _on_live_push: list[LivePushCb]
     _ws_session_up: bool
     _ws_hooks_registered: bool

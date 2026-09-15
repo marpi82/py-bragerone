@@ -7,6 +7,8 @@ from typing import Any, Literal, cast, get_args
 
 from ..api.client import ApiError
 from ..models.events import (
+    ActivityFeedInvalidate,
+    AlarmFeedInvalidate,
     AlarmQuantityChanged,
     CloudOutageReason,
     CloudSessionConnectivity,
@@ -25,6 +27,8 @@ GenericCb = Callable[[str, Any], Awaitable[None] | None]
 ModuleConnectivityCb = Callable[[ModuleConnectivity], Awaitable[None] | None]
 CloudSessionCb = Callable[[CloudSessionConnectivity], Awaitable[None] | None]
 AlarmQuantityCb = Callable[[AlarmQuantityChanged], Awaitable[None] | None]
+AlarmFeedInvalidateCb = Callable[[AlarmFeedInvalidate], Awaitable[None] | None]
+ActivityFeedInvalidateCb = Callable[[ActivityFeedInvalidate], Awaitable[None] | None]
 LivePushCb = Callable[[LivePushHealth], Awaitable[None] | None]
 
 
@@ -105,6 +109,41 @@ def _parse_alarm_quantity(raw_qty: Any) -> int | None:
         return parsed
     msg = f"unsupported alarm count type: {type(raw_qty).__name__}"
     raise ValueError(msg)
+
+
+def _extract_module_devids(payload: object, *, fallback: list[str] | None = None) -> list[str]:
+    """Extract module device ids from a Socket.IO alarm/activity payload.
+
+    Recognizes common SPA shapes (``devid`` / ``devId``, nested ``module``,
+    quantity maps). When nothing is found, returns *fallback* (typically the
+    gateway's subscribed module list) so a broadcast invalidate still refreshes.
+    """
+    found: list[str] = []
+
+    def _add(raw: object) -> None:
+        if isinstance(raw, str):
+            text = raw.strip()
+            if text and text not in found:
+                found.append(text)
+
+    if isinstance(payload, dict):
+        for key in ("devid", "devId", "moduleDevId"):
+            _add(payload.get(key))
+        module = payload.get("module")
+        if isinstance(module, dict):
+            for key in ("devid", "devId"):
+                _add(module.get(key))
+        for map_key in ("alarmsQuantity", "activityQuantity"):
+            qty_map = payload.get(map_key)
+            if isinstance(qty_map, dict):
+                for devid in qty_map:
+                    _add(devid)
+
+    if found:
+        return found
+    if fallback:
+        return list(dict.fromkeys(str(d).strip() for d in fallback if str(d).strip()))
+    return []
 
 
 def _parse_connected_at(raw: Any) -> int | None:

@@ -14,9 +14,12 @@ Non-parameter signals use dedicated gateway callbacks instead (so typed
 - library ↔ cloud Socket.IO session — ``on_cloud_session``
 - live push health (zombie) — ``on_live_push``
 - alarm badge quantity — ``on_alarm_quantity``
+- alarm list invalidate (SPA ``alarms:change`` / ``received``) — ``on_alarm_feed_invalidate``
+- activity list invalidate (quantity / task lifecycle) — ``on_activity_feed_invalidate``
 
-Alarm/activity **row lists** stay REST; a future typed multi-event bus is tracked
-under GitHub issue #386 (Phase C) and must not break today's ParamUpdate loops.
+Alarm/activity **row lists** stay REST; Socket.IO only signals that a refresh is
+needed. A future typed multi-event bus is tracked under GitHub issue #386 (Phase C)
+and must not break today's ParamUpdate loops.
 See :doc:`ha_integration` for the HA-facing boundary.
 
 .. code-block:: python

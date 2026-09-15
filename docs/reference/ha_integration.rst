@@ -75,7 +75,15 @@ At runtime, use lightweight mode for best performance.
        if event.changed:
            ...  # REST refresh alarm feed for event.devid
 
+   def on_alarm_feed_invalidate(event):
+       ...  # REST refresh alarm lists (SPA alarms:change / received)
+
+   def on_activity_feed_invalidate(event):
+       ...  # REST refresh activity lists (quantity badge or task lifecycle)
+
    gateway.on_alarm_quantity(on_alarm_quantity)
+   gateway.on_alarm_feed_invalidate(on_alarm_feed_invalidate)
+   gateway.on_activity_feed_invalidate(on_activity_feed_invalidate)
 
    # 3. Start gateway (connects WS, subscribes, primes)
    await gateway.start()
@@ -91,9 +99,10 @@ Two layers — do not conflate them:
    **self-healing** (transport reset, reconnect, REST re-prime while down).
 
 **EventBus boundary:** ``gateway.bus`` / ``EventBus.subscribe()`` delivers
-**ParamUpdate** only. Module online/offline, cloud session, live-push health, and
-alarm quantity are **not** on that bus (so existing typed ``bus.subscribe()`` loops
-stay unbroken). Use the dedicated gateway callbacks / poll APIs:
+**ParamUpdate** only. Module online/offline, cloud session, live-push health,
+alarm quantity, and alarm/activity **feed invalidate** signals are **not** on that
+bus (so existing typed ``bus.subscribe()`` loops stay unbroken). Use the dedicated
+gateway callbacks / poll APIs:
 
 .. code-block:: python
 
@@ -111,6 +120,8 @@ stay unbroken). Use the dedicated gateway callbacks / poll APIs:
    gateway.on_cloud_session(on_session)
    # gateway.on_live_push(...) / live_push_health()
    # gateway.on_alarm_quantity(...)  # badge count; row lists remain REST
+   # gateway.on_alarm_feed_invalidate(...)  # SPA alarms:change / received → REST
+   # gateway.on_activity_feed_invalidate(...)  # activity quantity / task → REST
    # After start / refresh:
    # gateway.module_online(devid) -> True | False | None
    # gateway.module_connected_at(devid) -> int | None  # REST connectedAt
