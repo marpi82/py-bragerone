@@ -7,6 +7,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.9.3rc1] - 2026-09-15
+
 ### Added
 
 - ``BragerOneGateway.on_alarm_feed_invalidate`` / ``on_activity_feed_invalidate`` —
@@ -414,7 +416,8 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.2...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc1...HEAD
+[2026.9.3rc1]: https://github.com/marpi82/py-bragerone/compare/2026.9.2...2026.9.3rc1
 [2026.9.2]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc4...2026.9.2
 [2026.9.2rc4]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc3...2026.9.2rc4
 [2026.9.2rc3]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc2...2026.9.2rc3
