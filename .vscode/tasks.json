@@ -196,7 +196,7 @@
     {
       "label": "Build dist",
       "type": "shell",
-      "command": "uv run --group dev hatch build",
+      "command": "uv build --no-build-isolation",
       "problemMatcher": [],
       "group": "build",
       "presentation": {

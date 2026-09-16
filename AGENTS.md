@@ -21,7 +21,7 @@ uv run --group dev --group test poe test      # pytest (poe lives in `dev`)
 uv run --group dev --group test poe cov       # pytest + coverage
 uv run --group dev --group test poe bench     # micro-benchmarks (`pytest --codspeed`, no SaaS reporting locally)
 uv run --group dev --group test poe validate   # fmt + lint + typecheck + security + test (needs both groups: pytest lives in `test`)
-uv build                          # wheel + sdist
+uv build --no-build-isolation     # wheel + sdist (locked hatchling/hatch-vcs)
 ```
 
 Pre-commit hooks exist; **pre-push** runs pytest with an **80% project** floor plus **100% patch** coverage vs `origin/main` (`scripts/check_patch_coverage.sh`, same diff basis as Codecov PR patch). CI uploads `coverage.xml` to Codecov (`codecov-commenter` on PRs). Patch coverage target is 100% on pull requests only (`only_pulls` in `codecov.yml` — avoids false failures on main merge commits with a bad compare base); project coverage is informational — the 80% floor stays on pre-push. Coverage omits CLI entrypoints (`cli.py`, `__main__.py`); those are not the library runtime used by Home Assistant.

@@ -237,7 +237,8 @@ jobs:
         run: uv sync --locked --group dev
 
       - name: Build distribution
-        run: uv run hatch build
+        # Isolated hatch/uv builds float hatchling from PyPI; use the locked backend instead.
+        run: uv build --no-build-isolation
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

@@ -85,6 +85,7 @@ dev = [
   "bandit>=1.8.4,<2.0.0",
   "keyring>=25.0.0,<26.0.0",
   "hatch>=1.12.0,<2.0.0",
+  "hatch-vcs>=0.4.0",
 ]
 test = [
   "pytest>=8.3.3,<10.0.0",
@@ -211,7 +212,7 @@ perf-compare = { cmd = "python scripts/perf_bench.py compare --baseline reports/
 perf-startup = { cmd = "python scripts/perf_bench.py startup --output reports/perf/startup_latest.json" }
 perf-startup-compare = { cmd = "python scripts/perf_bench.py compare --baseline reports/perf/startup_baseline.json --current reports/perf/startup_latest.json --regression-threshold-percent 10" }
 # Build
-build = { cmd = "hatch build" }
+build = { cmd = "uv build --no-build-isolation" }
 # Docs
 docs-build = { shell = "export LC_ALL=C.utf8 2>/dev/null || export LC_ALL=C.UTF-8 2>/dev/null || true && uv run --group docs sphinx-build -b html docs docs/_build/html" }
 docs-serve = { shell = "python -m http.server --directory docs/_build/html 8000" }

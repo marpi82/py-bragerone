@@ -93,7 +93,7 @@ jobs:
         run: uv sync --locked --group dev
 
       - name: Build artifacts
-        run: uv run hatch build
+        run: uv build --no-build-isolation
 
       - name: Verify build artifacts
         run: |
