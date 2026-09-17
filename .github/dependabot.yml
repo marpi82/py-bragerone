@@ -6,6 +6,15 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    # init/analyze/autobuild/upload-sarif must share one SHA; ungrouped PRs desync them and CodeQL fails.
+    groups:
+      github-codeql-action:
+        patterns:
+          - "github/codeql-action/*"
+      github-codeql-action-security:
+        applies-to: security-updates
+        patterns:
+          - "github/codeql-action/*"
     labels:
       - "dependencies"
       - "dependabot"
