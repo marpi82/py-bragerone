@@ -134,7 +134,7 @@ Or use VS Code tasks (defined in `.vscode/tasks.json`):
 - **Security: All security checks** - Run all security tools
 - **Tests: run / coverage** - Run pytest (with optional coverage)
 - **Validate: Full validation** ⭐ **(default build task)** - Complete validation (quality + security + tests)
-- **Build dist** - Build wheels/sdist via Hatch
+- **Build dist** - Build wheels/sdist via locked `uv build --no-build-isolation`
 - **Docs: build/serve** - Documentation
 
 **Pre-commit hooks**: Run `pre-commit install` to enable automatic checks before commits. Config in `.pre-commit-config.yaml`.
@@ -261,7 +261,7 @@ The project uses GitHub Actions for automation (`.github/workflows/`):
 - **release.yml**: Automated releases with CalVer tags; stable and pre-release tags publish to PyPI (Trusted Publishing); GitHub Release marked prerelease for ``aN``/``bN``/``rcN``. Stable tags are refused unless the tagged commit is on ``origin/main``; pre-releases (``aN``/``bN``/``rcN``) must be on ``origin/main`` or ``origin/release/*`` trains (``release/YYYY.M`` or ``release/YYYY.M.N``). See ``.github/branch-protection-checklist.md``.
 - **docs.yml**: Sphinx documentation build and deployment to GitHub Pages
 
-**Dynamic versioning**: Version comes from git tags via `hatch-vcs`. No extra CI setup is required beyond installing Hatch/uv.
+**Dynamic versioning**: Version comes from git tags via `hatch-vcs`. CI/release build with `uv sync --locked --group dev --no-install-project` then `uv build --no-build-isolation` so hatchling/hatch-vcs come from the lockfile rather than a floating isolated env.
 
 ## AI Agent Configuration Files
 
