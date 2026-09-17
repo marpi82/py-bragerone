@@ -144,6 +144,9 @@ jobs:
           flags: unittests
           name: py-bragerone
           fail_ci_if_error: false
+          # Protected branches reject tokenless/OIDC-only uploads; without this
+          # codecov/patch never reports and blocks required-check merges.
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage reports to Codecov (push)
         if: ${{ github.event_name != 'pull_request' }}
