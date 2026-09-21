@@ -308,6 +308,11 @@ class BragerOneApiClient:
     async def _ensure_session(self) -> httpx.AsyncClient:
         """Ensure we have an AsyncClient (with optional HTTP tracing).
 
+        When ``verify`` is the bool ``True`` (httpx default), build an
+        ``SSLContext`` via ``asyncio.to_thread`` before constructing the
+        client so ``load_verify_locations`` does not block the event loop
+        (Home Assistant asyncio detector).
+
         Returns:
             An active httpx AsyncClient with configured headers and event hooks.
         """
@@ -320,12 +325,19 @@ class BragerOneApiClient:
         # Configure timeout
         timeout = httpx.Timeout(self._timeout)
 
+        verify = self._verify
+        if verify is True:
+            # httpx(verify=True) would load certifi on the event loop; resolve once.
+            context = await asyncio.to_thread(ssl.create_default_context)
+            self._verify = context
+            verify = context
+
         # Create client
         self._session = httpx.AsyncClient(
             headers=headers,
             timeout=timeout,
             follow_redirects=True,
-            verify=self._verify,
+            verify=verify,
         )
 
         # Add HTTP tracing event hooks if enabled

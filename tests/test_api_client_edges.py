@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ssl
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -335,4 +336,38 @@ async def test_get_bytes_retries_429_then_succeeds(monkeypatch: pytest.MonkeyPat
     body = await client.get_bytes("https://example.test/a.js")
     assert body == b"ok"
     assert sleeps == [0.2]
+    await client.close()
+
+
+async def test_ensure_session_builds_ssl_context_off_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default verify=True resolves to an SSLContext via to_thread before httpx."""
+    created: list[dict[str, object]] = []
+    sentinel = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+    async def _to_thread(func: object, /, *args: object, **kwargs: object) -> object:
+        assert func is ssl.create_default_context
+        return sentinel
+
+    class _CapturingClient:
+        def __init__(self, **kwargs: object) -> None:
+            created.append(dict(kwargs))
+            self.is_closed = False
+            self.event_hooks: dict[str, object] = {}
+
+        async def aclose(self) -> None:
+            self.is_closed = True
+
+    monkeypatch.setattr("pybragerone.api.client.asyncio.to_thread", _to_thread)
+    monkeypatch.setattr("pybragerone.api.client.httpx.AsyncClient", _CapturingClient)
+
+    client = BragerOneApiClient(validate_on_start=False)
+    session = await client._ensure_session()
+    assert session is client._session
+    assert created and created[0]["verify"] is sentinel
+    assert client._verify is sentinel
+
+    # Second call reuses the open session without rebuilding.
+    again = await client._ensure_session()
+    assert again is session
+    assert len(created) == 1
     await client.close()
