@@ -182,6 +182,34 @@ def test_units_descriptor_table_score_empty_and_param_penalty() -> None:
     assert no_units[1] == 0
 
 
+def test_is_unit_descriptor_entry_requires_known_keys() -> None:
+    """Only mappings with text/options/value/valuePrepare count as unit descriptors."""
+    assert LiveAssetsCatalog._is_unit_descriptor_entry("x") is False
+    assert LiveAssetsCatalog._is_unit_descriptor_entry({"foo": 1}) is False
+    assert LiveAssetsCatalog._is_unit_descriptor_entry({"text": "units.1"}) is True
+
+
+def test_parse_units_table_returns_empty_on_tree_sitter_failure() -> None:
+    """Parse errors yield an empty table instead of raising."""
+    catalog = _catalog()
+
+    class _BoomParser:
+        def parse(self, _code: bytes) -> Any:
+            raise RuntimeError("boom")
+
+    catalog._ts = cast(Any, _BoomParser())
+    assert catalog._parse_units_descriptor_table_from_index(b"const x={};") == {}
+
+
+def test_parse_units_table_keeps_empty_when_keys_do_not_normalize(caplog: pytest.LogCaptureFixture) -> None:
+    """Descriptor-shaped entries with non-unit keys produce an empty kept table."""
+    js = b"const u={'not a unit key':{'text':'units.1'},'also bad':{'options':{0:'x'}}};"
+    with caplog.at_level("WARNING"):
+        table = _catalog()._parse_units_descriptor_table_from_index(js)
+    assert table == {}
+    assert any("kept 0 of" in r.message for r in caplog.records)
+
+
 def test_canonical_unit_code_aliases_named_custom_unit() -> None:
     """Named CustomUnit tokens collapse to the numeric code string."""
     catalog = _catalog()
