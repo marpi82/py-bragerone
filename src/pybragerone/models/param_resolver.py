@@ -1268,7 +1268,19 @@ class ParamResolver:
 
     async def resolve_unit(self, unit_code: Any) -> str | dict[str, str] | None:
         """Resolve unit metadata to a human-readable label or enumeration mapping."""
-        return await self._i18n.resolve_unit(unit_code)
+        resolved = await self._i18n.resolve_unit(unit_code)
+        if resolved is not None:
+            return resolved
+        canonicalize = getattr(self._assets, "canonical_unit_code", None)
+        if not callable(canonicalize):
+            return None
+        try:
+            alias = canonicalize(unit_code)
+        except Exception:
+            return None
+        if alias is None or str(alias) == str(unit_code).strip():
+            return None
+        return await self._i18n.resolve_unit(alias)
 
     async def resolve_raw_display_value(self, raw: Any, *, unit_code: Any) -> Any:
         """Return a display-ready scalar for activity/alarm feeds (enum, i18n, transforms).
@@ -1531,6 +1543,21 @@ class ParamResolver:
             return dict(descriptor)
 
         normalized_code = self._normalize_unit_code(raw_unit_code)
+        if normalized_code is None:
+            canonicalize = getattr(self._assets, "canonical_unit_code", None)
+            if callable(canonicalize):
+                try:
+                    alias = canonicalize(raw_unit_code)
+                except Exception:
+                    alias = None
+                if isinstance(alias, str) and alias.isdigit():
+                    normalized_code = alias
+                    try:
+                        descriptor = await self._assets.get_unit_descriptor(alias)
+                    except Exception:
+                        descriptor = None
+                    if isinstance(descriptor, Mapping) and descriptor:
+                        return dict(descriptor)
         if normalized_code is not None:
             return {"text": f"units.{normalized_code}"}
         return None

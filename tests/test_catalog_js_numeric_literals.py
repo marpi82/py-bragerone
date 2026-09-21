@@ -116,6 +116,42 @@ def test_units_descriptor_table_parses_hex_keyed_entries() -> None:
     assert table["9"]["options"] == {"0": "units.17.0", "1": "units.17.1"}
 
 
+def test_units_descriptor_table_prefers_numeric_over_param_catalog() -> None:
+    """Post-1.04 indexes also expose a large PARAM_* object; do not select it as units."""
+    js = (
+        b"const params={"
+        b"PARAM_0:{'text':'parameters.0'},"
+        b"PARAM_1:{'text':'parameters.1'},"
+        b"PARAM_2:{'options':{0:'a',1:'b'}},"
+        b"PARAM_3:{'text':'parameters.3'},"
+        b"PARAM_4:{'text':'parameters.4'}};"
+        b"const units={"
+        b"0x270e:{'options':{'BoilerState[\\'STOP\\']':'units.9998.0','BoilerState[\\'STANDBY\\']':'units.9998.4'}},"
+        b"0x270a:{'options':{0x0:'units.9994.0',0x1:'units.9994.1'}}};"
+        b"export{params,units};"
+    )
+
+    table = _catalog()._parse_units_descriptor_table_from_index(js)
+
+    assert "9998" in table
+    assert "9994" in table
+    assert "PARAM_0" not in table
+    assert table["9998"]["options"]["BoilerState['STOP']"] == "units.9998.0"
+
+
+def test_parse_custom_unit_codes_maps_boiler_state() -> None:
+    """Parse CustomUnit bidirectional enum members in the 99xx band."""
+    js = (
+        b"var _0xcu=_0xcu||{};"
+        b"_0xcu[_0xcu['DEVICE_STATE']=0x270a]='DEVICE_STATE',"
+        b"_0xcu[_0xcu['BOILER_STATE']=0x270e]='BOILER_STATE',"
+        b"_0xcu[_0xcu['OTHER']=0x10]='OTHER';"
+    )
+    catalog = _catalog()
+    aliases = catalog._parse_custom_unit_codes_from_index(js)
+    assert aliases == {"DEVICE_STATE": "9994", "BOILER_STATE": "9998"}
+
+
 def test_normalize_unit_key_accepts_named_and_custom_unit() -> None:
     """Post-1.04 units may be bare names or ``CustomUnit['…']`` leftovers."""
     catalog = _catalog()

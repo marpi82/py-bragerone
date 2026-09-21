@@ -209,6 +209,80 @@ async def test_resolve_value_maps_boilerstate_bracket_option_keys() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_value_maps_named_boiler_state_unit_token() -> None:
+    """Post-1.04 ParamMap units may be ``BOILER_STATE`` while descriptors stay on ``9998``."""
+    store = ParamStore()
+    raw = {
+        "name": "app.one.boilerStatus.name",
+        "unit": "BOILER_STATE",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 1,
+                        "operation": "equalTo",
+                        "value": [{"group": "P5", "number": 4, "use": "s", "bit": 5}],
+                    }
+                ],
+                "then": {"value": "STOP"},
+            }
+        ],
+    }
+    mapping = ParamMap(
+        key="STATUS_P5_0",
+        group=None,
+        paths={},
+        component_type=None,
+        units="BOILER_STATE",
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    class _AliasAssets(_StubAssets):
+        def canonical_unit_code(self, unit_code: Any) -> str | None:
+            key = str(unit_code).strip()
+            if key == "BOILER_STATE":
+                return "9998"
+            return key if key.isdigit() else None
+
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            key = str(unit_code).strip()
+            if key == "BOILER_STATE":
+                key = "9998"
+            return await super().get_unit_descriptor(key)
+
+    resolver = ParamResolver(
+        store=store,
+        assets=cast(
+            AssetsProtocol,
+            _AliasAssets(
+                mapping=mapping,
+                unit_descriptors={
+                    "9998": {
+                        "options": {
+                            "BoilerState['STOP']": "app.one.burnerState.0",
+                        }
+                    }
+                },
+                i18n_by_namespace={
+                    "app": {"one": {"burnerState": {"0": "Stop"}}},
+                    "units": {"9998": {"0": "Stop"}},
+                },
+            ),
+        ),
+        lang="pl",
+    )
+    await store.upsert_async("P5.s4", 1 << 5)
+    stopped = await resolver.resolve_value("STATUS_P5_0")
+    assert stopped.value == "STOP"
+    assert stopped.value_label == "Stop"
+
+
+@pytest.mark.asyncio
 async def test_resolve_value_computed_reactive_paths_value_rules() -> None:
     """Computed rules stored under paths.value are evaluated correctly."""
     store = ParamStore()

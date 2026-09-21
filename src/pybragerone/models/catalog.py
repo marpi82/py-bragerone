@@ -1279,6 +1279,7 @@ class LiveAssetsCatalog:
         self._i18n_lock = asyncio.Lock()
         self._units_descriptor_table: dict[str, dict[str, Any]] | None = None
         self._units_descriptor_lock = asyncio.Lock()
+        self._custom_unit_codes: dict[str, str] | None = None
         self._index_token_raw_maps: dict[str, dict[str, Any]] | None = None
         self._index_token_raw_maps_sig: tuple[int, bytes, bytes] | None = None
         self._index_token_raw_maps_lock = asyncio.Lock()
@@ -1344,6 +1345,7 @@ class LiveAssetsCatalog:
         self._index_generation += 1
         self._static_route_tokens_cache.clear()
         self._units_descriptor_table = None
+        self._custom_unit_codes = None
         self._index_token_raw_maps = None
         self._index_token_raw_maps_sig = None
         self._log.info(
@@ -2571,6 +2573,50 @@ class LiveAssetsCatalog:
             return False
         return any(k in value for k in ("text", "options", "value", "valuePrepare"))
 
+    @staticmethod
+    def _units_descriptor_table_score(parsed: Mapping[str, Mapping[str, Any]]) -> tuple[int, int, int]:
+        """Rank candidate objects so PARAM_* catalogs lose to numeric CustomUnit tables.
+
+        Post-1.04 indexes also ship a large PARAM_* object whose entries look like unit
+        descriptors (``text``/``options``). Prefer tables keyed by numeric unit codes.
+        """
+        if not parsed:
+            return (0, 0, 0)
+        digit_keys = 0
+        param_keys = 0
+        units_option_hits = 0
+        for key, entry in parsed.items():
+            if key.isdigit():
+                digit_keys += 1
+            if key.startswith("PARAM"):
+                param_keys += 1
+            options = entry.get("options") if isinstance(entry, Mapping) else None
+            if isinstance(options, Mapping):
+                for raw in options.values():
+                    if isinstance(raw, str) and raw.startswith("units."):
+                        units_option_hits += 1
+                        break
+        return (digit_keys, units_option_hits, len(parsed) - param_keys)
+
+    _CUSTOM_UNIT_ENUM_RE = re.compile(r"\['([A-Z][A-Z0-9_]*)'\]=(0x[0-9a-fA-F]+|\d+)\]='\1'")
+
+    def _parse_custom_unit_codes_from_index(self, code: bytes) -> dict[str, str]:
+        """Parse ``CustomUnit`` bidirectional enum members (``BOILER_STATE`` ↔ ``9998``)."""
+        text = code.decode("utf-8", errors="replace")
+        out: dict[str, str] = {}
+        for match in self._CUSTOM_UNIT_ENUM_RE.finditer(text):
+            name = match.group(1)
+            raw = match.group(2)
+            try:
+                value = int(raw, 16) if raw.lower().startswith("0x") else int(raw)
+            except ValueError:
+                continue
+            # CustomUnit codes live in the high 99xx band; skip unrelated enums.
+            if value < 9000 or value > 9999:
+                continue
+            out[name] = str(value)
+        return out
+
     def _parse_units_descriptor_table_from_index(self, code: bytes) -> dict[str, dict[str, Any]]:
         try:
             tree = self._ts.parse(code)
@@ -2580,6 +2626,7 @@ class LiveAssetsCatalog:
             return {}
 
         best: dict[str, dict[str, Any]] = {}
+        best_score = self._units_descriptor_table_score(best)
         largest_candidate = 0
 
         for statement in tree.root_node.named_children:
@@ -2610,8 +2657,10 @@ class LiveAssetsCatalog:
                     parsed[key] = dict(value_raw)
 
                 largest_candidate = max(largest_candidate, descriptor_keys)
-                if len(parsed) > len(best):
+                score = self._units_descriptor_table_score(parsed)
+                if score > best_score:
                     best = parsed
+                    best_score = score
 
         if not best:
             if largest_candidate:
@@ -2624,12 +2673,47 @@ class LiveAssetsCatalog:
 
         return best
 
+    def _ensure_units_tables_loaded(self) -> dict[str, dict[str, Any]]:
+        """Load (and cache) the units descriptor table and CustomUnit aliases from index."""
+        cached = self._units_descriptor_table
+        if isinstance(cached, dict):
+            return cached
+        if not self._idx.index_bytes:
+            self._units_descriptor_table = {}
+            self._custom_unit_codes = {}
+            return self._units_descriptor_table
+        self._units_descriptor_table = self._parse_units_descriptor_table_from_index(self._idx.index_bytes)
+        self._custom_unit_codes = self._parse_custom_unit_codes_from_index(self._idx.index_bytes)
+        return self._units_descriptor_table
+
+    def canonical_unit_code(self, unit_code: Any) -> str | None:
+        """Return numeric unit-code string for ``unit_code`` when known.
+
+        Accepts legacy numeric codes and post-1.04 ``CustomUnit`` names
+        (``BOILER_STATE`` → ``9998``).
+        """
+        key = self._normalize_unit_key(unit_code)
+        if key is None:
+            return None
+        if key.isdigit():
+            return key
+        aliases = self._custom_unit_codes
+        if not isinstance(aliases, dict):
+            if not self._idx.index_bytes:
+                return None
+            aliases = self._parse_custom_unit_codes_from_index(self._idx.index_bytes)
+            self._custom_unit_codes = aliases
+        return aliases.get(key)
+
     async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
         """Return unit descriptor for raw unit code from index-defined transform table.
 
         The BragerOne frontend keeps canonical unit behavior in an index-scoped table
         (text/options/value/valuePrepare). This helper exposes that table entry by raw
         unit code so runtime consumers can apply the same mappings/transforms.
+
+        Named ``CustomUnit`` tokens (``BOILER_STATE``) resolve via the numeric alias when
+        the table is still keyed by codes like ``9998``.
         """
         key = self._normalize_unit_key(unit_code)
         if key is None:
@@ -2638,6 +2722,10 @@ class LiveAssetsCatalog:
         cached = self._units_descriptor_table
         if isinstance(cached, dict):
             entry = cached.get(key)
+            if entry is None:
+                alias = self.canonical_unit_code(key)
+                if alias is not None and alias != key:
+                    entry = cached.get(alias)
             return dict(entry) if isinstance(entry, Mapping) else None
 
         async with self._units_descriptor_lock:
@@ -2645,13 +2733,13 @@ class LiveAssetsCatalog:
             if not isinstance(cached_inner, dict):
                 if not self._idx.index_bytes:
                     await self._ensure_index_loaded()
-                if not self._idx.index_bytes:
-                    self._units_descriptor_table = {}
-                else:
-                    self._units_descriptor_table = self._parse_units_descriptor_table_from_index(self._idx.index_bytes)
-                cached_inner = self._units_descriptor_table
+                cached_inner = self._ensure_units_tables_loaded()
 
         entry = cached_inner.get(key)
+        if entry is None:
+            alias = self.canonical_unit_code(key)
+            if alias is not None and alias != key:
+                entry = cached_inner.get(alias)
         return dict(entry) if isinstance(entry, Mapping) else None
 
     def _find_i18n_asset(self, lang: str, namespace: str) -> AssetRef | None:
