@@ -114,3 +114,12 @@ def test_units_descriptor_table_parses_hex_keyed_entries() -> None:
     assert set(table) == {"9", "10", "49"}
     assert table["49"]["text"] == "units.31"
     assert table["9"]["options"] == {"0": "units.17.0", "1": "units.17.1"}
+
+
+def test_normalize_unit_key_accepts_named_and_custom_unit() -> None:
+    """Post-1.04 units may be bare names or ``CustomUnit['…']`` leftovers."""
+    catalog = _catalog()
+    assert catalog._normalize_unit_key("DEVICE_STATE") == "DEVICE_STATE"
+    assert catalog._normalize_unit_key("CustomUnit['CASCADE_CONTROLLER_STATE']") == "CASCADE_CONTROLLER_STATE"
+    assert catalog._normalize_unit_key(9994) == "9994"
+    assert catalog._normalize_unit_key("not a unit") is None

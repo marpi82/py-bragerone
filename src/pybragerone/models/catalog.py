@@ -35,11 +35,17 @@ _HELPER_ACTIONS = frozenset({"READ", "WRITE", "STATUS"})
 # Only ``PARAM_*`` / ``STATUS_*`` are addressable tokens. Any other quoted upper-case
 # literal in leftover source (``'WRITE'``, ``'DISPLAY_*'``) would be a bogus parameter.
 _PUBLIC_PARAM_PATTERN = r"(?:PARAM|STATUS)_[A-Z0-9_]+"
+# Catalog-like menu keys wrapped by single-arg obfuscated helpers
+# (``_0x4d74a8('PARAM_1')``, ``_0x4d74a8('COMMAND_MODULE_RESTART')``).
+_CATALOG_LIKE_TOKEN_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 # JS identifier boundaries (``[A-Za-z0-9_$]``) so ``DEFAULT_PARAM_177``,
 # ``default_PARAM_177``, and ``$PARAM_177`` do not yield ``PARAM_177``.
 _HELPER_TOKEN_RE = re.compile(rf"(?<![A-Za-z0-9_$]){_PUBLIC_PARAM_PATTERN}(?![A-Za-z0-9_$])")
 _LEFTOVER_QUOTED_TOKEN_RE = re.compile(rf"""['"]({_PUBLIC_PARAM_PATTERN})['"]""")
 _OBFUSCATED_IDENTIFIER_RE = re.compile(r"_0x[0-9a-fA-F]*")
+# Leftover single-arg helper text: ``_0xabc('TOKEN')`` → TOKEN (defense when AST
+# collapse misses and the call string becomes MenuParameter.token).
+_OBFUSCATED_SINGLE_ARG_CALL_RE = re.compile(r"""(?<![A-Za-z0-9_$])_0x[0-9a-fA-F]*\(\s*(['"])(?P<tok>[A-Z][A-Z0-9_]*)\1\s*\)""")
 # Minified bundles spell booleans as unary expressions: ``!0``/``!![]`` are true,
 # ``!1``/``![]`` are false. Bare ``true``/``false`` are deliberately absent — at this
 # layer they are indistinguishable from the quoted strings ``'true'``/``'false'``.
@@ -953,11 +959,26 @@ def _eval_array_map_call(code: bytes, node: Node, bindings: dict[str, Any] | Non
         return None
 
 
-def _public_token_from_helper_args(code: bytes, func_node: Node | None, args: list[Any]) -> str | None:
-    """Return the PARAM_*/STATUS_* token from a leftover obfuscated helper call.
+def _token_from_obfuscated_call_text(text: str) -> str | None:
+    """Extract a catalog-like token from leftover ``_0x…('TOKEN')`` call text."""
+    match = _OBFUSCATED_SINGLE_ARG_CALL_RE.fullmatch(text.strip())
+    if match is None:
+        match = _OBFUSCATED_SINGLE_ARG_CALL_RE.search(text)
+    if match is None:
+        return None
+    return match.group("tok")
 
-    Live menus emit ``_0x2d2290(_0x870f31['WRITE'], 'PARAM_45')`` when the helper
-    identifier stays obfuscated. Readable calls that happen to share the signature
+
+def _public_token_from_helper_args(code: bytes, func_node: Node | None, args: list[Any]) -> str | None:
+    """Return a catalog token from a leftover obfuscated helper call.
+
+    Live menus emit two shapes when the helper identifier stays obfuscated:
+
+    - ``_0x2d2290(_0x870f31['WRITE'], 'PARAM_45')`` — action + PARAM_*/STATUS_*
+    - ``_0x4d74a8('PARAM_1')`` / ``_0x4d74a8('COMMAND_MODULE_RESTART')`` — single
+      catalog-like argument (post ~1.03.41 menu chunks)
+
+    Readable calls that happen to share the two-arg signature
     (``foo('WRITE', 'PARAM_45')``) keep their source text, because collapsing them
     would erase semantics this parser cannot verify.
 
@@ -967,12 +988,17 @@ def _public_token_from_helper_args(code: bytes, func_node: Node | None, args: li
         args: Already-converted call arguments.
 
     Returns:
-        The public token, or ``None`` when this is not an obfuscated
-        ``(READ|WRITE|STATUS, TOKEN)`` helper call.
+        The public token, or ``None`` when this is not a recognized obfuscated
+        helper call.
     """
     if func_node is None or func_node.type != "identifier":
         return None
     if _OBFUSCATED_IDENTIFIER_RE.fullmatch(_node_text(code, func_node)) is None:
+        return None
+    if len(args) == 1:
+        token = args[0]
+        if isinstance(token, str) and _CATALOG_LIKE_TOKEN_RE.fullmatch(token) is not None:
+            return token
         return None
     if len(args) < 2:
         return None
@@ -1238,10 +1264,11 @@ class LiveAssetsCatalog:
             visibility_strategy: Strategy for gating menu visibility (default 'independent').
             schemas_enabled: Whether schema validation is enabled (currently unused).
             request_timeout: Timeout for network requests in seconds.
-            concurrency: Maximum concurrent network operations (reserved for future use).
+            concurrency: Maximum concurrent ParamMap asset fetches.
         """
         self._api = api
         self._timeout = request_timeout
+        self._asset_sema = asyncio.Semaphore(max(1, concurrency))
         self._ts = _TS()
         self._idx = AssetIndex()
         self._log = logger or logging.getLogger(__name__)
@@ -1720,7 +1747,22 @@ class LiveAssetsCatalog:
         return [self._attach_parameters_tokens(route) for route in raw_routes]
 
     # Build output may rename helper functions; do not rely on single-letter identifiers.
-    PARAM_CALL_RE = re.compile(r"""\b[A-Za-z_$][\w$]*\([^,]*?,\s*(['"])(?P<tok>[^'"]+)\1\)""")
+    # Two-arg ``foo(…, 'TOKEN')`` plus single-arg obfuscated ``_0xabc('TOKEN')``.
+    PARAM_CALL_RE = re.compile(
+        r"""(?:"""
+        r"""\b[A-Za-z_$][\w$]*\([^,]*?,\s*(['"])(?P<tok>[^'"]+)\1\)"""
+        r"""|"""
+        r"""(?<![A-Za-z0-9_$])_0x[0-9a-fA-F]*\(\s*(['"])(?P<tok_single>[A-Z][A-Z0-9_]*)\3\s*\)"""
+        r""")"""
+    )
+
+    @classmethod
+    def _token_from_param_call(cls, text: str) -> str | None:
+        """Extract a token from two-arg helper text or ``_0x…('TOKEN')`` leftovers."""
+        match = cls.PARAM_CALL_RE.search(text)
+        if match is None:
+            return None
+        return match.group("tok") or match.group("tok_single")
 
     def _attach_parameters_tokens(self, node: dict[str, Any]) -> dict[str, Any]:
         """Attach parameter tokens to a node by processing its parameters section.
@@ -1789,41 +1831,47 @@ class LiveAssetsCatalog:
             for it in items:
                 if isinstance(it, str):
                     original = it.strip()
-                    m = self.PARAM_CALL_RE.search(original)
-                    if m:
-                        tok = m.group("tok")
+                    tok = self._token_from_param_call(original)
+                    if tok:
                         norm.append({"token": tok, "parameter": original})
                     else:
-                        norm.append({"token": original, "parameter": original})
+                        scrubbed = _token_from_obfuscated_call_text(original)
+                        norm.append({"token": scrubbed or original, "parameter": original})
                 elif isinstance(it, dict):
                     entry = dict(it)
                     param_value = entry.get("parameter")
+                    existing_token = entry.get("token")
+                    if isinstance(existing_token, str) and existing_token:
+                        scrubbed_existing = _token_from_obfuscated_call_text(existing_token)
+                        if scrubbed_existing is not None:
+                            entry["token"] = scrubbed_existing
                     if isinstance(param_value, str):
-                        match = self.PARAM_CALL_RE.search(param_value)
-                        if match and "token" not in entry:
-                            entry["token"] = match.group("tok")
+                        tok = self._token_from_param_call(param_value)
+                        if tok and "token" not in entry:
+                            entry["token"] = tok
                         elif "token" not in entry:
-                            entry["token"] = param_value.strip()
+                            scrubbed = _token_from_obfuscated_call_text(param_value)
+                            entry["token"] = scrubbed or param_value.strip()
                     elif "token" in entry:
                         token_val = str(entry["token"])
                         entry.setdefault("parameter", token_val)
                     else:
                         fallback_text = str(it)
-                        match = self.PARAM_CALL_RE.search(fallback_text)
-                        if match:
-                            entry["token"] = match.group("tok")
+                        tok = self._token_from_param_call(fallback_text)
+                        if tok:
+                            entry["token"] = tok
                             entry.setdefault("parameter", fallback_text)
                     if "token" in entry:
                         entry.setdefault("parameter", str(entry["token"]) or "")
                     norm.append(entry)
                 else:
                     s = str(it)
-                    m = self.PARAM_CALL_RE.search(s)
-                    if m:
-                        tok = m.group("tok")
+                    tok = self._token_from_param_call(s)
+                    if tok:
                         norm.append({"token": tok, "parameter": s})
                     elif s:
-                        norm.append({"token": s, "parameter": s})
+                        scrubbed = _token_from_obfuscated_call_text(s)
+                        norm.append({"token": scrubbed or s, "parameter": s})
             newp[sec] = norm
         return newp
 
@@ -1890,7 +1938,8 @@ class LiveAssetsCatalog:
 
         async def fetch_and_parse(tok: str, a: AssetRef) -> tuple[str, ParamMap | None, str | None]:
             try:
-                code = await self._api.get_bytes(a.url)
+                async with self._asset_sema:
+                    code = await self._api.get_bytes(a.url)
                 pm = self._parse_param_map_from_js(code, tok, origin=f"asset:{a.url}")
                 if pm:
                     return tok, pm, None
@@ -1911,10 +1960,13 @@ class LiveAssetsCatalog:
                 telemetry["assets_ok"] += 1
             elif err is not None:
                 telemetry["assets_failed"] += 1
+                unresolved.append(tok)
             else:
                 telemetry["assets_missing_parse"] += 1
+                # Dedicated asset existed but did not yield a ParamMap — still try index.
+                unresolved.append(tok)
 
-        # 2) inline/index fallback for unresolved tokens
+        # 2) inline/index fallback for unresolved tokens (no asset *or* failed asset parse)
         def _looks_like_param_map(pm: ParamMap | None, token: str) -> bool:
             if pm is None:
                 return False
@@ -1933,7 +1985,7 @@ class LiveAssetsCatalog:
                     return True
             return False
 
-        unresolved_now = [tok for tok in unresolved if tok not in results]
+        unresolved_now = [tok for tok in dict.fromkeys(unresolved) if tok not in results]
         if unresolved_now and self._idx.index_bytes:
             t_fallback = time.perf_counter()
             token_raw_maps = await self._get_index_token_raw_maps(self._idx.index_bytes)
@@ -2292,14 +2344,21 @@ class LiveAssetsCatalog:
             "min": min_paths,
             "max": max_paths,
         }
-        component = _normalize_literal(obj.get("componentType"))
+        component = _normalize_identifier(obj.get("componentType"))
         if component is None:
-            component = _normalize_literal(obj.get("useComponent"))
+            component = _normalize_identifier(obj.get("useComponent"))
         units_raw: Any = obj.get("units")
         if units_raw is None:
             units_raw = obj.get("unit_name")
         if units_raw is None and isinstance(unit_field, (str, int, float)):
             units_raw = unit_field
+        if isinstance(units_raw, str):
+            trimmed_units = units_raw.strip()
+            public_unit = js_public_member_name(trimmed_units)
+            if public_unit is not None:
+                units_raw = public_unit
+            elif _CATALOG_LIKE_TOKEN_RE.fullmatch(trimmed_units) is not None:
+                units_raw = trimmed_units
         limits = None
         for cand in ("limits", "range", "minmax"):
             if cand in obj and isinstance(obj[cand], dict):
@@ -2496,6 +2555,12 @@ class LiveAssetsCatalog:
             try:
                 as_float = float(key)
             except ValueError:
+                # Named units (``DEVICE_STATE``) and ``CustomUnit['…']`` leftovers.
+                public = js_public_member_name(key)
+                if public is not None:
+                    return public
+                if _CATALOG_LIKE_TOKEN_RE.fullmatch(key) is not None:
+                    return key
                 return None
             return str(int(as_float)) if as_float.is_integer() else None
         return None

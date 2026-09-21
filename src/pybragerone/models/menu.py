@@ -33,6 +33,7 @@ _JS_ENUM_RECEIVER_SUFFIXES: tuple[str, ...] = (
     "List",
     "Commands",
     "Component",
+    "Unit",
 )
 
 
@@ -87,10 +88,31 @@ class MenuParameter(BaseModel):
 
     # Regex to extract token from parameter expressions.
     # Build output may rename helper functions; do not rely on single-letter identifiers.
-    PARAM_REGEX: ClassVar[re.Pattern[str]] = re.compile(r"\b[A-Za-z_$][\w$]*\([^,]*?,\s*['\"]([^'\"]+)['\"]\)")
+    # Two-arg ``foo(…, 'TOKEN')`` plus single-arg obfuscated ``_0xabc('TOKEN')``.
+    PARAM_REGEX: ClassVar[re.Pattern[str]] = re.compile(
+        r"""(?:"""
+        r"""\b[A-Za-z_$][\w$]*\([^,]*?,\s*['\"]([^'\"]+)['\"]\)"""
+        r"""|"""
+        r"""(?<![A-Za-z0-9_$])_0x[0-9a-fA-F]*\(\s*['\"]([A-Z][A-Z0-9_]*)['\"]\s*\)"""
+        r""")"""
+    )
+    _OBFUSCATED_SINGLE_ARG_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r"""(?<![A-Za-z0-9_$])_0x[0-9a-fA-F]*\(\s*['\"]([A-Z][A-Z0-9_]*)['\"]\s*\)"""
+    )
 
     # Prefixes like "A." / "e." are build artifacts; treat any short leading segment as a prefix.
     PREFIX_RE: ClassVar[re.Pattern[str]] = re.compile(r"^(?P<prefix>[A-Za-z]{1,3})\.(?P<rest>.+)$")
+
+    @classmethod
+    def _extract_token_from_expression(cls, text: str) -> str | None:
+        """Extract a clean token from helper call text (two-arg or ``_0x…('TOKEN')``)."""
+        match = cls.PARAM_REGEX.search(text)
+        if match is not None:
+            return next((group for group in match.groups() if group), None)
+        single = cls._OBFUSCATED_SINGLE_ARG_RE.fullmatch(text.strip())
+        if single is not None:
+            return single.group(1)
+        return None
 
     @classmethod
     def _strip_prefix(cls, value: str) -> str:
@@ -113,12 +135,13 @@ class MenuParameter(BaseModel):
         if "token" not in result and "parameter" in result:
             param_str = result["parameter"]
             if isinstance(param_str, str):
-                match = cls.PARAM_REGEX.search(param_str)
-                if match:
-                    result["token"] = match.group(1)
-                else:
-                    # Fallback: use parameter string as token
-                    result["token"] = param_str.strip()
+                extracted = cls._extract_token_from_expression(param_str)
+                result["token"] = extracted if extracted is not None else param_str.strip()
+        elif isinstance(result.get("token"), str):
+            # Scrub leftover ``_0x…('TOKEN')`` that arrived as a pre-set token.
+            scrubbed = cls._extract_token_from_expression(result["token"])
+            if scrubbed is not None and scrubbed != result["token"]:
+                result["token"] = scrubbed
 
         # Set default token if still missing
         if "token" not in result:
@@ -151,12 +174,16 @@ class MenuParameter(BaseModel):
         """Ensure token was successfully extracted."""
         if not self.token and self.raw_parameter:
             # Try extraction one more time from raw_parameter
-            match = self.PARAM_REGEX.search(self.raw_parameter)
-            if match:
-                self.token = match.group(1)
+            extracted = self._extract_token_from_expression(self.raw_parameter)
+            if extracted is not None:
+                self.token = extracted
             else:
                 # Last resort: use raw parameter
                 self.token = self.raw_parameter
+        elif self.token:
+            scrubbed = self._extract_token_from_expression(self.token)
+            if scrubbed is not None and scrubbed != self.token:
+                self.token = scrubbed
 
         if not self.token:
             raise ValueError(f"Could not extract token from parameter: {self.raw_parameter}")

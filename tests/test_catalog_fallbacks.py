@@ -385,3 +385,110 @@ async def test_get_param_mapping_index_token_map_and_unresolved_fallbacks(monkey
     monkeypatch.setattr(catalog._api, "get_bytes", AsyncMock(return_value=b"export default 1;"))
     missing = await catalog.get_param_mapping(["PARAM_BADASSET"])
     assert "PARAM_BADASSET" not in missing
+
+
+async def test_get_param_mapping_fetch_error_falls_back_to_index(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Failed dedicated-asset fetch still recovers via the index token map."""
+    catalog = _catalog()
+    index_js = """
+    export default {
+      PARAM_FETCHFAIL: { group: "P4", name: "from-index", value: [{ group: "P4", number: 2, use: "v" }] }
+    };
+    """
+    catalog._idx.index_bytes = index_js.encode()
+    catalog._idx.inline_param_candidates = []
+    catalog._idx.assets_by_basename["PARAM_FETCHFAIL"] = [
+        AssetRef(url="https://example.com/PARAM_FETCHFAIL-z.js", base="PARAM_FETCHFAIL", hash="z")
+    ]
+    monkeypatch.setattr(catalog._api, "get_bytes", AsyncMock(side_effect=RuntimeError("boom")))
+
+    mapped = await catalog.get_param_mapping(["PARAM_FETCHFAIL"])
+    assert mapped["PARAM_FETCHFAIL"].group == "P4"
+    assert mapped["PARAM_FETCHFAIL"].origin == "inline:index-token"
+
+
+def test_token_from_param_call_matches_single_arg_obfuscated_helper() -> None:
+    """PARAM_CALL_RE must match ``_0x…('TOKEN')`` via the corrected quote backreference."""
+    catalog = _catalog()
+    assert catalog._token_from_param_call("_0x4d74a8('PARAM_1')") == "PARAM_1"
+    assert catalog._token_from_param_call('E(A.WRITE,"PARAM_2")') == "PARAM_2"
+    assert catalog._token_from_param_call("plain") is None
+
+
+def test_token_from_obfuscated_call_text_search_and_miss() -> None:
+    """Leftover scrub helper finds embedded calls and returns None when absent."""
+    from pybragerone.models.catalog import _token_from_obfuscated_call_text
+
+    assert _token_from_obfuscated_call_text("prefix _0xabc('PARAM_9') suffix") == "PARAM_9"
+    assert _token_from_obfuscated_call_text("nope") is None
+
+
+def test_attach_parameters_tokens_scrubs_preset_obfuscated_token() -> None:
+    """Dict entries with a leftover ``token`` field are scrubbed during attach."""
+    catalog = _catalog()
+    routes = catalog._attach_parameters_tokens(
+        {
+            "path": "x",
+            "parameters": {
+                "read": [
+                    {
+                        "token": "_0x4d74a8('PARAM_9')",
+                        "parameter": "_0x4d74a8('PARAM_9')",
+                        "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+                    }
+                ],
+                "write": [],
+                "status": [],
+                "special": [],
+            },
+        }
+    )
+    assert routes["parameters"]["read"][0]["token"] == "PARAM_9"
+
+
+def test_build_param_map_normalizes_custom_unit_leftover() -> None:
+    """``CustomUnit['NAME']`` units collapse to the public enum member on ParamMap."""
+    catalog = _catalog()
+    pm = catalog._build_param_map_from_obj(
+        {
+            "group": "P5",
+            "units": "CustomUnit['DEVICE_STATE']",
+            "value": [{"group": "P5", "number": 1, "use": "v"}],
+        },
+        "STATUS_BAR_PUMP",
+        origin="test",
+    )
+    assert pm is not None
+    assert pm.units == "DEVICE_STATE"
+
+
+def test_build_param_map_keeps_catalog_like_unit_token() -> None:
+    """Bare ``A-Z_`` unit tokens pass the catalog-like fullmatch branch unchanged."""
+    catalog = _catalog()
+    pm = catalog._build_param_map_from_obj(
+        {
+            "group": "P5",
+            "units": "DEVICE_STATE",
+            "value": [{"group": "P5", "number": 1, "use": "v"}],
+        },
+        "STATUS_BAR_PUMP",
+        origin="test",
+    )
+    assert pm is not None
+    assert pm.units == "DEVICE_STATE"
+
+
+def test_build_param_map_keeps_non_catalog_unit_string() -> None:
+    """Plain unit strings that are neither CustomUnit nor A-Z tokens stay unchanged."""
+    catalog = _catalog()
+    pm = catalog._build_param_map_from_obj(
+        {
+            "group": "P5",
+            "units": "degC",
+            "value": [{"group": "P5", "number": 1, "use": "v"}],
+        },
+        "STATUS_BAR_PUMP",
+        origin="test",
+    )
+    assert pm is not None
+    assert pm.units == "degC"

@@ -98,6 +98,8 @@ tests/assets/**/*.js
 
 # Upstream catalog watch reports
 reports/upstream/
+reports/live/
+.tmp-live-contract/
 
 # local scratch / dev verification artifacts
 /app_*.txt

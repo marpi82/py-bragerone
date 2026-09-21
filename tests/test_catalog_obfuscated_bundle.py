@@ -392,7 +392,7 @@ def test_eval_array_map_call_rejects_non_map_shapes() -> None:
 
 
 def test_node_to_python_returns_helper_last_arg_token() -> None:
-    """Only obfuscated ``_0x…(WRITE, 'PARAM_45')`` helpers collapse to the public token."""
+    """Obfuscated helpers collapse to the public token; readable callees keep source text."""
     catalog = _catalog()
 
     def _call(js: bytes) -> object:
@@ -402,6 +402,10 @@ def test_node_to_python_returns_helper_last_arg_token() -> None:
 
     assert _call(b"const v=_0x2d2290(_0x870f31['WRITE'],'PARAM_45');") == "PARAM_45"
     assert _call(b"const v=_0x2d2290(_0x870f31['STATUS'],'STATUS_P5_1');") == "STATUS_P5_1"
+    # Post-1.03.41 single-arg obfuscated wrappers (menu parameter sections).
+    assert _call(b"const v=_0x4d74a8('PARAM_1');") == "PARAM_1"
+    assert _call(b"const v=_0x4d74a8('COMMAND_MODULE_RESTART');") == "COMMAND_MODULE_RESTART"
+    assert _call(b"const v=_0x4d74a8('PARAM16_0');") == "PARAM16_0"
 
     # A readable callee with the same signature keeps its semantics.
     assert _call(b"const v=foo('WRITE','PARAM_45');") == "foo('WRITE','PARAM_45')"
@@ -410,7 +414,7 @@ def test_node_to_python_returns_helper_last_arg_token() -> None:
     # Argument-shape guards, all behind an obfuscated callee.
     assert _call(b"const v=_0x2d2290();") == "_0x2d2290()"
     assert _call(b"const v=_0x2d2290(1);") == "_0x2d2290(1)"
-    assert _call(b"const v=_0x2d2290('PARAM_45');") == "_0x2d2290('PARAM_45')"
+    assert _call(b"const v=_0x2d2290('PARAM_45');") == "PARAM_45"
     assert _call(b"const v=_0x2d2290(1,'PARAM_45');") == "_0x2d2290(1,'PARAM_45')"
     assert _call(b"const v=_0x2d2290('EQUALTO','PARAM_45');") == "_0x2d2290('EQUALTO','PARAM_45')"
     assert _call(b"const v=_0x2d2290('WRITE',1);") == "_0x2d2290('WRITE',1)"
