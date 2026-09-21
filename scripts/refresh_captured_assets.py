@@ -97,7 +97,7 @@ async def main() -> int:
             print(f"staged {out.name} ({len(code)} bytes)")
 
         # Prefer the hashed menu id from menu_map (basename "0" can collide with other chunks).
-        menu_id = catalog._idx.menu_map.get(0) or catalog._idx.menu_map.get("0")
+        menu_id = catalog._idx.menu_map.get(0)
         menu_asset = None
         if isinstance(menu_id, str) and menu_id:
             for refs in catalog._idx.assets_by_basename.values():
