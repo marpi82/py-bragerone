@@ -174,9 +174,11 @@ def test_units_descriptor_table_score_empty_and_param_penalty() -> None:
         {
             "9994": {"options": {"0": "off", "1": "on"}},
             "9995": cast(Any, {"options": "not-a-map"}),
+            "9996": {"options": {}},
+            "9997": cast(Any, "not-an-entry-mapping"),
         }
     )
-    assert no_units[0] == 2
+    assert no_units[0] == 4
     assert no_units[1] == 0
 
 

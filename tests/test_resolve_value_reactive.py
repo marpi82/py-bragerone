@@ -418,6 +418,36 @@ async def test_resolve_unit_tolerates_canonical_unit_code_errors() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_unit_meta_numeric_text_fallback_without_descriptor() -> None:
+    """Numeric codes without a descriptor table entry fall back to ``units.NNNN``."""
+    store = ParamStore()
+    mapping = ParamMap(
+        key="STATUS_P5_0",
+        group=None,
+        paths={},
+        component_type=None,
+        units=9998,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"name": "x"},
+    )
+
+    class _NoDesc(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return None
+
+    resolver = ParamResolver(
+        store=store,
+        assets=cast(AssetsProtocol, _NoDesc(mapping=mapping)),
+        lang="pl",
+    )
+    assert await resolver._resolve_unit_meta(raw_unit_code=9998) == {"text": "units.9998"}
+
+
+@pytest.mark.asyncio
 async def test_resolve_unit_meta_aliases_named_code_to_text_fallback() -> None:
     """When descriptor lookup misses, named codes still fall back to ``units.NNNN``."""
     store = ParamStore()
