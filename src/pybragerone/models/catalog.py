@@ -2703,6 +2703,15 @@ class LiveAssetsCatalog:
             self._custom_unit_codes = aliases
         return aliases.get(key)
 
+    def _lookup_unit_descriptor_entry(self, table: Mapping[str, Mapping[str, Any]], key: str) -> dict[str, Any] | None:
+        """Return a copied descriptor for ``key``, falling back to CustomUnit aliases."""
+        entry: Any = table.get(key)
+        if entry is None:
+            alias = self.canonical_unit_code(key)
+            if alias is not None and alias != key:
+                entry = table.get(alias)
+        return dict(entry) if isinstance(entry, Mapping) else None
+
     async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
         """Return unit descriptor for raw unit code from index-defined transform table.
 
@@ -2719,12 +2728,7 @@ class LiveAssetsCatalog:
 
         cached = self._units_descriptor_table
         if isinstance(cached, dict):
-            entry = cached.get(key)
-            if entry is None:
-                alias = self.canonical_unit_code(key)
-                if alias is not None and alias != key:
-                    entry = cached.get(alias)
-            return dict(entry) if isinstance(entry, Mapping) else None
+            return self._lookup_unit_descriptor_entry(cached, key)
 
         async with self._units_descriptor_lock:
             cached_inner = self._units_descriptor_table
@@ -2733,12 +2737,7 @@ class LiveAssetsCatalog:
                     await self._ensure_index_loaded()
                 cached_inner = self._ensure_units_tables_loaded()
 
-        entry = cached_inner.get(key)
-        if entry is None:
-            alias = self.canonical_unit_code(key)
-            if alias is not None and alias != key:
-                entry = cached_inner.get(alias)
-        return dict(entry) if isinstance(entry, Mapping) else None
+        return self._lookup_unit_descriptor_entry(cached_inner, key)
 
     def _find_i18n_asset(self, lang: str, namespace: str) -> AssetRef | None:
         """Find i18n asset for given language and namespace.
