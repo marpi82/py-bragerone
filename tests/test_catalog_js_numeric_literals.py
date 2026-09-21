@@ -264,6 +264,42 @@ async def test_get_unit_descriptor_loads_tables_from_index_bytes() -> None:
     assert again["text"] == "units.31"
 
 
+async def test_get_unit_descriptor_concurrent_uncached_lookups() -> None:
+    """Two uncached lookups share the lock; the waiter sees the loaded table."""
+    import asyncio
+
+    catalog = _catalog()
+    catalog._units_descriptor_table = None
+    catalog._custom_unit_codes = None
+    catalog._idx.index_bytes = b"const units={0x270e:{'text':'units.31'}};"
+    first, second = await asyncio.gather(
+        catalog.get_unit_descriptor(9998),
+        catalog.get_unit_descriptor(9998),
+    )
+    assert first is not None and first["text"] == "units.31"
+    assert second is not None and second["text"] == "units.31"
+
+
+async def test_get_unit_descriptor_autoloads_index_when_bytes_missing() -> None:
+    """Empty index bytes trigger ``_ensure_index_loaded`` before parsing."""
+    catalog = _catalog()
+    catalog._units_descriptor_table = None
+    catalog._custom_unit_codes = None
+    catalog._idx.index_bytes = b""
+    called = False
+
+    async def _fake_ensure() -> None:
+        nonlocal called
+        called = True
+        catalog._idx.index_bytes = b"const units={0x270e:{'text':'units.31'}};"
+
+    catalog._ensure_index_loaded = _fake_ensure  # type: ignore[method-assign]
+    desc = await catalog.get_unit_descriptor(9998)
+    assert called is True
+    assert desc is not None
+    assert desc["text"] == "units.31"
+
+
 def test_ensure_units_tables_loaded_empty_without_index() -> None:
     """Missing index bytes yields empty descriptor and alias caches."""
     catalog = _catalog()
