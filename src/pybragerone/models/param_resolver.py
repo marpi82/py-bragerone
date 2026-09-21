@@ -1279,11 +1279,10 @@ class ParamResolver:
                 alias = canonicalize(unit_code)
             except Exception:
                 alias = None
-            else:
-                if alias is not None and str(alias) != str(unit_code).strip():
-                    resolved_alias = await self._i18n.resolve_unit(alias)
-                    if resolved_alias is not None:
-                        return resolved_alias
+            if alias is not None and str(alias) != str(unit_code).strip():
+                resolved_alias = await self._i18n.resolve_unit(alias)
+                if resolved_alias is not None:
+                    return resolved_alias
         return await self._i18n.resolve_unit(unit_code)
 
     async def resolve_raw_display_value(self, raw: Any, *, unit_code: Any) -> Any:

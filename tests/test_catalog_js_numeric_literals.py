@@ -169,6 +169,15 @@ def test_units_descriptor_table_score_empty_and_param_penalty() -> None:
     assert scored[0] == 1
     assert scored[1] == 1
     assert scored[2] == 1  # len 2 - 1 PARAM key
+    # Options without units.* tokens, and non-mapping options, do not bump the score.
+    no_units = LiveAssetsCatalog._units_descriptor_table_score(
+        {
+            "9994": {"options": {"0": "off", "1": "on"}},
+            "9995": cast(Any, {"options": "not-a-map"}),
+        }
+    )
+    assert no_units[0] == 2
+    assert no_units[1] == 0
 
 
 def test_canonical_unit_code_aliases_named_custom_unit() -> None:
@@ -193,7 +202,6 @@ def test_canonical_unit_code_without_index_bytes_returns_none_for_names() -> Non
     assert catalog.canonical_unit_code("BOILER_STATE") is None
 
 
-@pytest.mark.asyncio
 async def test_get_unit_descriptor_aliases_named_unit_from_cached_table() -> None:
     """``BOILER_STATE`` resolves via alias when the table is keyed by ``9998``."""
     catalog = _catalog()
@@ -208,7 +216,6 @@ async def test_get_unit_descriptor_aliases_named_unit_from_cached_table() -> Non
     assert await catalog.get_unit_descriptor("MISSING") is None
 
 
-@pytest.mark.asyncio
 async def test_get_unit_descriptor_loads_tables_from_index_bytes() -> None:
     """Uncached lookup parses index bytes and aliases named CustomUnit tokens."""
     catalog = _catalog()
@@ -245,7 +252,6 @@ def test_ensure_units_tables_loaded_returns_cached_table() -> None:
     assert catalog._ensure_units_tables_loaded() is cached
 
 
-@pytest.mark.asyncio
 async def test_refresh_index_clears_custom_unit_codes_cache() -> None:
     """Successful index refresh drops cached CustomUnit aliases."""
     catalog = _catalog()

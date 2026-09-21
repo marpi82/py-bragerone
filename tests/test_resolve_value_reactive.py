@@ -322,7 +322,66 @@ async def test_resolve_unit_falls_back_to_canonical_numeric_alias() -> None:
     assert await resolver.resolve_unit(9997) is None
 
 
-@pytest.mark.asyncio
+async def test_resolve_unit_without_canonical_helper_uses_i18n_directly() -> None:
+    """Assets without ``canonical_unit_code`` still resolve numeric i18n units."""
+    store = ParamStore()
+    mapping = ParamMap(
+        key="STATUS_P5_0",
+        group=None,
+        paths={},
+        component_type=None,
+        units=9998,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"name": "x"},
+    )
+    resolver = ParamResolver(
+        store=store,
+        assets=cast(
+            AssetsProtocol,
+            _StubAssets(
+                mapping=mapping,
+                i18n_by_namespace={"units": {"9998": {"0": "Stop"}}},
+            ),
+        ),
+        lang="pl",
+    )
+    assert await resolver.resolve_unit(9998) == {"0": "Stop"}
+
+
+async def test_resolve_unit_skips_alias_when_i18n_misses_numeric_code() -> None:
+    """Alias lookup that returns nothing falls through to the original unit_code."""
+    store = ParamStore()
+    mapping = ParamMap(
+        key="STATUS_P5_0",
+        group=None,
+        paths={},
+        component_type=None,
+        units="BOILER_STATE",
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"name": "x"},
+    )
+
+    class _AliasMiss(_StubAssets):
+        def canonical_unit_code(self, unit_code: Any) -> str | None:
+            return "9998" if str(unit_code).strip() == "BOILER_STATE" else None
+
+    resolver = ParamResolver(
+        store=store,
+        assets=cast(AssetsProtocol, _AliasMiss(mapping=mapping, i18n_by_namespace={"units": {}})),
+        lang="pl",
+    )
+    # Falls through to i18n.resolve_unit("BOILER_STATE") which echoes the token.
+    assert await resolver.resolve_unit("BOILER_STATE") == "BOILER_STATE"
+
+
 async def test_resolve_unit_tolerates_canonical_unit_code_errors() -> None:
     """Canonicalize failures fall through to the plain i18n lookup."""
     store = ParamStore()
