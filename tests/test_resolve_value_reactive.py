@@ -323,6 +323,42 @@ async def test_resolve_unit_falls_back_to_canonical_numeric_alias() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_unit_tolerates_canonical_unit_code_errors() -> None:
+    """Canonicalize failures fall through to the plain i18n lookup."""
+    store = ParamStore()
+    mapping = ParamMap(
+        key="STATUS_P5_0",
+        group=None,
+        paths={},
+        component_type=None,
+        units=9998,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"name": "x"},
+    )
+
+    class _BoomAlias(_StubAssets):
+        def canonical_unit_code(self, unit_code: Any) -> str | None:
+            raise RuntimeError("alias boom")
+
+    resolver = ParamResolver(
+        store=store,
+        assets=cast(
+            AssetsProtocol,
+            _BoomAlias(
+                mapping=mapping,
+                i18n_by_namespace={"units": {"9998": {"0": "Stop"}}},
+            ),
+        ),
+        lang="pl",
+    )
+    assert await resolver.resolve_unit(9998) == {"0": "Stop"}
+
+
+@pytest.mark.asyncio
 async def test_resolve_unit_meta_aliases_named_code_to_text_fallback() -> None:
     """When descriptor lookup misses, named codes still fall back to ``units.NNNN``."""
     store = ParamStore()
@@ -391,6 +427,55 @@ async def test_resolve_unit_meta_retries_descriptor_via_canonical_alias() -> Non
     )
     meta = await resolver._resolve_unit_meta(raw_unit_code="BOILER_STATE")
     assert meta == {"options": {"STOP": "units.9998.0"}}
+
+
+@pytest.mark.asyncio
+async def test_resolve_unit_meta_tolerates_alias_and_descriptor_errors() -> None:
+    """Alias/descriptor exceptions still allow the units.NNNN text fallback."""
+    store = ParamStore()
+    mapping = ParamMap(
+        key="STATUS_P5_0",
+        group=None,
+        paths={},
+        component_type=None,
+        units="BOILER_STATE",
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"name": "x"},
+    )
+
+    class _FlakyAlias(_StubAssets):
+        def __init__(self, *args: Any, boom_alias: bool = False, boom_desc: bool = False, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self._boom_alias = boom_alias
+            self._boom_desc = boom_desc
+
+        def canonical_unit_code(self, unit_code: Any) -> str | None:
+            if self._boom_alias:
+                raise RuntimeError("alias boom")
+            return "9998" if str(unit_code).strip() == "BOILER_STATE" else None
+
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            if self._boom_desc and str(unit_code).strip() == "9998":
+                raise RuntimeError("descriptor boom")
+            return None
+
+    boom_alias = ParamResolver(
+        store=store,
+        assets=cast(AssetsProtocol, _FlakyAlias(mapping=mapping, boom_alias=True)),
+        lang="pl",
+    )
+    assert await boom_alias._resolve_unit_meta(raw_unit_code="BOILER_STATE") is None
+
+    boom_desc = ParamResolver(
+        store=store,
+        assets=cast(AssetsProtocol, _FlakyAlias(mapping=mapping, boom_desc=True)),
+        lang="pl",
+    )
+    assert await boom_desc._resolve_unit_meta(raw_unit_code="BOILER_STATE") == {"text": "units.9998"}
 
 
 @pytest.mark.asyncio

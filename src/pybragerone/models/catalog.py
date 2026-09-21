@@ -2607,10 +2607,8 @@ class LiveAssetsCatalog:
         for match in self._CUSTOM_UNIT_ENUM_RE.finditer(text):
             name = match.group(1)
             raw = match.group(2)
-            try:
-                value = int(raw, 16) if raw.lower().startswith("0x") else int(raw)
-            except ValueError:
-                continue
+            # Pattern only matches hex/decimal literals.
+            value = int(raw, 16) if raw.lower().startswith("0x") else int(raw)
             # CustomUnit codes live in the high 99xx band; skip unrelated enums.
             if value < 9000 or value > 9999:
                 continue

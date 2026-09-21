@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -20,6 +20,11 @@ class _DummyApi:
     """Minimal stand-in; literal parsing never touches the network."""
 
     one_base = "https://example.invalid"
+
+    async def get_bytes(self, url: str) -> bytes:
+        """Return empty JS so refresh_index tests can clear caches without network."""
+        _ = url
+        return b"const x={};"
 
 
 def _catalog() -> LiveAssetsCatalog:
@@ -230,6 +235,28 @@ def test_ensure_units_tables_loaded_empty_without_index() -> None:
     catalog._idx.index_bytes = b""
     assert catalog._ensure_units_tables_loaded() == {}
     assert catalog._custom_unit_codes == {}
+
+
+def test_ensure_units_tables_loaded_returns_cached_table() -> None:
+    """Cached descriptor table is returned without re-parsing."""
+    catalog = _catalog()
+    cached = {"9998": {"text": "units.31"}}
+    catalog._units_descriptor_table = cached
+    assert catalog._ensure_units_tables_loaded() is cached
+
+
+@pytest.mark.asyncio
+async def test_refresh_index_clears_custom_unit_codes_cache() -> None:
+    """Successful index refresh drops cached CustomUnit aliases."""
+    catalog = _catalog()
+    catalog._custom_unit_codes = {"BOILER_STATE": "9998"}
+    catalog._units_descriptor_table = {"9998": {"text": "units.31"}}
+    await catalog.refresh_index("https://example.invalid/assets/index-test.js", allow_recover=False)
+    # refresh_index clears caches; read via Any so mypy does not keep the pre-call dict types.
+    codes: Any = catalog._custom_unit_codes
+    table: Any = catalog._units_descriptor_table
+    assert codes is None
+    assert table is None
 
 
 def test_normalize_unit_key_accepts_named_and_custom_unit() -> None:
