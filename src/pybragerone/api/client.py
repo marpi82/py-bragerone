@@ -10,6 +10,7 @@ import ssl
 from collections.abc import Callable, Mapping
 from typing import Any, Literal, NamedTuple
 
+import certifi
 import httpx
 
 from pybragerone.models.api import (
@@ -280,6 +281,7 @@ class BragerOneApiClient:
 
         self._creds_provider = creds_provider
         self._auth_lock = asyncio.Lock()
+        self._session_lock = asyncio.Lock()
         # Preferred modules.connect *shape* only — never cache a SID (reconnects mint new ones).
         self._connect_shape: _ModulesConnectShape | None = None
 
@@ -308,34 +310,52 @@ class BragerOneApiClient:
     async def _ensure_session(self) -> httpx.AsyncClient:
         """Ensure we have an AsyncClient (with optional HTTP tracing).
 
+        When ``verify`` is the bool ``True`` (httpx default), build an
+        ``SSLContext`` via ``asyncio.to_thread`` before constructing the
+        client so ``load_verify_locations`` does not block the event loop
+        (Home Assistant asyncio detector). The CA bundle matches httpx
+        (``certifi.where()``). Session construction is serialized on
+        ``_session_lock`` so concurrent first-use callers share one client.
+
         Returns:
             An active httpx AsyncClient with configured headers and event hooks.
         """
         if self._session and not self._session.is_closed:
             return self._session
 
-        # Configure default headers
-        headers = {"Origin": self._one_base, "Referer": f"{self._one_base}/"}
+        async with self._session_lock:
+            if self._session and not self._session.is_closed:
+                return self._session
 
-        # Configure timeout
-        timeout = httpx.Timeout(self._timeout)
+            # Configure default headers
+            headers = {"Origin": self._one_base, "Referer": f"{self._one_base}/"}
 
-        # Create client
-        self._session = httpx.AsyncClient(
-            headers=headers,
-            timeout=timeout,
-            follow_redirects=True,
-            verify=self._verify,
-        )
+            # Configure timeout
+            timeout = httpx.Timeout(self._timeout)
 
-        # Add HTTP tracing event hooks if enabled
-        if self._enable_http_trace:
-            self._session.event_hooks = {
-                "request": [self._log_request],
-                "response": [self._log_response],
-            }
+            verify = self._verify
+            if verify is True:
+                # Match httpx(verify=True): certifi CA bundle, loaded off-loop.
+                context = await asyncio.to_thread(ssl.create_default_context, cafile=certifi.where())
+                self._verify = context
+                verify = context
 
-        return self._session
+            # Create client
+            self._session = httpx.AsyncClient(
+                headers=headers,
+                timeout=timeout,
+                follow_redirects=True,
+                verify=verify,
+            )
+
+            # Add HTTP tracing event hooks if enabled
+            if self._enable_http_trace:
+                self._session.event_hooks = {
+                    "request": [self._log_request],
+                    "response": [self._log_response],
+                }
+
+            return self._session
 
     async def _log_request(self, request: httpx.Request) -> None:
         """Log HTTP request for tracing.
@@ -362,10 +382,12 @@ class BragerOneApiClient:
         """Close the underlying HTTP session.
 
         This should be called when the client is no longer needed to properly
-        release resources.
+        release resources. Serialized with ``_session_lock`` so a concurrent
+        first-use ``_ensure_session`` cannot orphan a newly created client.
         """
-        if self._session and not self._session.is_closed:
-            await self._session.aclose()
+        async with self._session_lock:
+            if self._session and not self._session.is_closed:
+                await self._session.aclose()
 
     # ----------------- request -----------------
 
