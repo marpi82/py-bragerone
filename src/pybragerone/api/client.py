@@ -382,10 +382,12 @@ class BragerOneApiClient:
         """Close the underlying HTTP session.
 
         This should be called when the client is no longer needed to properly
-        release resources.
+        release resources. Serialized with ``_session_lock`` so a concurrent
+        first-use ``_ensure_session`` cannot orphan a newly created client.
         """
-        if self._session and not self._session.is_closed:
-            await self._session.aclose()
+        async with self._session_lock:
+            if self._session and not self._session.is_closed:
+                await self._session.aclose()
 
     # ----------------- request -----------------
 

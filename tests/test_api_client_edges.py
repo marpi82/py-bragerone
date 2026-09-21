@@ -428,3 +428,42 @@ async def test_ensure_session_keeps_verify_false(monkeypatch: pytest.MonkeyPatch
     await client._ensure_session()
     assert created[-1]["verify"] is False
     await client.close()
+
+
+async def test_ensure_session_concurrent_first_use_shares_one_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two concurrent first-use callers share one AsyncClient (no leaked sessions)."""
+    import asyncio
+
+    created: list[object] = []
+    ssl_started = asyncio.Event()
+    ssl_continue = asyncio.Event()
+    sentinel = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+    async def _slow_to_thread(func: object, /, *args: object, **kwargs: object) -> object:
+        assert func is ssl.create_default_context
+        ssl_started.set()
+        await ssl_continue.wait()
+        return sentinel
+
+    class _CapturingClient:
+        def __init__(self, **kwargs: object) -> None:
+            created.append(self)
+            self.is_closed = False
+            self.event_hooks: dict[str, object] = {}
+
+        async def aclose(self) -> None:
+            self.is_closed = True
+
+    monkeypatch.setattr("pybragerone.api.client.asyncio.to_thread", _slow_to_thread)
+    monkeypatch.setattr("pybragerone.api.client.httpx.AsyncClient", _CapturingClient)
+
+    client = BragerOneApiClient(validate_on_start=False)
+    first = asyncio.create_task(client._ensure_session())
+    await ssl_started.wait()
+    second = asyncio.create_task(client._ensure_session())
+    await asyncio.sleep(0)  # let the second caller block on _session_lock
+    ssl_continue.set()
+    session_a, session_b = await asyncio.gather(first, second)
+    assert session_a is session_b
+    assert len(created) == 1
+    await client.close()
