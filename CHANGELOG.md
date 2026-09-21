@@ -7,6 +7,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.9.3rc4] - 2026-09-21
+
 ### Fixed
 
 - Prefer the numeric CustomUnit units-descriptor table over the post-1.04
