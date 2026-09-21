@@ -35,10 +35,15 @@ the shape upstream actually ships. Readable hand-written fixtures will not
 catch quoted keys, hyphenated hashes, or hex numeric literals.
 
 ```bash
-# Authenticated refresh (writes gitignored *.js under tests/assets/):
+# Authenticated refresh (writes gitignored *.js under tests/assets/{index,params,menus}/):
 set -a && source .env && set +a
 uv run python scripts/refresh_captured_assets.py
 uv run --group test pytest tests/test_catalog_captured_assets.py -q
 ```
+
+`scripts/refresh_captured_assets.py` only refreshes **index / params / menus**.
+Language dumps under `i18n/` are optional local fixtures — refresh those by hand
+when an i18n parse regression needs a newer chunk (the script does not download
+them). Empty `i18n/` simply skips that part of the captured-asset suite.
 
 Current live fingerprint at last refresh: see the script output (`index-*.js` name).

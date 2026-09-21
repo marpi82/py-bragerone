@@ -460,3 +460,35 @@ def test_build_param_map_normalizes_custom_unit_leftover() -> None:
     )
     assert pm is not None
     assert pm.units == "DEVICE_STATE"
+
+
+def test_build_param_map_keeps_catalog_like_unit_token() -> None:
+    """Bare ``A-Z_`` unit tokens pass the catalog-like fullmatch branch unchanged."""
+    catalog = _catalog()
+    pm = catalog._build_param_map_from_obj(
+        {
+            "group": "P5",
+            "units": "DEVICE_STATE",
+            "value": [{"group": "P5", "number": 1, "use": "v"}],
+        },
+        "STATUS_BAR_PUMP",
+        origin="test",
+    )
+    assert pm is not None
+    assert pm.units == "DEVICE_STATE"
+
+
+def test_build_param_map_keeps_non_catalog_unit_string() -> None:
+    """Plain unit strings that are neither CustomUnit nor A-Z tokens stay unchanged."""
+    catalog = _catalog()
+    pm = catalog._build_param_map_from_obj(
+        {
+            "group": "P5",
+            "units": "degC",
+            "value": [{"group": "P5", "number": 1, "use": "v"}],
+        },
+        "STATUS_BAR_PUMP",
+        origin="test",
+    )
+    assert pm is not None
+    assert pm.units == "degC"

@@ -92,6 +92,39 @@ def test_extract_token_falls_back_to_single_arg_fullmatch(monkeypatch: pytest.Mo
     assert MenuParameter._extract_token_from_expression("nope") is None
 
 
+def test_menu_parameter_token_branch_partials() -> None:
+    """Cover False sides of extract_fields / after-validator branches for Codecov partials."""
+    from pydantic import ValidationError
+
+    # Non-str pre-set token skips the scrub arm (menu.py:140 False); field typing then rejects.
+    with pytest.raises(ValidationError):
+        MenuParameter.model_validate({"token": None, "parameter": "PARAM_1"})
+
+    after = cast(Callable[[MenuParameter], MenuParameter], MenuParameter.validate_token_extracted)
+
+    # empty token + non-matching raw → fall back to raw_parameter (menu.py:178 False).
+    cleared = after(
+        MenuParameter.model_construct(
+            token="",
+            raw_parameter="not_a_helper_call",
+            permission=None,
+            raw_permission=None,
+        )
+    )
+    assert cleared.token == "not_a_helper_call"
+
+    # empty token + empty raw → raise (menu.py:183 False → 188).
+    with pytest.raises(ValueError, match="Could not extract token"):
+        after(
+            MenuParameter.model_construct(
+                token="",
+                raw_parameter="",
+                permission=None,
+                raw_permission=None,
+            )
+        )
+
+
 def test_js_public_member_name_custom_unit() -> None:
     """``CustomUnit['NAME']`` leftovers resolve to the unit enum member."""
     from pybragerone.models.menu import js_public_member_name
