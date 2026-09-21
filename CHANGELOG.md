@@ -7,6 +7,14 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Fixed
+
+- Prefer the numeric CustomUnit units-descriptor table over the post-1.04
+  ``PARAM_*`` catalog lookalike when parsing index JS, and alias named units
+  (``BOILER_STATE`` → ``9998``, ``DEVICE_STATE`` → ``9994``, …) so STATUS
+  value labels and numeric display transforms (e.g. burner power ``/10``)
+  resolve again on newer BragerOne assets.
+
 ## [2026.9.3rc3] - 2026-09-21
 
 ### Fixed

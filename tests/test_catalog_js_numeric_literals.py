@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -20,6 +20,11 @@ class _DummyApi:
     """Minimal stand-in; literal parsing never touches the network."""
 
     one_base = "https://example.invalid"
+
+    async def get_bytes(self, url: str) -> bytes:
+        """Return empty JS so refresh_index tests can clear caches without network."""
+        _ = url
+        return b"const x={};"
 
 
 def _catalog() -> LiveAssetsCatalog:
@@ -114,6 +119,216 @@ def test_units_descriptor_table_parses_hex_keyed_entries() -> None:
     assert set(table) == {"9", "10", "49"}
     assert table["49"]["text"] == "units.31"
     assert table["9"]["options"] == {"0": "units.17.0", "1": "units.17.1"}
+
+
+def test_units_descriptor_table_prefers_numeric_over_param_catalog() -> None:
+    """Post-1.04 indexes also expose a large PARAM_* object; do not select it as units."""
+    js = (
+        b"const params={"
+        b"PARAM_0:{'text':'parameters.0'},"
+        b"PARAM_1:{'text':'parameters.1'},"
+        b"PARAM_2:{'options':{0:'a',1:'b'}},"
+        b"PARAM_3:{'text':'parameters.3'},"
+        b"PARAM_4:{'text':'parameters.4'}};"
+        b"const units={"
+        b"0x270e:{'options':{'BoilerState[\\'STOP\\']':'units.9998.0','BoilerState[\\'STANDBY\\']':'units.9998.4'}},"
+        b"0x270a:{'options':{0x0:'units.9994.0',0x1:'units.9994.1'}}};"
+        b"export{params,units};"
+    )
+
+    table = _catalog()._parse_units_descriptor_table_from_index(js)
+
+    assert "9998" in table
+    assert "9994" in table
+    assert "PARAM_0" not in table
+    assert table["9998"]["options"]["BoilerState['STOP']"] == "units.9998.0"
+
+
+def test_parse_custom_unit_codes_maps_boiler_state() -> None:
+    """Parse CustomUnit bidirectional enum members in the 99xx band."""
+    js = (
+        b"var _0xcu=_0xcu||{};"
+        b"_0xcu[_0xcu['DEVICE_STATE']=0x270a]='DEVICE_STATE',"
+        b"_0xcu[_0xcu['BOILER_STATE']=0x270e]='BOILER_STATE',"
+        b"_0xcu[_0xcu['OTHER']=0x10]='OTHER';"
+    )
+    catalog = _catalog()
+    aliases = catalog._parse_custom_unit_codes_from_index(js)
+    assert aliases == {"DEVICE_STATE": "9994", "BOILER_STATE": "9998"}
+
+
+def test_units_descriptor_table_score_empty_and_param_penalty() -> None:
+    """Empty tables score zero; PARAM_* keys lower the tertiary score."""
+    assert LiveAssetsCatalog._units_descriptor_table_score({}) == (0, 0, 0)
+    scored = LiveAssetsCatalog._units_descriptor_table_score(
+        {
+            "9998": {"options": {"STOP": "units.9998.0"}},
+            "PARAM_0": {"text": "parameters.0"},
+        }
+    )
+    assert scored[0] == 1
+    assert scored[1] == 1
+    assert scored[2] == 1  # len 2 - 1 PARAM key
+    # Options without units.* tokens, and non-mapping options, do not bump the score.
+    no_units = LiveAssetsCatalog._units_descriptor_table_score(
+        {
+            "9994": {"options": {"0": "off", "1": "on"}},
+            "9995": cast(Any, {"options": "not-a-map"}),
+            "9996": {"options": {}},
+            "9997": cast(Any, "not-an-entry-mapping"),
+        }
+    )
+    assert no_units[0] == 4
+    assert no_units[1] == 0
+
+
+def test_is_unit_descriptor_entry_requires_known_keys() -> None:
+    """Only mappings with text/options/value/valuePrepare count as unit descriptors."""
+    assert LiveAssetsCatalog._is_unit_descriptor_entry("x") is False
+    assert LiveAssetsCatalog._is_unit_descriptor_entry({"foo": 1}) is False
+    assert LiveAssetsCatalog._is_unit_descriptor_entry({"text": "units.1"}) is True
+
+
+def test_parse_units_table_returns_empty_on_tree_sitter_failure() -> None:
+    """Parse errors yield an empty table instead of raising."""
+    catalog = _catalog()
+
+    class _BoomParser:
+        def parse(self, _code: bytes) -> Any:
+            raise RuntimeError("boom")
+
+    catalog._ts = cast(Any, _BoomParser())
+    assert catalog._parse_units_descriptor_table_from_index(b"const x={};") == {}
+
+
+def test_parse_units_table_keeps_empty_when_keys_do_not_normalize(caplog: pytest.LogCaptureFixture) -> None:
+    """Descriptor-shaped entries with non-unit keys produce an empty kept table."""
+    js = b"const u={'not a unit key':{'text':'units.1'},'also bad':{'options':{0:'x'}}};"
+    with caplog.at_level("WARNING"):
+        table = _catalog()._parse_units_descriptor_table_from_index(js)
+    assert table == {}
+    assert any("kept 0 of" in r.message for r in caplog.records)
+
+
+def test_canonical_unit_code_aliases_named_custom_unit() -> None:
+    """Named CustomUnit tokens collapse to the numeric code string."""
+    catalog = _catalog()
+    catalog._idx.index_bytes = (
+        b"_0xcu[_0xcu['BOILER_STATE']=0x270e]='BOILER_STATE',_0xcu[_0xcu['DEVICE_STATE']=0x270a]='DEVICE_STATE';"
+    )
+    catalog._custom_unit_codes = None
+    assert catalog.canonical_unit_code(9998) == "9998"
+    assert catalog.canonical_unit_code("BOILER_STATE") == "9998"
+    assert catalog.canonical_unit_code("DEVICE_STATE") == "9994"
+    assert catalog.canonical_unit_code("not a unit") is None
+    assert catalog.canonical_unit_code("UNKNOWN_STATE") is None
+
+
+def test_canonical_unit_code_without_index_bytes_returns_none_for_names() -> None:
+    """Named tokens cannot alias when the index has not been loaded."""
+    catalog = _catalog()
+    catalog._idx.index_bytes = b""
+    catalog._custom_unit_codes = None
+    assert catalog.canonical_unit_code("BOILER_STATE") is None
+
+
+async def test_get_unit_descriptor_aliases_named_unit_from_cached_table() -> None:
+    """``BOILER_STATE`` resolves via alias when the table is keyed by ``9998``."""
+    catalog = _catalog()
+    catalog._units_descriptor_table = {
+        "9998": {"options": {"STOP": "units.9998.0"}, "text": "units.31"},
+    }
+    catalog._custom_unit_codes = {"BOILER_STATE": "9998"}
+    desc = await catalog.get_unit_descriptor("BOILER_STATE")
+    assert desc is not None
+    assert desc["options"]["STOP"] == "units.9998.0"
+    assert await catalog.get_unit_descriptor("not a unit") is None
+    assert await catalog.get_unit_descriptor("MISSING") is None
+
+
+async def test_get_unit_descriptor_loads_tables_from_index_bytes() -> None:
+    """Uncached lookup parses index bytes and aliases named CustomUnit tokens."""
+    catalog = _catalog()
+    catalog._units_descriptor_table = None
+    catalog._custom_unit_codes = None
+    catalog._idx.index_bytes = (
+        b"const units={0x270e:{'options':{'STOP':'units.9998.0'},'text':'units.31'}};"
+        b"_0xcu[_0xcu['BOILER_STATE']=0x270e]='BOILER_STATE';"
+    )
+    desc = await catalog.get_unit_descriptor("BOILER_STATE")
+    assert desc is not None
+    assert desc["options"]["STOP"] == "units.9998.0"
+    # Second call hits the cached table path.
+    again = await catalog.get_unit_descriptor(9998)
+    assert again is not None
+    assert again["text"] == "units.31"
+
+
+async def test_get_unit_descriptor_concurrent_uncached_lookups() -> None:
+    """Two uncached lookups share the lock; the waiter sees the loaded table."""
+    import asyncio
+
+    catalog = _catalog()
+    catalog._units_descriptor_table = None
+    catalog._custom_unit_codes = None
+    catalog._idx.index_bytes = b"const units={0x270e:{'text':'units.31'}};"
+    first, second = await asyncio.gather(
+        catalog.get_unit_descriptor(9998),
+        catalog.get_unit_descriptor(9998),
+    )
+    assert first is not None and first["text"] == "units.31"
+    assert second is not None and second["text"] == "units.31"
+
+
+async def test_get_unit_descriptor_autoloads_index_when_bytes_missing() -> None:
+    """Empty index bytes trigger ``_ensure_index_loaded`` before parsing."""
+    catalog = _catalog()
+    catalog._units_descriptor_table = None
+    catalog._custom_unit_codes = None
+    catalog._idx.index_bytes = b""
+    called = False
+
+    async def _fake_ensure() -> None:
+        nonlocal called
+        called = True
+        catalog._idx.index_bytes = b"const units={0x270e:{'text':'units.31'}};"
+
+    catalog._ensure_index_loaded = _fake_ensure  # type: ignore[method-assign]
+    desc = await catalog.get_unit_descriptor(9998)
+    assert called is True
+    assert desc is not None
+    assert desc["text"] == "units.31"
+
+
+def test_ensure_units_tables_loaded_empty_without_index() -> None:
+    """Missing index bytes yields empty descriptor and alias caches."""
+    catalog = _catalog()
+    catalog._units_descriptor_table = None
+    catalog._custom_unit_codes = None
+    catalog._idx.index_bytes = b""
+    assert catalog._ensure_units_tables_loaded() == {}
+    assert catalog._custom_unit_codes == {}
+
+
+def test_ensure_units_tables_loaded_returns_cached_table() -> None:
+    """Cached descriptor table is returned without re-parsing."""
+    catalog = _catalog()
+    cached = {"9998": {"text": "units.31"}}
+    catalog._units_descriptor_table = cached
+    assert catalog._ensure_units_tables_loaded() is cached
+
+
+async def test_refresh_index_clears_custom_unit_codes_cache() -> None:
+    """Successful index refresh drops cached CustomUnit aliases."""
+    catalog = _catalog()
+    catalog._custom_unit_codes = {"BOILER_STATE": "9998"}
+    catalog._units_descriptor_table = {"9998": {"text": "units.31"}}
+    await catalog.refresh_index("https://example.invalid/assets/index-test.js", allow_recover=False)
+    # refresh_index clears caches; read via Any so mypy does not keep the pre-call dict types.
+    codes: Any = catalog._custom_unit_codes
+    table: Any = catalog._units_descriptor_table
+    assert codes is None
+    assert table is None
 
 
 def test_normalize_unit_key_accepts_named_and_custom_unit() -> None:
