@@ -1,5 +1,10 @@
 """Test new menu models with validation and prefix cleanup."""
 
+from collections.abc import Callable
+from typing import cast
+
+import pytest
+
 from pybragerone.models.menu import MenuMeta, MenuParameter, MenuParameters, MenuResult, MenuRoute
 
 
@@ -58,6 +63,33 @@ def test_menu_parameter_single_arg_obfuscated_helper() -> None:
         }
     )
     assert nested.token == "PARAM16_0"
+
+    empty_token = MenuParameter.model_validate(
+        {
+            "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+            "parameter": "_0x4d74a8('PARAM_1')",
+            "token": "",
+        }
+    )
+    assert empty_token.token == "PARAM_1"
+
+    constructed = MenuParameter.model_construct(
+        token="_0x4d74a8('PARAM_7')",
+        raw_parameter="_0x4d74a8('PARAM_7')",
+        permission=None,
+        raw_permission="A.DISPLAY_PARAMETER_LEVEL_1",
+    )
+    after_validate = cast(Callable[[MenuParameter], MenuParameter], MenuParameter.validate_token_extracted)
+    assert after_validate(constructed).token == "PARAM_7"
+
+
+def test_extract_token_falls_back_to_single_arg_fullmatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When PARAM_REGEX misses, the dedicated single-arg fullmatch still recovers the token."""
+    import re
+
+    monkeypatch.setattr(MenuParameter, "PARAM_REGEX", re.compile(r"(?!x)x"))
+    assert MenuParameter._extract_token_from_expression("_0x4d74a8('PARAM_1')") == "PARAM_1"
+    assert MenuParameter._extract_token_from_expression("nope") is None
 
 
 def test_js_public_member_name_custom_unit() -> None:

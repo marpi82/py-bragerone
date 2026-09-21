@@ -6,6 +6,8 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import shutil
+import tempfile
 from pathlib import Path
 
 from pybragerone import BragerOneApiClient
@@ -14,6 +16,27 @@ from pybragerone.models.catalog import LiveAssetsCatalog
 
 _ASSETS = Path(__file__).resolve().parents[1] / "tests" / "assets"
 _INDEX_RE = re.compile(r"index-[A-Za-z0-9_-]+\.js")
+
+
+def _write_bytes(path: Path, payload: bytes) -> None:
+    """Create parents and write *payload* to *path*."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(payload)
+
+
+def _promote_staged_captures(*, staged: Path, index_dir: Path, params_dir: Path, menus_dir: Path) -> None:
+    """Atomically replace capture directories with staged downloads."""
+    for folder in (index_dir, params_dir, menus_dir):
+        folder.mkdir(parents=True, exist_ok=True)
+        for old in folder.glob("*.js"):
+            old.unlink()
+    for subdir in ("index", "params", "menus"):
+        src = staged / subdir
+        dst = _ASSETS / subdir
+        if not src.is_dir():
+            continue
+        for path in src.glob("*.js"):
+            shutil.copy2(path, dst / path.name)
 
 
 async def main() -> int:
@@ -30,54 +53,63 @@ async def main() -> int:
         index_name = Path(index_url).name if index_url else "index-unknown.js"
         if not _INDEX_RE.fullmatch(index_name):
             raise SystemExit(f"unexpected index asset name: {index_name!r}")
+        index_bytes = catalog._idx.index_bytes or b""
+        if not index_bytes:
+            raise SystemExit("index bytes unavailable; refusing to clear captured assets")
 
         index_dir = _ASSETS / "index"
         params_dir = _ASSETS / "params"
         menus_dir = _ASSETS / "menus"
-        for folder in (index_dir, params_dir, menus_dir):
-            folder.mkdir(parents=True, exist_ok=True)
 
-        # Clear previous dumps so captured tests exercise only the new fingerprint.
-        for folder in (index_dir, params_dir, menus_dir):
-            for old in folder.glob("*.js"):
-                old.unlink()
+        with tempfile.TemporaryDirectory(prefix="pybo-assets-") as tmp:
+            staged = Path(tmp)
+            staged_index = staged / "index"
+            staged_params = staged / "params"
+            staged_menus = staged / "menus"
 
-        index_bytes = catalog._idx.index_bytes or b""
-        (index_dir / index_name).write_bytes(index_bytes)
-        print(f"wrote {index_dir / index_name} ({len(index_bytes)} bytes)")
+            await asyncio.to_thread(_write_bytes, staged_index / index_name, index_bytes)
+            print(f"staged {index_name} ({len(index_bytes)} bytes)")
 
-        # Representative mapped params + STATUS samples (skip tokens without dedicated assets).
-        wanted = ["PARAM_66", "STATUS_BAR_PUMP", "STATUS_P5_0", "STATUS_P5_22", "STATUS_P5_81"]
-        for token in wanted:
-            asset = catalog._idx.find_asset_for_basename(token)
-            if asset is None:
-                print(f"skip missing asset basename={token}")
-                continue
-            code = await client.get_bytes(asset.url)
-            out = params_dir / f"{asset.base}-{asset.hash}.js"
-            out.write_bytes(code)
-            print(f"wrote {out.name} ({len(code)} bytes)")
+            # Representative mapped params + STATUS samples (skip tokens without dedicated assets).
+            wanted = ["PARAM_66", "STATUS_BAR_PUMP", "STATUS_P5_0", "STATUS_P5_22", "STATUS_P5_81"]
+            for token in wanted:
+                asset = catalog._idx.find_asset_for_basename(token)
+                if asset is None:
+                    print(f"skip missing asset basename={token}")
+                    continue
+                code = await client.get_bytes(asset.url)
+                out = staged_params / f"{asset.base}-{asset.hash}.js"
+                await asyncio.to_thread(_write_bytes, out, code)
+                print(f"staged {out.name} ({len(code)} bytes)")
 
-        # Prefer the hashed menu id from menu_map (basename "0" can collide with other chunks).
-        menu_id = catalog._idx.menu_map.get(0) or catalog._idx.menu_map.get("0")
-        menu_asset = None
-        if isinstance(menu_id, str) and menu_id:
-            for refs in catalog._idx.assets_by_basename.values():
-                for ref in refs:
-                    if f"{ref.base}-{ref.hash}" == menu_id:
-                        menu_asset = ref
+            # Prefer the hashed menu id from menu_map (basename "0" can collide with other chunks).
+            menu_id = catalog._idx.menu_map.get(0) or catalog._idx.menu_map.get("0")
+            menu_asset = None
+            if isinstance(menu_id, str) and menu_id:
+                for refs in catalog._idx.assets_by_basename.values():
+                    for ref in refs:
+                        if f"{ref.base}-{ref.hash}" == menu_id:
+                            menu_asset = ref
+                            break
+                    if menu_asset is not None:
                         break
-                if menu_asset is not None:
-                    break
-        if menu_asset is None:
-            menu_asset = catalog._idx.find_asset_for_basename("module.menu")
-        if menu_asset is not None:
-            code = await client.get_bytes(menu_asset.url)
-            out = menus_dir / f"{menu_asset.base}-{menu_asset.hash}.js"
-            out.write_bytes(code)
-            print(f"wrote {out.name} ({len(code)} bytes)")
-        else:
-            print(f"skip menu asset (menu_id={menu_id!r})")
+            if menu_asset is None:
+                menu_asset = catalog._idx.find_asset_for_basename("module.menu")
+            if menu_asset is not None:
+                code = await client.get_bytes(menu_asset.url)
+                out = staged_menus / f"{menu_asset.base}-{menu_asset.hash}.js"
+                await asyncio.to_thread(_write_bytes, out, code)
+                print(f"staged {out.name} ({len(code)} bytes)")
+            else:
+                print(f"skip menu asset (menu_id={menu_id!r})")
+
+            await asyncio.to_thread(
+                _promote_staged_captures,
+                staged=staged,
+                index_dir=index_dir,
+                params_dir=params_dir,
+                menus_dir=menus_dir,
+            )
 
         print(f"fingerprint index={index_name}")
     finally:

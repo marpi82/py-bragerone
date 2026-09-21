@@ -421,6 +421,16 @@ def test_resolve_tokens_normalizes_leftover_permission_on_fast_path() -> None:
                                 "parameter": "E(A.READ,'PARAM_P30_3')",
                                 "token": "PARAM_P30_3",
                             },
+                            {
+                                "permissionModule": "DISPLAY_PLAIN",
+                                "parameter": "_0x4d74a8('PARAM_1')",
+                                "token": "_0x4d74a8('PARAM_1')",
+                            },
+                            {
+                                "permissionModule": "DISPLAY_PLAIN",
+                                "parameter": "_0x4d74a8('PARAM_2')",
+                                "token": "junk(not_a_call",
+                            },
                         ]
                     },
                 },
@@ -434,6 +444,8 @@ def test_resolve_tokens_normalizes_leftover_permission_on_fast_path() -> None:
     assert read[0].permission.name == "DISPLAY_PARAMETER_LEVEL_1"
     assert read[1].permission is not None
     assert read[1].permission.name == "DISPLAY_PLAIN"
+    assert read[2].token == "PARAM_1"
+    assert read[3].token == "PARAM_2"
 
 
 _LIVE_MENU_MAP = """

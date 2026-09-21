@@ -23,6 +23,7 @@ _LEFTOVER_HINT = re.compile(r"\(|\[|\]|\)")
 
 
 def _classify(token: str, *, has_asset: bool) -> str:
+    """Bucket an unmapped panel token for live diagnostics."""
     if _PUBLIC.fullmatch(token):
         return "public_with_asset" if has_asset else "public_no_asset"
     if _LEFTOVER_HINT.search(token) or "map" in token.casefold():
@@ -32,6 +33,12 @@ def _classify(token: str, *, has_asset: bool) -> str:
     if _HELPER_TOKEN_RE.search(token):
         return "embedded_public_token"
     return "other"
+
+
+def _write_report(out_path: Path, payload: str) -> None:
+    """Create parent dirs and write the diagnostic JSON report."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(payload, encoding="utf-8")
 
 
 async def main() -> int:
@@ -63,7 +70,10 @@ async def main() -> int:
         for mod in mods:
             devid = str(mod.devid)
             store = ParamStore()
-            status, data = await client.modules_parameters_prime([devid], return_data=True)  # type: ignore[misc]
+            prime = await client.modules_parameters_prime([devid], return_data=True)
+            if not isinstance(prime, tuple) or len(prime) != 2:
+                raise RuntimeError(f"{devid}: modules_parameters_prime returned unexpected payload shape")
+            status, data = prime
             if status not in (200, 204) or not isinstance(data, dict):
                 raise RuntimeError(f"prime failed for {devid}: {status}")
             store.ingest_prime_payload(data)
@@ -111,8 +121,8 @@ async def main() -> int:
             "basename_count": len(basenames),
         }
         out_path = Path("reports/live/unmapped_panel_tokens.json")
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        payload = json.dumps(out, indent=2, ensure_ascii=False) + "\n"
+        await asyncio.to_thread(_write_report, out_path, payload)
         print(json.dumps(out, indent=2, ensure_ascii=False))
         print(f"wrote {out_path}", file=sys.stderr)
     finally:
