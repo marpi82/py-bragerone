@@ -5,6 +5,7 @@ from __future__ import annotations
 import ssl
 from datetime import UTC, datetime, timedelta
 
+import certifi
 import httpx
 import pytest
 from pytest_httpx import HTTPXMock
@@ -346,6 +347,7 @@ async def test_ensure_session_builds_ssl_context_off_loop(monkeypatch: pytest.Mo
 
     async def _to_thread(func: object, /, *args: object, **kwargs: object) -> object:
         assert func is ssl.create_default_context
+        assert kwargs.get("cafile") == certifi.where()
         return sentinel
 
     class _CapturingClient:
