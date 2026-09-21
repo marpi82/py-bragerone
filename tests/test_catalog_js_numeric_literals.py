@@ -152,6 +152,86 @@ def test_parse_custom_unit_codes_maps_boiler_state() -> None:
     assert aliases == {"DEVICE_STATE": "9994", "BOILER_STATE": "9998"}
 
 
+def test_units_descriptor_table_score_empty_and_param_penalty() -> None:
+    """Empty tables score zero; PARAM_* keys lower the tertiary score."""
+    assert LiveAssetsCatalog._units_descriptor_table_score({}) == (0, 0, 0)
+    scored = LiveAssetsCatalog._units_descriptor_table_score(
+        {
+            "9998": {"options": {"STOP": "units.9998.0"}},
+            "PARAM_0": {"text": "parameters.0"},
+        }
+    )
+    assert scored[0] == 1
+    assert scored[1] == 1
+    assert scored[2] == 1  # len 2 - 1 PARAM key
+
+
+def test_canonical_unit_code_aliases_named_custom_unit() -> None:
+    """Named CustomUnit tokens collapse to the numeric code string."""
+    catalog = _catalog()
+    catalog._idx.index_bytes = (
+        b"_0xcu[_0xcu['BOILER_STATE']=0x270e]='BOILER_STATE',_0xcu[_0xcu['DEVICE_STATE']=0x270a]='DEVICE_STATE';"
+    )
+    catalog._custom_unit_codes = None
+    assert catalog.canonical_unit_code(9998) == "9998"
+    assert catalog.canonical_unit_code("BOILER_STATE") == "9998"
+    assert catalog.canonical_unit_code("DEVICE_STATE") == "9994"
+    assert catalog.canonical_unit_code("not a unit") is None
+    assert catalog.canonical_unit_code("UNKNOWN_STATE") is None
+
+
+def test_canonical_unit_code_without_index_bytes_returns_none_for_names() -> None:
+    """Named tokens cannot alias when the index has not been loaded."""
+    catalog = _catalog()
+    catalog._idx.index_bytes = b""
+    catalog._custom_unit_codes = None
+    assert catalog.canonical_unit_code("BOILER_STATE") is None
+
+
+@pytest.mark.asyncio
+async def test_get_unit_descriptor_aliases_named_unit_from_cached_table() -> None:
+    """``BOILER_STATE`` resolves via alias when the table is keyed by ``9998``."""
+    catalog = _catalog()
+    catalog._units_descriptor_table = {
+        "9998": {"options": {"STOP": "units.9998.0"}, "text": "units.31"},
+    }
+    catalog._custom_unit_codes = {"BOILER_STATE": "9998"}
+    desc = await catalog.get_unit_descriptor("BOILER_STATE")
+    assert desc is not None
+    assert desc["options"]["STOP"] == "units.9998.0"
+    assert await catalog.get_unit_descriptor("not a unit") is None
+    assert await catalog.get_unit_descriptor("MISSING") is None
+
+
+@pytest.mark.asyncio
+async def test_get_unit_descriptor_loads_tables_from_index_bytes() -> None:
+    """Uncached lookup parses index bytes and aliases named CustomUnit tokens."""
+    catalog = _catalog()
+    catalog._units_descriptor_table = None
+    catalog._custom_unit_codes = None
+    catalog._idx.index_bytes = (
+        b"const units={0x270e:{'options':{'STOP':'units.9998.0'},'text':'units.31'}};"
+        b"_0xcu[_0xcu['BOILER_STATE']=0x270e]='BOILER_STATE';"
+    )
+    desc = await catalog.get_unit_descriptor("BOILER_STATE")
+    assert desc is not None
+    assert desc["options"]["STOP"] == "units.9998.0"
+    # Second call hits the cached table path.
+    again = await catalog.get_unit_descriptor(9998)
+    assert again is not None
+    assert again["text"] == "units.31"
+
+
+def test_ensure_units_tables_loaded_empty_without_index() -> None:
+    """Missing index bytes yields empty descriptor and alias caches."""
+    catalog = _catalog()
+    catalog._units_descriptor_table = None
+    catalog._custom_unit_codes = None
+    catalog._idx.index_bytes = b""
+    assert catalog._ensure_units_tables_loaded() == {}
+    assert catalog._custom_unit_codes == {}
+
+
 def test_normalize_unit_key_accepts_named_and_custom_unit() -> None:
     """Post-1.04 units may be bare names or ``CustomUnit['…']`` leftovers."""
     catalog = _catalog()

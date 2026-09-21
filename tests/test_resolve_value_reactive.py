@@ -283,6 +283,117 @@ async def test_resolve_value_maps_named_boiler_state_unit_token() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_unit_falls_back_to_canonical_numeric_alias() -> None:
+    """i18n units stay keyed by ``9998`` while ParamMap may emit ``BOILER_STATE``."""
+    store = ParamStore()
+    mapping = ParamMap(
+        key="STATUS_P5_0",
+        group=None,
+        paths={},
+        component_type=None,
+        units="BOILER_STATE",
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"name": "app.one.boilerStatus.name"},
+    )
+
+    class _AliasAssets(_StubAssets):
+        def canonical_unit_code(self, unit_code: Any) -> str | None:
+            key = str(unit_code).strip()
+            if key == "BOILER_STATE":
+                return "9998"
+            return key if key.isdigit() else None
+
+    resolver = ParamResolver(
+        store=store,
+        assets=cast(
+            AssetsProtocol,
+            _AliasAssets(
+                mapping=mapping,
+                i18n_by_namespace={"units": {"9998": {"0": "Stop", "1": "Praca"}}},
+            ),
+        ),
+        lang="pl",
+    )
+    assert await resolver.resolve_unit("BOILER_STATE") == {"0": "Stop", "1": "Praca"}
+    assert await resolver.resolve_unit(9997) is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_unit_meta_aliases_named_code_to_text_fallback() -> None:
+    """When descriptor lookup misses, named codes still fall back to ``units.NNNN``."""
+    store = ParamStore()
+    mapping = ParamMap(
+        key="STATUS_P5_0",
+        group=None,
+        paths={},
+        component_type=None,
+        units="BOILER_STATE",
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"name": "x"},
+    )
+
+    class _AliasOnlyAssets(_StubAssets):
+        def canonical_unit_code(self, unit_code: Any) -> str | None:
+            return "9998" if str(unit_code).strip() == "BOILER_STATE" else None
+
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return None
+
+    resolver = ParamResolver(
+        store=store,
+        assets=cast(AssetsProtocol, _AliasOnlyAssets(mapping=mapping)),
+        lang="pl",
+    )
+    meta = await resolver._resolve_unit_meta(raw_unit_code="BOILER_STATE")
+    assert meta == {"text": "units.9998"}
+
+
+@pytest.mark.asyncio
+async def test_resolve_unit_meta_retries_descriptor_via_canonical_alias() -> None:
+    """Named lookup miss, then numeric alias hits the units-descriptor table."""
+    store = ParamStore()
+    mapping = ParamMap(
+        key="STATUS_P5_0",
+        group=None,
+        paths={},
+        component_type=None,
+        units="BOILER_STATE",
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"name": "x"},
+    )
+
+    class _SplitLookupAssets(_StubAssets):
+        def canonical_unit_code(self, unit_code: Any) -> str | None:
+            return "9998" if str(unit_code).strip() == "BOILER_STATE" else None
+
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            key = str(unit_code).strip()
+            if key == "9998":
+                return {"options": {"STOP": "units.9998.0"}}
+            return None
+
+    resolver = ParamResolver(
+        store=store,
+        assets=cast(AssetsProtocol, _SplitLookupAssets(mapping=mapping)),
+        lang="pl",
+    )
+    meta = await resolver._resolve_unit_meta(raw_unit_code="BOILER_STATE")
+    assert meta == {"options": {"STOP": "units.9998.0"}}
+
+
+@pytest.mark.asyncio
 async def test_resolve_value_computed_reactive_paths_value_rules() -> None:
     """Computed rules stored under paths.value are evaluated correctly."""
     store = ParamStore()

@@ -1267,20 +1267,24 @@ class ParamResolver:
         return None
 
     async def resolve_unit(self, unit_code: Any) -> str | dict[str, str] | None:
-        """Resolve unit metadata to a human-readable label or enumeration mapping."""
-        resolved = await self._i18n.resolve_unit(unit_code)
-        if resolved is not None:
-            return resolved
+        """Resolve unit metadata to a human-readable label or enumeration mapping.
+
+        Post-1.04 ParamMaps may emit named ``CustomUnit`` tokens (``BOILER_STATE``)
+        while the ``units`` i18n table remains keyed by numeric codes (``9998``).
+        Prefer the canonical numeric alias when available so enum maps resolve.
+        """
         canonicalize = getattr(self._assets, "canonical_unit_code", None)
-        if not callable(canonicalize):
-            return None
-        try:
-            alias = canonicalize(unit_code)
-        except Exception:
-            return None
-        if alias is None or str(alias) == str(unit_code).strip():
-            return None
-        return await self._i18n.resolve_unit(alias)
+        if callable(canonicalize):
+            try:
+                alias = canonicalize(unit_code)
+            except Exception:
+                alias = None
+            else:
+                if alias is not None and str(alias) != str(unit_code).strip():
+                    resolved_alias = await self._i18n.resolve_unit(alias)
+                    if resolved_alias is not None:
+                        return resolved_alias
+        return await self._i18n.resolve_unit(unit_code)
 
     async def resolve_raw_display_value(self, raw: Any, *, unit_code: Any) -> Any:
         """Return a display-ready scalar for activity/alarm feeds (enum, i18n, transforms).
