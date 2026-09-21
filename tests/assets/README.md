@@ -33,3 +33,12 @@ table, and `units` i18n namespace.
 Refresh dumps when that fingerprint changes so captured-asset tests exercise
 the shape upstream actually ships. Readable hand-written fixtures will not
 catch quoted keys, hyphenated hashes, or hex numeric literals.
+
+```bash
+# Authenticated refresh (writes gitignored *.js under tests/assets/):
+set -a && source .env && set +a
+uv run python scripts/refresh_captured_assets.py
+uv run --group test pytest tests/test_catalog_captured_assets.py -q
+```
+
+Current live fingerprint at last refresh: see the script output (`index-*.js` name).

@@ -32,6 +32,42 @@ def test_menu_parameter_obfuscated_subscript_permission() -> None:
     assert param.permission.name == "DISPLAY_PARAMETER_LEVEL_1"
 
 
+def test_menu_parameter_single_arg_obfuscated_helper() -> None:
+    """Collapse post-1.03.41 ``_0x…('TOKEN')`` leftovers used as menu parameters."""
+    param = MenuParameter.model_validate(
+        {
+            "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+            "parameter": "_0x4d74a8('PARAM_1')",
+        }
+    )
+    assert param.token == "PARAM_1"
+
+    preset = MenuParameter.model_validate(
+        {
+            "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+            "parameter": "_0x4d74a8('COMMAND_MODULE_RESTART')",
+            "token": "_0x4d74a8('COMMAND_MODULE_RESTART')",
+        }
+    )
+    assert preset.token == "COMMAND_MODULE_RESTART"
+
+    nested = MenuParameter.model_validate(
+        {
+            "permissionModule": "A.DISPLAY_PARAMETER_LEVEL_1",
+            "parameter": "_0x4d74a8('PARAM16_0')",
+        }
+    )
+    assert nested.token == "PARAM16_0"
+
+
+def test_js_public_member_name_custom_unit() -> None:
+    """``CustomUnit['NAME']`` leftovers resolve to the unit enum member."""
+    from pybragerone.models.menu import js_public_member_name
+
+    assert js_public_member_name("CustomUnit['CASCADE_CONTROLLER_STATE']") == "CASCADE_CONTROLLER_STATE"
+    assert js_public_member_name("[CustomUnit['DEVICE_STATE']]") == "DEVICE_STATE"
+
+
 def test_menu_parameter_extraction() -> None:
     """Test parameter token extraction from various formats."""
     # Test lowercase format

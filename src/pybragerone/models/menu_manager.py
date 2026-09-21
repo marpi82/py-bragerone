@@ -288,6 +288,11 @@ class MenuProcessor:
                     parameter = item.get("parameter")
                     if isinstance(token, str) and token and isinstance(parameter, str) and parameter:
                         fast_item = dict(item)
+                        scrubbed = MenuParameter._extract_token_from_expression(token)
+                        if scrubbed is None and "(" in token:
+                            scrubbed = MenuParameter._extract_token_from_expression(parameter)
+                        if scrubbed is not None:
+                            fast_item["token"] = scrubbed
                         permission_module = fast_item.get("permissionModule")
                         if isinstance(permission_module, str) and permission_module:
                             fast_item["permissionModule"] = normalize_permission(permission_module)
