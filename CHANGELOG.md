@@ -7,6 +7,16 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.9.3rc2] - 2026-09-21
+
+### Fixed
+
+- Restore ``ParamMap`` resolution for newer BragerOne web-app assets that emit
+  leftover single-arg obfuscated helpers (``_0x…('TOKEN')``) in menu/param
+  tokens and ``CustomUnit['…']`` unit leftovers. Menu scrubbing, catalog
+  ``PARAM_CALL_RE``, and index fallback recover mappings that previously
+  dropped to unmapped (#422).
+
 ## [2026.9.3rc1] - 2026-09-15
 
 ### Added
@@ -416,7 +426,8 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc1...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc2...HEAD
+[2026.9.3rc2]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc1...2026.9.3rc2
 [2026.9.3rc1]: https://github.com/marpi82/py-bragerone/compare/2026.9.2...2026.9.3rc1
 [2026.9.2]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc4...2026.9.2
 [2026.9.2rc4]: https://github.com/marpi82/py-bragerone/compare/2026.9.2rc3...2026.9.2rc4
