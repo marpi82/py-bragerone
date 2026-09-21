@@ -371,3 +371,58 @@ async def test_ensure_session_builds_ssl_context_off_loop(monkeypatch: pytest.Mo
     assert again is session
     assert len(created) == 1
     await client.close()
+
+
+async def test_ensure_session_keeps_prebuilt_verify(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prebuilt SSLContext skips the to_thread cert-load path."""
+    created: list[dict[str, object]] = []
+    threaded = False
+    prebuilt = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+    async def _to_thread(func: object, /, *args: object, **kwargs: object) -> object:
+        nonlocal threaded
+        threaded = True
+        raise AssertionError("to_thread should not run for prebuilt verify")
+
+    class _CapturingClient:
+        def __init__(self, **kwargs: object) -> None:
+            created.append(dict(kwargs))
+            self.is_closed = False
+            self.event_hooks: dict[str, object] = {}
+
+        async def aclose(self) -> None:
+            self.is_closed = True
+
+    monkeypatch.setattr("pybragerone.api.client.asyncio.to_thread", _to_thread)
+    monkeypatch.setattr("pybragerone.api.client.httpx.AsyncClient", _CapturingClient)
+
+    client = BragerOneApiClient(validate_on_start=False, verify=prebuilt)
+    await client._ensure_session()
+    assert created[-1]["verify"] is prebuilt
+    assert threaded is False
+    await client.close()
+
+
+async def test_ensure_session_keeps_verify_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    """verify=False is passed through without building an SSLContext."""
+    created: list[dict[str, object]] = []
+
+    async def _to_thread(func: object, /, *args: object, **kwargs: object) -> object:
+        raise AssertionError("to_thread should not run for verify=False")
+
+    class _CapturingClient:
+        def __init__(self, **kwargs: object) -> None:
+            created.append(dict(kwargs))
+            self.is_closed = False
+            self.event_hooks: dict[str, object] = {}
+
+        async def aclose(self) -> None:
+            self.is_closed = True
+
+    monkeypatch.setattr("pybragerone.api.client.asyncio.to_thread", _to_thread)
+    monkeypatch.setattr("pybragerone.api.client.httpx.AsyncClient", _CapturingClient)
+
+    client = BragerOneApiClient(validate_on_start=False, verify=False)
+    await client._ensure_session()
+    assert created[-1]["verify"] is False
+    await client.close()
