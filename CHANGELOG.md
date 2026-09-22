@@ -7,6 +7,40 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.9.3] - 2026-09-22
+
+BragerOne 1.04+ catalog/UoM train from ``2026.9.3rc4`` promoted to stable
+(alarm/activity feed invalidate callbacks, ParamMap leftover recovery,
+SSLContext off-loop session init, named CustomUnit units-table + aliases).
+
+### Added
+
+- ``BragerOneGateway.on_alarm_feed_invalidate`` / ``on_activity_feed_invalidate`` —
+  SPA-parity Socket.IO signals that alarm/activity **row lists** should re-fetch
+  from REST (``app:module:alarms:change`` / ``received``, activity quantity, task
+  lifecycle). Not published on ParamUpdate ``EventBus`` (#405 / #386 Phase B).
+  ``RealtimeManager`` now also registers ``…alarms:quantity:change`` and
+  ``…activity:quantity:change`` handlers (previously only ``…:listen`` emits).
+
+### Fixed
+
+- Restore ``ParamMap`` resolution for newer BragerOne web-app assets that emit
+  leftover single-arg obfuscated helpers (``_0x…('TOKEN')``) in menu/param
+  tokens and ``CustomUnit['…']`` unit leftovers. Menu scrubbing, catalog
+  ``PARAM_CALL_RE``, and index fallback recover mappings that previously
+  dropped to unmapped (#422).
+
+- ``BragerOneApiClient._ensure_session`` builds a default ``SSLContext`` via
+  ``asyncio.to_thread`` when ``verify=True``, so httpx does not call
+  ``load_verify_locations`` on the event loop (Home Assistant blocking-call
+  detector).
+
+- Prefer the numeric CustomUnit units-descriptor table over the post-1.04
+  ``PARAM_*`` catalog lookalike when parsing index JS, and alias named units
+  (``BOILER_STATE`` → ``9998``, ``DEVICE_STATE`` → ``9994``, …) so STATUS
+  value labels and numeric display transforms (e.g. burner power ``/10``)
+  resolve again on newer BragerOne assets.
+
 ## [2026.9.3rc4] - 2026-09-21
 
 ### Fixed
@@ -445,7 +479,9 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc3...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.3...HEAD
+[2026.9.3]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc4...2026.9.3
+[2026.9.3rc4]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc3...2026.9.3rc4
 [2026.9.3rc3]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc2...2026.9.3rc3
 [2026.9.3rc2]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc1...2026.9.3rc2
 [2026.9.3rc1]: https://github.com/marpi82/py-bragerone/compare/2026.9.2...2026.9.3rc1
