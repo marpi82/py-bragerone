@@ -479,7 +479,9 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc3...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.3...HEAD
+[2026.9.3]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc4...2026.9.3
+[2026.9.3rc4]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc3...2026.9.3rc4
 [2026.9.3rc3]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc2...2026.9.3rc3
 [2026.9.3rc2]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc1...2026.9.3rc2
 [2026.9.3rc1]: https://github.com/marpi82/py-bragerone/compare/2026.9.2...2026.9.3rc1
