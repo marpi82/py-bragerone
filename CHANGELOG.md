@@ -7,6 +7,17 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.10.1] - 2026-10-10
+
+### Fixed
+
+- Load the SPA default REST menu (`GET /v1/manufacturers/0/devices/0/menu/0.0.0`)
+  when `deviceMenu` JS assets are missing or parse to zero routes. BragerOne
+  1.04.05+ dropped `module.menu` / `deviceMenu/0` chunks, which left
+  `deviceMenu=0` modules (e.g. HT Connect) with empty panels and broke
+  live-contract compat smoke (#437). Device-specific menus
+  (`manuf/dev/fw` before the `0/0/0.0.0` default) remain follow-up (#438).
+
 ## [2026.9.3] - 2026-09-22
 
 BragerOne 1.04+ catalog/UoM train from ``2026.9.3rc4`` promoted to stable
@@ -479,7 +490,8 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.9.3...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.10.1...HEAD
+[2026.10.1]: https://github.com/marpi82/py-bragerone/compare/2026.9.3...2026.10.1
 [2026.9.3]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc4...2026.9.3
 [2026.9.3rc4]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc3...2026.9.3rc4
 [2026.9.3rc3]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc2...2026.9.3rc3
