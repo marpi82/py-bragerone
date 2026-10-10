@@ -203,6 +203,8 @@ def test_menu_meta_accepts_server_bool_display_dropdown() -> None:
     missing_name = MenuMeta.model_validate({"icon": "mdi-clock", "displayDropdown": False})
     assert missing_name.display_name == ""
     assert missing_name.display_dropdown is False
+    null_name = MenuMeta.model_validate({"displayName": None, "displayDropdown": True})
+    assert null_name.display_name == ""
 
 
 def test_menu_route_full() -> None:

@@ -131,3 +131,22 @@ async def test_get_module_menu_falls_back_to_server_default_menu() -> None:
     assert menu.routes[0].meta.display_dropdown is True
     mock_api.get_bytes.assert_not_called()
     mock_api.get_devices_menu.assert_awaited_once_with(0, 0, "0.0.0")
+
+
+@pytest.mark.asyncio
+async def test_fetch_server_default_menu_guards_invalid_payloads() -> None:
+    """Server menu fallback skips when the API method/payload is unusable."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = "not-callable"
+    empty_routes, empty_url = await LiveAssetsCatalog(mock_api)._fetch_server_default_menu_routes()
+    assert empty_routes == []
+    assert empty_url is None
+
+    mock_api.get_devices_menu = AsyncMock(return_value=["not", "an", "object"])
+    catalog = LiveAssetsCatalog(mock_api)
+    bad_type, _ = await catalog._fetch_server_default_menu_routes()
+    assert bad_type == []
+
+    mock_api.get_devices_menu = AsyncMock(return_value={"priority": 0, "deviceMenu": "oops"})
+    missing_list, _ = await catalog._fetch_server_default_menu_routes()
+    assert missing_list == []
