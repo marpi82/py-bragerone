@@ -94,7 +94,6 @@ def test_generic_menu_asset_skips_menu_0_i18n_chunk() -> None:
     assert catalog._generic_menu_asset() is bare_zero
 
 
-@pytest.mark.asyncio
 async def test_get_module_menu_falls_back_to_server_default_menu() -> None:
     """Unmapped device_menu loads SPA REST default menu when assets are gone."""
     mock_api = AsyncMock()
@@ -133,7 +132,6 @@ async def test_get_module_menu_falls_back_to_server_default_menu() -> None:
     mock_api.get_devices_menu.assert_awaited_once_with(0, 0, "0.0.0")
 
 
-@pytest.mark.asyncio
 async def test_fetch_server_default_menu_guards_invalid_payloads() -> None:
     """Server menu fallback skips when the API method/payload is unusable."""
     mock_api = AsyncMock()
@@ -150,3 +148,35 @@ async def test_fetch_server_default_menu_guards_invalid_payloads() -> None:
     mock_api.get_devices_menu = AsyncMock(return_value={"priority": 0, "deviceMenu": "oops"})
     missing_list, _ = await catalog._fetch_server_default_menu_routes()
     assert missing_list == []
+
+
+async def test_get_module_menu_uses_rest_when_asset_parses_to_zero_routes() -> None:
+    """Empty/malformed menu JS still falls through to the SPA default REST menu."""
+    mock_api = AsyncMock()
+    mock_api.get_bytes = AsyncMock(return_value=b"export default [];")
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": 0,
+            "extends": [],
+            "standalone": False,
+            "deviceMenu": [
+                {
+                    "path": "dhw",
+                    "name": "modules.menu.dhw",
+                    "meta": {
+                        "displayName": "menu.MAINMENU_USTAWIENIA_CWU",
+                        "permissionModule": "DISPLAY_MENU_DHW",
+                    },
+                }
+            ],
+        }
+    )
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.menu_map[0] = "0-AAAA"
+    catalog._idx.assets_by_basename["0"] = [AssetRef(url="https://one.brager.pl/assets/0-AAAA.js", base="0", hash="AAAA")]
+
+    menu = await catalog.get_module_menu(device_menu=0, permissions=["DISPLAY_MENU_DHW"])
+    assert len(menu.routes) == 1
+    assert menu.routes[0].path == "dhw"
+    mock_api.get_bytes.assert_awaited_once_with("https://one.brager.pl/assets/0-AAAA.js")
+    mock_api.get_devices_menu.assert_awaited_once_with(0, 0, "0.0.0")

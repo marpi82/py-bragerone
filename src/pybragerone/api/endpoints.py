@@ -243,4 +243,7 @@ def devices_menu_url(
     Returns:
         URL for GET requests that return ``{priority, extends, standalone, deviceMenu}``.
     """
-    return f"{_base(api_base)}/manufacturers/{quote(str(manuf_code))}/devices/{quote(str(dev_code))}/menu/{quote(str(fw))}"
+    # Keep firmware dots (``0.0.0``, ``2.08``); encode ``/`` so ``fw`` stays one path segment.
+    return (
+        f"{_base(api_base)}/manufacturers/{quote(str(manuf_code))}/devices/{quote(str(dev_code))}/menu/{quote(str(fw), safe='.')}"
+    )

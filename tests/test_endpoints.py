@@ -13,9 +13,13 @@ def test_module_url_quotes_module_id() -> None:
 
 
 def test_devices_menu_url_builds_spa_path() -> None:
-    """SPA ``devices_menu.show`` path keeps firmware dots unencoded."""
+    """SPA ``devices_menu.show`` path keeps firmware dots; encodes ``/`` in ``fw``."""
     assert devices_menu_url(0, 0, "0.0.0") == f"{API_BASE}/manufacturers/0/devices/0/menu/0.0.0"
     assert (
         devices_menu_url(67, 7, "2.08", api_base="https://example.test/v1")
         == "https://example.test/v1/manufacturers/67/devices/7/menu/2.08"
+    )
+    assert (
+        devices_menu_url(1, 2, "1/../../modules", api_base="https://example.test/v1")
+        == "https://example.test/v1/manufacturers/1/devices/2/menu/1%2F..%2F..%2Fmodules"
     )
