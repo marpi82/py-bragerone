@@ -29,6 +29,7 @@ from .constants import API_BASE, ONE_BASE
 from .endpoints import (
     auth_revoke_url,
     auth_user_url,
+    devices_menu_url,
     module_card_url,
     module_command_raw_url,
     module_command_url,
@@ -938,6 +939,36 @@ class BragerOneApiClient:
         if not isinstance(data, dict):
             raise ApiError(500, {"message": "Unexpected module card payload"}, {})
         return ModuleCard.model_validate(data)
+
+    async def get_devices_menu(self, manuf_code: int, dev_code: int, fw: str = "0.0.0") -> dict[str, Any]:
+        """GET manufacturer/device firmware menu (SPA ``devices_menu.show``).
+
+        BragerOne 1.04.05+ removed the generic ``module.menu`` / ``deviceMenu/0``
+        asset bundles. The SPA loads menus from this endpoint instead, using
+        ``manuf_code=0``, ``dev_code=0``, ``fw=0.0.0`` as the non-standalone
+        default when a device-specific menu is missing.
+
+        Args:
+            manuf_code: Manufacturer code from ``Module.devices[].manuf_code``.
+            dev_code: Device code from ``Module.devices[].dev_code``.
+            fw: Firmware version (``sw_ver_num``); ``0.0.0`` when unknown.
+
+        Returns:
+            Dict with ``deviceMenu`` (route list), ``priority``, ``standalone``,
+            and ``extends``.
+
+        Raises:
+            ApiError: If the HTTP status is not 200 or the body is not an object.
+        """
+        status, data, headers = await self._req(
+            "GET",
+            devices_menu_url(manuf_code, dev_code, fw, api_base=self._api_base),
+        )
+        if status != 200:
+            raise ApiError(status, data, headers if isinstance(headers, dict) else {})
+        if not isinstance(data, dict):
+            raise ApiError(500, {"message": "Unexpected devices menu payload"}, {})
+        return data
 
     async def modules_connect(
         self,

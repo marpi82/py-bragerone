@@ -73,6 +73,7 @@ async def test_list_language_config_returns_none_without_index() -> None:
 async def test_get_module_menu_without_asset_returns_empty_menu() -> None:
     """Missing menu mappings yield an empty cached menu instead of raising."""
     mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(side_effect=RuntimeError("offline"))
     catalog = LiveAssetsCatalog(mock_api)
     catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/dummy.js", base="dummy", hash="x")]
 
@@ -80,3 +81,53 @@ async def test_get_module_menu_without_asset_returns_empty_menu() -> None:
     assert isinstance(menu, MenuResult)
     assert menu.routes == []
     mock_api.get_bytes.assert_not_called()
+    mock_api.get_devices_menu.assert_awaited_once_with(0, 0, "0.0.0")
+
+
+def test_generic_menu_asset_skips_menu_0_i18n_chunk() -> None:
+    """Post-1.04 ``menu-0-*.js`` is locale MAINMENU text, not a route menu."""
+    catalog = LiveAssetsCatalog(AsyncMock())
+    bare_zero = AssetRef(url="https://one.brager.pl/assets/0-AAAA.js", base="0", hash="AAAA")
+    menu_zero = AssetRef(url="https://one.brager.pl/assets/menu-0-BBBB.js", base="menu-0", hash="BBBB")
+    catalog._idx.assets_by_basename["0"] = [bare_zero]
+    catalog._idx.assets_by_basename["menu-0"] = [menu_zero]
+    assert catalog._generic_menu_asset() is bare_zero
+
+
+@pytest.mark.asyncio
+async def test_get_module_menu_falls_back_to_server_default_menu() -> None:
+    """Unmapped device_menu loads SPA REST default menu when assets are gone."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": 0,
+            "extends": [],
+            "standalone": False,
+            "deviceMenu": [
+                {
+                    "path": "dhw",
+                    "name": "modules.menu.dhw",
+                    "meta": {
+                        "displayName": "menu.MAINMENU_USTAWIENIA_CWU",
+                        "permissionModule": "DISPLAY_MENU_DHW",
+                        "displayDropdown": True,
+                        "parameters": {
+                            "read": [{"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "parameter": "PARAM_P30_2"}],
+                        },
+                    },
+                }
+            ],
+        }
+    )
+    catalog = LiveAssetsCatalog(mock_api)
+    # Index has only non-menu basenames (post-1.04: no module.menu / deviceMenu/0).
+    catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://one.brager.pl/assets/dummy-x.js", base="dummy", hash="x")]
+
+    menu = await catalog.get_module_menu(device_menu=0, permissions=["DISPLAY_MENU_DHW", "DISPLAY_PARAMETER_LEVEL_1"])
+    assert isinstance(menu, MenuResult)
+    assert len(menu.routes) == 1
+    assert menu.routes[0].path == "dhw"
+    assert menu.routes[0].meta is not None
+    assert menu.routes[0].meta.display_dropdown is True
+    mock_api.get_bytes.assert_not_called()
+    mock_api.get_devices_menu.assert_awaited_once_with(0, 0, "0.0.0")

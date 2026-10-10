@@ -201,6 +201,31 @@ async def test_revoke_clears_token_store(httpx_mock: HTTPXMock) -> None:
     await client.close()
 
 
+async def test_get_devices_menu_returns_payload(httpx_mock: HTTPXMock) -> None:
+    """SPA default menu endpoint returns the deviceMenu object body."""
+    client = BragerOneApiClient(validate_on_start=False)
+    token = Token(
+        access_token="T",
+        refresh_token="R",
+        token_type="bearer",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    client.set_token_store(_TestTokenStore(token))
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{API}/v1/manufacturers/0/devices/0/menu/0.0.0",
+        json={
+            "priority": 0,
+            "extends": [],
+            "standalone": False,
+            "deviceMenu": [{"path": "dhw", "name": "dhw"}],
+        },
+    )
+    payload = await client.get_devices_menu(0, 0, "0.0.0")
+    assert payload["deviceMenu"][0]["path"] == "dhw"
+    await client.close()
+
+
 async def test_get_system_version_rejects_non_dict(httpx_mock: HTTPXMock) -> None:
     """Version endpoint must return a JSON object."""
     client = BragerOneApiClient(validate_on_start=False)
