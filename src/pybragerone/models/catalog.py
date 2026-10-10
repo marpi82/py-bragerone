@@ -1651,60 +1651,84 @@ class LiveAssetsCatalog:
         perm_set = None if permissions is None else set(permissions)
         return self._menu_manager.get_menu(device_menu=device_menu, permissions=perm_set, debug_mode=debug_mode)
 
+    def _generic_menu_asset(self) -> AssetRef | None:
+        """Return a legacy generic menu chunk when ``menu_map`` has no entry.
+
+        Pre-1.04 indexes shipped ``module.menu-<hash>.js`` (preferred) or
+        ``0-<hash>.js``. Post-1.04 ``menu-0-*.js`` chunks are i18n, not routes —
+        do not select them here; callers fall through to the REST default menu.
+        """
+        for basename in ("module.menu", "0"):
+            asset = self._idx.find_asset_for_basename(basename)
+            if asset is not None:
+                return asset
+        return None
+
+    async def _fetch_server_default_menu_routes(self) -> tuple[list[dict[str, Any]], str | None]:
+        """Load the SPA default menu from ``manufacturers/0/devices/0/menu/0.0.0``.
+
+        BragerOne 1.04.05+ dropped ``deviceMenu/0`` and ``module.menu`` assets. The
+        web app falls back to this REST endpoint for non-standalone modules when a
+        device-specific menu is missing (typical ``deviceMenu=0`` internet modules).
+        """
+        get_menu = getattr(self._api, "get_devices_menu", None)
+        if not callable(get_menu):
+            return [], None
+        url_hint = "manufacturers/0/devices/0/menu/0.0.0"
+        try:
+            payload = await get_menu(0, 0, "0.0.0")
+        except Exception as exc:
+            self._log.warning("Server default menu fetch failed (%s): %s", url_hint, exc)
+            return [], None
+        if not isinstance(payload, Mapping):
+            self._log.warning("Server default menu returned non-object payload: %s", type(payload).__name__)
+            return [], None
+        raw = payload.get("deviceMenu")
+        if not isinstance(raw, list):
+            self._log.warning("Server default menu missing deviceMenu list")
+            return [], None
+        routes = [self._attach_parameters_tokens(item) for item in raw if isinstance(item, dict)]
+        return routes, url_hint
+
     async def _load_and_cache_menu(self, device_menu: int) -> None:
         """Load raw menu data and cache it in MenuManager."""
         # Auto-load index if not loaded yet
         if not self._idx.menu_map and not self._idx.assets_by_basename:
             await self._auto_discover_and_load_index()
 
+        raw_routes: list[dict[str, Any]] = []
+        asset_url: str | None = None
+
         # Find asset for device_menu
         menu_name = self._idx.menu_map.get(device_menu)
-        if not menu_name:
+        asset: AssetRef | None = None
+        if menu_name:
+            asset = self._idx.find_asset_for_full_name(menu_name)
+        if asset is None:
             # Some accounts/modules report device_menu=0 or values not present in index mappings.
-            # In such cases, the app often still has a generic `module.menu-<hash>.js`.
             self._log.debug(
-                "No menu mapping found for device_menu=%d; falling back to generic menu assets "
-                "(module.menu, then basename 0) if available",
+                "No menu mapping found for device_menu=%d; trying legacy generic menu assets (module.menu, then basename 0)",
                 device_menu,
             )
+            asset = self._generic_menu_asset()
 
-            asset = self._idx.find_asset_for_basename("module.menu")
-            if not asset:
-                asset = self._idx.find_asset_for_basename("0")
-            if not asset:
-                self._log.warning("No menu asset found for device_menu=%d", device_menu)
-                self._menu_manager.store_raw_menu(device_menu, [], None)
-                return
-
+        if asset is not None:
             self._log.info("Loading menu asset: %s", asset.url)
             code = await self._api.get_bytes(asset.url)
             raw_routes = self._parse_menu_routes(code)
-            self._menu_manager.store_raw_menu(device_menu=device_menu, routes=raw_routes, asset_url=asset.url)
-            self._log.info("Cached raw menu for device_menu=%d: %d routes", device_menu, len(raw_routes))
-            return
+            asset_url = asset.url
 
-        # Get asset reference
-        asset = self._idx.find_asset_for_full_name(menu_name)
-        if not asset:
-            asset = self._idx.find_asset_for_basename("module.menu")
-        if not asset:
-            asset = self._idx.find_asset_for_basename("0")
+        if not raw_routes:
+            self._log.info(
+                "No usable menu asset routes for device_menu=%d; fetching SPA default REST menu",
+                device_menu,
+            )
+            raw_routes, asset_url = await self._fetch_server_default_menu_routes()
 
-        if not asset:
-            self._log.warning("No menu asset found for device_menu=%d", device_menu)
-            self._menu_manager.store_raw_menu(device_menu, [], None)
-            return
+        if not raw_routes:
+            self._log.warning("No menu routes found for device_menu=%d", device_menu)
 
-        # Fetch and parse menu
-        self._log.info("Loading menu asset: %s", asset.url)
-        code = await self._api.get_bytes(asset.url)
-
-        # Parse raw routes (no filtering, no processing)
-        raw_routes = self._parse_menu_routes(code)
-
-        # Store in cache
-        self._menu_manager.store_raw_menu(device_menu=device_menu, routes=raw_routes, asset_url=asset.url)
-
+        self._menu_manager.store_raw_menu(device_menu=device_menu, routes=raw_routes, asset_url=asset_url)
         self._log.info("Cached raw menu for device_menu=%d: %d routes", device_menu, len(raw_routes))
 
     def get_raw_menu(self, device_menu: int) -> RawMenuData:

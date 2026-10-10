@@ -223,3 +223,27 @@ def module_command_url(*, api_base: str = API_BASE) -> str:
         URL for POST requests to write parameter-like command payloads.
     """
     return f"{_base(api_base)}/module/command"
+
+
+def devices_menu_url(
+    manuf_code: int,
+    dev_code: int,
+    fw: str,
+    *,
+    api_base: str = API_BASE,
+) -> str:
+    """Get URL for manufacturer/device firmware menu (SPA ``devices_menu.show``).
+
+    Args:
+        manuf_code: Manufacturer code (``0`` selects the SPA default menu).
+        dev_code: Device code (``0`` with ``manuf_code=0`` is the generic fallback).
+        fw: Firmware version string (SPA uses ``0.0.0`` when unknown).
+        api_base: Base URL for the REST API.
+
+    Returns:
+        URL for GET requests that return ``{priority, extends, standalone, deviceMenu}``.
+    """
+    # Keep firmware dots (``0.0.0``, ``2.08``); encode ``/`` so ``fw`` stays one path segment.
+    return (
+        f"{_base(api_base)}/manufacturers/{quote(str(manuf_code))}/devices/{quote(str(dev_code))}/menu/{quote(str(fw), safe='.')}"
+    )

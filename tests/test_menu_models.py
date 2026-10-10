@@ -194,6 +194,19 @@ def test_menu_meta_icon_cleanup() -> None:
     assert meta.raw_permission == "A.HEATING_MODULE"
 
 
+def test_menu_meta_accepts_server_bool_display_dropdown() -> None:
+    """REST device menus send JSON booleans for displayDropdown (assets use ``!![]``)."""
+    meta = MenuMeta.model_validate(
+        {"displayName": "Circuits", "displayDropdown": True, "permissionModule": "DISPLAY_MENU_CIRCUITS"}
+    )
+    assert meta.display_dropdown is True
+    missing_name = MenuMeta.model_validate({"icon": "mdi-clock", "displayDropdown": False})
+    assert missing_name.display_name == ""
+    assert missing_name.display_dropdown is False
+    null_name = MenuMeta.model_validate({"displayName": None, "displayDropdown": True})
+    assert null_name.display_name == ""
+
+
 def test_menu_route_full() -> None:
     """Test complete menu route with nested children."""
     route_data = {

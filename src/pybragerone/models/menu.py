@@ -219,12 +219,15 @@ class MenuParameters(BaseModel):
 class MenuMeta(BaseModel):
     """Menu route metadata with automatic cleanup."""
 
-    display_name: str = Field(..., alias="displayName")
+    # Server menus (``devices_menu.show``) omit ``displayName`` on some leaves; asset
+    # chunks always set it. Default empty so both shapes validate.
+    display_name: str = Field(default="", alias="displayName")
     icon: str | None = None
     permission: Permission | None = None
     is_visible_on_side_menu: bool | None = Field(None, alias="isVisibleOnSideMenu")
     parameters: MenuParameters = Field(default_factory=MenuParameters)
-    display_dropdown: str | None = Field(None, alias="displayDropdown")
+    # Asset leftovers use strings (``!![]``); REST menus use JSON booleans.
+    display_dropdown: str | bool | None = Field(None, alias="displayDropdown")
 
     # Raw fields for debugging/reference
     raw_permission: str | None = Field(None, alias="permissionModule")
@@ -242,6 +245,14 @@ class MenuMeta(BaseModel):
         if m:
             return m.group("rest")
         return icon_str
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def coerce_display_name(cls, v: Any) -> str:
+        """Coerce missing/null display names to an empty string."""
+        if v is None:
+            return ""
+        return str(v)
 
     @model_validator(mode="before")
     @classmethod

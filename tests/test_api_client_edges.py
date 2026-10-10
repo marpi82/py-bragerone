@@ -201,6 +201,43 @@ async def test_revoke_clears_token_store(httpx_mock: HTTPXMock) -> None:
     await client.close()
 
 
+async def test_get_devices_menu_returns_payload(httpx_mock: HTTPXMock) -> None:
+    """SPA default menu endpoint returns the deviceMenu object body."""
+    client = BragerOneApiClient(validate_on_start=False)
+    token = Token(
+        access_token="T",
+        refresh_token="R",
+        token_type="bearer",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    client.set_token_store(_TestTokenStore(token))
+    url = f"{API}/v1/manufacturers/0/devices/0/menu/0.0.0"
+    httpx_mock.add_response(
+        method="GET",
+        url=url,
+        json={
+            "priority": 0,
+            "extends": [],
+            "standalone": False,
+            "deviceMenu": [{"path": "dhw", "name": "dhw"}],
+        },
+    )
+    payload = await client.get_devices_menu(0, 0, "0.0.0")
+    assert payload["deviceMenu"][0]["path"] == "dhw"
+
+    # Non-200 success statuses still fail the menu contract (``_req`` only raises on >=400).
+    httpx_mock.add_response(method="GET", url=url, status_code=204)
+    with pytest.raises(ApiError) as empty:
+        await client.get_devices_menu(0, 0, "0.0.0")
+    assert empty.value.status == 204
+
+    httpx_mock.add_response(method="GET", url=url, json=["not", "a", "menu"])
+    with pytest.raises(ApiError) as unexpected:
+        await client.get_devices_menu(0, 0, "0.0.0")
+    assert unexpected.value.status == 500
+    await client.close()
+
+
 async def test_get_system_version_rejects_non_dict(httpx_mock: HTTPXMock) -> None:
     """Version endpoint must return a JSON object."""
     client = BragerOneApiClient(validate_on_start=False)
