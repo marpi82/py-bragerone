@@ -10,7 +10,7 @@ authors = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
 maintainers = [{ name = "MarPi82", email = "marpi82.dev@google.com" }]
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.13.2,<3.15"
+requires-python = ">=3.15,<3.16"
 keywords = [
   "home",
   "automation",
