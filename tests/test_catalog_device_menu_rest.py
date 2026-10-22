@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -12,7 +13,7 @@ from pybragerone.models.catalog import AssetRef, LiveAssetsCatalog, _parse_exten
 from pybragerone.models.menu import MenuResult
 
 
-def _route(path: str, *, name: str | None = None) -> dict[str, object]:
+def _route(path: str, *, name: str | None = None) -> dict[str, Any]:
     return {
         "path": path,
         "name": name or f"modules.menu.{path}",
@@ -210,3 +211,145 @@ def test_menu_variant_map_populated_from_index() -> None:
     assert resolved is not None
     assert resolved.hash == "BbBbBbBb"
     assert catalog.resolve_extended_menu_asset("999:nope") is None
+    assert catalog.resolve_extended_menu_asset("not-a-ref") is None
+
+
+def test_menu_variant_map_cleared_when_device_menu_regex_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regex deviceMenu parse failures reset menu_variant_map (except path)."""
+    catalog = LiveAssetsCatalog(AsyncMock())
+    real_compile = __import__("re").compile
+    state = {"n": 0}
+
+    def _compile(pattern: str, flags: int = 0) -> Any:
+        text = str(pattern)
+        if "deviceMenu/(\\d+)" in text or "deviceMenu/(\\d+)/" in text:
+            state["n"] += 1
+            if state["n"] == 1:
+                raise RuntimeError("forced deviceMenu parse failure")
+        return real_compile(pattern, flags)
+
+    monkeypatch.setattr("pybragerone.models.catalog.re.compile", _compile)
+    idx = catalog._build_asset_index_from_index_js(
+        "https://one.brager.pl/assets/index-x.js",
+        b'{"../config/router/deviceMenu/1/0.ts":()=>d(()=>import("./0-x.js"))}',
+    )
+    assert idx.menu_variant_map == {}
+
+
+@pytest.mark.asyncio
+async def test_fetch_devices_menu_bad_priority_defaults_to_zero() -> None:
+    """Non-int priority values fall back to 0."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": object(),
+            "extends": "not-a-list",
+            "standalone": False,
+            "deviceMenu": [_route("ok"), {"path": None}, {"path": ""}, "skip"],
+        }
+    )
+    catalog = LiveAssetsCatalog(mock_api)
+    routes, meta, _hint = await catalog._fetch_devices_menu_payload(0, 0, "0.0.0")
+    assert meta["priority"] == 0
+    assert meta["extends"] == []
+    # Non-dict rows are dropped; empty/None paths remain until merge.
+    assert any(r.get("path") == "ok" for r in routes)
+    assert all(isinstance(r, dict) for r in routes)
+
+
+def test_merge_menu_route_layers_skips_empty_paths_and_keeps_higher_second() -> None:
+    """Empty paths drop; a later higher-priority layer overwrites the same path."""
+    low: list[dict[str, Any]] = [_route("shared", name="low"), {"name": "no-path"}, {"path": ""}]
+    high: list[dict[str, Any]] = [_route("shared", name="high")]
+    merged = LiveAssetsCatalog._merge_menu_route_layers([(low, 1), (high, 9)])
+    assert len(merged) == 1
+    assert merged[0]["name"] == "high"
+
+
+def test_merge_menu_route_layers_keeps_higher_when_later_is_lower() -> None:
+    """A later lower-priority layer does not overwrite an earlier path."""
+    high: list[dict[str, Any]] = [_route("shared", name="high")]
+    low: list[dict[str, Any]] = [_route("shared", name="low")]
+    merged = LiveAssetsCatalog._merge_menu_route_layers([(high, 9), (low, 1)])
+    assert len(merged) == 1
+    assert merged[0]["name"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_fetch_devices_menu_none_priority_defaults_to_zero() -> None:
+    """Explicit null priority becomes 0."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": None,
+            "extends": [],
+            "standalone": False,
+            "deviceMenu": [_route("ok")],
+        }
+    )
+    catalog = LiveAssetsCatalog(mock_api)
+    _routes, meta, _hint = await catalog._fetch_devices_menu_payload(0, 0, "0.0.0")
+    assert meta["priority"] == 0
+
+
+@pytest.mark.asyncio
+async def test_extends_skips_blank_duplicates_and_fetch_errors(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Blank/duplicate extends refs are ignored; get_bytes failures skip the chunk."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": 0,
+            "extends": ["", "  ", "153:1211", "153:1211"],
+            "standalone": False,
+            "deviceMenu": [_route("base")],
+        }
+    )
+    mock_api.get_bytes = AsyncMock(side_effect=RuntimeError("cdn down"))
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/d.js", base="dummy", hash="x")]
+    catalog._idx.menu_variant_map[(153, "1211")] = "1211-AbCdEfGh"
+    catalog._idx.assets_by_basename["1211"] = [
+        AssetRef(url="https://one.brager.pl/assets/1211-AbCdEfGh.js", base="1211", hash="AbCdEfGh")
+    ]
+    with caplog.at_level("WARNING"):
+        menu = await catalog.get_module_menu(device_menu=0)
+    assert [r.path for r in menu.routes] == ["base"]
+    assert "cdn down" in caplog.text or "Extended menu fetch failed" in caplog.text
+    mock_api.get_bytes.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_list_symbols_for_permissions_passes_devices() -> None:
+    """list_symbols_for_permissions forwards devices into get_module_menu."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": 0,
+            "extends": [],
+            "standalone": True,
+            "deviceMenu": [
+                {
+                    "path": "dhw",
+                    "name": "modules.menu.dhw",
+                    "meta": {
+                        "permissionModule": "DISPLAY_MENU_DHW",
+                        "parameters": {
+                            "read": [{"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "parameter": "PARAM_P30_2"}],
+                        },
+                    },
+                }
+            ],
+        }
+    )
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/d.js", base="dummy", hash="x")]
+    devices = [DeviceMenuRef(manuf_code=1, dev_code=2, fw="1.0")]
+    tokens = await catalog.list_symbols_for_permissions(
+        0,
+        ["DISPLAY_MENU_DHW", "DISPLAY_PARAMETER_LEVEL_1"],
+        devices=devices,
+    )
+    assert "PARAM_P30_2" in tokens
+    mock_api.get_devices_menu.assert_awaited_once_with(1, 2, "1.0")
