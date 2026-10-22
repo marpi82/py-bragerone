@@ -1867,9 +1867,10 @@ async def test_gateway_hard_restarts_ws_after_zombie_prime_streak() -> None:
     primes_after_start = api.prime_params_calls
     gw._last_live_param_publish_monotonic = 0.0
 
-    await _wait_until(lambda: ws.force_reconnect_calls >= 1)
+    # Wait until hard-reconnect finishes re-bind: force_reconnect increments first,
+    # then disconnect/connect await LIVE_PUSH publish before modules.connect runs.
+    await _wait_until(lambda: ws.force_reconnect_calls >= 1 and api.modules_connect_calls > connect_calls_after_start)
     assert api.prime_params_calls > primes_after_start
-    assert api.modules_connect_calls > connect_calls_after_start
     # Live WS parameter traffic clears the streak again.
     await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
     assert gw._zombie_prime_streak == 0
@@ -2081,8 +2082,9 @@ async def test_gateway_recycles_realtime_after_repeated_hard_restarts() -> None:
     assert ws.connect_calls == 1
     gw._last_live_param_publish_monotonic = 0.0
     await _wait_until(lambda: ws.force_reconnect_calls >= 2)
-    await _wait_until(lambda: ws.hard_reset_calls >= 1)
-    assert ws.connect_calls >= 2
+    # hard_reset increments before disconnect→connect; wait until connect finishes
+    # (disconnect now awaits LIVE_PUSH publish, so the window is wider).
+    await _wait_until(lambda: ws.hard_reset_calls >= 1 and ws.connect_calls >= 2)
     await gw.stop()
 
 
