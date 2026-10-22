@@ -29,8 +29,10 @@ Highlights
 - **Realtime (python-socketio)**: namespace ``/ws``; subscribes to
   ``app:modules:parameters:listen``, ``app:modules:activity:quantity:listen``, and
   ``app:modules:alarms:quantity:listen``.
-- **EventBus**: in-process async fan-out of **ParamUpdate** only (not connectivity /
-  alarms / activity rows — those use gateway callbacks or REST).
+- **EventBus**: in-process async fan-out; ``subscribe()`` is **ParamUpdate** only.
+  Connectivity / session / live-push / alarm+activity invalidate use additive
+  ``subscribe_channel`` (and gateway ``on_*`` callbacks). Alarm/activity **row
+  lists** stay on REST.
 - **ParamStore**: lightweight key→value view (e.g. ``"P4.v1" -> 20.5``) for runtime.
 - **ParamResolver**: optional asset-driven resolution (i18n labels, units/enums, menu grouping, computed STATUS).
 - **Online asset parsers**: i18n translations, parameter mappings, ``module.menu`` features.

@@ -16,6 +16,7 @@ from pybragerone.models.events import (
     MODULES_ACTIVITY_QUANTITY_CHANGE,
     ActivityFeedInvalidate,
     AlarmFeedInvalidate,
+    BusChannel,
 )
 
 
@@ -87,10 +88,13 @@ def test_extract_module_devids_shapes() -> None:
 
 
 async def test_ws_dispatch_alarm_change_and_received() -> None:
-    """alarms:change / received notify on_alarm_feed_invalidate (not EventBus)."""
+    """alarms:change / received dual-write: callback and ALARM_FEED channel."""
     gateway = _gateway()
     seen: list[AlarmFeedInvalidate] = []
     gateway.on_alarm_feed_invalidate(lambda event: seen.append(event))
+    bus_agen = gateway.bus.subscribe_channel(BusChannel.ALARM_FEED)
+    bus_task = asyncio.create_task(_collect_n(bus_agen, 2))
+    await asyncio.sleep(0)
 
     change = gateway._ws_dispatch(MODULE_ALARMS_CHANGE, {"devid": "D1"})
     received = gateway._ws_dispatch(MODULE_ALARMS_RECEIVED, {"devId": "D2"})
@@ -103,6 +107,26 @@ async def test_ws_dispatch_alarm_change_and_received() -> None:
         ("D1", "change", "ws"),
         ("D2", "received", "ws"),
     ]
+    bus_events = await asyncio.wait_for(bus_task, timeout=1.0)
+    assert [(e.devid, e.reason) for e in bus_events] == [("D1", "change"), ("D2", "received")]
+    await bus_agen.aclose()
+
+
+async def test_ws_dispatch_alarm_invalidate_publishes_without_callback() -> None:
+    """Alarm invalidate reaches the bus even when no gateway callback is registered."""
+    gateway = _gateway(modules=["D1"])
+    bus_agen = gateway.bus.subscribe_channel(BusChannel.ALARM_FEED)
+    bus_task = asyncio.create_task(bus_agen.__anext__())
+    await asyncio.sleep(0)
+
+    gateway._ws_dispatch(MODULE_ALARMS_CHANGE, {"devid": "D1"})
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    event = await asyncio.wait_for(bus_task, timeout=1.0)
+    assert isinstance(event, AlarmFeedInvalidate)
+    assert event.devid == "D1"
+    await bus_agen.aclose()
 
 
 async def test_ws_dispatch_alarm_invalidate_falls_back_to_subscribed_modules() -> None:
@@ -150,8 +174,8 @@ async def test_ws_dispatch_activity_quantity_and_task() -> None:
     ]
 
 
-async def test_ws_dispatch_feed_invalidate_noop_without_listeners() -> None:
-    """Feed invalidate dispatch is a no-op when no callbacks are registered."""
+async def test_ws_dispatch_feed_invalidate_without_listeners_still_safe() -> None:
+    """Feed invalidate without callbacks does not raise (bus may still publish)."""
     gateway = _gateway()
     gateway._ws_dispatch(MODULE_ALARMS_CHANGE, {"devid": "D1"})
     gateway._ws_dispatch(MODULES_ACTIVITY_QUANTITY_CHANGE, {"activityQuantity": {"D1": 1}})
@@ -173,3 +197,14 @@ async def test_feed_invalidate_callback_error_is_logged(caplog: pytest.LogCaptur
         await asyncio.sleep(0)
         await asyncio.sleep(0)
     assert "Callback error" in caplog.text
+
+
+async def _collect_n(agen: object, n: int) -> list[AlarmFeedInvalidate]:
+    """Collect *n* items from an async generator."""
+    out: list[AlarmFeedInvalidate] = []
+    anext = agen.__anext__  # type: ignore[attr-defined]
+    for _ in range(n):
+        item = await anext()
+        assert isinstance(item, AlarmFeedInvalidate)
+        out.append(item)
+    return out

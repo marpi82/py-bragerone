@@ -7,7 +7,14 @@ from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, Literal
 
-from ..models.events import CloudOutageReason, ConnectivityEpisodeLayer, EventBus, ModuleConnectivity, ModuleOutageReason
+from ..models.events import (
+    CloudOutageReason,
+    ConnectivityEpisodeLayer,
+    EventBus,
+    GatewayEvent,
+    ModuleConnectivity,
+    ModuleOutageReason,
+)
 from .helpers import (
     ActivityFeedInvalidateCb,
     AlarmFeedInvalidateCb,
@@ -308,6 +315,9 @@ class GatewayMixinBase:
         raise NotImplementedError
 
     async def _invoke_list(self, cbs: list[Callable[..., Any]], *args: Any, **kwargs: Any) -> None:
+        raise NotImplementedError
+
+    async def _emit_bus_and_callbacks(self, event: GatewayEvent, cbs: list[Callable[..., Any]]) -> None:
         raise NotImplementedError
 
     async def ingest_prime_parameters(self, data: dict[str, Any]) -> None:

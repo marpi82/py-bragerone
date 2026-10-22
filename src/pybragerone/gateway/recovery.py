@@ -90,11 +90,10 @@ class RecoveryMixin(GatewayMixinBase):
             last_resumed_after_s=self._last_live_resumed_after_s,
             changed=changed,
         )
-        if self._on_live_push:
-            self._spawn(
-                self._invoke_list(self._on_live_push, event),
-                name="gateway.on_live_push",
-            )
+        self._spawn(
+            self._emit_bus_and_callbacks(event, self._on_live_push),
+            name="gateway.on_live_push",
+        )
 
     def _touch_param_publish(self, count: int, *, live: bool = False) -> None:
         """Record that ``count`` parameter events were published.

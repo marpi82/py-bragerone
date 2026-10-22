@@ -213,8 +213,7 @@ class ConnectivityMixin(GatewayMixinBase):
             last_reason=_as_cloud_outage_reason(snapshot["last_reason"]),
         )
         LOG.info("Cloud session: up=%s source=%s", False, source)
-        if self._on_cloud_session:
-            await self._invoke_list(self._on_cloud_session, event)
+        await self._emit_bus_and_callbacks(event, self._on_cloud_session)
         if source == "stop":
             self._clear_active_cloud_outage()
         self._publish_live_push_health()
@@ -277,8 +276,7 @@ class ConnectivityMixin(GatewayMixinBase):
                 last_reason=_as_cloud_outage_reason(snapshot["last_reason"]),
             )
             LOG.info("Cloud session: up=%s source=%s", True, source)
-            if self._on_cloud_session:
-                await self._invoke_list(self._on_cloud_session, event)
+            await self._emit_bus_and_callbacks(event, self._on_cloud_session)
             self._publish_live_push_health()
             return
 
@@ -658,6 +656,8 @@ class ConnectivityMixin(GatewayMixinBase):
         superseded listener delivery.
         """
         if self._module_online_seq.get(event.devid) == seq:
+            delivered = self._coalesce_module_connectivity_event(event)
+            await self.bus.publish_event(delivered)
             for cb in list(self._on_module_connectivity):
                 if self._module_online_seq.get(event.devid) != seq:
                     break

@@ -98,26 +98,32 @@ Two layers — do not conflate them:
 2. **Library ↔ cloud** (Socket.IO client session) — must be **detectable** and
    **self-healing** (transport reset, reconnect, REST re-prime while down).
 
-**EventBus boundary:** ``gateway.bus`` / ``EventBus.subscribe()`` delivers
-**ParamUpdate** only. Module online/offline, cloud session, live-push health,
-alarm quantity, and alarm/activity **feed invalidate** signals are **not** on that
-bus (so existing typed ``bus.subscribe()`` loops stay unbroken). Use the dedicated
-gateway callbacks / poll APIs:
+**EventBus boundary:** ``EventBus.subscribe()`` delivers **ParamUpdate** only
+(so existing typed loops stay unbroken). Non-parameter signals are dual-written
+to additive bus channels (``subscribe_channel``) **and** gateway ``on_*``
+callbacks. Prefer channels for new consumers; callbacks remain supported.
+Alarm/activity **row lists** stay on REST — Socket.IO only invalidates.
 
 .. code-block:: python
 
-   from pybragerone.models.events import CloudSessionConnectivity, ModuleConnectivity
+   from pybragerone.models.events import (
+       BusChannel,
+       CloudSessionConnectivity,
+       ModuleConnectivity,
+   )
 
-   def on_module(event: ModuleConnectivity) -> None:
-       print(event.devid, "online" if event.online else "offline", event.source)
+   # Preferred: typed channels (same dataclasses as callbacks)
+   async for event in gateway.bus.subscribe_channel(
+       BusChannel.MODULE_CONNECTIVITY,
+       BusChannel.CLOUD_SESSION,
+   ):
+       if isinstance(event, ModuleConnectivity):
+           print(event.devid, "online" if event.online else "offline", event.source)
+       elif isinstance(event, CloudSessionConnectivity):
+           print("cloud session", "up" if event.up else "down", event.source)
 
-   def on_session(event: CloudSessionConnectivity) -> None:
-       print("cloud session", "up" if event.up else "down", event.source)
-       # Outage attrs (additive): event.down_since / down_for_s / reason while down;
-       # event.last_down_for_s / last_reason after restore.
-
-   gateway.on_module_connectivity(on_module)
-   gateway.on_cloud_session(on_session)
+   # Compat: gateway callbacks / poll APIs
+   # gateway.on_module_connectivity(...) / on_cloud_session(...)
    # gateway.on_live_push(...) / live_push_health()
    # gateway.on_alarm_quantity(...)  # badge count; row lists remain REST
    # gateway.on_alarm_feed_invalidate(...)  # SPA alarms:change / received → REST
