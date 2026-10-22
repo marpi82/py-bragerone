@@ -1874,12 +1874,17 @@ class LiveAssetsCatalog:
     ) -> list[dict[str, Any]]:
         """Merge route lists by ``path``; higher *priority* wins scalars, parameters union (#438).
 
-        On equal priority the earlier layer keeps scalars (device-specific before the
-        SPA default ``0/0/0.0.0``, which is appended later and often also uses ``0``).
+        Layers are applied in ascending priority so a mid-priority extension can
+        override tokens inherited from a lower-priority default even when a
+        high-priority device route was fetched earlier. Equal priorities keep
+        the earlier original layer (device before default) via a stable
+        ``-index`` secondary key.
         """
         by_path: dict[str, tuple[int, dict[str, Any]]] = {}
         order: list[str] = []
-        for routes, priority in layers:
+        # Ascending priority; among ties, earlier fetch index is applied last.
+        ordered = sorted(enumerate(layers), key=lambda item: (item[1][1], -item[0]))
+        for _index, (routes, priority) in ordered:
             for route in routes:
                 path = route.get("path")
                 if not isinstance(path, str) or not path:
@@ -1890,10 +1895,8 @@ class LiveAssetsCatalog:
                     order.append(path)
                     continue
                 prev_priority, prev_route = existing
-                if priority > prev_priority:
-                    by_path[path] = (priority, cls._merge_route_dicts(route, prev_route))
-                else:
-                    by_path[path] = (prev_priority, cls._merge_route_dicts(prev_route, route))
+                # Incoming layer is preferred after ascending sort.
+                by_path[path] = (max(priority, prev_priority), cls._merge_route_dicts(route, prev_route))
         return [by_path[path][1] for path in order if path in by_path]
 
     async def _load_extended_menu_routes(self, extends: Sequence[str]) -> list[tuple[list[dict[str, Any]], int]]:

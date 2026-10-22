@@ -149,6 +149,95 @@ async def test_path_merge_equal_priority_keeps_device_over_default() -> None:
 
 
 @pytest.mark.asyncio
+async def test_three_layer_merge_lets_mid_priority_override_inherited_token() -> None:
+    """Extension can redefine a token inherited from default despite an earlier high-priority device."""
+    mock_api = AsyncMock()
+
+    async def _get_menu(manuf: int, dev: int, fw: str = "0.0.0") -> dict[str, object]:
+        if manuf == 1:
+            return {
+                "priority": 100,
+                "extends": ["153:1211"],
+                "standalone": False,
+                "deviceMenu": [
+                    {
+                        "path": "shared",
+                        "name": "device.shared",
+                        "meta": {
+                            "parameters": {
+                                "read": [],
+                                "write": [{"token": "PARAM_WRITE"}],
+                                "status": [],
+                                "special": [],
+                            }
+                        },
+                    }
+                ],
+            }
+        return {
+            "priority": 10,
+            "extends": [],
+            "standalone": False,
+            "deviceMenu": [
+                {
+                    "path": "shared",
+                    "name": "default.shared",
+                    "meta": {
+                        "parameters": {
+                            "read": [{"token": "PARAM_X", "permissionModule": "DEFAULT_PERM"}],
+                            "write": [],
+                            "status": [],
+                            "special": [],
+                        }
+                    },
+                }
+            ],
+        }
+
+    mock_api.get_devices_menu = AsyncMock(side_effect=_get_menu)
+    mock_api.get_bytes = AsyncMock(
+        return_value=b"""
+        export default {
+          priority: 50,
+          deviceMenu: [{
+            path: "shared",
+            name: "ext.shared",
+            meta: {
+              parameters: {
+                read: [{ token: "PARAM_X", permissionModule: "EXT_PERM" }],
+                write: [],
+                status: [],
+                special: []
+              }
+            }
+          }]
+        };
+        """
+    )
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/d.js", base="dummy", hash="x")]
+    catalog._idx.menu_variant_map[(153, "1211")] = "1211-AbCdEfGh"
+    catalog._idx.assets_by_basename["1211"] = [
+        AssetRef(url="https://one.brager.pl/assets/1211-AbCdEfGh.js", base="1211", hash="AbCdEfGh")
+    ]
+    menu = await catalog.get_module_menu(
+        device_menu=0,
+        devices=[DeviceMenuRef(manuf_code=1, dev_code=1, fw="1.0")],
+    )
+    shared = next(r for r in menu.routes if r.path == "shared")
+    assert shared.name == "device.shared"
+    assert shared.meta is not None
+    assert shared.meta.parameters is not None
+    read = shared.meta.parameters.read
+    assert len(read) == 1
+    assert read[0].token == "PARAM_X"
+    assert read[0].raw_permission == "EXT_PERM"
+    write = shared.meta.parameters.write
+    assert len(write) == 1
+    assert write[0].token == "PARAM_WRITE"
+
+
+@pytest.mark.asyncio
 async def test_extends_loads_vite_chunk_routes() -> None:
     """REST extends refs pull matching index Vite menu chunks."""
     mock_api = AsyncMock()
@@ -423,6 +512,36 @@ def test_parse_menu_export_bad_priority_defaults_to_zero() -> None:
     )
     assert priority == 0
     assert [r["path"] for r in routes] == ["x"]
+
+
+def test_parse_menu_export_dict_without_routes_returns_empty() -> None:
+    """Object exports without a route list yield no routes."""
+    catalog = LiveAssetsCatalog(AsyncMock())
+    routes, priority = catalog._parse_menu_export(b"export default { priority: 3, flag: true };")
+    assert routes == []
+    assert priority == 3
+
+
+@pytest.mark.asyncio
+async def test_get_module_menu_cache_hit_skips_reload() -> None:
+    """Second get_module_menu with the same devices fingerprint reuses the cache."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": 0,
+            "extends": [],
+            "standalone": True,
+            "deviceMenu": [_route("cached")],
+        }
+    )
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/d.js", base="dummy", hash="x")]
+    devices = [DeviceMenuRef(manuf_code=1, dev_code=1, fw="1.0")]
+    first = await catalog.get_module_menu(device_menu=0, devices=devices)
+    second = await catalog.get_module_menu(device_menu=0, devices=devices)
+    assert [r.path for r in first.routes] == ["cached"]
+    assert [r.path for r in second.routes] == ["cached"]
+    assert mock_api.get_devices_menu.await_count == 1
 
 
 @pytest.mark.asyncio
