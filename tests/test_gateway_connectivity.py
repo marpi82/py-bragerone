@@ -2785,6 +2785,31 @@ async def test_gateway_stop_publishes_live_push_unhealthy_on_channel() -> None:
     await agen.aclose()
 
 
+async def test_gateway_session_down_skips_live_push_await_when_already_unhealthy() -> None:
+    """Session-down does not await LIVE_PUSH when health was already False (no flip)."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=30.0,
+    )
+    await gw.start()
+    assert gw.ws_session_up() is True
+    # Pretend diagnostics already know the push stream is dead while session is up.
+    gw._live_push_healthy = False
+    await gw._set_ws_session_up(False, source="disconnect")
+    assert gw.ws_session_up() is False
+    assert gw.live_push_health()["push_healthy"] is False
+    # No flip → publish returns None (covers the await-skipped branch).
+    assert gw._publish_live_push_health() is None
+    await gw.stop()
+
+
 async def test_gateway_get_modules_fail_streak_logs_once_per_window(caplog: pytest.LogCaptureFixture) -> None:
     """Transport fail streak warns once per outage window, then DEBUG."""
     api = FakeApiClient()
