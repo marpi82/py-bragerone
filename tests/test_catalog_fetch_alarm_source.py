@@ -161,6 +161,27 @@ async def test_fetch_alarm_name_source_prefers_enum_chunk_over_page() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_alarm_name_source_dedupes_duplicate_urls() -> None:
+    """Same asset URL under ``Alarms`` and ``alarms`` is fetched once."""
+    enum_url = "https://cdn/assets/Alarms-shared.js"
+    catalog = LiveAssetsCatalog(cast(BragerOneApiClient, _FakeApi(payload=_ENUM_CHUNK)))
+    shared = AssetRef(url=enum_url, base="Alarms", hash="shared")
+    catalog._idx = AssetIndex(
+        assets_by_basename={
+            "Alarms": [shared],
+            "alarms": [AssetRef(url=enum_url, base="alarms", hash="shared")],
+        }
+    )
+    catalog._ensure_index_loaded = AsyncMock()  # type: ignore[method-assign]
+
+    source = await catalog.fetch_alarm_name_source()
+
+    assert source == _ENUM_CHUNK
+    fake_api = cast(_FakeApi, catalog._api)
+    assert fake_api.urls == [enum_url]
+
+
+@pytest.mark.asyncio
 async def test_fetch_alarm_name_source_returns_none_when_chunks_lack_enum() -> None:
     """Vue-only Alarms chunks (no AlarmName pairs) yield None."""
     catalog = LiveAssetsCatalog(cast(BragerOneApiClient, _FakeApi(payload=_PAGE_CHUNK)))
