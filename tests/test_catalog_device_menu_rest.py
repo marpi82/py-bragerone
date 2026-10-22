@@ -358,12 +358,12 @@ def test_merge_helpers_cover_edge_identities_and_children() -> None:
     assert LiveAssetsCatalog._merge_parameters_maps(None, None) is None
     assert LiveAssetsCatalog._merge_parameters_maps("x", 1) == "x"
 
-    # Preferred duplicate token drops the fallback copy.
+    # Preferred duplicate token drops the fallback copy; key-less fallback still appends.
     merged_section = LiveAssetsCatalog._merge_parameter_section_lists(
         [{"token": "A"}, {"no": "key"}],
-        [{"token": "A"}, {"token": "B"}, "C"],
+        [{"token": "A"}, {"token": "B"}, "C", {"orphan": True}],
     )
-    assert [LiveAssetsCatalog._param_entry_key(e) for e in merged_section] == ["A", None, "B", "C"]
+    assert [LiveAssetsCatalog._param_entry_key(e) for e in merged_section] == ["A", None, "B", "C", None]
 
     low: list[dict[str, Any]] = [
         {
@@ -389,6 +389,25 @@ def test_merge_helpers_cover_edge_identities_and_children() -> None:
     assert child["name"] == "high-child"
     assert [e["token"] for e in child["meta"]["parameters"]["read"]] == ["CHILD_READ"]
     assert [e["token"] for e in child["meta"]["parameters"]["write"]] == ["CHILD_WRITE"]
+
+    # Meta only on fallback; children only on one side.
+    only_fall_meta = LiveAssetsCatalog._merge_route_dicts(
+        {"path": "m", "name": "pref"},
+        {"path": "m", "name": "fall", "meta": {"displayName": "from-fall"}},
+    )
+    assert only_fall_meta["meta"]["displayName"] == "from-fall"
+
+    children_only_pref = LiveAssetsCatalog._merge_route_dicts(
+        {"path": "c", "name": "pref", "children": [{"path": "kid", "name": "p"}]},
+        {"path": "c", "name": "fall"},
+    )
+    assert [c["name"] for c in children_only_pref["children"]] == ["p"]
+
+    children_only_fall = LiveAssetsCatalog._merge_route_dicts(
+        {"path": "c", "name": "pref"},
+        {"path": "c", "name": "fall", "children": [{"path": "kid", "name": "f"}]},
+    )
+    assert [c["name"] for c in children_only_fall["children"]] == ["f"]
 
 
 def test_parse_menu_export_bad_priority_defaults_to_zero() -> None:
@@ -611,6 +630,37 @@ async def test_extends_empty_parse_is_skipped() -> None:
     menu = await catalog.get_module_menu(device_menu=0)
     assert [r.path for r in menu.routes] == ["base"]
     mock_api.get_bytes.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_load_and_cache_auto_discovers_empty_index(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Empty AssetIndex triggers auto-discover before REST/JS menu load."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": 0,
+            "extends": [],
+            "standalone": True,
+            "deviceMenu": [_route("discovered")],
+        }
+    )
+    catalog = LiveAssetsCatalog(mock_api)
+    assert catalog._idx.menu_map == {}
+    assert catalog._idx.assets_by_basename == {}
+    assert catalog._idx.menu_variant_map == {}
+
+    called: list[bool] = []
+
+    async def _discover() -> None:
+        called.append(True)
+
+    monkeypatch.setattr(catalog, "_auto_discover_and_load_index", _discover)
+    menu = await catalog.get_module_menu(
+        device_menu=0,
+        devices=[DeviceMenuRef(manuf_code=1, dev_code=1, fw="1.0")],
+    )
+    assert called == [True]
+    assert [r.path for r in menu.routes] == ["discovered"]
 
 
 @pytest.mark.asyncio
