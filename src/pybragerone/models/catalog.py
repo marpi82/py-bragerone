@@ -1872,7 +1872,11 @@ class LiveAssetsCatalog:
         cls,
         layers: Sequence[tuple[list[dict[str, Any]], int]],
     ) -> list[dict[str, Any]]:
-        """Merge route lists by ``path``; higher *priority* wins scalars, parameters union (#438)."""
+        """Merge route lists by ``path``; higher *priority* wins scalars, parameters union (#438).
+
+        On equal priority the earlier layer keeps scalars (device-specific before the
+        SPA default ``0/0/0.0.0``, which is appended later and often also uses ``0``).
+        """
         by_path: dict[str, tuple[int, dict[str, Any]]] = {}
         order: list[str] = []
         for routes, priority in layers:
@@ -1886,7 +1890,7 @@ class LiveAssetsCatalog:
                     order.append(path)
                     continue
                 prev_priority, prev_route = existing
-                if priority >= prev_priority:
+                if priority > prev_priority:
                     by_path[path] = (priority, cls._merge_route_dicts(route, prev_route))
                 else:
                     by_path[path] = (prev_priority, cls._merge_route_dicts(prev_route, route))

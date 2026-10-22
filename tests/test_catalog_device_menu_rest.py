@@ -116,6 +116,39 @@ async def test_path_merge_prefers_higher_priority() -> None:
 
 
 @pytest.mark.asyncio
+async def test_path_merge_equal_priority_keeps_device_over_default() -> None:
+    """Equal priority must not let the later SPA default overwrite device routes."""
+    mock_api = AsyncMock()
+
+    async def _get_menu(manuf: int, dev: int, fw: str = "0.0.0") -> dict[str, object]:
+        if manuf == 1:
+            return {
+                "priority": 0,
+                "extends": [],
+                "standalone": False,
+                "deviceMenu": [_route("shared", name="device.shared")],
+            }
+        return {
+            "priority": 0,
+            "extends": [],
+            "standalone": False,
+            "deviceMenu": [_route("shared", name="default.shared"), _route("only-default")],
+        }
+
+    mock_api.get_devices_menu = AsyncMock(side_effect=_get_menu)
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/d.js", base="dummy", hash="x")]
+
+    menu = await catalog.get_module_menu(
+        device_menu=0,
+        devices=[DeviceMenuRef(manuf_code=1, dev_code=1, fw="0.0.0")],
+    )
+    by_path = {r.path: r.name for r in menu.routes}
+    assert by_path["shared"] == "device.shared"
+    assert "only-default" in by_path
+
+
+@pytest.mark.asyncio
 async def test_extends_loads_vite_chunk_routes() -> None:
     """REST extends refs pull matching index Vite menu chunks."""
     mock_api = AsyncMock()
