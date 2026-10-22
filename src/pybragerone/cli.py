@@ -717,11 +717,15 @@ async def _build_watch_groups(
     perms = list(getattr(mod, "permissions", []) or [])
     scoped = store.flatten_for_devid(first_id)
     flat_values = scoped if scoped else None
+    from pybragerone.models.api.modules import device_menu_refs_from_module
+
+    menu_devices = device_menu_refs_from_module(getattr(mod, "devices", None))
     return await resolver.build_panel_groups(
         device_menu=device_menu,
         permissions=perms,
         all_panels=all_panels,
         flat_values=flat_values,
+        devices=menu_devices or None,
     )
 
 

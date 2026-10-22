@@ -15,13 +15,14 @@ import asyncio
 import logging
 import re
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import tree_sitter_javascript
 from tree_sitter import Language, Node, Parser, Tree
 
+from .api.modules import DeviceMenuRef
 from .menu import MenuResult, js_public_member_name
 from .menu_manager import MenuManager, RawMenuData
 
@@ -57,6 +58,17 @@ _JS_UNDEFINED_LITERALS = frozenset({"void 0", "void 0x0", "undefined"})
 # ----------------------------- Data types -----------------------------
 
 
+_EXTENDS_REF_RE = re.compile(r"^(\d+)[:/]([A-Za-z0-9_.-]+)$")
+
+
+def _parse_extends_ref(ref: str) -> tuple[int, str] | None:
+    """Parse SPA ``extends`` tokens such as ``153:1211`` or ``153/1211``."""
+    match = _EXTENDS_REF_RE.match(str(ref).strip())
+    if match is None:
+        return None
+    return int(match.group(1)), str(match.group(2))
+
+
 @dataclass(slots=True)
 class AssetRef:
     """Reference to a versioned asset from the BragerOne catalog.
@@ -83,7 +95,10 @@ class AssetIndex:
     Attributes:
         assets_by_basename: Full list of assets declared in ``index-*.js`` (exact basenames, no normalization).
             Maps basename strings to lists of AssetRef objects.
-        menu_map: Mapping from deviceMenu integers to BASENAME strings (e.g., ``module.menu-<hash>.js``).
+        menu_map: Mapping from deviceMenu integers to preferred BASENAME stems
+            (variant ``0`` when present, else first candidate).
+        menu_variant_map: Mapping from ``(deviceMenu, variant)`` to hashed stems for SPA
+            ``extends`` refs such as ``153:1211`` (#438).
         inline_param_candidates: List of (start_byte, end_byte) tuples indicating potential
             inline parameter maps detected within ``index-*.js``.
         index_bytes: Raw bytes of the index file for potential inline parsing.
@@ -93,6 +108,8 @@ class AssetIndex:
     assets_by_basename: dict[str, list[AssetRef]] = field(default_factory=dict)
     # mapping from deviceMenu:int -> BASENAME('module.menu-<hash>.js')
     menu_map: dict[int, str] = field(default_factory=dict)
+    # deviceMenu/N/variant.ts -> hashed stem (every candidate; used by extends)
+    menu_variant_map: dict[tuple[int, str], str] = field(default_factory=dict)
     # static side-menu route chunks: path basename -> asset basename (e.g. timezones -> timezones)
     static_route_map: dict[str, str] = field(default_factory=dict)
     # inline parameter maps detected within index-*.js
@@ -1286,6 +1303,8 @@ class LiveAssetsCatalog:
 
         # New menu management system
         self._menu_manager = MenuManager(self._log)
+        # device_menu -> devices fingerprint used when the raw menu was cached (#438)
+        self._menu_devices_fp: dict[int, str] = {}
         self._static_route_tokens_cache: dict[str, set[str]] = {}
         self._index_generation = 0
 
@@ -1448,6 +1467,7 @@ class LiveAssetsCatalog:
         # 2) Try to find mapping from deviceMenu:int -> menu asset in index (Regex fallback)
         # Use regex pattern matching since AST parsing can fail on complex minified Object.assign payloads.
         menu_map: dict[int, str] = {}
+        menu_variant_map: dict[tuple[int, str], str] = {}
 
         try:
             # Pattern examples (legacy + current):
@@ -1477,6 +1497,8 @@ class LiveAssetsCatalog:
                 )
 
             for device_menu_num, candidates in menu_candidates.items():
+                for variant_name, menu_file_name in candidates:
+                    menu_variant_map.setdefault((device_menu_num, variant_name), menu_file_name)
                 preferred = next((asset for variant, asset in candidates if variant == "0"), None)
                 if preferred is None:
                     preferred = candidates[0][1]
@@ -1485,6 +1507,7 @@ class LiveAssetsCatalog:
 
         except Exception as regex_e:
             self._log.debug("Regex deviceMenu parsing failed: %s", regex_e)
+            menu_variant_map = {}
 
         static_route_map: dict[str, str] = {}
         try:
@@ -1541,6 +1564,7 @@ class LiveAssetsCatalog:
         return AssetIndex(
             assets_by_basename=assets_by_basename,
             menu_map=menu_map,
+            menu_variant_map=menu_variant_map,
             static_route_map=static_route_map,
             inline_param_candidates=inline_candidates,
             index_bytes=code,
@@ -1657,16 +1681,32 @@ class LiveAssetsCatalog:
 
     # ---------- MENU ----------
 
+    @staticmethod
+    def devices_fingerprint(devices: Sequence[DeviceMenuRef] | None) -> str:
+        """Stable fingerprint for menu cache keys (#438)."""
+        if not devices:
+            return ""
+        return "|".join(ref.fingerprint() for ref in devices)
+
     async def get_module_menu(
         self,
         device_menu: int,
         permissions: Iterable[str] | None = None,
         *,
         debug_mode: bool = False,
+        devices: Sequence[DeviceMenuRef] | None = None,
     ) -> MenuResult:
-        """Get processed menu using the unified MenuManager pipeline."""
-        if device_menu not in self._menu_manager.list_cached_menus():
-            await self._load_and_cache_menu(device_menu)
+        """Get processed menu using the unified MenuManager pipeline.
+
+        When JS assets yield no routes, tries device-specific REST menus from
+        *devices* before the SPA default ``0/0/0.0.0``, then honours ``extends``
+        Vite chunks (#438).
+        """
+        fp = self.devices_fingerprint(devices)
+        needs_load = device_menu not in self._menu_manager.list_cached_menus() or self._menu_devices_fp.get(device_menu) != fp
+        if needs_load:
+            await self._load_and_cache_menu(device_menu, devices=devices)
+            self._menu_devices_fp[device_menu] = fp
 
         perm_set = None if permissions is None else set(permissions)
         return self._menu_manager.get_menu(device_menu=device_menu, permissions=perm_set, debug_mode=debug_mode)
@@ -1684,6 +1724,58 @@ class LiveAssetsCatalog:
                 return asset
         return None
 
+    def resolve_extended_menu_asset(self, ref: str) -> AssetRef | None:
+        """Resolve an SPA ``extends`` ref (``N:variant`` / ``N/variant``) to a Vite chunk."""
+        parsed = _parse_extends_ref(ref)
+        if parsed is None:
+            return None
+        menu_id, variant = parsed
+        stem = self._idx.menu_variant_map.get((menu_id, variant))
+        if stem is None:
+            return None
+        return self._idx.find_asset_for_full_name(stem)
+
+    async def _fetch_devices_menu_payload(
+        self,
+        manuf_code: int,
+        dev_code: int,
+        fw: str = "0.0.0",
+    ) -> tuple[list[dict[str, Any]], dict[str, Any], str | None]:
+        """Fetch one SPA devices menu; return ``(routes, meta, url_hint)``.
+
+        ``meta`` carries ``priority``, ``standalone``, and ``extends`` when present.
+        """
+        get_menu = getattr(self._api, "get_devices_menu", None)
+        if not callable(get_menu):
+            return [], {}, None
+        url_hint = f"manufacturers/{manuf_code}/devices/{dev_code}/menu/{fw}"
+        try:
+            payload = await get_menu(manuf_code, dev_code, fw)
+        except Exception as exc:
+            self._log.warning("Devices menu fetch failed (%s): %s", url_hint, exc)
+            return [], {}, None
+        if not isinstance(payload, Mapping):
+            self._log.warning("Devices menu returned non-object payload (%s): %s", url_hint, type(payload).__name__)
+            return [], {}, None
+        raw = payload.get("deviceMenu")
+        if not isinstance(raw, list):
+            self._log.warning("Devices menu missing deviceMenu list (%s)", url_hint)
+            return [], {}, None
+        routes = [self._attach_parameters_tokens(item) for item in raw if isinstance(item, dict)]
+        priority_raw = payload.get("priority", 0)
+        try:
+            priority = int(priority_raw) if priority_raw is not None else 0
+        except (TypeError, ValueError):
+            priority = 0
+        extends_raw = payload.get("extends")
+        extends = [str(item) for item in extends_raw] if isinstance(extends_raw, list) else []
+        meta = {
+            "priority": priority,
+            "standalone": bool(payload.get("standalone")),
+            "extends": extends,
+        }
+        return routes, meta, url_hint
+
     async def _fetch_server_default_menu_routes(self) -> tuple[list[dict[str, Any]], str | None]:
         """Load the SPA default menu from ``manufacturers/0/devices/0/menu/0.0.0``.
 
@@ -1691,29 +1783,112 @@ class LiveAssetsCatalog:
         web app falls back to this REST endpoint for non-standalone modules when a
         device-specific menu is missing (typical ``deviceMenu=0`` internet modules).
         """
-        get_menu = getattr(self._api, "get_devices_menu", None)
-        if not callable(get_menu):
-            return [], None
-        url_hint = "manufacturers/0/devices/0/menu/0.0.0"
-        try:
-            payload = await get_menu(0, 0, "0.0.0")
-        except Exception as exc:
-            self._log.warning("Server default menu fetch failed (%s): %s", url_hint, exc)
-            return [], None
-        if not isinstance(payload, Mapping):
-            self._log.warning("Server default menu returned non-object payload: %s", type(payload).__name__)
-            return [], None
-        raw = payload.get("deviceMenu")
-        if not isinstance(raw, list):
-            self._log.warning("Server default menu missing deviceMenu list")
-            return [], None
-        routes = [self._attach_parameters_tokens(item) for item in raw if isinstance(item, dict)]
+        routes, _meta, url_hint = await self._fetch_devices_menu_payload(0, 0, "0.0.0")
         return routes, url_hint
 
-    async def _load_and_cache_menu(self, device_menu: int) -> None:
+    @staticmethod
+    def _merge_menu_route_layers(
+        layers: Sequence[tuple[list[dict[str, Any]], int]],
+    ) -> list[dict[str, Any]]:
+        """Merge route lists by ``path``; higher *priority* wins on collision."""
+        by_path: dict[str, tuple[int, dict[str, Any]]] = {}
+        order: list[str] = []
+        for routes, priority in layers:
+            for route in routes:
+                path = route.get("path")
+                if not isinstance(path, str) or not path:
+                    continue
+                existing = by_path.get(path)
+                if existing is None:
+                    by_path[path] = (priority, route)
+                    order.append(path)
+                    continue
+                prev_priority, _prev = existing
+                if priority >= prev_priority:
+                    by_path[path] = (priority, route)
+        return [by_path[path][1] for path in order if path in by_path]
+
+    async def _load_extended_menu_routes(self, extends: Sequence[str]) -> list[tuple[list[dict[str, Any]], int]]:
+        """SPA ``loadExtendedMenu``: fetch Vite chunks listed in REST ``extends``."""
+        layers: list[tuple[list[dict[str, Any]], int]] = []
+        seen: set[str] = set()
+        for raw_ref in extends:
+            ref = str(raw_ref).strip()
+            if not ref or ref in seen:
+                continue
+            seen.add(ref)
+            asset = self.resolve_extended_menu_asset(ref)
+            if asset is None:
+                self._log.warning("Extended menu ref %r not found in index; skipping", ref)
+                continue
+            try:
+                code = await self._api.get_bytes(asset.url)
+            except Exception as exc:
+                self._log.warning("Extended menu fetch failed (%s): %s", asset.url, exc)
+                continue
+            routes = self._parse_menu_routes(code)
+            if routes:
+                # Extended chunks inherit a neutral priority; REST layers already applied.
+                layers.append((routes, 0))
+                self._log.info("Loaded extended menu %s (%d routes) from %s", ref, len(routes), asset.url)
+        return layers
+
+    async def _load_rest_menu_layers(
+        self,
+        device_menu: int,
+        devices: Sequence[DeviceMenuRef] | None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """Device-specific REST menus, then default, then extends (#438)."""
+        layers: list[tuple[list[dict[str, Any]], int]] = []
+        extend_refs: list[str] = []
+        asset_url: str | None = None
+        standalone_won = False
+
+        if devices:
+            for ref in devices:
+                routes, meta, url_hint = await self._fetch_devices_menu_payload(ref.manuf_code, ref.dev_code, ref.fw)
+                if not routes and not meta:
+                    continue
+                priority = int(meta.get("priority", 0) or 0)
+                if routes:
+                    layers.append((routes, priority))
+                    asset_url = url_hint or asset_url
+                extend_refs.extend(str(item) for item in meta.get("extends", []) if item)
+                if meta.get("standalone"):
+                    standalone_won = True
+                    self._log.info(
+                        "Standalone devices menu won for device_menu=%d (%s)",
+                        device_menu,
+                        url_hint,
+                    )
+                    break
+
+        if not standalone_won:
+            self._log.info(
+                "Fetching SPA default REST menu for device_menu=%d (devices=%s)",
+                device_menu,
+                self.devices_fingerprint(devices) or "none",
+            )
+            routes, meta, url_hint = await self._fetch_devices_menu_payload(0, 0, "0.0.0")
+            if routes:
+                layers.append((routes, int(meta.get("priority", 0) or 0)))
+                asset_url = url_hint or asset_url
+            extend_refs.extend(str(item) for item in meta.get("extends", []) if item)
+
+        if extend_refs:
+            layers.extend(await self._load_extended_menu_routes(extend_refs))
+
+        return self._merge_menu_route_layers(layers), asset_url
+
+    async def _load_and_cache_menu(
+        self,
+        device_menu: int,
+        *,
+        devices: Sequence[DeviceMenuRef] | None = None,
+    ) -> None:
         """Load raw menu data and cache it in MenuManager."""
         # Auto-load index if not loaded yet
-        if not self._idx.menu_map and not self._idx.assets_by_basename:
+        if not self._idx.menu_map and not self._idx.assets_by_basename and not self._idx.menu_variant_map:
             await self._auto_discover_and_load_index()
 
         raw_routes: list[dict[str, Any]] = []
@@ -1739,11 +1914,8 @@ class LiveAssetsCatalog:
             asset_url = asset.url
 
         if not raw_routes:
-            self._log.info(
-                "No usable menu asset routes for device_menu=%d; fetching SPA default REST menu",
-                device_menu,
-            )
-            raw_routes, asset_url = await self._fetch_server_default_menu_routes()
+            raw_routes, rest_url = await self._load_rest_menu_layers(device_menu, devices)
+            asset_url = rest_url or asset_url
 
         if not raw_routes:
             self._log.warning("No menu routes found for device_menu=%d", device_menu)
@@ -2475,6 +2647,8 @@ class LiveAssetsCatalog:
         self,
         device_menu: int,
         permissions: Iterable[str],
+        *,
+        devices: Sequence[DeviceMenuRef] | None = None,
     ) -> set[str]:
         """List symbols visible for given permissions.
 
@@ -2484,11 +2658,12 @@ class LiveAssetsCatalog:
         Args:
             device_menu: The device menu identifier.
             permissions: An iterable of permission strings to check visibility against.
+            devices: Optional ``Module.devices`` refs for REST menu construction (#438).
 
         Returns:
             A set of token strings that are visible for the given permissions.
         """
-        menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
+        menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions, devices=devices)
         return menu.all_tokens()
 
     # ---------- i18n support ----------

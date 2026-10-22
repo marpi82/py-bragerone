@@ -6,10 +6,12 @@ from .auth import AuthResponse, LoginRequest
 from .common import ApiResponse, Permission
 from .module_events import ModuleActivity, ModuleActivityUser, ModuleAlarm
 from .modules import (
+    DeviceMenuRef,
     Module,
     ModuleCard,
     ModuleGateway,
     ModuleParameterSchema,
+    device_menu_refs_from_module,
 )
 from .objects import (
     BragerObject,
@@ -22,6 +24,7 @@ __all__ = [
     "ApiResponse",
     "AuthResponse",
     "BragerObject",
+    "DeviceMenuRef",
     "LoginRequest",
     "Module",
     "ModuleActivity",
@@ -34,4 +37,5 @@ __all__ = [
     "Permission",
     "SystemVersion",
     "User",
+    "device_menu_refs_from_module",
 ]

@@ -442,10 +442,19 @@ async def test_assets_protocol_discover_static_route_default_raises() -> None:
             permissions: Iterable[str] | None = None,
             *,
             debug_mode: bool = False,
+            devices: object | None = None,
         ) -> MenuResult:
+            _ = devices
             return MenuResult.model_validate({"routes": []})
 
-        async def list_symbols_for_permissions(self, device_menu: int, permissions: Iterable[str]) -> set[str]:
+        async def list_symbols_for_permissions(
+            self,
+            device_menu: int,
+            permissions: Iterable[str],
+            *,
+            devices: object | None = None,
+        ) -> set[str]:
+            _ = devices
             return set()
 
         async def get_i18n(self, lang: str, namespace: str) -> dict[str, Any]:
