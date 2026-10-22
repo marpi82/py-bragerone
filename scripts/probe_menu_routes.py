@@ -17,6 +17,7 @@ from typing import Any
 
 from pybragerone import BragerOneApiClient
 from pybragerone.api.server import Platform, server_for
+from pybragerone.models.api.modules import device_menu_refs_from_module
 from pybragerone.models.catalog import LiveAssetsCatalog
 from pybragerone.models.param import ParamStore
 from pybragerone.models.param_resolver import ParamResolver
@@ -143,7 +144,12 @@ async def probe(
 
             flat_values = store.flatten()
             perms = [str(p) for p in getattr(mod, "permissions", []) or []]
-            menu = await catalog.get_module_menu(device_menu=mod.deviceMenu, permissions=perms)
+            menu_devices = device_menu_refs_from_module(getattr(mod, "devices", None))
+            menu = await catalog.get_module_menu(
+                device_menu=mod.deviceMenu,
+                permissions=perms,
+                devices=menu_devices or None,
+            )
             routes_i18n = await resolver._panel_title_i18n(menu)
 
             if capture_dir is not None:
@@ -207,6 +213,7 @@ async def probe(
                 all_panels=True,
                 web_ui_only=False,
                 flat_values=flat_values,
+                devices=menu_devices or None,
             )
             groups_web = await resolver.build_panel_groups(
                 device_menu=mod.deviceMenu,
@@ -214,6 +221,7 @@ async def probe(
                 all_panels=True,
                 web_ui_only=True,
                 flat_values=flat_values,
+                devices=menu_devices or None,
             )
 
             filtered_rows = [row for row in route_rows if _matches_filter(row, filter_re=filter_re)]

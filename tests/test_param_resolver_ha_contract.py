@@ -107,13 +107,20 @@ class _HaAssets:
         permissions: Iterable[str] | None = None,
         *,
         debug_mode: bool = False,
+        devices: object | None = None,
     ) -> MenuResult:
         self.menu_calls += 1
-        _ = (device_menu, permissions, debug_mode)
+        _ = (device_menu, permissions, debug_mode, devices)
         return self.menu
 
-    async def list_symbols_for_permissions(self, device_menu: int, permissions: Iterable[str]) -> set[str]:
-        _ = (device_menu, permissions)
+    async def list_symbols_for_permissions(
+        self,
+        device_menu: int,
+        permissions: Iterable[str],
+        *,
+        devices: object | None = None,
+    ) -> set[str]:
+        _ = (device_menu, permissions, devices)
         return set(self.symbols_for_permissions)
 
     async def get_i18n(self, lang: str, namespace: str) -> dict[str, Any]:

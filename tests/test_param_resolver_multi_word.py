@@ -56,10 +56,23 @@ class _StubAssets:
         # Match AssetsProtocol: omit unresolved tokens rather than mapping them to None.
         return {token: self.mapping for token in tokens if token == self.mapping.key}
 
-    async def get_module_menu(self, device_menu: int, permissions: Any = None, *, debug_mode: bool = False) -> Any:
+    async def get_module_menu(
+        self,
+        device_menu: int,
+        permissions: Any = None,
+        *,
+        debug_mode: bool = False,
+        devices: Any = None,
+    ) -> Any:
         raise NotImplementedError
 
-    async def list_symbols_for_permissions(self, device_menu: int, permissions: Any) -> set[str]:
+    async def list_symbols_for_permissions(
+        self,
+        device_menu: int,
+        permissions: Any,
+        *,
+        devices: Any = None,
+    ) -> set[str]:
         return set()
 
     async def get_i18n(self, lang: str, namespace: str) -> dict[str, Any]:

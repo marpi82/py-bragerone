@@ -7,6 +7,13 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Added
+
+- Device-specific REST menu construction before the SPA default ``0/0/0.0.0``,
+  including ``extends`` Vite chunk loads (SPA ``loadExtendedMenu`` parity) (#438).
+  Pass ``Module.devices`` via ``DeviceMenuRef`` / ``device_menu_refs_from_module``
+  into ``get_module_menu`` / ``build_panel_groups``.
+
 ## [2026.10.2rc1] - 2026-10-22
 
 ### Added
@@ -35,8 +42,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   when `deviceMenu` JS assets are missing or parse to zero routes. BragerOne
   1.04.05+ dropped `module.menu` / `deviceMenu/0` chunks, which left
   `deviceMenu=0` modules (e.g. HT Connect) with empty panels and broke
-  live-contract compat smoke (#437). Device-specific menus
-  (`manuf/dev/fw` before the `0/0/0.0.0` default) remain follow-up (#438).
+  live-contract compat smoke (#437). Device-specific menus and ``extends``
+  follow in #438.
 
 ## [2026.9.3] - 2026-09-22
 

@@ -23,6 +23,7 @@ from typing import Any
 
 from pybragerone import BragerOneApiClient
 from pybragerone.api.server import Platform, server_for
+from pybragerone.models.api.modules import device_menu_refs_from_module
 from pybragerone.models.catalog import LiveAssetsCatalog
 from pybragerone.models.param import ParamStore
 from pybragerone.models.param_resolver import ParamResolver
@@ -108,6 +109,7 @@ async def smoke_module(
     permissions: Sequence[str],
     lang: str,
     max_resolve: int | None,
+    devices: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     """Prime one module and exercise panel build + describe/resolve."""
     store = ParamStore()
@@ -126,6 +128,7 @@ async def smoke_module(
 
     resolver = ParamResolver(store=store, assets=catalog, lang=lang)
     perms = [str(p) for p in permissions]
+    menu_devices = device_menu_refs_from_module(devices)
 
     groups_all = await resolver.build_panel_groups(
         device_menu=device_menu,
@@ -133,6 +136,7 @@ async def smoke_module(
         all_panels=True,
         web_ui_only=False,
         flat_values=flat_values,
+        devices=menu_devices or None,
     )
     groups_web = await resolver.build_panel_groups(
         device_menu=device_menu,
@@ -140,6 +144,7 @@ async def smoke_module(
         all_panels=True,
         web_ui_only=True,
         flat_values=flat_values,
+        devices=menu_devices or None,
     )
     symbols = sorted({sym for group in groups_all.values() for sym in group})
     symbols_to_resolve = symbols[:max_resolve] if max_resolve is not None and max_resolve >= 0 else symbols
@@ -181,7 +186,11 @@ async def smoke_module(
     visibility_error: str | None = None
     visibility_checked = 0
     try:
-        menu = await resolver.get_module_menu(device_menu=device_menu, permissions=perms)
+        menu = await resolver.get_module_menu(
+            device_menu=device_menu,
+            permissions=perms,
+            devices=menu_devices or None,
+        )
         for route, ancestors in ParamResolver._iter_routes_with_ancestors(menu.routes):
             ParamResolver.route_visibility_diagnostics(
                 route,
@@ -250,6 +259,7 @@ async def run_compat_smoke(
                 permissions=list(getattr(mod, "permissions", []) or []),
                 lang=lang,
                 max_resolve=max_resolve,
+                devices=list(getattr(mod, "devices", []) or []),
             )
             module_payloads.append(payload)
     finally:

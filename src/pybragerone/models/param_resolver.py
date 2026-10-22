@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
+from .api.modules import DeviceMenuRef
 from .catalog import LiveAssetsCatalog, ParamMap
 from .i18n import I18nResolver
 from .menu import MenuResult
@@ -100,6 +101,7 @@ class AssetsProtocol(Protocol):
         permissions: Iterable[str] | None = None,
         *,
         debug_mode: bool = False,
+        devices: Sequence[DeviceMenuRef] | None = None,
     ) -> MenuResult:
         """Return processed module menu tree for the given device_menu."""
         raise NotImplementedError
@@ -108,7 +110,13 @@ class AssetsProtocol(Protocol):
         """Return tokens from a static deviceMenu route chunk when supported."""
         raise NotImplementedError
 
-    async def list_symbols_for_permissions(self, device_menu: int, permissions: Iterable[str]) -> set[str]:
+    async def list_symbols_for_permissions(
+        self,
+        device_menu: int,
+        permissions: Iterable[str],
+        *,
+        devices: Sequence[DeviceMenuRef] | None = None,
+    ) -> set[str]:
         """Return tokens visible for the provided permission set."""
         raise NotImplementedError
 
@@ -401,7 +409,9 @@ class ComputedValueEvaluator:
         return None
 
 
-MenuCacheKey = tuple[int, frozenset[str] | None]
+# (device_menu, permissions, devices fingerprint) — fingerprint avoids collisions when
+# deviceMenu=0 modules share an int id but differ in Module.devices (#438).
+MenuCacheKey = tuple[int, frozenset[str] | None, str]
 
 
 class ParamResolver:
@@ -476,19 +486,31 @@ class ParamResolver:
         *,
         permissions: Iterable[str] | None = None,
         debug_mode: bool = False,
+        devices: Sequence[DeviceMenuRef] | None = None,
     ) -> MenuResult:
         """Fetch and cache the processed menu for a module/device_menu."""
+        devices_fp = LiveAssetsCatalog.devices_fingerprint(devices)
         if debug_mode:
-            return await self._assets.get_module_menu(device_menu, permissions=permissions, debug_mode=True)
+            return await self._assets.get_module_menu(
+                device_menu,
+                permissions=permissions,
+                debug_mode=True,
+                devices=devices,
+            )
 
         perm_key: frozenset[str] | None = None if permissions is None else frozenset(permissions)
-        cache_key: MenuCacheKey = (device_menu, perm_key)
+        cache_key: MenuCacheKey = (device_menu, perm_key, devices_fp)
 
         cached = self._cache_menu.get(cache_key)
         if cached is not None:
             return cached
 
-        result = await self._assets.get_module_menu(device_menu, permissions=perm_key, debug_mode=False)
+        result = await self._assets.get_module_menu(
+            device_menu,
+            permissions=perm_key,
+            debug_mode=False,
+            devices=devices,
+        )
         self._cache_menu[cache_key] = result
         return result
 
@@ -1201,9 +1223,10 @@ class ParamResolver:
         web_ui_only: bool = False,
         flat_values: Mapping[str, Any] | None = None,
         use_store_flat_values: bool = True,
+        devices: Sequence[DeviceMenuRef] | None = None,
     ) -> dict[str, list[str]]:
         """Build panel groups from module menu for selected permissions."""
-        menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
+        menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions, devices=devices)
         routes_i18n = await self._panel_title_i18n(menu)
         static_route_symbols = await self._static_route_symbols_for_menu(menu)
         if flat_values is not None:
@@ -1233,9 +1256,10 @@ class ParamResolver:
         web_ui_only: bool = False,
         flat_values: Mapping[str, Any] | None = None,
         use_store_flat_values: bool = True,
+        devices: Sequence[DeviceMenuRef] | None = None,
     ) -> list[dict[str, Any]]:
         """Return route diagnostics for panel inclusion filtering."""
-        menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions)
+        menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions, devices=devices)
         routes_i18n = await self._panel_title_i18n(menu)
         static_route_symbols = await self._static_route_symbols_for_menu(menu)
         if flat_values is not None:
@@ -2757,7 +2781,13 @@ class ParamResolver:
             out[sym] = await self.describe_symbol(sym)
         return out
 
-    async def merge_assets_with_permissions(self, permissions: list[str], device_menu: int = 0) -> dict[str, dict[str, Any]]:
+    async def merge_assets_with_permissions(
+        self,
+        permissions: list[str],
+        device_menu: int = 0,
+        *,
+        devices: Sequence[DeviceMenuRef] | None = None,
+    ) -> dict[str, dict[str, Any]]:
         """Merge menu-visible symbols with mappings and live values for a permission set."""
-        symbols = await self._assets.list_symbols_for_permissions(device_menu, permissions)
+        symbols = await self._assets.list_symbols_for_permissions(device_menu, permissions, devices=devices)
         return await self.describe_symbols(sorted(symbols))
