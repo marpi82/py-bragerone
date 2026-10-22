@@ -258,7 +258,7 @@ async def test_fetch_devices_menu_bad_priority_defaults_to_zero() -> None:
 
 
 def test_merge_menu_route_layers_skips_empty_paths_and_keeps_higher_second() -> None:
-    """Empty paths drop; a later higher-priority layer overwrites the same path."""
+    """Empty paths drop; a later higher-priority layer wins the display name."""
     low: list[dict[str, Any]] = [_route("shared", name="low"), {"name": "no-path"}, {"path": ""}]
     high: list[dict[str, Any]] = [_route("shared", name="high")]
     merged = LiveAssetsCatalog._merge_menu_route_layers([(low, 1), (high, 9)])
@@ -267,12 +267,110 @@ def test_merge_menu_route_layers_skips_empty_paths_and_keeps_higher_second() -> 
 
 
 def test_merge_menu_route_layers_keeps_higher_when_later_is_lower() -> None:
-    """A later lower-priority layer does not overwrite an earlier path."""
+    """A later lower-priority layer does not overwrite an earlier path name."""
     high: list[dict[str, Any]] = [_route("shared", name="high")]
     low: list[dict[str, Any]] = [_route("shared", name="low")]
     merged = LiveAssetsCatalog._merge_menu_route_layers([(high, 9), (low, 1)])
     assert len(merged) == 1
     assert merged[0]["name"] == "high"
+
+
+def test_merge_menu_route_layers_unions_complementary_parameters() -> None:
+    """Higher-priority write params keep lower-priority read params on the same path."""
+    low: list[dict[str, Any]] = [
+        {
+            "path": "shared",
+            "name": "low",
+            "meta": {
+                "parameters": {
+                    "read": [{"token": "PARAM_READ"}],
+                    "write": [],
+                    "status": [],
+                    "special": [],
+                }
+            },
+        }
+    ]
+    high: list[dict[str, Any]] = [
+        {
+            "path": "shared",
+            "name": "high",
+            "meta": {
+                "parameters": {
+                    "read": [],
+                    "write": [{"token": "PARAM_WRITE"}],
+                    "status": [],
+                    "special": [],
+                }
+            },
+        }
+    ]
+    merged = LiveAssetsCatalog._merge_menu_route_layers([(low, 10), (high, 50)])
+    assert len(merged) == 1
+    assert merged[0]["name"] == "high"
+    params = merged[0]["meta"]["parameters"]
+    assert [e["token"] for e in params["read"]] == ["PARAM_READ"]
+    assert [e["token"] for e in params["write"]] == ["PARAM_WRITE"]
+
+
+def test_merge_helpers_cover_edge_identities_and_children() -> None:
+    """Parameter identity helpers + top-level params/children merge branches."""
+    assert LiveAssetsCatalog._param_entry_key({"token": "T"}) == "T"
+    assert LiveAssetsCatalog._param_entry_key({"parameter": "P"}) == "P"
+    assert LiveAssetsCatalog._param_entry_key({"other": 1}) is None
+    assert LiveAssetsCatalog._param_entry_key("RAW") == "RAW"
+    assert LiveAssetsCatalog._param_entry_key("") is None
+    assert LiveAssetsCatalog._param_entry_key(3) is None
+
+    assert LiveAssetsCatalog._merge_parameters_maps(None, None) is None
+    assert LiveAssetsCatalog._merge_parameters_maps("x", 1) == "x"
+
+    # Preferred duplicate token drops the fallback copy.
+    merged_section = LiveAssetsCatalog._merge_parameter_section_lists(
+        [{"token": "A"}, {"no": "key"}],
+        [{"token": "A"}, {"token": "B"}, "C"],
+    )
+    assert [LiveAssetsCatalog._param_entry_key(e) for e in merged_section] == ["A", None, "B", "C"]
+
+    low: list[dict[str, Any]] = [
+        {
+            "path": "parent",
+            "name": "low",
+            "parameters": {"read": [{"token": "TOP_READ"}], "write": []},
+            "children": [{"path": "child", "name": "low-child", "meta": {"parameters": {"read": [{"token": "CHILD_READ"}]}}}],
+        }
+    ]
+    high: list[dict[str, Any]] = [
+        {
+            "path": "parent",
+            "name": "high",
+            "parameters": {"read": [], "write": [{"token": "TOP_WRITE"}]},
+            "children": [{"path": "child", "name": "high-child", "meta": {"parameters": {"write": [{"token": "CHILD_WRITE"}]}}}],
+        }
+    ]
+    merged = LiveAssetsCatalog._merge_menu_route_layers([(low, 1), (high, 9)])
+    assert merged[0]["name"] == "high"
+    assert [e["token"] for e in merged[0]["parameters"]["read"]] == ["TOP_READ"]
+    assert [e["token"] for e in merged[0]["parameters"]["write"]] == ["TOP_WRITE"]
+    child = merged[0]["children"][0]
+    assert child["name"] == "high-child"
+    assert [e["token"] for e in child["meta"]["parameters"]["read"]] == ["CHILD_READ"]
+    assert [e["token"] for e in child["meta"]["parameters"]["write"]] == ["CHILD_WRITE"]
+
+
+def test_parse_menu_export_bad_priority_defaults_to_zero() -> None:
+    """Non-int export priority falls back to 0."""
+    catalog = LiveAssetsCatalog(AsyncMock())
+    routes, priority = catalog._parse_menu_export(
+        b"""
+        export default {
+          priority: "nope",
+          deviceMenu: [{ path: "x", name: "n", meta: { displayName: "d", displayDropdown: true } }]
+        };
+        """
+    )
+    assert priority == 0
+    assert [r["path"] for r in routes] == ["x"]
 
 
 @pytest.mark.asyncio
@@ -353,3 +451,170 @@ async def test_list_symbols_for_permissions_passes_devices() -> None:
     )
     assert "PARAM_P30_2" in tokens
     mock_api.get_devices_menu.assert_awaited_once_with(1, 2, "1.0")
+
+
+@pytest.mark.asyncio
+async def test_standalone_still_loads_later_devices() -> None:
+    """Standalone suppresses default only — subsequent Module.devices keep loading."""
+    mock_api = AsyncMock()
+
+    async def _get_menu(manuf: int, dev: int, fw: str = "0.0.0") -> dict[str, object]:
+        if (manuf, dev) == (1, 1):
+            return {
+                "priority": 10,
+                "extends": [],
+                "standalone": True,
+                "deviceMenu": [_route("first")],
+            }
+        if (manuf, dev) == (2, 2):
+            return {
+                "priority": 20,
+                "extends": [],
+                "standalone": False,
+                "deviceMenu": [_route("second")],
+            }
+        raise AssertionError(f"default must not load after standalone: {manuf}/{dev}/{fw}")
+
+    mock_api.get_devices_menu = AsyncMock(side_effect=_get_menu)
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/d.js", base="dummy", hash="x")]
+    menu = await catalog.get_module_menu(
+        device_menu=0,
+        devices=[
+            DeviceMenuRef(manuf_code=1, dev_code=1, fw="1.0"),
+            DeviceMenuRef(manuf_code=2, dev_code=2, fw="1.0"),
+        ],
+    )
+    paths = {r.path for r in menu.routes}
+    assert paths == {"first", "second"}
+    assert mock_api.get_devices_menu.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_devices_prefer_rest_over_mapped_js_chunk() -> None:
+    """With devices=, REST wins even when index maps a usable deviceMenu JS chunk."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": 50,
+            "extends": [],
+            "standalone": True,
+            "deviceMenu": [_route("from-rest")],
+        }
+    )
+    mock_api.get_bytes = AsyncMock(
+        return_value=b"""
+        export default [{
+          path: "from-js",
+          name: "modules.menu.from_js",
+          meta: { displayName: "menu.JS", displayDropdown: true }
+        }];
+        """
+    )
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.menu_map[153] = "0-JsJsJsJs"
+    catalog._idx.assets_by_basename["0"] = [AssetRef(url="https://one.brager.pl/assets/0-JsJsJsJs.js", base="0", hash="JsJsJsJs")]
+    menu = await catalog.get_module_menu(
+        device_menu=153,
+        devices=[DeviceMenuRef(manuf_code=67, dev_code=7, fw="2.08")],
+    )
+    assert [r.path for r in menu.routes] == ["from-rest"]
+    mock_api.get_bytes.assert_not_called()
+    mock_api.get_devices_menu.assert_awaited_once_with(67, 7, "2.08")
+
+
+@pytest.mark.asyncio
+async def test_extends_priority_beats_lower_rest_layer() -> None:
+    """Extended chunk export priority participates in path merge."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": 10,
+            "extends": ["153:1211"],
+            "standalone": False,
+            "deviceMenu": [_route("shared", name="rest.shared")],
+        }
+    )
+    chunk_js = b"""
+    export default {
+      priority: 100,
+      deviceMenu: [{
+        path: "shared",
+        name: "ext.shared",
+        meta: { displayName: "menu.EXT", displayDropdown: true }
+      }]
+    };
+    """
+    mock_api.get_bytes = AsyncMock(return_value=chunk_js)
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/d.js", base="dummy", hash="x")]
+    catalog._idx.menu_variant_map[(153, "1211")] = "1211-AbCdEfGh"
+    catalog._idx.assets_by_basename["1211"] = [
+        AssetRef(url="https://one.brager.pl/assets/1211-AbCdEfGh.js", base="1211", hash="AbCdEfGh")
+    ]
+    menu = await catalog.get_module_menu(device_menu=0)
+    assert [r.name for r in menu.routes if r.path == "shared"] == ["ext.shared"]
+
+
+@pytest.mark.asyncio
+async def test_extends_empty_parse_is_skipped() -> None:
+    """Resolved extends chunks that parse to zero routes are ignored."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": 0,
+            "extends": ["153:1211"],
+            "standalone": False,
+            "deviceMenu": [_route("base")],
+        }
+    )
+    mock_api.get_bytes = AsyncMock(return_value=b"export default 1;")
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/d.js", base="dummy", hash="x")]
+    catalog._idx.menu_variant_map[(153, "1211")] = "1211-AbCdEfGh"
+    catalog._idx.assets_by_basename["1211"] = [
+        AssetRef(url="https://one.brager.pl/assets/1211-AbCdEfGh.js", base="1211", hash="AbCdEfGh")
+    ]
+    menu = await catalog.get_module_menu(device_menu=0)
+    assert [r.path for r in menu.routes] == ["base"]
+    mock_api.get_bytes.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_device_meta_without_routes_still_collects_extends() -> None:
+    """Empty deviceMenu with meta still contributes extends (branch coverage)."""
+    mock_api = AsyncMock()
+
+    async def _get_menu(manuf: int, dev: int, fw: str = "0.0.0") -> dict[str, object]:
+        if manuf == 1:
+            return {"priority": 0, "extends": ["153:1211"], "standalone": False, "deviceMenu": []}
+        return {
+            "priority": 0,
+            "extends": [],
+            "standalone": False,
+            "deviceMenu": [_route("default")],
+        }
+
+    mock_api.get_devices_menu = AsyncMock(side_effect=_get_menu)
+    mock_api.get_bytes = AsyncMock(
+        return_value=b"""
+        export default [{
+          path: "extended",
+          name: "modules.menu.extended",
+          meta: { displayName: "menu.EXTENDED", displayDropdown: true }
+        }];
+        """
+    )
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/d.js", base="dummy", hash="x")]
+    catalog._idx.menu_variant_map[(153, "1211")] = "1211-AbCdEfGh"
+    catalog._idx.assets_by_basename["1211"] = [
+        AssetRef(url="https://one.brager.pl/assets/1211-AbCdEfGh.js", base="1211", hash="AbCdEfGh")
+    ]
+    menu = await catalog.get_module_menu(
+        device_menu=0,
+        devices=[DeviceMenuRef(manuf_code=1, dev_code=1, fw="1.0")],
+    )
+    paths = {r.path for r in menu.routes}
+    assert "default" in paths
+    assert "extended" in paths

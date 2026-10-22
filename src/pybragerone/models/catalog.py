@@ -1698,9 +1698,10 @@ class LiveAssetsCatalog:
     ) -> MenuResult:
         """Get processed menu using the unified MenuManager pipeline.
 
-        When JS assets yield no routes, tries device-specific REST menus from
-        *devices* before the SPA default ``0/0/0.0.0``, then honours ``extends``
-        Vite chunks (#438).
+        When *devices* is supplied, prefers device-specific REST menus (then the
+        SPA default ``0/0/0.0.0`` and ``extends`` chunks) before legacy JS
+        ``deviceMenu`` assets (#438). Without *devices*, keeps the historical
+        JS-then-REST fallback.
         """
         fp = self.devices_fingerprint(devices)
         needs_load = device_menu not in self._menu_manager.list_cached_menus() or self._menu_devices_fp.get(device_menu) != fp
@@ -1787,10 +1788,91 @@ class LiveAssetsCatalog:
         return routes, url_hint
 
     @staticmethod
+    def _param_entry_key(entry: Any) -> str | None:
+        """Stable identity for a parameter list entry (token / parameter field)."""
+        if isinstance(entry, Mapping):
+            for key in ("token", "parameter", "param"):
+                value = entry.get(key)
+                if isinstance(value, str) and value:
+                    return value
+            return None
+        if isinstance(entry, str) and entry:
+            return entry
+        return None
+
+    @classmethod
+    def _merge_parameter_section_lists(cls, preferred: Any, fallback: Any) -> list[Any]:
+        """Union parameter lists; *preferred* wins on duplicate tokens."""
+        preferred_list = list(preferred) if isinstance(preferred, list) else []
+        fallback_list = list(fallback) if isinstance(fallback, list) else []
+        out: list[Any] = []
+        seen: set[str] = set()
+        for entry in preferred_list:
+            key = cls._param_entry_key(entry)
+            if key is not None:
+                seen.add(key)
+            out.append(entry)
+        for entry in fallback_list:
+            key = cls._param_entry_key(entry)
+            if key is not None and key in seen:
+                continue
+            if key is not None:
+                seen.add(key)
+            out.append(entry)
+        return out
+
+    @classmethod
+    def _merge_parameters_maps(cls, preferred: Any, fallback: Any) -> dict[str, Any] | Any:
+        """Merge read/write/status/special maps; keep non-section keys from *preferred*."""
+        if not isinstance(preferred, Mapping) and not isinstance(fallback, Mapping):
+            return preferred if preferred is not None else fallback
+        pref = dict(preferred) if isinstance(preferred, Mapping) else {}
+        fall = dict(fallback) if isinstance(fallback, Mapping) else {}
+        out = dict(fall)
+        out.update(pref)
+        for section in ("read", "write", "status", "special"):
+            if section in pref or section in fall:
+                out[section] = cls._merge_parameter_section_lists(pref.get(section), fall.get(section))
+        return out
+
+    @classmethod
+    def _merge_route_dicts(cls, preferred: Mapping[str, Any], fallback: Mapping[str, Any]) -> dict[str, Any]:
+        """Deep-merge two routes: *preferred* wins scalars; parameters/children union by path (#438)."""
+        out = dict(fallback)
+        out.update(preferred)
+
+        pref_meta = preferred.get("meta")
+        fall_meta = fallback.get("meta")
+        if isinstance(pref_meta, Mapping) or isinstance(fall_meta, Mapping):
+            meta_out = dict(fall_meta) if isinstance(fall_meta, Mapping) else {}
+            if isinstance(pref_meta, Mapping):
+                meta_out.update(pref_meta)
+            pref_params = pref_meta.get("parameters") if isinstance(pref_meta, Mapping) else None
+            fall_params = fall_meta.get("parameters") if isinstance(fall_meta, Mapping) else None
+            if pref_params is not None or fall_params is not None:
+                meta_out["parameters"] = cls._merge_parameters_maps(pref_params, fall_params)
+            out["meta"] = meta_out
+
+        if "parameters" in preferred or "parameters" in fallback:
+            out["parameters"] = cls._merge_parameters_maps(preferred.get("parameters"), fallback.get("parameters"))
+
+        pref_children = preferred.get("children")
+        fall_children = fallback.get("children")
+        if isinstance(pref_children, list) or isinstance(fall_children, list):
+            child_layers: list[tuple[list[dict[str, Any]], int]] = []
+            if isinstance(fall_children, list):
+                child_layers.append(([c for c in fall_children if isinstance(c, dict)], 0))
+            if isinstance(pref_children, list):
+                child_layers.append(([c for c in pref_children if isinstance(c, dict)], 1))
+            out["children"] = cls._merge_menu_route_layers(child_layers)
+        return out
+
+    @classmethod
     def _merge_menu_route_layers(
+        cls,
         layers: Sequence[tuple[list[dict[str, Any]], int]],
     ) -> list[dict[str, Any]]:
-        """Merge route lists by ``path``; higher *priority* wins on collision."""
+        """Merge route lists by ``path``; higher *priority* wins scalars, parameters union (#438)."""
         by_path: dict[str, tuple[int, dict[str, Any]]] = {}
         order: list[str] = []
         for routes, priority in layers:
@@ -1800,12 +1882,14 @@ class LiveAssetsCatalog:
                     continue
                 existing = by_path.get(path)
                 if existing is None:
-                    by_path[path] = (priority, route)
+                    by_path[path] = (priority, dict(route))
                     order.append(path)
                     continue
-                prev_priority, _prev = existing
+                prev_priority, prev_route = existing
                 if priority >= prev_priority:
-                    by_path[path] = (priority, route)
+                    by_path[path] = (priority, cls._merge_route_dicts(route, prev_route))
+                else:
+                    by_path[path] = (prev_priority, cls._merge_route_dicts(prev_route, route))
         return [by_path[path][1] for path in order if path in by_path]
 
     async def _load_extended_menu_routes(self, extends: Sequence[str]) -> list[tuple[list[dict[str, Any]], int]]:
@@ -1826,11 +1910,16 @@ class LiveAssetsCatalog:
             except Exception as exc:
                 self._log.warning("Extended menu fetch failed (%s): %s", asset.url, exc)
                 continue
-            routes = self._parse_menu_routes(code)
+            routes, priority = self._parse_menu_export(code)
             if routes:
-                # Extended chunks inherit a neutral priority; REST layers already applied.
-                layers.append((routes, 0))
-                self._log.info("Loaded extended menu %s (%d routes) from %s", ref, len(routes), asset.url)
+                layers.append((routes, priority))
+                self._log.info(
+                    "Loaded extended menu %s (priority=%d, %d routes) from %s",
+                    ref,
+                    priority,
+                    len(routes),
+                    asset.url,
+                )
         return layers
 
     async def _load_rest_menu_layers(
@@ -1855,13 +1944,13 @@ class LiveAssetsCatalog:
                     asset_url = url_hint or asset_url
                 extend_refs.extend(str(item) for item in meta.get("extends", []) if item)
                 if meta.get("standalone"):
+                    # Suppress only the generic default — keep loading remaining devices (#438).
                     standalone_won = True
                     self._log.info(
                         "Standalone devices menu won for device_menu=%d (%s)",
                         device_menu,
                         url_hint,
                     )
-                    break
 
         if not standalone_won:
             self._log.info(
@@ -1894,26 +1983,31 @@ class LiveAssetsCatalog:
         raw_routes: list[dict[str, Any]] = []
         asset_url: str | None = None
 
-        # Find asset for device_menu
-        menu_name = self._idx.menu_map.get(device_menu)
-        asset: AssetRef | None = None
-        if menu_name:
-            asset = self._idx.find_asset_for_full_name(menu_name)
-        if asset is None:
-            # Some accounts/modules report device_menu=0 or values not present in index mappings.
-            self._log.debug(
-                "No menu mapping found for device_menu=%d; trying legacy generic menu assets (module.menu, then basename 0)",
-                device_menu,
-            )
-            asset = self._generic_menu_asset()
-
-        if asset is not None:
-            self._log.info("Loading menu asset: %s", asset.url)
-            code = await self._api.get_bytes(asset.url)
-            raw_routes = self._parse_menu_routes(code)
-            asset_url = asset.url
+        # When Module.devices refs are supplied, prefer SPA REST construction first (#438).
+        if devices:
+            raw_routes, rest_url = await self._load_rest_menu_layers(device_menu, devices)
+            asset_url = rest_url
 
         if not raw_routes:
+            # Legacy JS deviceMenu chunk / generic module.menu (pre-1.04 or no devices=).
+            menu_name = self._idx.menu_map.get(device_menu)
+            asset: AssetRef | None = None
+            if menu_name:
+                asset = self._idx.find_asset_for_full_name(menu_name)
+            if asset is None:
+                self._log.debug(
+                    "No menu mapping found for device_menu=%d; trying legacy generic menu assets (module.menu, then basename 0)",
+                    device_menu,
+                )
+                asset = self._generic_menu_asset()
+
+            if asset is not None:
+                self._log.info("Loading menu asset: %s", asset.url)
+                code = await self._api.get_bytes(asset.url)
+                raw_routes = self._parse_menu_routes(code)
+                asset_url = asset.url
+
+        if not raw_routes and not devices:
             raw_routes, rest_url = await self._load_rest_menu_layers(device_menu, devices)
             asset_url = rest_url or asset_url
 
@@ -1931,14 +2025,26 @@ class LiveAssetsCatalog:
         """Get debug information about cached menu."""
         return self._menu_manager.get_debug_info(device_menu)
 
-    def _parse_menu_routes(self, code: bytes) -> list[dict[str, Any]]:
-        """Returning list of root-routes (1:1 with export in module.menu-*.js)."""
+    def _parse_menu_export(self, code: bytes) -> tuple[list[dict[str, Any]], int]:
+        """Parse a menu Vite/REST export into ``(routes, priority)``.
+
+        Extended chunks often wrap routes as ``{priority, deviceMenu: [...]}``;
+        priority defaults to ``0`` when absent or non-int (#438).
+        """
         tree = self._ts.parse(code)
         bindings = _collect_bindings(code, tree.root_node)
         root = _find_export_root(code, tree.root_node)
         if root is None:
-            return []
+            return [], 0
         export_obj = _node_to_python(code, root, bindings)
+
+        priority = 0
+        if isinstance(export_obj, Mapping):
+            priority_raw = export_obj.get("priority", 0)
+            try:
+                priority = int(priority_raw) if priority_raw is not None else 0
+            except (TypeError, ValueError):
+                priority = 0
 
         def extract_routes(value: Any, depth: int = 0) -> list[dict[str, Any]]:
             if depth > 5:
@@ -1962,7 +2068,12 @@ class LiveAssetsCatalog:
             return []
 
         raw_routes = extract_routes(export_obj)
-        return [self._attach_parameters_tokens(route) for route in raw_routes]
+        return [self._attach_parameters_tokens(route) for route in raw_routes], priority
+
+    def _parse_menu_routes(self, code: bytes) -> list[dict[str, Any]]:
+        """Returning list of root-routes (1:1 with export in module.menu-*.js)."""
+        routes, _priority = self._parse_menu_export(code)
+        return routes
 
     # Build output may rename helper functions; do not rely on single-letter identifiers.
     # Two-arg ``foo(…, 'TOKEN')`` plus single-arg obfuscated ``_0xabc('TOKEN')``.
