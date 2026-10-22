@@ -18,6 +18,16 @@
   },
   "packageRules": [
     {
+      "description": "requires-python tracks HA runtime; never automerge interpreter bumps",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchPackageNames": [
+        "python"
+      ],
+      "enabled": false
+    },
+    {
       "matchManagers": [
         "pep621"
       ],
