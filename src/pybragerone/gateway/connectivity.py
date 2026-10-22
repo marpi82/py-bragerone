@@ -218,7 +218,8 @@ class ConnectivityMixin(GatewayMixinBase):
             self._clear_active_cloud_outage()
         live_push_task = self._publish_live_push_health()
         if live_push_task is not None:
-            await live_push_task
+            # gather() yields a value so CodeQL does not treat bare ``await`` as ineffectual.
+            _ = await asyncio.gather(live_push_task)
 
     async def _set_ws_session_up(
         self,
@@ -281,7 +282,8 @@ class ConnectivityMixin(GatewayMixinBase):
             await self._emit_bus_and_callbacks(event, self._on_cloud_session)
             live_push_task = self._publish_live_push_health()
             if live_push_task is not None:
-                await live_push_task
+                # gather() yields a value so CodeQL does not treat bare ``await`` as ineffectual.
+                _ = await asyncio.gather(live_push_task)
             return
 
         # Session-down path.
