@@ -25,7 +25,7 @@ from pybragerone.gateway import (
     module_connected_at_means_online,
 )
 from pybragerone.gateway import _gateway as _gateway_mod
-from pybragerone.models.events import ModuleConnectivity
+from pybragerone.models.events import BusChannel, LivePushHealth, ModuleConnectivity
 
 
 @pytest.fixture(autouse=True)
@@ -1867,9 +1867,10 @@ async def test_gateway_hard_restarts_ws_after_zombie_prime_streak() -> None:
     primes_after_start = api.prime_params_calls
     gw._last_live_param_publish_monotonic = 0.0
 
-    await _wait_until(lambda: ws.force_reconnect_calls >= 1)
+    # Wait until hard-reconnect finishes re-bind: force_reconnect increments first,
+    # then disconnect/connect await LIVE_PUSH publish before modules.connect runs.
+    await _wait_until(lambda: ws.force_reconnect_calls >= 1 and api.modules_connect_calls > connect_calls_after_start)
     assert api.prime_params_calls > primes_after_start
-    assert api.modules_connect_calls > connect_calls_after_start
     # Live WS parameter traffic clears the streak again.
     await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
     assert gw._zombie_prime_streak == 0
@@ -2081,8 +2082,9 @@ async def test_gateway_recycles_realtime_after_repeated_hard_restarts() -> None:
     assert ws.connect_calls == 1
     gw._last_live_param_publish_monotonic = 0.0
     await _wait_until(lambda: ws.force_reconnect_calls >= 2)
-    await _wait_until(lambda: ws.hard_reset_calls >= 1)
-    assert ws.connect_calls >= 2
+    # hard_reset increments before disconnect→connect; wait until connect finishes
+    # (disconnect now awaits LIVE_PUSH publish, so the window is wider).
+    await _wait_until(lambda: ws.hard_reset_calls >= 1 and ws.connect_calls >= 2)
     await gw.stop()
 
 
@@ -2497,8 +2499,6 @@ async def test_gateway_touch_param_publish_and_age() -> None:
 
 async def test_gateway_live_push_health_stale_and_resume(caplog: pytest.LogCaptureFixture) -> None:
     """live_push_health tracks zombie stale age and logs resume duration."""
-    from pybragerone.models.events import LivePushHealth
-
     api = FakeApiClient()
     api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
     ws = FakeRealtimeManager()
@@ -2747,6 +2747,140 @@ async def test_gateway_live_push_health_session_down_is_unhealthy() -> None:
     assert gw.ws_session_up() is False
     assert gw.live_push_health()["push_healthy"] is False
     await gw.stop()
+
+
+async def test_gateway_stop_publishes_live_push_unhealthy_on_channel() -> None:
+    """stop() must deliver LIVE_PUSH unhealthy before canceling gateway tasks."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=30.0,
+    )
+    await gw.start()
+    await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
+    await _wait_until(lambda: gw.live_push_health()["push_healthy"] is True)
+
+    agen = gw.bus.subscribe_channel(BusChannel.LIVE_PUSH)
+    seen: list[LivePushHealth] = []
+
+    async def _drain() -> None:
+        async for event in agen:
+            assert isinstance(event, LivePushHealth)
+            seen.append(event)
+            if event.healthy is False:
+                break
+
+    drain = asyncio.create_task(_drain())
+    await asyncio.sleep(0)
+    await gw.stop()
+    await asyncio.wait_for(drain, timeout=2.0)
+    assert any(event.healthy is False for event in seen)
+    assert gw.live_push_health()["push_healthy"] is False
+    await agen.aclose()
+
+
+async def test_gateway_session_down_skips_live_push_await_when_already_unhealthy() -> None:
+    """Session-down does not await LIVE_PUSH when health was already False (no flip)."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=30.0,
+    )
+    await gw.start()
+    assert gw.ws_session_up() is True
+    # Pretend diagnostics already know the push stream is dead while session is up.
+    gw._live_push_healthy = False
+    await gw._set_ws_session_up(False, source="disconnect")
+    assert gw.ws_session_up() is False
+    assert gw.live_push_health()["push_healthy"] is False
+    # No flip → publish returns None (covers the await-skipped branch).
+    assert gw._publish_live_push_health() is None
+    await gw.stop()
+
+
+async def test_gateway_start_not_blocked_by_live_push_callback_waiting_for_prime() -> None:
+    """Session-up awaits LIVE_PUSH bus publish only — not user on_live_push callbacks."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    # stale_prime_after_s=0 → session-up immediately reports push_healthy=True.
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=0,
+    )
+    callback_entered = asyncio.Event()
+
+    async def _wait_for_prime(_event: LivePushHealth) -> None:
+        callback_entered.set()
+        # Would deadlock start() if session-up awaited this callback.
+        assert await gw.wait_for_prime(timeout=2.0) is True
+
+    gw.on_live_push(_wait_for_prime)
+    await asyncio.wait_for(gw.start(), timeout=2.0)
+    assert await gw.wait_for_prime(timeout=1.0) is True
+    await _wait_until(callback_entered.is_set)
+    await gw.stop()
+
+
+async def test_gateway_stop_not_blocked_by_gated_live_push_callback() -> None:
+    """stop() delivers LIVE_PUSH on the bus without waiting for a blocked callback."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=30.0,
+    )
+    release = asyncio.Event()
+    callback_entered = asyncio.Event()
+
+    async def _gated(_event: LivePushHealth) -> None:
+        callback_entered.set()
+        await release.wait()
+
+    gw.on_live_push(_gated)
+    await gw.start()
+    await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
+    await _wait_until(lambda: gw.live_push_health()["push_healthy"] is True)
+
+    agen = gw.bus.subscribe_channel(BusChannel.LIVE_PUSH)
+    seen: list[LivePushHealth] = []
+
+    async def _drain() -> None:
+        async for event in agen:
+            assert isinstance(event, LivePushHealth)
+            seen.append(event)
+            if event.healthy is False:
+                break
+
+    drain = asyncio.create_task(_drain())
+    await asyncio.sleep(0)
+    await asyncio.wait_for(gw.stop(), timeout=2.0)
+    await asyncio.wait_for(drain, timeout=2.0)
+    assert any(event.healthy is False for event in seen)
+    assert callback_entered.is_set()
+    release.set()
+    await agen.aclose()
 
 
 async def test_gateway_get_modules_fail_streak_logs_once_per_window(caplog: pytest.LogCaptureFixture) -> None:

@@ -4,35 +4,37 @@ Core Components
 EventBus
 --------
 
-The EventBus is **ParamUpdate-only**: multicast fan-out of parameter deltas for
-``ParamStore`` / Home Assistant parameter entities (per-subscriber queue, FIFO).
+``EventBus.subscribe()`` stays **ParamUpdate-only**: multicast fan-out of
+parameter deltas for ``ParamStore`` / Home Assistant parameter entities
+(per-subscriber queue, FIFO). Additive typed channels are available via
+``subscribe_channel(*BusChannel)`` / ``publish_event`` (#386 Phase C / #408 / #409):
 
-Non-parameter signals use dedicated gateway callbacks instead (so typed
-``async for`` subscribers stay unbroken):
+- ``MODULE_CONNECTIVITY`` — module ↔ cloud (SPA ``connectedAt``)
+- ``CLOUD_SESSION`` — library ↔ cloud Socket.IO session
+- ``LIVE_PUSH`` — live push health (zombie)
+- ``ALARM_QUANTITY`` — alarm badge quantity
+- ``ALARM_FEED`` / ``ACTIVITY_FEED`` — list invalidate (re-fetch from REST)
 
-- module ↔ cloud connectivity — ``on_module_connectivity``
-- library ↔ cloud Socket.IO session — ``on_cloud_session``
-- live push health (zombie) — ``on_live_push``
-- alarm badge quantity — ``on_alarm_quantity``
-- alarm list invalidate (SPA ``alarms:change`` / ``received``) — ``on_alarm_feed_invalidate``
-- activity list invalidate (quantity / task lifecycle) — ``on_activity_feed_invalidate``
+Gateway ``on_*`` callbacks remain as a compatibility path; the gateway
+**dual-writes** the same dataclasses to channels and callbacks.
 
 Alarm/activity **row lists** stay REST; Socket.IO only signals that a refresh is
-needed. A future typed multi-event bus is tracked under GitHub issue #386 (Phase C)
-and must not break today's ParamUpdate loops.
-See :doc:`ha_integration` for the HA-facing boundary.
+needed. See :doc:`ha_integration` for the HA-facing boundary.
 
 .. code-block:: python
 
-   from pybragerone.models.events import EventBus, ParamUpdate
+   from pybragerone.models.events import BusChannel, EventBus, ModuleConnectivity, ParamUpdate
 
-   # Create event bus
    event_bus = EventBus()
 
-   # Subscribe to updates
+   # ParamUpdate path (unchanged)
    async for event in event_bus.subscribe():
-       if isinstance(event, ParamUpdate):
-           print(f"Parameter {event.pool}.{event.chan}{event.idx} = {event.value}")
+       print(f"Parameter {event.pool}.{event.chan}{event.idx} = {event.value}")
+
+   # Additive channels
+   async for event in event_bus.subscribe_channel(BusChannel.MODULE_CONNECTIVITY):
+       assert isinstance(event, ModuleConnectivity)
+       print(event.devid, event.online)
 
 .. tip::
    Subscribe **before** fetching initial data to avoid missing updates.

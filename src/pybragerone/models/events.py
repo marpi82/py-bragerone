@@ -7,6 +7,7 @@ import time
 from collections.abc import AsyncGenerator
 from contextlib import suppress
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any, Literal
 
 ModuleOutageReason = Literal["rest", "ws", "derived"]
@@ -26,6 +27,18 @@ CloudOutageReason = Literal[
 ConnectivityEpisodeLayer = Literal["cloud", "module", "live_stale"]
 
 
+class BusChannel(StrEnum):
+    """Typed EventBus channels for additive multi-event fan-out (#408 / #409)."""
+
+    PARAM = "param"
+    MODULE_CONNECTIVITY = "module_connectivity"
+    CLOUD_SESSION = "cloud_session"
+    LIVE_PUSH = "live_push"
+    ALARM_QUANTITY = "alarm_quantity"
+    ALARM_FEED = "alarm_feed"
+    ACTIVITY_FEED = "activity_feed"
+
+
 @dataclass(frozen=True)
 class FeatureChanged:
     """Feature changed event representing a change in device feature state."""
@@ -42,10 +55,9 @@ class FeatureChanged:
 class ModuleConnectivity:
     """Module ↔ Brager cloud connectivity (SPA ``connectedAt``).
 
-    This is **not** published on :class:`EventBus` (which stays ``ParamUpdate``-only
-    for Home Assistant compatibility). Consumers register
-    ``BragerOneGateway.on_module_connectivity`` or poll
-    :meth:`BragerOneGateway.module_online`.
+    Published on :class:`EventBus` channel :attr:`BusChannel.MODULE_CONNECTIVITY`
+    and via ``BragerOneGateway.on_module_connectivity`` (compat). Poll
+    :meth:`BragerOneGateway.module_online` when a snapshot is enough.
 
     Mirrors the SPA module card / connection modal: online iff ``connectedAt`` is
     truthy (upstream uses ``0`` as offline). Live updates arrive on Socket.IO
@@ -145,9 +157,9 @@ class CloudSessionConnectivity:
     timeout, supervisor reconnect, resubscribe + REST prime, REST re-prime on
     the connectivity poll while the socket is still down, and after repeated
     stale-ParamUpdate cycles a hard WS restart (SPA parity: ``connect`` →
-    ``ModulesService.connect`` + REST parameters). Consumers register
-    ``BragerOneGateway.on_cloud_session`` or poll :meth:`BragerOneGateway.ws_session_up`
-    so an outage is detectable without looking like a plant module going offline.
+    ``ModulesService.connect`` + REST parameters). Published on
+    :attr:`BusChannel.CLOUD_SESSION` and via ``BragerOneGateway.on_cloud_session``
+    (compat); poll :meth:`BragerOneGateway.ws_session_up` for a snapshot.
     """
 
     up: bool
@@ -248,16 +260,65 @@ class ParamUpdate:
     #: Sequence number assigned by :class:`EventBus`.
 
 
-class EventBus:
-    """Multicast bus for :class:`ParamUpdate` events only.
+GatewayEvent = (
+    ParamUpdate
+    | ModuleConnectivity
+    | CloudSessionConnectivity
+    | LivePushHealth
+    | AlarmQuantityChanged
+    | AlarmFeedInvalidate
+    | ActivityFeedInvalidate
+)
 
-    Connectivity, cloud session, live-push, and alarm quantity use gateway
-    callbacks — not this bus — so typed ``subscribe()`` loops stay ParamUpdate-only.
+_EVENT_TO_CHANNEL: dict[type[Any], BusChannel] = {
+    ParamUpdate: BusChannel.PARAM,
+    ModuleConnectivity: BusChannel.MODULE_CONNECTIVITY,
+    CloudSessionConnectivity: BusChannel.CLOUD_SESSION,
+    LivePushHealth: BusChannel.LIVE_PUSH,
+    AlarmQuantityChanged: BusChannel.ALARM_QUANTITY,
+    AlarmFeedInvalidate: BusChannel.ALARM_FEED,
+    ActivityFeedInvalidate: BusChannel.ACTIVITY_FEED,
+}
+
+
+def channel_for_event(event: GatewayEvent) -> BusChannel:
+    """Return the :class:`BusChannel` for a typed gateway event.
+
+    Exact type matches first; otherwise the nearest registered base class via
+    ``isinstance`` (so ``ParamUpdate`` subclasses keep working).
+
+    Args:
+        event: Event instance to route.
+
+    Returns:
+        Matching bus channel.
+
+    Raises:
+        TypeError: If *event* is not a known :data:`GatewayEvent` type.
+    """
+    channel = _EVENT_TO_CHANNEL.get(type(event))
+    if channel is not None:
+        return channel
+    for registered, mapped in _EVENT_TO_CHANNEL.items():
+        if isinstance(event, registered):
+            return mapped
+    msg = f"Unsupported gateway event type: {type(event)!r}"
+    raise TypeError(msg)
+
+
+class EventBus:
+    """Multicast bus: ``subscribe()`` is ParamUpdate-only; channels are additive.
+
+    ``subscribe()`` stays typed to :class:`ParamUpdate` so ParamStore / HA parameter
+    loops stay unbroken. Non-parameter signals are available via
+    :meth:`subscribe_channel` (and still via gateway ``on_*`` callbacks for compat).
+    Alarm/activity **row lists** are never on the bus — REST remains source of truth.
     """
 
     def __init__(self) -> None:
         """Initialize the event bus."""
-        self._subs: list[asyncio.Queue[ParamUpdate]] = []
+        self._param_subs: list[asyncio.Queue[ParamUpdate]] = []
+        self._channel_subs: dict[BusChannel, list[asyncio.Queue[GatewayEvent]]] = {channel: [] for channel in BusChannel}
         self._seq = 0
         self._lock = asyncio.Lock()
 
@@ -270,34 +331,87 @@ class EventBus:
         return max(self._seq - 1, -1)
 
     async def publish(self, upd: ParamUpdate) -> None:
-        """Publish an event to all subscribers.
+        """Publish a :class:`ParamUpdate` to ``subscribe()`` and ``PARAM`` channel subscribers.
 
         Args:
             upd: The parameter update event to publish.
         """
+        await self.publish_event(upd)
+
+    async def publish_event(self, event: GatewayEvent) -> None:
+        """Publish a typed event to the matching channel (and ParamUpdate subscribers).
+
+        Args:
+            event: Gateway event dataclass to fan out.
+        """
+        channel = channel_for_event(event)
         async with self._lock:
-            upd.__dict__["seq"] = self._seq  # safe, despite frozen dataclass
-            self._seq += 1
-            # snapshot of subscriber list, so we don't hold lock during put()
-            targets: tuple[asyncio.Queue[ParamUpdate], ...] = tuple(self._subs)
-        # broadcast outside of lock
-        for q in targets:
-            await q.put(upd)
+            param_targets: tuple[asyncio.Queue[ParamUpdate], ...]
+            if isinstance(event, ParamUpdate):
+                event.__dict__["seq"] = self._seq  # safe, despite frozen dataclass
+                self._seq += 1
+                param_targets = tuple(self._param_subs)
+                param_event: ParamUpdate | None = event
+            else:
+                param_targets = ()
+                param_event = None
+            channel_targets: tuple[asyncio.Queue[GatewayEvent], ...] = tuple(self._channel_subs[channel])
+        if param_event is not None:
+            for param_q in param_targets:
+                await param_q.put(param_event)
+        for channel_q in channel_targets:
+            await channel_q.put(event)
 
     async def subscribe(self) -> AsyncGenerator[ParamUpdate]:
-        """Subscribe to events.
+        """Subscribe to :class:`ParamUpdate` events only.
 
         Returns:
             An async iterator that yields parameter update events.
         """
         q: asyncio.Queue[ParamUpdate] = asyncio.Queue()
         async with self._lock:
-            self._subs.append(q)
+            self._param_subs.append(q)
         try:
             while True:
                 yield await q.get()
         finally:
-            # unsubscribe subscriber
             async with self._lock:
                 with suppress(ValueError):
-                    self._subs.remove(q)
+                    self._param_subs.remove(q)
+
+    async def subscribe_channel(self, *channels: BusChannel | str) -> AsyncGenerator[GatewayEvent]:
+        """Subscribe to one or more typed channels.
+
+        Args:
+            *channels: Channels to receive (:class:`BusChannel` or matching string values).
+                At least one is required. Duplicates are ignored.
+
+        Yields:
+            Events published on any of the selected channels (FIFO per subscriber).
+
+        Raises:
+            ValueError: If no channels are provided or a name is not a known channel.
+        """
+        if not channels:
+            msg = "subscribe_channel requires at least one BusChannel"
+            raise ValueError(msg)
+        wanted: list[BusChannel] = []
+        seen: set[BusChannel] = set()
+        for raw in channels:
+            channel = BusChannel(raw) if not isinstance(raw, BusChannel) else raw
+            if channel in seen:
+                continue
+            seen.add(channel)
+            wanted.append(channel)
+        q: asyncio.Queue[GatewayEvent] = asyncio.Queue()
+        async with self._lock:
+            for channel in wanted:
+                self._channel_subs[channel].append(q)
+        try:
+            while True:
+                yield await q.get()
+        finally:
+            async with self._lock:
+                for channel in wanted:
+                    with suppress(ValueError):
+                        self._channel_subs[channel].remove(q)

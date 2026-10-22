@@ -23,7 +23,7 @@ async def _consume_bus(store: ParamStore, bus: EventBus) -> asyncio.Task[None]:
     """Start ``run_with_bus`` and wait until the EventBus subscriber is registered."""
     consumer = asyncio.create_task(store.run_with_bus(bus))
     await asyncio.sleep(0)
-    await _wait_until(lambda: bool(bus._subs))
+    await _wait_until(lambda: bool(bus._param_subs))
     return consumer
 
 

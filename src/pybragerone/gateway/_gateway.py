@@ -22,6 +22,7 @@ from ..models.events import (
     AlarmQuantityChanged,
     CloudOutageReason,
     EventBus,
+    GatewayEvent,
     ModuleOutageReason,
     ParamUpdate,
 )
@@ -318,18 +319,19 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
     def on_module_connectivity(self, cb: ModuleConnectivityCb) -> None:
         """Register callback for module↔cloud online/offline (SPA ``connectedAt``).
 
-        Callbacks receive :class:`ModuleConnectivity`. This path is intentionally
-        separate from :attr:`bus` so ``ParamUpdate`` subscribers stay unchanged.
-        Offline modules are observed only — the client cannot repair plant↔cloud links.
+        Callbacks receive :class:`ModuleConnectivity`. The same event is also
+        published on :attr:`bus` channel ``MODULE_CONNECTIVITY``. Offline modules
+        are observed only — the client cannot repair plant↔cloud links.
         """
         self._on_module_connectivity.append(cb)
 
     def on_cloud_session(self, cb: CloudSessionCb) -> None:
         """Register callback for library↔cloud Socket.IO session up/down.
 
-        Callbacks receive :class:`CloudSessionConnectivity`. Distinct from
-        :meth:`on_module_connectivity`: a dropped client session must self-heal and
-        stay detectable without looking like a module went offline.
+        Callbacks receive :class:`CloudSessionConnectivity` (also on :attr:`bus`
+        ``CLOUD_SESSION``). Distinct from :meth:`on_module_connectivity`: a dropped
+        client session must self-heal and stay detectable without looking like a
+        module went offline.
         """
         self._on_cloud_session.append(cb)
 
@@ -338,7 +340,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
 
         Callbacks receive :class:`~pybragerone.models.events.AlarmQuantityChanged`
         when REST prime or Socket.IO ``app:modules:alarms:quantity:change`` reports
-        a new count for a subscribed module.
+        a new count for a subscribed module (also on :attr:`bus` ``ALARM_QUANTITY``).
         """
         self._on_alarm_quantity.append(cb)
 
@@ -346,8 +348,8 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         """Register callback when SPA signals alarm lists should re-fetch from REST.
 
         Callbacks receive :class:`~pybragerone.models.events.AlarmFeedInvalidate` for
-        ``app:module:alarms:change`` / ``…:received``. Row payloads stay on REST —
-        this is not published on :attr:`bus`.
+        ``app:module:alarms:change`` / ``…:received``. Row payloads stay on REST;
+        the signal is also published on :attr:`bus` ``ALARM_FEED``.
         """
         self._on_alarm_feed_invalidate.append(cb)
 
@@ -356,16 +358,17 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
 
         Callbacks receive :class:`~pybragerone.models.events.ActivityFeedInvalidate`
         for ``app:modules:activity:quantity:change`` or task lifecycle events the SPA
-        Activity page watches. Not published on :attr:`bus`.
+        Activity page watches (also on :attr:`bus` ``ACTIVITY_FEED``).
         """
         self._on_activity_feed_invalidate.append(cb)
 
     def on_live_push(self, cb: LivePushCb) -> None:
         """Register callback for live ``ParamUpdate`` push-health flips.
 
-        Callbacks receive :class:`~pybragerone.models.events.LivePushHealth`.
-        Distinct from :meth:`on_cloud_session`: Socket.IO can stay up while push
-        goes stale (zombie). Prefer :meth:`live_push_health` for polling.
+        Callbacks receive :class:`~pybragerone.models.events.LivePushHealth`
+        (also on :attr:`bus` ``LIVE_PUSH``). Distinct from :meth:`on_cloud_session`:
+        Socket.IO can stay up while push goes stale (zombie). Prefer
+        :meth:`live_push_health` for polling.
         """
         self._on_live_push.append(cb)
 
@@ -530,20 +533,24 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         if isinstance(data, dict):
             LOG.debug("activityQuantity: %s", data.get("activityQuantity"))
 
+    async def _emit_bus_and_callbacks(self, event: GatewayEvent, cbs: list[Callable[..., Any]]) -> None:
+        """Publish *event* on :attr:`bus` and invoke optional gateway callbacks."""
+        await self.bus.publish_event(event)
+        if cbs:
+            await self._invoke_list(cbs, event)
+
     async def _emit_alarm_feed_invalidate(
         self,
         payload: object,
         *,
         reason: Literal["change", "received"],
     ) -> None:
-        """Notify ``on_alarm_feed_invalidate`` for devids in *payload* (or all modules)."""
-        if not self._on_alarm_feed_invalidate:
-            return
+        """Publish alarm-feed invalidate on the bus and notify callbacks."""
         wanted = set(self.modules)
         devids = [d for d in _extract_module_devids(payload, fallback=self.modules) if d in wanted]
         for devid in devids:
             event = AlarmFeedInvalidate(devid=devid, reason=reason)
-            await self._invoke_list(self._on_alarm_feed_invalidate, event)
+            await self._emit_bus_and_callbacks(event, self._on_alarm_feed_invalidate)
 
     async def _emit_activity_feed_invalidate(
         self,
@@ -551,14 +558,12 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
         *,
         reason: Literal["quantity", "task"],
     ) -> None:
-        """Notify ``on_activity_feed_invalidate`` for devids in *payload* (or all modules)."""
-        if not self._on_activity_feed_invalidate:
-            return
+        """Publish activity-feed invalidate on the bus and notify callbacks."""
         wanted = set(self.modules)
         devids = [d for d in _extract_module_devids(payload, fallback=self.modules) if d in wanted]
         for devid in devids:
             event = ActivityFeedInvalidate(devid=devid, reason=reason)
-            await self._invoke_list(self._on_activity_feed_invalidate, event)
+            await self._emit_bus_and_callbacks(event, self._on_activity_feed_invalidate)
 
     async def ingest_alarm_quantity(
         self,
@@ -608,8 +613,7 @@ class BragerOneGateway(ConnectivityMixin, SessionMixin, RecoveryMixin):
             if not changed:
                 continue
             event = AlarmQuantityChanged(devid=devid, quantity=quantity, source=source, changed=True)
-            if self._on_alarm_quantity:
-                await self._invoke_list(self._on_alarm_quantity, event)
+            await self._emit_bus_and_callbacks(event, self._on_alarm_quantity)
 
     # ------------------------- WS dispatch -------------------------
 

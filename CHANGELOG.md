@@ -7,6 +7,14 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Added
+
+- Typed multi-event EventBus channels (#386 Phase C / #408 / #409):
+  ``BusChannel``, ``subscribe_channel``, ``publish_event``. ``subscribe()`` remains
+  ParamUpdate-only. Gateway dual-writes connectivity, cloud session, live-push,
+  alarm quantity, and alarm/activity feed invalidate to channels **and** existing
+  ``on_*`` callbacks. Alarm/activity row lists stay on REST.
+
 ## [2026.10.1] - 2026-10-10
 
 ### Fixed

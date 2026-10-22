@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -76,14 +77,25 @@ class RecoveryMixin(GatewayMixinBase):
             return False, age
         return True, None
 
-    def _publish_live_push_health(self, *, force_notify: bool = False) -> None:
-        """Update cached push-health bit and notify listeners on flips."""
+    def _publish_live_push_health(self, *, force_notify: bool = False) -> asyncio.Task[None] | None:
+        """Update cached push-health bit and notify listeners on flips.
+
+        Bus publication and ``on_live_push`` callbacks are scheduled as separate
+        gateway tasks. Session up/down may ``await`` the returned bus task so
+        channel subscribers observe the transition before ``stop()`` cancels
+        work — without blocking lifecycle on user callbacks (which can await
+        gateway operations and would otherwise deadlock start/reconnect/stop).
+
+        Returns:
+            The spawned **bus** publish task when a publication was scheduled,
+            else ``None``. Callbacks are fire-and-forget via a sibling spawn.
+        """
         healthy, stale_for = self._compute_live_push_health()
         previous = self._live_push_healthy
         changed = previous is not healthy
         self._live_push_healthy = healthy
         if not changed and not force_notify:
-            return
+            return None
         event = LivePushHealth(
             healthy=healthy,
             live_stale_for_s=stale_for,
@@ -93,8 +105,12 @@ class RecoveryMixin(GatewayMixinBase):
         if self._on_live_push:
             self._spawn(
                 self._invoke_list(self._on_live_push, event),
-                name="gateway.on_live_push",
+                name="gateway.on_live_push.callbacks",
             )
+        return self._spawn(
+            self.bus.publish_event(event),
+            name="gateway.on_live_push.bus",
+        )
 
     def _touch_param_publish(self, count: int, *, live: bool = False) -> None:
         """Record that ``count`` parameter events were published.
