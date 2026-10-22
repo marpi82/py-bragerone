@@ -2810,6 +2810,79 @@ async def test_gateway_session_down_skips_live_push_await_when_already_unhealthy
     await gw.stop()
 
 
+async def test_gateway_start_not_blocked_by_live_push_callback_waiting_for_prime() -> None:
+    """Session-up awaits LIVE_PUSH bus publish only — not user on_live_push callbacks."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    # stale_prime_after_s=0 → session-up immediately reports push_healthy=True.
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=0,
+    )
+    callback_entered = asyncio.Event()
+
+    async def _wait_for_prime(_event: LivePushHealth) -> None:
+        callback_entered.set()
+        # Would deadlock start() if session-up awaited this callback.
+        assert await gw.wait_for_prime(timeout=2.0) is True
+
+    gw.on_live_push(_wait_for_prime)
+    await asyncio.wait_for(gw.start(), timeout=2.0)
+    assert await gw.wait_for_prime(timeout=1.0) is True
+    await _wait_until(callback_entered.is_set)
+    await gw.stop()
+
+
+async def test_gateway_stop_not_blocked_by_gated_live_push_callback() -> None:
+    """stop() delivers LIVE_PUSH on the bus without waiting for a blocked callback."""
+    api = FakeApiClient()
+    api.module_rows = [SimpleNamespace(devid="M1", connectedAt=50, gateway=None)]
+    ws = FakeRealtimeManager()
+    gw = BragerOneGateway(
+        api=api,
+        object_id=1,
+        modules=["M1"],
+        ws=ws,
+        connectivity_poll_interval=0,
+        stale_prime_after_s=30.0,
+    )
+    release = asyncio.Event()
+    callback_entered = asyncio.Event()
+
+    async def _gated(_event: LivePushHealth) -> None:
+        callback_entered.set()
+        await release.wait()
+
+    gw.on_live_push(_gated)
+    await gw.start()
+    await ws.emit("app:modules:parameters:change", {"M1": {"P1": {"v0": {"value": 1}}}})
+    await _wait_until(lambda: gw.live_push_health()["push_healthy"] is True)
+
+    agen = gw.bus.subscribe_channel(BusChannel.LIVE_PUSH)
+    seen: list[LivePushHealth] = []
+
+    async def _drain() -> None:
+        async for event in agen:
+            assert isinstance(event, LivePushHealth)
+            seen.append(event)
+            if event.healthy is False:
+                break
+
+    drain = asyncio.create_task(_drain())
+    await asyncio.sleep(0)
+    await asyncio.wait_for(gw.stop(), timeout=2.0)
+    await asyncio.wait_for(drain, timeout=2.0)
+    assert any(event.healthy is False for event in seen)
+    assert callback_entered.is_set()
+    release.set()
+    await agen.aclose()
+
+
 async def test_gateway_get_modules_fail_streak_logs_once_per_window(caplog: pytest.LogCaptureFixture) -> None:
     """Transport fail streak warns once per outage window, then DEBUG."""
     api = FakeApiClient()

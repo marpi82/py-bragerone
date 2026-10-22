@@ -80,10 +80,15 @@ class RecoveryMixin(GatewayMixinBase):
     def _publish_live_push_health(self, *, force_notify: bool = False) -> asyncio.Task[None] | None:
         """Update cached push-health bit and notify listeners on flips.
 
+        Bus publication and ``on_live_push`` callbacks are scheduled as separate
+        gateway tasks. Session up/down may ``await`` the returned bus task so
+        channel subscribers observe the transition before ``stop()`` cancels
+        work — without blocking lifecycle on user callbacks (which can await
+        gateway operations and would otherwise deadlock start/reconnect/stop).
+
         Returns:
-            The spawned notify task when a publication was scheduled, else ``None``.
-            Async callers that must not lose the transition (e.g. session stop)
-            should ``await`` the returned task before canceling gateway tasks.
+            The spawned **bus** publish task when a publication was scheduled,
+            else ``None``. Callbacks are fire-and-forget via a sibling spawn.
         """
         healthy, stale_for = self._compute_live_push_health()
         previous = self._live_push_healthy
@@ -97,9 +102,14 @@ class RecoveryMixin(GatewayMixinBase):
             last_resumed_after_s=self._last_live_resumed_after_s,
             changed=changed,
         )
+        if self._on_live_push:
+            self._spawn(
+                self._invoke_list(self._on_live_push, event),
+                name="gateway.on_live_push.callbacks",
+            )
         return self._spawn(
-            self._emit_bus_and_callbacks(event, self._on_live_push),
-            name="gateway.on_live_push",
+            self.bus.publish_event(event),
+            name="gateway.on_live_push.bus",
         )
 
     def _touch_param_publish(self, count: int, *, live: bool = False) -> None:
