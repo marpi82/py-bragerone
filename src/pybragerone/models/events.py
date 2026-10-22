@@ -284,6 +284,9 @@ _EVENT_TO_CHANNEL: dict[type[Any], BusChannel] = {
 def channel_for_event(event: GatewayEvent) -> BusChannel:
     """Return the :class:`BusChannel` for a typed gateway event.
 
+    Exact type matches first; otherwise the nearest registered base class via
+    ``isinstance`` (so ``ParamUpdate`` subclasses keep working).
+
     Args:
         event: Event instance to route.
 
@@ -294,10 +297,13 @@ def channel_for_event(event: GatewayEvent) -> BusChannel:
         TypeError: If *event* is not a known :data:`GatewayEvent` type.
     """
     channel = _EVENT_TO_CHANNEL.get(type(event))
-    if channel is None:
-        msg = f"Unsupported gateway event type: {type(event)!r}"
-        raise TypeError(msg)
-    return channel
+    if channel is not None:
+        return channel
+    for registered, mapped in _EVENT_TO_CHANNEL.items():
+        if isinstance(event, registered):
+            return mapped
+    msg = f"Unsupported gateway event type: {type(event)!r}"
+    raise TypeError(msg)
 
 
 class EventBus:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -76,21 +77,27 @@ class RecoveryMixin(GatewayMixinBase):
             return False, age
         return True, None
 
-    def _publish_live_push_health(self, *, force_notify: bool = False) -> None:
-        """Update cached push-health bit and notify listeners on flips."""
+    def _publish_live_push_health(self, *, force_notify: bool = False) -> asyncio.Task[None] | None:
+        """Update cached push-health bit and notify listeners on flips.
+
+        Returns:
+            The spawned notify task when a publication was scheduled, else ``None``.
+            Async callers that must not lose the transition (e.g. session stop)
+            should ``await`` the returned task before canceling gateway tasks.
+        """
         healthy, stale_for = self._compute_live_push_health()
         previous = self._live_push_healthy
         changed = previous is not healthy
         self._live_push_healthy = healthy
         if not changed and not force_notify:
-            return
+            return None
         event = LivePushHealth(
             healthy=healthy,
             live_stale_for_s=stale_for,
             last_resumed_after_s=self._last_live_resumed_after_s,
             changed=changed,
         )
-        self._spawn(
+        return self._spawn(
             self._emit_bus_and_callbacks(event, self._on_live_push),
             name="gateway.on_live_push",
         )

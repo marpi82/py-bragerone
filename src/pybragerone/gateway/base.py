@@ -134,7 +134,7 @@ class GatewayMixinBase:
     def _compute_live_push_health(self) -> tuple[bool | None, float | None]:
         raise NotImplementedError
 
-    def _publish_live_push_health(self, *, force_notify: bool = False) -> None:
+    def _publish_live_push_health(self, *, force_notify: bool = False) -> asyncio.Task[None] | None:
         raise NotImplementedError
 
     def module_gateway(self, devid: str) -> dict[str, Any] | None:

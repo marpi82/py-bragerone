@@ -150,6 +150,26 @@ async def test_channel_for_event_rejects_unknown() -> None:
         channel_for_event(object())  # type: ignore[arg-type]
 
 
+async def test_publish_accepts_param_update_subclass() -> None:
+    """ParamUpdate subclasses still get seq and reach subscribe() consumers."""
+
+    class TaggedUpdate(ParamUpdate):
+        """Tagged ParamUpdate subclass for compatibility regression."""
+
+    bus = EventBus()
+    agen = bus.subscribe()
+    task = asyncio.create_task(agen.__anext__())
+    await asyncio.sleep(0)
+    tagged = TaggedUpdate(devid="D1", pool="P4", chan="v", idx=9, value=42)
+    await bus.publish(tagged)
+    got = await asyncio.wait_for(task, timeout=1.0)
+    assert isinstance(got, TaggedUpdate)
+    assert got.seq == 0
+    assert got.value == 42
+    assert channel_for_event(tagged) == BusChannel.PARAM
+    await agen.aclose()
+
+
 async def _collect_n(agen: object, n: int) -> list[object]:
     """Collect *n* items from an async generator."""
     out: list[object] = []

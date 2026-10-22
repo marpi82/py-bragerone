@@ -216,7 +216,9 @@ class ConnectivityMixin(GatewayMixinBase):
         await self._emit_bus_and_callbacks(event, self._on_cloud_session)
         if source == "stop":
             self._clear_active_cloud_outage()
-        self._publish_live_push_health()
+        live_push_task = self._publish_live_push_health()
+        if live_push_task is not None:
+            await live_push_task
 
     async def _set_ws_session_up(
         self,
@@ -277,7 +279,9 @@ class ConnectivityMixin(GatewayMixinBase):
             )
             LOG.info("Cloud session: up=%s source=%s", True, source)
             await self._emit_bus_and_callbacks(event, self._on_cloud_session)
-            self._publish_live_push_health()
+            live_push_task = self._publish_live_push_health()
+            if live_push_task is not None:
+                await live_push_task
             return
 
         # Session-down path.
