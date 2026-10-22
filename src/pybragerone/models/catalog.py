@@ -1602,38 +1602,58 @@ class LiveAssetsCatalog:
     async def fetch_alarm_name_source(self) -> str | bytes | None:
         """Return SPA Alarms chunk bytes/text for ``AlarmName`` enum parsing, or ``None``.
 
-        Resolves the webpack ``Alarms`` / ``alarms`` asset from the live index and
-        fetches it via :meth:`~pybragerone.api.BragerOneApiClient.get_bytes`.
+        Post-1.04 indexes often register **two** ``Alarms-<hash>.js`` assets: a shared
+        module that owns the ``AlarmName`` enum, and a Vue page chunk that only imports
+        it. ``find_asset_for_basename`` returns the last hash (usually the page), which
+        parses to an empty map — so this method fetches every ``Alarms`` / ``alarms``
+        candidate and returns the payload with the richest ``parse_alarm_name_enum`` hit.
         """
         await self._ensure_index_loaded()
         if not (self._idx.index_bytes or self._idx.assets_by_basename):
             return None
 
-        asset: AssetRef | None = None
-        for candidate in ("Alarms", "alarms"):
-            asset = self._idx.find_asset_for_basename(candidate)
-            if asset is not None:
-                break
-        if asset is None:
+        candidates: list[AssetRef] = []
+        seen_urls: set[str] = set()
+
+        def _add_refs(refs: list[AssetRef] | None) -> None:
+            if not refs:
+                return
+            for ref in refs:
+                if ref.url in seen_urls:
+                    continue
+                seen_urls.add(ref.url)
+                candidates.append(ref)
+
+        for basename in ("Alarms", "alarms"):
+            _add_refs(self._idx.assets_by_basename.get(basename))
+        if not candidates:
             for basename, refs in self._idx.assets_by_basename.items():
                 if not isinstance(basename, str) or not basename.casefold().startswith("alarms"):
                     continue
-                if refs:
-                    asset = refs[-1]
-                    break
-        if asset is None:
+                _add_refs(refs)
+        if not candidates:
             return None
 
-        try:
-            payload: Any = await self._api.get_bytes(asset.url)
-        except Exception as exc:
-            self._log.debug("Failed to fetch Alarms chunk from %s: %s", asset.url, exc)
-            return None
-        if isinstance(payload, (bytes, str)):
-            return payload
-        if isinstance(payload, bytearray):
-            return bytes(payload)
-        return None
+        # Local import: catalog is the heavy module; keep alarm_names out of import cycles.
+        from .alarm_names import parse_alarm_name_enum
+
+        best: str | bytes | None = None
+        best_score = 0
+        for asset in candidates:
+            try:
+                payload: Any = await self._api.get_bytes(asset.url)
+            except Exception as exc:
+                self._log.debug("Failed to fetch Alarms chunk from %s: %s", asset.url, exc)
+                continue
+            if isinstance(payload, bytearray):
+                payload = bytes(payload)
+            if not isinstance(payload, (bytes, str)):
+                continue
+            score = len(parse_alarm_name_enum(payload))
+            if score > best_score:
+                best = payload
+                best_score = score
+        return best
 
     # ---------- MENU ----------
 
