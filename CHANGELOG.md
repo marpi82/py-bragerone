@@ -7,12 +7,16 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.10.2rc2] - 2026-10-22
+
 ### Added
 
 - Device-specific REST menu construction before the SPA default ``0/0/0.0.0``,
   including ``extends`` Vite chunk loads (SPA ``loadExtendedMenu`` parity) (#438).
   Pass ``Module.devices`` via ``DeviceMenuRef`` / ``device_menu_refs_from_module``
-  into ``get_module_menu`` / ``build_panel_groups``.
+  into ``get_module_menu`` / ``build_panel_groups``. Route layers merge in ascending
+  priority (earlier fetch wins ties) so mid-priority extensions can override tokens
+  inherited from lower-priority defaults.
 
 ## [2026.10.2rc1] - 2026-10-22
 
@@ -517,7 +521,8 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc1...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc2...HEAD
+[2026.10.2rc2]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc1...2026.10.2rc2
 [2026.10.2rc1]: https://github.com/marpi82/py-bragerone/compare/2026.10.1...2026.10.2rc1
 [2026.10.1]: https://github.com/marpi82/py-bragerone/compare/2026.9.3...2026.10.1
 [2026.9.3]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc4...2026.9.3
