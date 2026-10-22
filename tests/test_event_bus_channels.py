@@ -20,9 +20,15 @@ from pybragerone.models.events import (
 )
 
 
+def test_last_seq_empty_bus() -> None:
+    """``last_seq()`` is -1 before any ParamUpdate is published."""
+    assert EventBus().last_seq() == -1
+
+
 async def test_subscribe_remains_param_update_only() -> None:
     """``subscribe()`` yields ParamUpdate and ignores other channels."""
     bus = EventBus()
+    assert bus.last_seq() == -1
     agen = bus.subscribe()
     task = asyncio.create_task(agen.__anext__())
     await asyncio.sleep(0)
@@ -34,6 +40,7 @@ async def test_subscribe_remains_param_update_only() -> None:
     assert isinstance(upd, ParamUpdate)
     assert upd.value == 1.0
     assert upd.seq == 0
+    assert bus.last_seq() == 0
     await agen.aclose()
 
 
@@ -82,6 +89,26 @@ async def test_subscribe_channel_requires_channels() -> None:
     with pytest.raises(ValueError, match="at least one"):
         agen = bus.subscribe_channel()
         await agen.__anext__()
+
+
+async def test_subscribe_channel_dedupes_and_accepts_string_names() -> None:
+    """Duplicate channel args and string names resolve to one queue registration."""
+    bus = EventBus()
+    agen = bus.subscribe_channel(
+        BusChannel.LIVE_PUSH,
+        "live_push",
+        BusChannel.LIVE_PUSH,
+    )
+    task = asyncio.create_task(agen.__anext__())
+    await asyncio.sleep(0)
+    await bus.publish_event(LivePushHealth(healthy=False))
+    event = await asyncio.wait_for(task, timeout=1.0)
+    assert isinstance(event, LivePushHealth)
+    assert event.healthy is False
+    # One queue registered once despite three channel args.
+    assert len(bus._channel_subs[BusChannel.LIVE_PUSH]) == 1
+    await agen.aclose()
+    assert bus._channel_subs[BusChannel.LIVE_PUSH] == []
 
 
 async def test_unsubscribe_stops_delivery() -> None:
