@@ -7,13 +7,25 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.10.2rc1] - 2026-10-22
+
 ### Added
 
-- Typed multi-event EventBus channels (#386 Phase C / #408 / #409):
+- Typed multi-event EventBus channels (#386 Phase C / #408 / #409 / #452):
   ``BusChannel``, ``subscribe_channel``, ``publish_event``. ``subscribe()`` remains
   ParamUpdate-only. Gateway dual-writes connectivity, cloud session, live-push,
   alarm quantity, and alarm/activity feed invalidate to channels **and** existing
-  ``on_*`` callbacks. Alarm/activity row lists stay on REST.
+  ``on_*`` callbacks. Alarm/activity row lists stay on REST. Session up/down await
+  LIVE_PUSH **bus** publication only (not user ``on_live_push`` callbacks).
+
+### Fixed
+
+- ``fetch_alarm_name_source`` picks the ``Alarms``/``alarms`` chunk that actually
+  defines the ``AlarmName`` enum when the SPA ships multiple assets under the same
+  basename (page-only chunk previously won → empty enum / null alarm names) (#450).
+
+- Restore ``requires-python`` to ``>=3.13.2,<3.15`` after a Renovate bump pinned
+  3.15-only (broke live-contract 3.13 and would block HA on 3.14) (#449).
 
 ## [2026.10.1] - 2026-10-10
 
@@ -498,7 +510,8 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.10.1...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc1...HEAD
+[2026.10.2rc1]: https://github.com/marpi82/py-bragerone/compare/2026.10.1...2026.10.2rc1
 [2026.10.1]: https://github.com/marpi82/py-bragerone/compare/2026.9.3...2026.10.1
 [2026.9.3]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc4...2026.9.3
 [2026.9.3rc4]: https://github.com/marpi82/py-bragerone/compare/2026.9.3rc3...2026.9.3rc4
