@@ -256,7 +256,9 @@ parameters:
 Static menu shells (e.g. ``MAINMENU_STREFY_CZASOWE`` / path ``timezones``) load
 parameter tokens from ``deviceMenu/static/<path>.ts`` chunks referenced in
 ``index-*.js``. Use ``LiveAssetsCatalog.discover_static_route_tokens``,
-``LiveAssetsCatalog.fetch_alarm_name_source`` (Alarms chunk / ``AlarmName`` enum), and pass
+``LiveAssetsCatalog.fetch_alarm_name_source`` (picks the ``Alarms-*`` webpack
+chunk that actually contains the ``AlarmName`` enum when several share the
+basename), and pass
 ``static_route_symbols`` into ``build_panel_groups_from_menu`` (or call
 ``build_panel_groups`` with a primed ``ParamStore`` so overlays are resolved
 automatically). For activity feed display values use
