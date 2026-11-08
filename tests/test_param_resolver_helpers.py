@@ -457,6 +457,22 @@ def test_mapping_primary_address_aliases_and_symbol_fallback() -> None:
     assert ParamResolver._mapping_canonical_address("STATUS_P2_7", None) == ("P2", "s", 7)
 
 
+def test_mapping_primary_address_prefers_value_slot_over_value2() -> None:
+    """Composite SPA raw must not let timer value2 (v) beat status value (s)."""
+    raw = {
+        "value": [{"group": "P31", "number": 12, "use": "s"}],
+        "value2": [{"group": "P30", "number": 25, "use": "v"}],
+        "value3": [{"group": "P30", "number": 26, "use": "v"}],
+    }
+    assert ParamResolver._mapping_primary_address(raw) == ("P31", "s", 12)
+    assert ParamResolver._iter_value_slots(raw) == [
+        {"slot": "value", "pool": "P31", "chan": "s", "idx": 12},
+        {"slot": "value2", "pool": "P30", "chan": "v", "idx": 25},
+        {"slot": "value3", "pool": "P30", "chan": "v", "idx": 26},
+    ]
+    assert ParamResolver._iter_value_slots({"name": "parameters.X"}) == []
+
+
 def test_panel_route_diagnostics_from_menu_explains_accept_and_reject() -> None:
     """Report accepted routes, missing symbols, and non-module-item exclusions."""
     menu = MenuResult.model_validate(

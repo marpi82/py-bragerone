@@ -1845,7 +1845,12 @@ class ParamResolver:
 
     @staticmethod
     def _mapping_primary_address(mapping: Any, *, symbol: str | None = None) -> tuple[str, str, int] | None:
-        """Best-effort extraction of (pool, chan, idx) from a mapping object."""
+        """Best-effort extraction of (pool, chan, idx) from a mapping object.
+
+        When ``mapping`` is SPA raw with a top-level ``value`` slot, only that
+        slot is considered so companion ``value2``/``value3``/``value4``
+        addresses cannot steal the primary (e.g. heat-pump status vs timers).
+        """
 
         def _normalize_pool(pool: str | int) -> str | None:
             if isinstance(pool, int):
@@ -1883,7 +1888,9 @@ class ParamResolver:
                 return "s"
             return u[0]
 
-        def _collect(node: Any, acc: list[tuple[str, str | None, int]]) -> None:
+        _secondary_slots = frozenset({"value2", "value3", "value4"})
+
+        def _collect(node: Any, acc: list[tuple[str, str | None, int]], *, skip_secondary: bool) -> None:
             if isinstance(node, dict):
                 pool_raw = node.get("group") if "group" in node else node.get("pool")
                 num_raw = node.get("number") if "number" in node else node.get("index")
@@ -1897,34 +1904,67 @@ class ParamResolver:
                 idx = _normalize_idx(num_raw) if isinstance(num_raw, (int, str)) else None
                 if pool is not None and idx is not None:
                     acc.append((pool, str(use) if isinstance(use, str) else None, idx))
-                for val in node.values():
-                    _collect(val, acc)
+                for key, val in node.items():
+                    if skip_secondary and key in _secondary_slots:
+                        continue
+                    _collect(val, acc, skip_secondary=skip_secondary)
             elif isinstance(node, list):
                 for item in node:
-                    _collect(item, acc)
+                    _collect(item, acc, skip_secondary=skip_secondary)
+
+        def _pick(candidates: list[tuple[str, str | None, int]]) -> tuple[str, str, int] | None:
+            if not candidates:
+                return None
+            normalized = [(pool, _chan_from_use(use), num) for pool, use, num in candidates]
+            for preferred in ("v", "s", "u", "x", "n"):
+                for pool, chan, num in normalized:
+                    if chan == preferred:
+                        return pool, chan, num
+            return normalized[0]
 
         candidates: list[tuple[str, str | None, int]] = []
         if isinstance(mapping, dict):
-            _collect(mapping, candidates)
+            # SPA primary slot wins when present (composite cards: status enum in value).
+            if "value" in mapping:
+                _collect(mapping["value"], candidates, skip_secondary=False)
+            if not candidates:
+                _collect(mapping, candidates, skip_secondary=True)
+        elif isinstance(mapping, list):
+            _collect(mapping, candidates, skip_secondary=False)
 
-        if not candidates:
-            if symbol:
-                match_param = _PARAM_POOL_RE.match(symbol)
-                if match_param:
-                    return f"P{match_param.group('pool')}", "v", int(match_param.group("idx"))
-                match_status = _STATUS_POOL_RE.match(symbol)
-                if match_status:
-                    return f"P{match_status.group('pool')}", "s", int(match_status.group("idx"))
-            return None
+        picked = _pick(candidates)
+        if picked is not None:
+            return picked
 
-        normalized = [(pool, _chan_from_use(use), num) for pool, use, num in candidates]
-        for preferred in ("v", "s", "u", "x", "n"):
-            for pool, chan, num in normalized:
-                if chan == preferred:
-                    return pool, chan, num
-        if normalized:
-            return normalized[0]
+        if symbol:
+            match_param = _PARAM_POOL_RE.match(symbol)
+            if match_param:
+                return f"P{match_param.group('pool')}", "v", int(match_param.group("idx"))
+            match_status = _STATUS_POOL_RE.match(symbol)
+            if match_status:
+                return f"P{match_status.group('pool')}", "s", int(match_status.group("idx"))
         return None
+
+    @classmethod
+    def _iter_value_slots(cls, raw: Any) -> list[dict[str, Any]]:
+        """Extract SPA ``value`` / ``value2`` / … slots as address descriptors.
+
+        Each entry is ``{"slot": "value"|"value2"|..., "pool", "chan", "idx"}``.
+        Slots without a resolvable address are omitted. When ``raw`` has no
+        ``value*`` keys the list is empty (callers may synthesize from primary).
+        """
+        if not isinstance(raw, Mapping):
+            return []
+        slots: list[dict[str, Any]] = []
+        for slot_name in ("value", "value2", "value3", "value4"):
+            if slot_name not in raw:
+                continue
+            addr = cls._mapping_primary_address(raw[slot_name])
+            if addr is None:
+                continue
+            pool, chan, idx = addr
+            slots.append({"slot": slot_name, "pool": pool, "chan": chan, "idx": idx})
+        return slots
 
     @classmethod
     def _mapping_canonical_address(cls, symbol: str, mapping: ParamMap | None) -> tuple[str, str, int] | None:
@@ -2488,16 +2528,16 @@ class ParamResolver:
         Notes:
         - This helper does not enforce the SPA ``parameter.value !== undefined``
           gate. Callers (HA bootstrap) drop ``no_display_value`` separately.
+        - Composite SPA cards (``value2``/``value3``/…) are **not** force-hidden;
+          companions are exposed via ``describe_symbol`` ``value_slots`` and
+          inherit the same ``INVISIBLE`` / ``DEVICE_AVAILABLE`` checks as the
+          primary.
         """
         values = flat_values if flat_values is not None else self._store.flatten()
 
         mapping = desc.get("mapping")
         if not isinstance(mapping, Mapping):
             return True, "visible:no-mapping"
-
-        raw_mapping = mapping.get("raw")
-        if isinstance(raw_mapping, Mapping) and any(key in raw_mapping for key in ("value2", "value3", "value4")):
-            return False, "hidden:composite-component"
 
         status_paths = self._status_paths_for_visibility(mapping, values)
         if not status_paths:
@@ -2745,6 +2785,12 @@ class ParamResolver:
                     self._unit_mapping_value_label(unit_value_labels, computed_value)
                 )
 
+        value_slots: list[dict[str, Any]] = []
+        if mapping is not None and isinstance(mapping.raw, Mapping):
+            value_slots = self._iter_value_slots(mapping.raw)
+        if not value_slots and pool is not None and chan is not None and idx is not None:
+            value_slots = [{"slot": "value", "pool": pool, "chan": chan, "idx": idx}]
+
         return {
             "symbol": symbol,
             "pool": pool,
@@ -2762,6 +2808,7 @@ class ParamResolver:
             "status": status_raw,
             "mapping_origin": getattr(mapping, "origin", None) if mapping else None,
             "mapping": mapping_details,
+            "value_slots": value_slots,
         }
 
     async def describe_symbols(self, symbols: Iterable[str]) -> dict[str, dict[str, Any]]:

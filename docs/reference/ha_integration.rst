@@ -265,7 +265,10 @@ parameters:
 - ``ParamResolver.route_visibility_diagnostics`` — static SPA route gates
   (installer denylist, ``isVisibleOnSideMenu``, ``displayDropdown`` leftovers).
 - ``ParamResolver.parameter_visibility_diagnostics`` — per-parameter status bits
-  (``INVISIBLE``, ``DEVICE_AVAILABLE``).
+  (``INVISIBLE``, ``DEVICE_AVAILABLE``). Composite SPA cards with ``value2+``
+  are not force-hidden; ``describe_symbol`` ``value_slots`` lists each channel
+  so HA can emit one entity per slot (primary ``value`` keeps a stable
+  ``unique_id``).
 
 Static menu shells (e.g. ``MAINMENU_STREFY_CZASOWE`` / path ``timezones``) load
 parameter tokens from ``deviceMenu/static/<path>.ts`` chunks referenced in
