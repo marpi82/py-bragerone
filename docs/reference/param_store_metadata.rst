@@ -64,12 +64,13 @@ Top-level keys
 ``value_slots`` (``list[dict[str, Any]]``)
     SPA value channels for the symbol. Each entry is
     ``{"slot": "value"|"value2"|"value3"|"value4", "pool", "chan", "idx"}``.
-    Top-level ``pool`` / ``chan`` / ``idx`` always match the ``value`` slot
-    (or the ``STATUS_P*`` override). Composite cards that also bind timers or
-    companion setpoints expose ``value2+`` here so Home Assistant can create
-    one entity per slot without re-parsing ``mapping.raw``. When the asset has
-    no ``value*`` keys, a single synthetic ``value`` slot mirrors the primary
-    address.
+    The ``value`` slot is always normalized to the final top-level
+    ``pool`` / ``chan`` / ``idx`` (including ``STATUS_P*`` overrides); any
+    mismatched mapping address stays in ``computed_primary``. Composite cards
+    that also bind timers or companion setpoints expose ``value2+`` here so
+    Home Assistant can create one entity per slot without re-parsing
+    ``mapping.raw``. When the asset has no ``value*`` keys, a single synthetic
+    ``value`` slot mirrors the primary address.
 
 Mapping dictionary
 ------------------

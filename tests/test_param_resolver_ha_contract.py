@@ -227,6 +227,8 @@ async def test_describe_symbol_status_token_overrides_mapping_address() -> None:
     assert desc["status"] == 3
     assert desc["computed_primary"] == {"pool": "P4", "chan": "v", "idx": 2}
     assert desc["label"] == "Pump status"
+    # Primary value_slot must match the STATUS_P* override, not mapping.raw.value.
+    assert desc["value_slots"] == [{"slot": "value", "pool": "P5", "chan": "s", "idx": 7}]
 
 
 async def test_describe_symbols_prefetches_once_and_skips_blank_duplicates() -> None:
@@ -350,6 +352,36 @@ async def test_describe_symbol_exposes_composite_value_slots() -> None:
     visible, reason = _resolver(assets, store).parameter_visibility_diagnostics(desc=desc, resolved=None)
     assert visible is True
     assert reason == "visible:no-paths"
+
+
+async def test_describe_symbol_value_slots_inserts_canonical_when_only_companions() -> None:
+    """STATUS override with companion-only raw still prepends a canonical value slot."""
+    mapping = _param_map(
+        "STATUS_P5_7",
+        group="P4",
+        paths={},
+        raw={
+            "name": "parameters.STATUS_P5_7",
+            # No primary value key — only a companion (unusual SPA shape).
+            "value2": [{"group": "P30", "number": 25, "use": "v"}],
+        },
+    )
+    assets = _HaAssets(
+        mappings={"STATUS_P5_7": mapping},
+        i18n_by_namespace={"parameters": {"STATUS_P5_7": "Pump status"}},
+    )
+    store = ParamStore()
+    store.upsert("P5.s7", 1)
+    store.upsert("P30.v25", 9)
+
+    desc = await _resolver(assets, store).describe_symbol("STATUS_P5_7")
+    assert desc["pool"] == "P5"
+    assert desc["chan"] == "s"
+    assert desc["idx"] == 7
+    assert desc["value_slots"] == [
+        {"slot": "value", "pool": "P5", "chan": "s", "idx": 7},
+        {"slot": "value2", "pool": "P30", "chan": "v", "idx": 25},
+    ]
 
 
 async def test_resolve_value_falls_back_to_direct_when_computed_rules_miss() -> None:

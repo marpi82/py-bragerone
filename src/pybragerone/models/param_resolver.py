@@ -2785,11 +2785,29 @@ class ParamResolver:
                     self._unit_mapping_value_label(unit_value_labels, computed_value)
                 )
 
+        # Align the primary ``value`` slot with the final describe address so
+        # STATUS_P* overrides (and callers expanding value_slots) bind the same
+        # register as top-level pool/chan/idx. Companion value2+ stay as-is;
+        # mismatched mapping addresses remain in ``computed_primary``.
         value_slots: list[dict[str, Any]] = []
         if mapping is not None and isinstance(mapping.raw, Mapping):
             value_slots = self._iter_value_slots(mapping.raw)
-        if not value_slots and pool is not None and chan is not None and idx is not None:
-            value_slots = [{"slot": "value", "pool": pool, "chan": chan, "idx": idx}]
+        if pool is not None and chan is not None and idx is not None:
+            canonical_value = {"slot": "value", "pool": pool, "chan": chan, "idx": idx}
+            if not value_slots:
+                value_slots = [canonical_value]
+            else:
+                normalized_slots: list[dict[str, Any]] = []
+                replaced_value = False
+                for slot in value_slots:
+                    if slot.get("slot") == "value" and not replaced_value:
+                        normalized_slots.append(canonical_value)
+                        replaced_value = True
+                    else:
+                        normalized_slots.append(slot)
+                if not replaced_value:
+                    normalized_slots.insert(0, canonical_value)
+                value_slots = normalized_slots
 
         return {
             "symbol": symbol,

@@ -471,6 +471,18 @@ def test_mapping_primary_address_prefers_value_slot_over_value2() -> None:
         {"slot": "value3", "pool": "P30", "chan": "v", "idx": 26},
     ]
     assert ParamResolver._iter_value_slots({"name": "parameters.X"}) == []
+    assert ParamResolver._iter_value_slots("not-a-mapping") == []
+    assert ParamResolver._iter_value_slots({"value2": [{"name": "no-address"}]}) == []
+
+    # Empty primary value → fall back to non-secondary fields, skipping value2+.
+    empty_primary = {
+        "group": "P4",
+        "number": 1,
+        "use": "v",
+        "value": [],
+        "value2": [{"group": "P30", "number": 25, "use": "v"}],
+    }
+    assert ParamResolver._mapping_primary_address(empty_primary) == ("P4", "v", 1)
 
 
 def test_panel_route_diagnostics_from_menu_explains_accept_and_reject() -> None:
