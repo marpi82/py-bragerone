@@ -7,20 +7,29 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.10.2rc5] - 2026-11-08
+
 ### Added
 
 - ``LiveAssetsCatalog.discover_status_bar_parameter_tokens`` /
   ``ParamResolver.discover_status_bar_parameter_tokens`` expose SPA footer
-  ``STATUS_BAR_*`` param chunks from the vite index map (not menu panels).
+  ``STATUS_BAR_*`` param chunks from the vite index map (not menu panels)
+  (#472).
 
 ### Fixed
 
 - ``ComputedValueEvaluator._eval_any_rules`` honors SPA ``else`` branches
-  (pump / status-bar diodes with ``if`` / ``elseif`` / ``else`` + mask).
+  (pump / status-bar diodes with ``if`` / ``elseif`` / ``else`` + mask),
+  including inline ``else`` on the same rule object as a nonmatching ``if``
+  (#472).
+- Missing registers match ``equalTo: null`` / ``void 0`` before numeric masks
+  so pump-diode guards stay undefined instead of falling through to ``else``
+  OFF (#472).
 - ``describe_symbol`` ``value_slots`` emit companion slots only when the card
   unit is a measurement (primary ``u`` path and/or units-table ``text`` /
-  transform). Enum-only cards such as ``HEAT_PUMP_STATE`` keep the primary
-  status slot alone so timer companions are not expanded.
+  transform, including literal / inline ``mapping.units`` without a live ``u``
+  channel). Enum-only cards such as ``HEAT_PUMP_STATE`` keep the primary
+  status slot alone so timer companions are not expanded (#472).
 
 ## [2026.10.2rc4] - 2026-11-08
 
@@ -563,7 +572,8 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc4...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc5...HEAD
+[2026.10.2rc5]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc4...2026.10.2rc5
 [2026.10.2rc4]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc3...2026.10.2rc4
 [2026.10.2rc3]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc2...2026.10.2rc3
 [2026.10.2rc2]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc1...2026.10.2rc2
