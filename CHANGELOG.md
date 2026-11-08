@@ -7,6 +7,14 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.10.2rc3] - 2026-11-08
+
+### Fixed
+
+- Tolerate ``null`` ``Module.name`` / ``Module.moduleTitle`` from ``get_modules``
+  (HT 1000 Legacy and similar rows) so the module is kept instead of skipped, and
+  Home Assistant config flow can continue past module selection (#460).
+
 ## [2026.10.2rc2] - 2026-10-22
 
 ### Added
@@ -521,7 +529,8 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc2...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc3...HEAD
+[2026.10.2rc3]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc2...2026.10.2rc3
 [2026.10.2rc2]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc1...2026.10.2rc2
 [2026.10.2rc1]: https://github.com/marpi82/py-bragerone/compare/2026.10.1...2026.10.2rc1
 [2026.10.1]: https://github.com/marpi82/py-bragerone/compare/2026.9.3...2026.10.1

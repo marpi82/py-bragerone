@@ -918,7 +918,12 @@ class BragerOneApiClient:
             try:
                 out.append(Module.model_validate(mod))
             except Exception:
-                LOG.warning("Skipping invalid module row from get_modules", exc_info=True)
+                devid_hint = ""
+                if isinstance(mod, dict):
+                    raw_devid = mod.get("devid")
+                    if raw_devid is not None and str(raw_devid).strip():
+                        devid_hint = f" (devid={raw_devid})"
+                LOG.warning("Skipping invalid module row from get_modules%s", devid_hint, exc_info=True)
         return out
 
     async def get_module_card(self, code: str) -> ModuleCard:
