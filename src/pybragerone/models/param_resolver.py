@@ -392,13 +392,13 @@ class ComputedValueEvaluator:
             conds = rule.get("if")
             if conds is None:
                 conds = rule.get("elseif")
-            if isinstance(conds, list) and conds:
-                if all(isinstance(c, dict) and self._eval_condition_any(c) for c in conds):
-                    then = rule.get("then")
-                    if isinstance(then, dict):
-                        return self._normalize_computed_value(then.get("value"))
-                    return self._normalize_computed_value(then)
-                continue
+            # Unmatched if/elseif may still carry an inline ``else`` (same shape
+            # as ``_select_raw_any_branch``), so do not skip the rule early.
+            if isinstance(conds, list) and conds and all(isinstance(c, dict) and self._eval_condition_any(c) for c in conds):
+                then = rule.get("then")
+                if isinstance(then, dict):
+                    return self._normalize_computed_value(then.get("value"))
+                return self._normalize_computed_value(then)
             if else_value is None and "else" in rule:
                 else_value = rule.get("else")
         if else_value is None:
@@ -2897,14 +2897,21 @@ class ParamResolver:
         # Emit companion slots only when that unit is a measurement (primary ``u``
         # path and/or units-table ``text`` / numeric transform). Enum-only cards
         # (e.g. HEAT_PUMP_STATE timers) keep the primary slot alone.
-        # Literal ``mapping.units`` (no live ``u`` channel) still resolves like
-        # ``resolve_value`` / label formatting above.
+        # Literal / inline ``mapping.units`` (no live ``u`` channel) still resolve
+        # like ``resolve_value`` (code lookup + Mapping descriptor fallback).
         companion_unit_code: Any = unit_code
-        if companion_unit_code is None and mapping is not None and isinstance(mapping.units, (str, int, float)):
-            companion_unit_code = mapping.units
+        companion_unit_meta: Any = None
+        if mapping is not None and mapping.units is not None:
+            if companion_unit_code is None and isinstance(mapping.units, (str, int, float)):
+                companion_unit_code = mapping.units
+            if isinstance(mapping.units, Mapping):
+                companion_unit_meta = dict(mapping.units)
+        unit_meta_for_companions = await self._resolve_unit_meta(raw_unit_code=companion_unit_code)
+        if unit_meta_for_companions is None and isinstance(companion_unit_meta, Mapping):
+            unit_meta_for_companions = companion_unit_meta
         if len(value_slots) > 1 and not self._card_unit_exposes_measurement_companions(
             mapping=mapping,
-            unit_meta=await self._resolve_unit_meta(raw_unit_code=companion_unit_code),
+            unit_meta=unit_meta_for_companions,
         ):
             value_slots = [slot for slot in value_slots if slot.get("slot") == "value"] or value_slots[:1]
 

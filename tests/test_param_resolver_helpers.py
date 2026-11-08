@@ -220,6 +220,17 @@ def test_eval_any_rules_uses_else_and_mask_like_pump_diode() -> None:
     assert off_eval._eval_any_rules([{"else": {"value": "e.OFF"}}]) == "e.OFF"
     assert _evaluator()._eval_any_rules([{"if": [{"operation": "equalTo", "expected": 1, "value": []}]}]) is None
 
+    # Inline else on the same rule object as a nonmatching if (``_select_raw_any_branch`` shape).
+    inline_else = [
+        {
+            "if": [{"expected": 9, "operation": "equalTo", "value": [{"group": "P31", "number": 50, "use": "s"}]}],
+            "then": "ON",
+            "else": "OFF",
+        }
+    ]
+    assert off_eval._eval_any_rules(inline_else) == "OFF"
+    assert on_eval._eval_any_rules(inline_else) == "OFF"
+
 
 def test_card_unit_measurement_helpers() -> None:
     """Measurement companions need a primary u-path or units-table text/transform."""

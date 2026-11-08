@@ -421,6 +421,35 @@ async def test_describe_symbol_keeps_companions_for_literal_measurement_unit() -
     ]
 
 
+async def test_describe_symbol_keeps_companions_for_inline_measurement_units() -> None:
+    """Inline mapping.units Mapping descriptors keep value2+ without a live u channel."""
+    raw = {
+        "name": "parameters.PARAM_FLOW_INLINE",
+        "value": [{"group": "P10", "number": 3, "use": "v"}],
+        "value2": [{"group": "P10", "number": 4, "use": "v"}],
+    }
+    mapping = _param_map(
+        "PARAM_FLOW_INLINE",
+        group="P10",
+        paths={"value": [{"group": "P10", "number": 3, "use": "v"}]},
+        units={"text": "units.49", "value": "e => e * 0.01"},
+        raw=raw,
+    )
+    assets = _HaAssets(
+        mappings={"PARAM_FLOW_INLINE": mapping},
+        i18n_by_namespace={"parameters": {"PARAM_FLOW_INLINE": "Flow inline"}},
+    )
+    store = ParamStore()
+    store.upsert("P10.v3", 120)
+    store.upsert("P10.v4", 80)
+
+    desc = await _resolver(assets, store).describe_symbol("PARAM_FLOW_INLINE")
+    assert desc["value_slots"] == [
+        {"slot": "value", "pool": "P10", "chan": "v", "idx": 3},
+        {"slot": "value2", "pool": "P10", "chan": "v", "idx": 4},
+    ]
+
+
 async def test_describe_symbol_value_slots_inserts_canonical_when_only_companions() -> None:
     """STATUS override with companion-only raw still prepends a canonical value slot."""
     mapping = _param_map(
