@@ -185,9 +185,12 @@ def test_eval_any_rules_uses_else_and_mask_like_pump_diode() -> None:
     off_eval = _evaluator(("P31.s50", 0x01))
     assert off_eval._eval_any_rules(rules) == "OFF"
 
-    # Missing register: conditional branches miss, ``else`` → OFF.
+    # Missing register: SPA ``equalTo: null`` → ``then: null`` (undefined, not else OFF).
     empty_eval = _evaluator()
-    assert empty_eval._eval_any_rules(rules) == "OFF"
+    assert empty_eval._eval_any_rules(rules) is None
+    assert empty_eval._eval_condition_any(
+        {"expected": "void 0", "operation": "equalTo", "value": [{"group": "P31", "number": 50, "use": "s"}]}
+    )
 
     # Matched if with ``then: null`` stops without falling through to else.
     assert (

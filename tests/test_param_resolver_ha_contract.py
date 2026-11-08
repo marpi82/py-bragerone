@@ -389,6 +389,38 @@ async def test_describe_symbol_keeps_measurement_composite_companions() -> None:
     ]
 
 
+async def test_describe_symbol_keeps_companions_for_literal_measurement_unit() -> None:
+    """Literal mapping.units measurement metadata keeps value2+ even without live u."""
+    raw = {
+        "name": "parameters.PARAM_FLOW",
+        "value": [{"group": "P10", "number": 1, "use": "v"}],
+        "value2": [{"group": "P10", "number": 2, "use": "v"}],
+        "unit": 49,
+    }
+    mapping = _param_map(
+        "PARAM_FLOW",
+        group="P10",
+        paths={"value": [{"group": "P10", "number": 1, "use": "v"}]},
+        units=49,
+        raw=raw,
+    )
+    assets = _HaAssets(
+        mappings={"PARAM_FLOW": mapping},
+        i18n_by_namespace={"parameters": {"PARAM_FLOW": "Flow"}},
+        unit_descriptors={"49": {"text": "units.49", "value": "e => e * 0.01"}},
+    )
+    store = ParamStore()
+    store.upsert("P10.v1", 120)
+    store.upsert("P10.v2", 80)
+    # No P10.u* — companions must still expand via mapping.units fallback.
+
+    desc = await _resolver(assets, store).describe_symbol("PARAM_FLOW")
+    assert desc["value_slots"] == [
+        {"slot": "value", "pool": "P10", "chan": "v", "idx": 1},
+        {"slot": "value2", "pool": "P10", "chan": "v", "idx": 2},
+    ]
+
+
 async def test_describe_symbol_value_slots_inserts_canonical_when_only_companions() -> None:
     """STATUS override with companion-only raw still prepends a canonical value slot."""
     mapping = _param_map(

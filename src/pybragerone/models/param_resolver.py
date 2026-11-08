@@ -353,6 +353,10 @@ class ComputedValueEvaluator:
             addr = f"{group}.{use[0]}{number}"
             raw_val = self._read_address_value(addr)
             if raw_val is None:
+                # SPA pump-diode guard: ``equalTo: null`` / ``void 0`` matches an
+                # absent register before numeric masks run (then: null → undefined).
+                if op == "equalTo" and self._coerce_expected(expected) is None:
+                    return True
                 continue
             if not isinstance(raw_val, int):
                 try:
@@ -2893,9 +2897,14 @@ class ParamResolver:
         # Emit companion slots only when that unit is a measurement (primary ``u``
         # path and/or units-table ``text`` / numeric transform). Enum-only cards
         # (e.g. HEAT_PUMP_STATE timers) keep the primary slot alone.
+        # Literal ``mapping.units`` (no live ``u`` channel) still resolves like
+        # ``resolve_value`` / label formatting above.
+        companion_unit_code: Any = unit_code
+        if companion_unit_code is None and mapping is not None and isinstance(mapping.units, (str, int, float)):
+            companion_unit_code = mapping.units
         if len(value_slots) > 1 and not self._card_unit_exposes_measurement_companions(
             mapping=mapping,
-            unit_meta=await self._resolve_unit_meta(raw_unit_code=unit_code),
+            unit_meta=await self._resolve_unit_meta(raw_unit_code=companion_unit_code),
         ):
             value_slots = [slot for slot in value_slots if slot.get("slot") == "value"] or value_slots[:1]
 
