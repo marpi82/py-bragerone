@@ -132,6 +132,10 @@ class AssetsProtocol(Protocol):
         """Return upstream translation configuration (or None)."""
         raise NotImplementedError
 
+    async def discover_status_bar_parameter_tokens(self) -> set[str]:
+        """Return SPA footer status-bar parameter tokens from the asset index."""
+        return set()
+
 
 @dataclass
 class ResolvedValue:
@@ -349,6 +353,10 @@ class ComputedValueEvaluator:
             addr = f"{group}.{use[0]}{number}"
             raw_val = self._read_address_value(addr)
             if raw_val is None:
+                # SPA pump-diode guard: ``equalTo: null`` / ``void 0`` matches an
+                # absent register before numeric masks run (then: null → undefined).
+                if op == "equalTo" and self._coerce_expected(expected) is None:
+                    return True
                 continue
             if not isinstance(raw_val, int):
                 try:
@@ -371,22 +379,33 @@ class ComputedValueEvaluator:
         return False
 
     def _eval_any_rules(self, any_rules: list[Any]) -> str | None:
+        """Evaluate SPA ``if`` / ``elseif`` / ``else`` rule lists.
+
+        Matches the STATUS / DEVICE_STATE card shape (e.g. pump diodes): walk
+        conditional branches in order; when none match, use the first ``else``
+        value. A matched branch with ``then: null`` means undefined (stop).
+        """
+        else_value: Any = None
         for rule in any_rules:
             if not isinstance(rule, dict):
                 continue
             conds = rule.get("if")
             if conds is None:
                 conds = rule.get("elseif")
-            if conds is None:
-                continue
-            if not isinstance(conds, list) or not conds:
-                continue
-            if all(isinstance(c, dict) and self._eval_condition_any(c) for c in conds):
+            # Unmatched if/elseif may still carry an inline ``else`` (same shape
+            # as ``_select_raw_any_branch``), so do not skip the rule early.
+            if isinstance(conds, list) and conds and all(isinstance(c, dict) and self._eval_condition_any(c) for c in conds):
                 then = rule.get("then")
                 if isinstance(then, dict):
                     return self._normalize_computed_value(then.get("value"))
                 return self._normalize_computed_value(then)
-        return None
+            if else_value is None and "else" in rule:
+                else_value = rule.get("else")
+        if else_value is None:
+            return None
+        if isinstance(else_value, dict):
+            return self._normalize_computed_value(else_value.get("value"))
+        return self._normalize_computed_value(else_value)
 
     def evaluate(self, mapping_raw: Any) -> str | None:
         """Evaluate computed value for mappings with a rule engine."""
@@ -1973,6 +1992,44 @@ class ParamResolver:
         return None
 
     @classmethod
+    def _unit_meta_is_measurement(cls, unit_meta: Any) -> bool:
+        """Return True when a units-table descriptor is a measurement (SPA ``text``/transform)."""
+        if not isinstance(unit_meta, Mapping):
+            return False
+        if unit_meta.get("text") is not None:
+            return True
+        return bool(unit_meta.get("value") is not None or unit_meta.get("valuePrepare") is not None)
+
+    @classmethod
+    def _mapping_has_primary_unit_path(cls, mapping: ParamMap | None) -> bool:
+        """Return True when the card binds a primary ``u``-channel (shared SPA unit)."""
+        if mapping is None:
+            return False
+        paths = mapping.paths
+        if isinstance(paths, Mapping) and cls._is_address_selector_list(paths.get("unit")):
+            return True
+        raw = mapping.raw
+        return bool(isinstance(raw, Mapping) and cls._is_address_selector_list(raw.get("unit")))
+
+    @classmethod
+    def _card_unit_exposes_measurement_companions(
+        cls,
+        *,
+        mapping: ParamMap | None,
+        unit_meta: Any,
+    ) -> bool:
+        """Whether SPA would format companion slots through a measurement unit.
+
+        Weather-curve cards expose ``unit: [{use: u}]`` on the primary register and
+        ``Parameter.parseValue`` applies that descriptor to value2/value3. Status
+        enum cards (CustomUnit options only, no ``text``) do not — companions are
+        raw secondary numbers (timers) and must not expand as HA entities.
+        """
+        if cls._mapping_has_primary_unit_path(mapping):
+            return True
+        return cls._unit_meta_is_measurement(unit_meta)
+
+    @classmethod
     def _iter_value_slots(cls, raw: Any) -> list[dict[str, Any]]:
         """Extract SPA ``value`` / ``value2`` / … slots as address descriptors.
 
@@ -2836,6 +2893,28 @@ class ParamResolver:
                     normalized_slots.insert(0, canonical_value)
                 value_slots = normalized_slots
 
+        # SPA ``Parameter.parseValue`` formats every slot through one card unit.
+        # Emit companion slots only when that unit is a measurement (primary ``u``
+        # path and/or units-table ``text`` / numeric transform). Enum-only cards
+        # (e.g. HEAT_PUMP_STATE timers) keep the primary slot alone.
+        # Literal / inline ``mapping.units`` (no live ``u`` channel) still resolve
+        # like ``resolve_value`` (code lookup + Mapping descriptor fallback).
+        companion_unit_code: Any = unit_code
+        companion_unit_meta: Any = None
+        if mapping is not None and mapping.units is not None:
+            if companion_unit_code is None and isinstance(mapping.units, (str, int, float)):
+                companion_unit_code = mapping.units
+            if isinstance(mapping.units, Mapping):
+                companion_unit_meta = dict(mapping.units)
+        unit_meta_for_companions = await self._resolve_unit_meta(raw_unit_code=companion_unit_code)
+        if unit_meta_for_companions is None and isinstance(companion_unit_meta, Mapping):
+            unit_meta_for_companions = companion_unit_meta
+        if len(value_slots) > 1 and not self._card_unit_exposes_measurement_companions(
+            mapping=mapping,
+            unit_meta=unit_meta_for_companions,
+        ):
+            value_slots = [slot for slot in value_slots if slot.get("slot") == "value"] or value_slots[:1]
+
         return {
             "symbol": symbol,
             "pool": pool,
@@ -2883,3 +2962,13 @@ class ParamResolver:
         """Merge menu-visible symbols with mappings and live values for a permission set."""
         symbols = await self._assets.list_symbols_for_permissions(device_menu, permissions, devices=devices)
         return await self.describe_symbols(sorted(symbols))
+
+    async def discover_status_bar_parameter_tokens(self) -> set[str]:
+        """Return SPA footer status-bar parameter tokens from the asset catalog."""
+        discover = getattr(self._assets, "discover_status_bar_parameter_tokens", None)
+        if not callable(discover):
+            return set()
+        result = await discover()
+        if not isinstance(result, set):
+            return set()
+        return {str(token) for token in result if isinstance(token, str) and token}

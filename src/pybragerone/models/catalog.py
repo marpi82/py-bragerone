@@ -1579,6 +1579,24 @@ class LiveAssetsCatalog:
         tokens.update(_LEFTOVER_QUOTED_TOKEN_RE.findall(text))
         return tokens
 
+    async def discover_status_bar_parameter_tokens(self) -> set[str]:
+        """Return SPA footer status-bar parameter tokens from the vite asset map.
+
+        The web app registers footer diodes as dedicated chunks under
+        ``/src/constants/parameters/STATUS_BAR_*.ts`` (and matching hashed
+        ``STATUS_BAR_*-*.js`` assets). Those tokens are not attached to menu
+        panel groups, so HA bootstrap must discover them from the index.
+        """
+        await self._ensure_index_loaded()
+        tokens: set[str] = set()
+        if self._idx.index_bytes:
+            text = self._idx.index_bytes.decode("utf-8", errors="replace")
+            tokens.update(match.group(1) for match in re.finditer(r"/src/constants/parameters/(STATUS_BAR_[A-Z0-9_]+)\.ts", text))
+        for basename in self._idx.assets_by_basename:
+            if basename.startswith("STATUS_BAR_") and basename.isupper():
+                tokens.add(basename)
+        return tokens
+
     async def discover_static_route_tokens(self, route_path: str) -> set[str]:
         """Return parameter tokens declared in a static ``deviceMenu/static/<path>.ts`` chunk.
 
