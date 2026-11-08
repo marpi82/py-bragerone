@@ -20,6 +20,9 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   status composites bind the status channel instead of a timer (#466).
 - Drop ``hidden:composite-component`` visibility short-circuit; composites use
   normal ``INVISIBLE`` / ``DEVICE_AVAILABLE`` checks (#466).
+- Resolve SPA ``menu.MAINMENU_*`` panel ``displayName`` values to localized
+  titles (strip ``menu.`` when collecting title tokens and looking up i18n) so
+  DHW panels no longer leak ``menu.MAINMENU_USTAWIENIA_CWU`` (#467).
 
 ## [2026.10.2rc3] - 2026-11-08
 
