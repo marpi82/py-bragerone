@@ -7,6 +7,21 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Added
+
+- ``LiveAssetsCatalog.discover_status_bar_parameter_tokens`` /
+  ``ParamResolver.discover_status_bar_parameter_tokens`` expose SPA footer
+  ``STATUS_BAR_*`` param chunks from the vite index map (not menu panels).
+
+### Fixed
+
+- ``ComputedValueEvaluator._eval_any_rules`` honors SPA ``else`` branches
+  (pump / status-bar diodes with ``if`` / ``elseif`` / ``else`` + mask).
+- ``describe_symbol`` ``value_slots`` emit companion slots only when the card
+  unit is a measurement (primary ``u`` path and/or units-table ``text`` /
+  transform). Enum-only cards such as ``HEAT_PUMP_STATE`` keep the primary
+  status slot alone so timer companions are not expanded.
+
 ## [2026.10.2rc4] - 2026-11-08
 
 ### Added

@@ -137,6 +137,38 @@ def test_eval_any_rules_skips_junk_and_normalizes_then() -> None:
     assert ParamResolver._clean_symbolic_tag("DiodeState['ON']") == "ON"
 
 
+def test_eval_any_rules_uses_else_and_mask_like_pump_diode() -> None:
+    """SPA pump-diode lists: elseif+mask → ON, otherwise else → OFF."""
+    on_eval = _evaluator(("P31.s50", 0x0A))
+    rules = [
+        {
+            "if": [{"expected": None, "operation": "equalTo", "value": [{"group": "P31", "number": 50, "use": "s"}]}],
+            "then": None,
+        },
+        {
+            "elseif": [
+                {
+                    "expected": 0,
+                    "operation": "notEqualTo",
+                    "value": [{"group": "P31", "number": 50, "use": "s", "mask": 0x0A}],
+                }
+            ],
+            "then": "ON",
+        },
+        {"else": "OFF"},
+    ]
+    assert on_eval._eval_any_rules(rules) == "ON"
+    assert on_eval.evaluate({"value": rules}) == "ON"
+    assert on_eval.evaluate({"paths": {"value": rules}}) == "ON"
+
+    off_eval = _evaluator(("P31.s50", 0x01))
+    assert off_eval._eval_any_rules(rules) == "OFF"
+
+    # Missing register: conditional branches miss, ``else`` → OFF.
+    empty_eval = _evaluator()
+    assert empty_eval._eval_any_rules(rules) == "OFF"
+
+
 def test_parse_and_apply_numeric_transform_variants() -> None:
     """Parse arrow-function transforms and apply shift/factor/precision."""
     parse = ParamResolver._parse_numeric_transform

@@ -91,6 +91,7 @@ def _param_map(
 class _HaAssets:
     mappings: dict[str, ParamMap]
     i18n_by_namespace: dict[str, dict[str, Any]] = field(default_factory=dict)
+    unit_descriptors: dict[str, Mapping[str, Any]] = field(default_factory=dict)
     symbols_for_permissions: set[str] = field(default_factory=set)
     menu: MenuResult = field(default_factory=lambda: MenuResult.model_validate({"routes": []}))
     language: TranslationConfig | None = None
@@ -129,8 +130,8 @@ class _HaAssets:
         return self.i18n_by_namespace.get(namespace, {})
 
     async def get_unit_descriptor(self, unit_code: Any) -> Mapping[str, Any] | None:
-        _ = unit_code
-        return None
+        key = str(unit_code).strip() if unit_code is not None else ""
+        return self.unit_descriptors.get(key)
 
     async def list_language_config(self) -> TranslationConfig | None:
         return self.language
@@ -313,24 +314,26 @@ async def test_visibility_diagnostics_cover_ha_hide_reasons() -> None:
     assert reason == "visible:default"
 
 
-async def test_describe_symbol_exposes_composite_value_slots() -> None:
-    """Heat-pump style composites keep value as primary and list value2/value3 slots."""
+async def test_describe_symbol_omits_enum_only_composite_companions() -> None:
+    """HEAT_PUMP_STATE cards keep primary status only — timer value2/value3 stay out."""
     raw = {
         "name": "parameters.STATUS_POMPY_CIEPLA_STATUS",
         "value": [{"group": "P31", "number": 12, "use": "s"}],
         "value2": [{"group": "P30", "number": 25, "use": "v"}],
         "value3": [{"group": "P30", "number": 26, "use": "v"}],
-        "unit": [{"group": "P31", "number": 12, "use": "u"}],
+        "unit": "HEAT_PUMP_STATE",
     }
     mapping = _param_map(
         "STATUS_POMPY_CIEPLA_STATUS",
         group="P31",
         paths={"value": [{"group": "P31", "number": 12, "use": "s"}]},
+        units="HEAT_PUMP_STATE",
         raw=raw,
     )
     assets = _HaAssets(
         mappings={"STATUS_POMPY_CIEPLA_STATUS": mapping},
         i18n_by_namespace={"parameters": {"STATUS_POMPY_CIEPLA_STATUS": "Heat pump status"}},
+        unit_descriptors={"HEAT_PUMP_STATE": {"options": {"0": "Off", "2": "Heat"}}},
     )
     store = ParamStore()
     store.upsert("P31.s12", 2)
@@ -341,17 +344,49 @@ async def test_describe_symbol_exposes_composite_value_slots() -> None:
     assert desc["pool"] == "P31"
     assert desc["chan"] == "s"
     assert desc["idx"] == 12
-    assert desc["value"] is None
     assert desc["status"] == 2
-    assert desc["value_slots"] == [
-        {"slot": "value", "pool": "P31", "chan": "s", "idx": 12},
-        {"slot": "value2", "pool": "P30", "chan": "v", "idx": 25},
-        {"slot": "value3", "pool": "P30", "chan": "v", "idx": 26},
-    ]
+    assert desc["value_slots"] == [{"slot": "value", "pool": "P31", "chan": "s", "idx": 12}]
 
     visible, reason = _resolver(assets, store).parameter_visibility_diagnostics(desc=desc, resolved=None)
     assert visible is True
     assert reason == "visible:no-paths"
+
+
+async def test_describe_symbol_keeps_measurement_composite_companions() -> None:
+    """Weather-curve cards with primary u-channel expose value2/value3 setpoints."""
+    raw = {
+        "name": "parameters.HEATING_CURVE_FOR_WEATHER_MODE",
+        "unit": [{"group": "P6", "number": 54, "use": "u"}],
+        "value": [{"group": "P6", "number": 54, "use": "v"}],
+        "value2": [{"group": "P6", "number": 55, "use": "v"}],
+        "value3": [{"group": "P6", "number": 56, "use": "v"}],
+    }
+    mapping = _param_map(
+        "PARAM_54_55_56",
+        group="P6",
+        paths={
+            "value": [{"group": "P6", "number": 54, "use": "v"}],
+            "unit": [{"group": "P6", "number": 54, "use": "u"}],
+        },
+        raw=raw,
+    )
+    assets = _HaAssets(
+        mappings={"PARAM_54_55_56": mapping},
+        i18n_by_namespace={"parameters": {"HEATING_CURVE_FOR_WEATHER_MODE": "Heating curve"}},
+        unit_descriptors={"1": {"text": "units.1"}},
+    )
+    store = ParamStore()
+    store.upsert("P6.v54", 40)
+    store.upsert("P6.u54", 1)
+    store.upsert("P6.v55", 20)
+    store.upsert("P6.v56", 0)
+
+    desc = await _resolver(assets, store).describe_symbol("PARAM_54_55_56")
+    assert desc["value_slots"] == [
+        {"slot": "value", "pool": "P6", "chan": "v", "idx": 54},
+        {"slot": "value2", "pool": "P6", "chan": "v", "idx": 55},
+        {"slot": "value3", "pool": "P6", "chan": "v", "idx": 56},
+    ]
 
 
 async def test_describe_symbol_value_slots_inserts_canonical_when_only_companions() -> None:
@@ -378,9 +413,9 @@ async def test_describe_symbol_value_slots_inserts_canonical_when_only_companion
     assert desc["pool"] == "P5"
     assert desc["chan"] == "s"
     assert desc["idx"] == 7
+    # No measurement unit on the card → companion timers/setpoints are omitted.
     assert desc["value_slots"] == [
         {"slot": "value", "pool": "P5", "chan": "s", "idx": 7},
-        {"slot": "value2", "pool": "P30", "chan": "v", "idx": 25},
     ]
 
 

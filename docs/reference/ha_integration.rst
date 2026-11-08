@@ -266,13 +266,16 @@ parameters:
   (installer denylist, ``isVisibleOnSideMenu``, ``displayDropdown`` leftovers).
 - ``ParamResolver.parameter_visibility_diagnostics`` — per-parameter status bits
   (``INVISIBLE``, ``DEVICE_AVAILABLE``). Composite SPA cards with ``value2+``
-  are not force-hidden; ``describe_symbol`` ``value_slots`` lists each channel
-  so HA can emit one entity per slot (primary ``value`` keeps a stable
-  ``unique_id``).
+  are not force-hidden; ``describe_symbol`` ``value_slots`` lists companion
+  channels only when the card unit is a measurement (primary ``u`` path /
+  units-table ``text``). Enum-only cards (e.g. ``HEAT_PUMP_STATE``) keep the
+  primary slot alone. Primary ``value`` keeps a stable ``unique_id``.
 
 Static menu shells (e.g. ``MAINMENU_STREFY_CZASOWE`` / path ``timezones``) load
 parameter tokens from ``deviceMenu/static/<path>.ts`` chunks referenced in
 ``index-*.js``. Use ``LiveAssetsCatalog.discover_static_route_tokens``,
+``LiveAssetsCatalog.discover_status_bar_parameter_tokens`` (footer
+``STATUS_BAR_*`` param chunks from the vite map),
 ``LiveAssetsCatalog.fetch_alarm_name_source`` (picks the ``Alarms-*`` webpack
 chunk that actually contains the ``AlarmName`` enum when several share the
 basename), and pass
