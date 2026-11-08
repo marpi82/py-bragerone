@@ -526,6 +526,75 @@ def test_build_panel_groups_from_menu_all_panels_uses_parent_child_titles_for_du
     assert groups["Termostaty/Zawór 1"] == ["PARAM_541"]
 
 
+async def test_panel_title_i18n_collects_menu_prefixed_mainmenu_tokens() -> None:
+    """``menu.MAINMENU_*`` displayName must seed string-namespace overlays (#467)."""
+    from typing import Any, cast
+
+    from pybragerone.models import ParamResolver, ParamStore
+    from pybragerone.models.catalog import TranslationConfig
+    from pybragerone.models.menu import MenuResult
+    from pybragerone.models.param_resolver import AssetsProtocol
+
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "dhw",
+                    "name": "modules.menu.dhw",
+                    "meta": {
+                        "displayName": "menu.MAINMENU_USTAWIENIA_CWU",
+                        "parameters": {"read": [{"parameter": "PARAM_P30_2"}]},
+                    },
+                }
+            ]
+        }
+    )
+    assert ParamResolver._collect_menu_title_tokens(menu) == {"MAINMENU_USTAWIENIA_CWU"}
+
+    class _Assets:
+        async def ensure_ready(self) -> None:
+            return None
+
+        async def get_module_menu(self, *args: object, **kwargs: object) -> MenuResult:
+            _ = args, kwargs
+            return menu
+
+        async def get_param_mapping(self, key: str) -> object | None:
+            _ = key
+            return None
+
+        async def get_param_mappings(self, keys: object) -> dict[str, object]:
+            _ = keys
+            return {}
+
+        async def list_symbols_for_permissions(self, *args: object, **kwargs: object) -> set[str]:
+            _ = args, kwargs
+            return set()
+
+        async def get_i18n(self, language: str, namespace: str) -> dict[str, Any]:
+            _ = language
+            if namespace == "routes":
+                return {}
+            if namespace == "menu":
+                return {"MAINMENU_USTAWIENIA_CWU": "Ustawienia CWU"}
+            if namespace == "MAINMENU_USTAWIENIA_CWU":
+                return {"MAINMENU_USTAWIENIA_CWU": "Should not win"}
+            return {}
+
+        async def get_unit_descriptor(self, unit_code: object) -> object | None:
+            _ = unit_code
+            return None
+
+        async def list_language_config(self) -> TranslationConfig | None:
+            return None
+
+    resolver = ParamResolver(store=ParamStore(), assets=cast(AssetsProtocol, _Assets()), lang="pl")
+    title_i18n = await resolver._panel_title_i18n(menu)
+    assert title_i18n["MAINMENU_USTAWIENIA_CWU"] == "Ustawienia CWU"
+    route = menu.routes[0]
+    assert ParamResolver._route_title(route, routes_i18n=title_i18n) == "Ustawienia CWU"
+
+
 async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
     """Bare MAINMENU_* tokens resolve from string-default namespaces and menu pack."""
     from typing import Any, cast

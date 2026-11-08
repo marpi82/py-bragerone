@@ -581,6 +581,30 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
         )
         == "Ustawienia CWU"
     )
+    # SPA REST default menu uses ``menu.MAINMENU_*`` displayName (#467).
+    dhw_prefixed = SimpleNamespace(
+        name="modules.menu.dhw",
+        path="dhw",
+        meta=SimpleNamespace(display_name="menu.MAINMENU_USTAWIENIA_CWU"),
+    )
+    assert (
+        ParamResolver._route_title(
+            dhw_prefixed,
+            routes_i18n={"MAINMENU_USTAWIENIA_CWU": "Ustawienia CWU", "modules": {"menu": {}}},
+        )
+        == "Ustawienia CWU"
+    )
+    assert ParamResolver._bare_menu_title_token("menu.MAINMENU_USTAWIENIA_CWU") == "MAINMENU_USTAWIENIA_CWU"
+    assert ParamResolver._bare_menu_title_token("MAINMENU_USTAWIENIA_CWU") == "MAINMENU_USTAWIENIA_CWU"
+    assert ParamResolver._bare_menu_title_token("routes.modules.menu.dhw") is None
+    # Missing i18n: strip menu. so panel paths do not keep the pack prefix.
+    assert (
+        ParamResolver._route_title(
+            dhw_prefixed,
+            routes_i18n={"modules": {"menu": {}}},
+        )
+        == "MAINMENU_USTAWIENIA_CWU"
+    )
     child = SimpleNamespace(
         name="modules.menu.thermostat.pump",
         path="pump",

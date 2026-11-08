@@ -546,10 +546,34 @@ class ParamResolver:
             cur = cur.get(part)
         return cur if isinstance(cur, str) else None
 
+    @staticmethod
+    def _bare_menu_title_token(raw: str) -> str | None:
+        """Return a bare ``MAINMENU_*``-style token, stripping optional ``menu.`` prefix.
+
+        SPA REST default menus often set ``displayName`` to ``menu.MAINMENU_…``
+        (i18n pack key under the ``menu`` namespace). Title overlays and lookups
+        use the bare token as the flat key / string-default namespace name.
+        """
+        token = raw.strip()
+        if token.casefold().startswith("menu."):
+            token = token[5:].strip()
+        if _MENU_TITLE_TOKEN_RE.fullmatch(token):
+            return token
+        return None
+
     @classmethod
     def _route_title(cls, route: Any, *, routes_i18n: Mapping[str, Any] | None = None) -> str:
         meta = getattr(route, "meta", None)
         dn = getattr(meta, "display_name", None) if meta is not None else None
+
+        def _translate_candidate(raw: str, i18n: Mapping[str, Any]) -> str | None:
+            translated = cls._lookup_dotted_path(i18n, raw)
+            if translated is not None:
+                return translated
+            bare = cls._bare_menu_title_token(raw)
+            if bare is not None and bare != raw:
+                return cls._lookup_dotted_path(i18n, bare)
+            return None
 
         if isinstance(dn, str) and dn.strip() and isinstance(routes_i18n, Mapping):
             dn_norm = dn.strip()
@@ -559,25 +583,28 @@ class ParamResolver:
                 if translated is not None:
                     return translated
             else:
-                # Bare tokens such as ``MAINMENU_MENU_TERMOSTATU`` resolve via the
-                # flat overlay built by :meth:`_panel_title_i18n` (string-default
-                # namespaces and the ``menu`` pack), not via ``routes.*`` paths.
-                translated = cls._lookup_dotted_path(routes_i18n, dn_norm)
+                # Bare tokens / ``menu.MAINMENU_*`` resolve via the flat overlay
+                # built by :meth:`_panel_title_i18n` (string-default namespaces
+                # and the ``menu`` pack), not via ``routes.*`` paths.
+                translated = _translate_candidate(dn_norm, routes_i18n)
                 if translated is not None:
                     return translated
 
         if isinstance(routes_i18n, Mapping):
             route_name = getattr(route, "name", None)
             if isinstance(route_name, str) and route_name.strip():
-                translated = cls._lookup_dotted_path(routes_i18n, route_name.strip())
+                translated = _translate_candidate(route_name.strip(), routes_i18n)
                 if translated is not None:
                     return translated
 
         if isinstance(dn, str) and dn.strip():
-            return dn.strip()
+            # Prefer bare MAINMENU_* over leaking ``menu.MAINMENU_*`` when i18n missed.
+            bare = cls._bare_menu_title_token(dn)
+            return bare if bare is not None else dn.strip()
         route_name = getattr(route, "name", None)
         if isinstance(route_name, str) and route_name.strip():
-            return route_name.strip()
+            bare = cls._bare_menu_title_token(route_name)
+            return bare if bare is not None else route_name.strip()
         route_path = getattr(route, "path", None)
         return str(route_path or "-")
 
@@ -594,8 +621,8 @@ class ParamResolver:
             for raw in candidates:
                 if not isinstance(raw, str):
                     continue
-                token = raw.strip()
-                if _MENU_TITLE_TOKEN_RE.fullmatch(token):
+                token = cls._bare_menu_title_token(raw)
+                if token is not None:
                     tokens.add(token)
         return tokens
 
