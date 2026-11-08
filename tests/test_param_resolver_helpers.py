@@ -2,11 +2,32 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
+import pytest
+
+from pybragerone.models.catalog import ParamMap
 from pybragerone.models.menu import MenuResult
 from pybragerone.models.param import ParamStore
-from pybragerone.models.param_resolver import ComputedValueEvaluator, ParamResolver
+from pybragerone.models.param_resolver import AssetsProtocol, ComputedValueEvaluator, ParamResolver
+
+
+def _param_map(*, paths: dict[str, Any] | None = None, raw: dict[str, Any] | None = None) -> ParamMap:
+    return ParamMap(
+        key="X",
+        group="P6",
+        paths=paths or {},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="t",
+        raw=raw or {},
+    )
 
 
 def _evaluator(*pairs: tuple[str, object]) -> ComputedValueEvaluator:
@@ -167,6 +188,79 @@ def test_eval_any_rules_uses_else_and_mask_like_pump_diode() -> None:
     # Missing register: conditional branches miss, ``else`` → OFF.
     empty_eval = _evaluator()
     assert empty_eval._eval_any_rules(rules) == "OFF"
+
+    # Matched if with ``then: null`` stops without falling through to else.
+    assert (
+        on_eval._eval_any_rules(
+            [
+                {
+                    "if": [{"expected": 0x0A, "operation": "equalTo", "value": [{"group": "P31", "number": 50, "use": "s"}]}],
+                    "then": None,
+                },
+                {"else": "OFF"},
+            ]
+        )
+        is None
+    )
+    # Dict ``then`` / ``else`` payloads normalize the nested value.
+    assert (
+        on_eval._eval_any_rules(
+            [
+                {
+                    "if": [{"expected": 0x0A, "operation": "equalTo", "value": [{"group": "P31", "number": 50, "use": "s"}]}],
+                    "then": {"value": "e.ON"},
+                }
+            ]
+        )
+        == "e.ON"
+    )
+    assert off_eval._eval_any_rules([{"else": {"value": "e.OFF"}}]) == "e.OFF"
+    assert _evaluator()._eval_any_rules([{"if": [{"operation": "equalTo", "expected": 1, "value": []}]}]) is None
+
+
+def test_card_unit_measurement_helpers() -> None:
+    """Measurement companions need a primary u-path or units-table text/transform."""
+    assert ParamResolver._unit_meta_is_measurement(None) is False
+    assert ParamResolver._unit_meta_is_measurement({"options": {"0": "Off"}}) is False
+    assert ParamResolver._unit_meta_is_measurement({"text": "units.1"}) is True
+    assert ParamResolver._unit_meta_is_measurement({"value": "e => e * 0.01"}) is True
+    assert ParamResolver._unit_meta_is_measurement({"valuePrepare": "e => e"}) is True
+
+    assert ParamResolver._mapping_has_primary_unit_path(None) is False
+    assert ParamResolver._mapping_has_primary_unit_path(_param_map()) is False
+    unit_sel = [{"group": "P6", "number": 54, "use": "u"}]
+    assert ParamResolver._mapping_has_primary_unit_path(_param_map(paths={"unit": unit_sel}))
+    assert ParamResolver._mapping_has_primary_unit_path(_param_map(raw={"unit": unit_sel}))
+    assert ParamResolver._card_unit_exposes_measurement_companions(mapping=None, unit_meta={"text": "units.1"})
+    assert not ParamResolver._card_unit_exposes_measurement_companions(
+        mapping=None,
+        unit_meta={"options": {"0": "Off"}},
+    )
+
+
+@pytest.mark.asyncio
+async def test_discover_status_bar_parameter_tokens_via_resolver() -> None:
+    """Resolver forwards catalog discovery and tolerates missing/non-set results."""
+    # Protocol default body (stubs that omit the helper inherit this).
+    assert await AssetsProtocol.discover_status_bar_parameter_tokens(cast(AssetsProtocol, object())) == set()
+
+    store = ParamStore()
+    bare = ParamResolver(store=store, assets=SimpleNamespace())
+    assert await bare.discover_status_bar_parameter_tokens() == set()
+
+    bad = ParamResolver(
+        store=store,
+        assets=SimpleNamespace(discover_status_bar_parameter_tokens=AsyncMock(return_value=["STATUS_BAR_PUMP"])),
+    )
+    assert await bad.discover_status_bar_parameter_tokens() == set()
+
+    good = ParamResolver(
+        store=store,
+        assets=SimpleNamespace(
+            discover_status_bar_parameter_tokens=AsyncMock(return_value={"STATUS_BAR_PUMP", 12, "STATUS_BAR_DEFROST"})
+        ),
+    )
+    assert await good.discover_status_bar_parameter_tokens() == {"STATUS_BAR_PUMP", "STATUS_BAR_DEFROST"}
 
 
 def test_parse_and_apply_numeric_transform_variants() -> None:

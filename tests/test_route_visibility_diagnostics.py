@@ -472,6 +472,37 @@ async def test_assets_protocol_discover_static_route_default_raises() -> None:
 
 
 @pytest.mark.asyncio
+async def test_discover_status_bar_parameter_tokens_from_index() -> None:
+    """Footer STATUS_BAR_* tokens come from vite paths and hashed basename keys."""
+    catalog = LiveAssetsCatalog(AsyncMock())
+    catalog._idx = AssetIndex(
+        index_bytes=(
+            b'{"/src/constants/parameters/STATUS_BAR_PUMP.ts":"STATUS_BAR_PUMP-abc.js",'
+            b'"/src/constants/parameters/STATUS_BAR_DEFROST.ts":"STATUS_BAR_DEFROST-def.js"}'
+        ),
+        assets_by_basename={
+            "STATUS_BAR_PUMP": [AssetRef(url="https://example/STATUS_BAR_PUMP-abc.js", base="STATUS_BAR_PUMP", hash="abc")],
+            "STATUS_BAR_EXTRA": [AssetRef(url="https://example/STATUS_BAR_EXTRA-x.js", base="STATUS_BAR_EXTRA", hash="x")],
+            "status_bar_ignored": [AssetRef(url="https://example/x.js", base="status_bar_ignored", hash="x")],
+            "OTHER": [AssetRef(url="https://example/other.js", base="OTHER", hash="y")],
+        },
+    )
+    assert await catalog.discover_status_bar_parameter_tokens() == {
+        "STATUS_BAR_PUMP",
+        "STATUS_BAR_DEFROST",
+        "STATUS_BAR_EXTRA",
+    }
+
+
+@pytest.mark.asyncio
+async def test_discover_status_bar_parameter_tokens_empty_index() -> None:
+    """No index bytes and no STATUS_BAR basenames yield an empty set."""
+    catalog = LiveAssetsCatalog(AsyncMock())
+    catalog._idx = AssetIndex(index_bytes=b"loaded", assets_by_basename={"dummy": []})
+    assert await catalog.discover_status_bar_parameter_tokens() == set()
+
+
+@pytest.mark.asyncio
 async def test_discover_static_route_tokens_from_index_map() -> None:
     """LiveAssetsCatalog loads tokens from static deviceMenu route chunks."""
     api = AsyncMock()
