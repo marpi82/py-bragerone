@@ -206,7 +206,14 @@ async def test_get_modules_shapes_and_non_200(api_client: BragerOneApiClient, ht
     httpx_mock.add_response(
         method="GET",
         url=url,
-        json={"data": [MODULE_PAYLOAD, {"devid": None, "not": "a-module"}, "also-bad"]},
+        json={
+            "data": [
+                MODULE_PAYLOAD,
+                {"devid": None, "not": "a-module"},
+                {"devid": "BADSKIP", "name": None},  # has devid but still not a Module
+                "also-bad",
+            ]
+        },
     )
     resilient = await api_client.get_modules(3)
     assert len(resilient) == 1
