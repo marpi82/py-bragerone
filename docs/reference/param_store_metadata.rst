@@ -61,6 +61,17 @@ Top-level keys
     Structured metadata extracted from the asset catalog. When ``None`` the
     catalog did not yield a mapping (rare).
 
+``value_slots`` (``list[dict[str, Any]]``)
+    SPA value channels for the symbol. Each entry is
+    ``{"slot": "value"|"value2"|"value3"|"value4", "pool", "chan", "idx"}``.
+    The ``value`` slot is always normalized to the final top-level
+    ``pool`` / ``chan`` / ``idx`` (including ``STATUS_P*`` overrides); any
+    mismatched mapping address stays in ``computed_primary``. Composite cards
+    that also bind timers or companion setpoints expose ``value2+`` here so
+    Home Assistant can create one entity per slot without re-parsing
+    ``mapping.raw``. When the asset has no ``value*`` keys, a single synthetic
+    ``value`` slot mirrors the primary address.
+
 Mapping dictionary
 ------------------
 
@@ -173,6 +184,21 @@ Usage guidelines
   before issuing the matching ``command`` with its ``value``.
 * Preserve ``raw`` when caching data for offline analysis – upstream asset
   changes can be re-parsed without fetching everything again.
+
+Composite ``value2`` / ``value3`` slots
+---------------------------------------
+
+Some SPA cards bind several independent registers under one parameter token
+(``raw.value``, ``raw.value2``, ``raw.value3``, …) — for example heat-pump
+status plus runtime timers, or a weather heating curve with three setpoints.
+That is distinct from multi-word composition inside a single ``value`` list
+(#327) and from STATUS ``if``/``elseif``/``then``/``else`` rule lists.
+
+``describe_symbol`` exposes those companions in ``value_slots``. Primary
+address extraction prefers ``raw.value`` so a ``v`` timer under ``value2``
+cannot displace an ``s`` status under ``value``. Visibility no longer returns
+``hidden:composite-component`` for ``value2+``; composites use the same
+``INVISIBLE`` / ``DEVICE_AVAILABLE`` checks as other parameters.
 
 Multi-register (multi-word) values
 -----------------------------------

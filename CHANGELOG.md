@@ -7,6 +7,20 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Added
+
+- ``ParamResolver.describe_symbol`` exposes SPA composite companions as
+  ``value_slots`` (``value`` / ``value2`` / ``value3`` / ``value4`` with
+  ``pool``/``chan``/``idx``) so Home Assistant can create one entity per slot
+  (#466).
+
+### Fixed
+
+- Primary mapping address prefers ``raw.value`` over ``value2+``, so heat-pump
+  status composites bind the status channel instead of a timer (#466).
+- Drop ``hidden:composite-component`` visibility short-circuit; composites use
+  normal ``INVISIBLE`` / ``DEVICE_AVAILABLE`` checks (#466).
+
 ## [2026.10.2rc3] - 2026-11-08
 
 ### Fixed

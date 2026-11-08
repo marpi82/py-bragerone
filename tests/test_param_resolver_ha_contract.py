@@ -36,6 +36,7 @@ _DESCRIBE_TOP_LEVEL = frozenset(
         "status",
         "mapping_origin",
         "mapping",
+        "value_slots",
     }
 )
 
@@ -187,6 +188,7 @@ async def test_describe_symbol_keeps_documented_ha_payload_keys() -> None:
     assert desc["status"] == 8
     assert desc["mapping_origin"] == "inline:test"
     assert desc["computed_primary"] is None
+    assert desc["value_slots"] == [{"slot": "value", "pool": "P4", "chan": "v", "idx": 1}]
 
     mapping_out = desc["mapping"]
     assert isinstance(mapping_out, dict)
@@ -225,6 +227,8 @@ async def test_describe_symbol_status_token_overrides_mapping_address() -> None:
     assert desc["status"] == 3
     assert desc["computed_primary"] == {"pool": "P4", "chan": "v", "idx": 2}
     assert desc["label"] == "Pump status"
+    # Primary value_slot must match the STATUS_P* override, not mapping.raw.value.
+    assert desc["value_slots"] == [{"slot": "value", "pool": "P5", "chan": "s", "idx": 7}]
 
 
 async def test_describe_symbols_prefetches_once_and_skips_blank_duplicates() -> None:
@@ -283,12 +287,13 @@ async def test_visibility_diagnostics_cover_ha_hide_reasons() -> None:
     assert visible is True
     assert reason == "visible:no-mapping"
 
+    # Composite value2+ must not force-hide; SPA shows the card (HA expands slots).
     visible, reason = resolver.parameter_visibility_diagnostics(
         desc={"mapping": {"raw": {"value2": [{"group": "P1", "number": 0}]}}},
         resolved=None,
     )
-    assert visible is False
-    assert reason == "hidden:composite-component"
+    assert visible is True
+    assert reason == "visible:no-paths"
 
     store.upsert("P5.s0", 1 << 3)
     invisible_desc = {
@@ -306,6 +311,77 @@ async def test_visibility_diagnostics_cover_ha_hide_reasons() -> None:
     visible, reason = resolver.parameter_visibility_diagnostics(desc=invisible_desc, resolved=None)
     assert visible is True
     assert reason == "visible:default"
+
+
+async def test_describe_symbol_exposes_composite_value_slots() -> None:
+    """Heat-pump style composites keep value as primary and list value2/value3 slots."""
+    raw = {
+        "name": "parameters.STATUS_POMPY_CIEPLA_STATUS",
+        "value": [{"group": "P31", "number": 12, "use": "s"}],
+        "value2": [{"group": "P30", "number": 25, "use": "v"}],
+        "value3": [{"group": "P30", "number": 26, "use": "v"}],
+        "unit": [{"group": "P31", "number": 12, "use": "u"}],
+    }
+    mapping = _param_map(
+        "STATUS_POMPY_CIEPLA_STATUS",
+        group="P31",
+        paths={"value": [{"group": "P31", "number": 12, "use": "s"}]},
+        raw=raw,
+    )
+    assets = _HaAssets(
+        mappings={"STATUS_POMPY_CIEPLA_STATUS": mapping},
+        i18n_by_namespace={"parameters": {"STATUS_POMPY_CIEPLA_STATUS": "Heat pump status"}},
+    )
+    store = ParamStore()
+    store.upsert("P31.s12", 2)
+    store.upsert("P30.v25", 1270)
+    store.upsert("P30.v26", 0)
+
+    desc = await _resolver(assets, store).describe_symbol("STATUS_POMPY_CIEPLA_STATUS")
+    assert desc["pool"] == "P31"
+    assert desc["chan"] == "s"
+    assert desc["idx"] == 12
+    assert desc["value"] is None
+    assert desc["status"] == 2
+    assert desc["value_slots"] == [
+        {"slot": "value", "pool": "P31", "chan": "s", "idx": 12},
+        {"slot": "value2", "pool": "P30", "chan": "v", "idx": 25},
+        {"slot": "value3", "pool": "P30", "chan": "v", "idx": 26},
+    ]
+
+    visible, reason = _resolver(assets, store).parameter_visibility_diagnostics(desc=desc, resolved=None)
+    assert visible is True
+    assert reason == "visible:no-paths"
+
+
+async def test_describe_symbol_value_slots_inserts_canonical_when_only_companions() -> None:
+    """STATUS override with companion-only raw still prepends a canonical value slot."""
+    mapping = _param_map(
+        "STATUS_P5_7",
+        group="P4",
+        paths={},
+        raw={
+            "name": "parameters.STATUS_P5_7",
+            # No primary value key — only a companion (unusual SPA shape).
+            "value2": [{"group": "P30", "number": 25, "use": "v"}],
+        },
+    )
+    assets = _HaAssets(
+        mappings={"STATUS_P5_7": mapping},
+        i18n_by_namespace={"parameters": {"STATUS_P5_7": "Pump status"}},
+    )
+    store = ParamStore()
+    store.upsert("P5.s7", 1)
+    store.upsert("P30.v25", 9)
+
+    desc = await _resolver(assets, store).describe_symbol("STATUS_P5_7")
+    assert desc["pool"] == "P5"
+    assert desc["chan"] == "s"
+    assert desc["idx"] == 7
+    assert desc["value_slots"] == [
+        {"slot": "value", "pool": "P5", "chan": "s", "idx": 7},
+        {"slot": "value2", "pool": "P30", "chan": "v", "idx": 25},
+    ]
 
 
 async def test_resolve_value_falls_back_to_direct_when_computed_rules_miss() -> None:
