@@ -503,6 +503,20 @@ async def test_discover_status_bar_parameter_tokens_empty_index() -> None:
 
 
 @pytest.mark.asyncio
+async def test_discover_status_bar_parameter_tokens_basename_only() -> None:
+    """Hashed STATUS_BAR_* basenames are enough when index_bytes is empty."""
+    catalog = LiveAssetsCatalog(AsyncMock())
+    catalog._idx = AssetIndex(
+        index_bytes=b"",
+        assets_by_basename={
+            "STATUS_BAR_PUMP": [AssetRef(url="https://example/STATUS_BAR_PUMP-abc.js", base="STATUS_BAR_PUMP", hash="abc")],
+            "STATUS_BAR_Mixed": [AssetRef(url="https://example/mixed.js", base="STATUS_BAR_Mixed", hash="x")],
+        },
+    )
+    assert await catalog.discover_status_bar_parameter_tokens() == {"STATUS_BAR_PUMP"}
+
+
+@pytest.mark.asyncio
 async def test_discover_static_route_tokens_from_index_map() -> None:
     """LiveAssetsCatalog loads tokens from static deviceMenu route chunks."""
     api = AsyncMock()
