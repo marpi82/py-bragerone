@@ -206,14 +206,7 @@ async def test_get_modules_shapes_and_non_200(api_client: BragerOneApiClient, ht
     httpx_mock.add_response(
         method="GET",
         url=url,
-        json={
-            "data": [
-                MODULE_PAYLOAD,
-                {"devid": None, "not": "a-module"},
-                {"devid": "BADSKIP", "name": None},  # has devid but still not a Module
-                "also-bad",
-            ]
-        },
+        json={"data": [MODULE_PAYLOAD, {"devid": None, "not": "a-module"}, "also-bad"]},
     )
     resilient = await api_client.get_modules(3)
     assert len(resilient) == 1
@@ -238,6 +231,26 @@ async def test_get_modules_tolerates_null_display_names(api_client: BragerOneApi
     assert modules[0].devid == "GYYLYYCKXC"
     assert modules[0].name == ""
     assert modules[0].moduleTitle == ""
+
+
+@pytest.mark.asyncio
+async def test_get_modules_skip_warning_includes_devid(
+    api_client: BragerOneApiClient,
+    httpx_mock: HTTPXMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Invalid rows with a non-empty ``devid`` keep siblings and log the identifier."""
+    url = f"{API}/v1/modules?page=1&limit=999&group_id=3"
+    httpx_mock.add_response(
+        method="GET",
+        url=url,
+        json={"data": [MODULE_PAYLOAD, {"devid": "BADSKIP", "name": None}]},
+    )
+    with caplog.at_level("WARNING", logger="pybragerone.api.client"):
+        modules = await api_client.get_modules(3)
+    assert len(modules) == 1
+    assert modules[0].devid == MODULE_PAYLOAD["devid"]
+    assert "Skipping invalid module row from get_modules (devid=BADSKIP)" in caplog.text
 
 
 @pytest.mark.asyncio
