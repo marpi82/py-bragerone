@@ -141,3 +141,36 @@ def test_module_model_tolerates_null_gateway_object() -> None:
     assert module.gateway.interface == ""
     assert module.gateway.version == ""
     assert module.connectedAt == 0
+
+
+def test_module_model_tolerates_null_display_names() -> None:
+    """HT 1000 Legacy ``get_modules`` rows can send null ``name`` / ``moduleTitle`` (#460)."""
+    payload: dict[str, object] = {
+        "devid": "GYYLYYCKXC",
+        "name": None,
+        "gateway": {},
+        "deviceMenu": 0,
+        "deviceLanguageVariant": 0,
+        "devices": [],
+        "services": [],
+        "permissions": ["DISPLAY_MENU_DHW"],
+        "acceptedAt": 0,
+        "connectedAt": 1,
+        "moduleAlarms": 0,
+        "parameterSchemas": [],
+        "id": 42,
+        "moduleAddress": None,
+        "moduleInterface": None,
+        "moduleVersion": "V3.00",
+        "moduleServices": [],
+        "moduleTitle": None,
+        "isAcceptedAt": "2026-04-06T00:00:00Z",
+        "isConnectedAt": "2026-04-06T00:00:00Z",
+    }
+
+    module = Module.model_validate(payload)
+
+    assert module.devid == "GYYLYYCKXC"
+    assert module.name == ""
+    assert module.moduleTitle == ""
+    assert module.moduleVersion == "V3.00"

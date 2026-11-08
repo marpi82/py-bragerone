@@ -111,9 +111,17 @@ class Module(BaseModel):
     isAcceptedAt: datetime
     isConnectedAt: datetime | None = None
 
-    @field_validator("moduleAddress", "moduleInterface", "moduleVersion", mode="before")
+    @field_validator(
+        "name",
+        "moduleTitle",
+        "moduleAddress",
+        "moduleInterface",
+        "moduleVersion",
+        mode="before",
+    )
     @classmethod
     def _coerce_optional_str(cls, value: Any) -> Any:
+        # HT 1000 Legacy (and similar) rows can send null display-name fields (#460).
         if value is None:
             return ""
         return value

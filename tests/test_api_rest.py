@@ -214,6 +214,26 @@ async def test_get_modules_shapes_and_non_200(api_client: BragerOneApiClient, ht
 
 
 @pytest.mark.asyncio
+async def test_get_modules_tolerates_null_display_names(api_client: BragerOneApiClient, httpx_mock: HTTPXMock) -> None:
+    """HT 1000 Legacy rows with null ``name`` / ``moduleTitle`` stay in the listing (#460)."""
+    url = f"{API}/v1/modules?page=1&limit=999&group_id=3"
+    legacy = {
+        **MODULE_PAYLOAD,
+        "devid": "GYYLYYCKXC",
+        "name": None,
+        "moduleTitle": None,
+        "moduleVersion": "V3.00",
+        "id": 42,
+    }
+    httpx_mock.add_response(method="GET", url=url, json={"data": [legacy]})
+    modules = await api_client.get_modules(3)
+    assert len(modules) == 1
+    assert modules[0].devid == "GYYLYYCKXC"
+    assert modules[0].name == ""
+    assert modules[0].moduleTitle == ""
+
+
+@pytest.mark.asyncio
 async def test_get_module_card_success_and_errors(api_client: BragerOneApiClient, httpx_mock: HTTPXMock) -> None:
     """``get_module_card`` validates the card and rejects bad responses."""
     url = f"{API}/v1/modules/FTTCTBSLCE/card"
