@@ -310,6 +310,25 @@ class ComputedValueEvaluator:
         return None
 
     @staticmethod
+    def _serialize_register_value(value: Any) -> str | None:
+        r"""Serialize a live store reading without STATUS-label tokenization.
+
+        Label normalization strips dotted enum namespaces (``o.WORK`` → ``WORK``)
+        and drops non-integer floats — both corrupt half-degree setpoints such as
+        ``21.5`` / ``"21.5"`` when address selectors dereference a register.
+        """
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
+            return str(int(value)) if value.is_integer() else str(value)
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return None
+
+    @staticmethod
     def _operation_name(op: Any) -> str | None:
         if op is None:
             return None
@@ -384,7 +403,9 @@ class ComputedValueEvaluator:
         STATUS diodes yield string/int labels. Writable cards such as
         ``ZADANA_TEMP_CO*_WRITE`` yield a branch object whose ``value`` (or the
         payload itself) is an address-selector list — dereference the live store
-        register instead of returning ``None`` for the list shape.
+        register instead of returning ``None`` for the list shape. Register
+        readings use :meth:`_serialize_register_value` so half-degree floats are
+        preserved; literal labels still go through :meth:`_normalize_computed_value`.
         """
         if isinstance(payload, dict):
             if "value" in payload:
@@ -393,7 +414,7 @@ class ComputedValueEvaluator:
             number = payload.get("number")
             use = payload.get("use")
             if isinstance(group, str) and isinstance(number, int) and isinstance(use, str) and use:
-                return self._normalize_computed_value(self._read_address_value(f"{group}.{use[0]}{number}"))
+                return self._serialize_register_value(self._read_address_value(f"{group}.{use[0]}{number}"))
             return self._normalize_computed_value(payload)
 
         if isinstance(payload, list):
@@ -405,7 +426,7 @@ class ComputedValueEvaluator:
                 use = entry.get("use")
                 if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
                     continue
-                resolved = self._normalize_computed_value(self._read_address_value(f"{group}.{use[0]}{number}"))
+                resolved = self._serialize_register_value(self._read_address_value(f"{group}.{use[0]}{number}"))
                 if resolved is not None:
                     return resolved
             return None

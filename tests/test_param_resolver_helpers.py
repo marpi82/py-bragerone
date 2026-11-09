@@ -261,11 +261,21 @@ def test_eval_any_rules_dereferences_address_selector_branch_payloads() -> None:
     assert _evaluator(("P31.s13", 1 << 2), ("P32.v0", 21), ("P32.v221", 19))._eval_any_rules(rules) == "19"
     assert _evaluator(("P31.s13", 0))._eval_any_rules(rules) is None
 
-    evaluator = _evaluator(("P32.v0", 21), ("P32.v7", 7))
+    evaluator = _evaluator(("P32.v0", 21), ("P32.v7", 7), ("P32.v8", 21.5), ("P32.v9", "21.5"))
     # Bare address-selector dict (no nested ``value`` key).
     assert evaluator._resolve_rule_payload({"group": "P32", "number": 0, "use": "v"}) == "21"
     # Non-selector dict falls through to label normalization (no usable token).
     assert evaluator._resolve_rule_payload({"icon": "TEMPERATURE"}) is None
+    # Half-degree setpoints must not go through STATUS-label tokenization.
+    assert evaluator._resolve_rule_payload({"group": "P32", "number": 8, "use": "v"}) == "21.5"
+    assert evaluator._resolve_rule_payload([{"group": "P32", "number": 9, "use": "v"}]) == "21.5"
+    assert evaluator._serialize_register_value(21.5) == "21.5"
+    assert evaluator._serialize_register_value("21.5") == "21.5"
+    assert evaluator._serialize_register_value(21.0) == "21"
+    assert evaluator._serialize_register_value(True) is None
+    assert evaluator._serialize_register_value(None) is None
+    assert evaluator._serialize_register_value("  ") is None
+    assert evaluator._serialize_register_value({"x": 1}) is None
     # Skip non-dict / malformed selectors, then hit a live register.
     assert (
         evaluator._resolve_rule_payload(
