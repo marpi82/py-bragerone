@@ -232,6 +232,36 @@ def test_eval_any_rules_uses_else_and_mask_like_pump_diode() -> None:
     assert on_eval._eval_any_rules(inline_else) == "OFF"
 
 
+def test_eval_any_rules_dereferences_address_selector_branch_payloads() -> None:
+    """Conditional write cards (ZADANA_TEMP_CO*_WRITE) bind value via address selectors."""
+    if_branch = {
+        "if": [
+            {
+                "expected": 0,
+                "operation": "u.equalTo",
+                "value": [{"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+            }
+        ],
+        "then": {
+            "command": [{"group": "P32", "number": 0, "use": "v"}],
+            "value": [{"group": "P32", "number": 0, "use": "v"}],
+        },
+    }
+    else_branch = {
+        "else": {
+            "command": [{"group": "P32", "number": 221, "use": "v"}],
+            "value": [{"group": "P32", "number": 221, "use": "v"}],
+        }
+    }
+    rules = [if_branch, else_branch]
+
+    # bit2 clear → P32.v0
+    assert _evaluator(("P31.s13", 0), ("P32.v0", 21), ("P32.v221", 19))._eval_any_rules(rules) == "21"
+    # bit2 set → else P32.v221
+    assert _evaluator(("P31.s13", 1 << 2), ("P32.v0", 21), ("P32.v221", 19))._eval_any_rules(rules) == "19"
+    assert _evaluator(("P31.s13", 0))._eval_any_rules(rules) is None
+
+
 def test_card_unit_measurement_helpers() -> None:
     """Measurement companions need a primary u-path or units-table text/transform."""
     assert ParamResolver._unit_meta_is_measurement(None) is False

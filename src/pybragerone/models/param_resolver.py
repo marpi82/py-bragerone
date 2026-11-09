@@ -378,12 +378,48 @@ class ComputedValueEvaluator:
 
         return False
 
+    def _resolve_rule_payload(self, payload: Any) -> str | None:
+        """Normalize a matched ``then``/``else`` payload to a display token.
+
+        STATUS diodes yield string/int labels. Writable cards such as
+        ``ZADANA_TEMP_CO*_WRITE`` yield a branch object whose ``value`` (or the
+        payload itself) is an address-selector list — dereference the live store
+        register instead of returning ``None`` for the list shape.
+        """
+        if isinstance(payload, dict):
+            if "value" in payload:
+                return self._resolve_rule_payload(payload.get("value"))
+            group = payload.get("group")
+            number = payload.get("number")
+            use = payload.get("use")
+            if isinstance(group, str) and isinstance(number, int) and isinstance(use, str) and use:
+                return self._normalize_computed_value(self._read_address_value(f"{group}.{use[0]}{number}"))
+            return self._normalize_computed_value(payload)
+
+        if isinstance(payload, list):
+            for entry in payload:
+                if not isinstance(entry, dict):
+                    continue
+                group = entry.get("group")
+                number = entry.get("number")
+                use = entry.get("use")
+                if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
+                    continue
+                resolved = self._normalize_computed_value(self._read_address_value(f"{group}.{use[0]}{number}"))
+                if resolved is not None:
+                    return resolved
+            return None
+
+        return self._normalize_computed_value(payload)
+
     def _eval_any_rules(self, any_rules: list[Any]) -> str | None:
         """Evaluate SPA ``if`` / ``elseif`` / ``else`` rule lists.
 
         Matches the STATUS / DEVICE_STATE card shape (e.g. pump diodes): walk
         conditional branches in order; when none match, use the first ``else``
         value. A matched branch with ``then: null`` means undefined (stop).
+        Branch payloads may be literal labels or address-selector objects/lists
+        (indoor-temp write cards under ``raw.any``).
         """
         else_value: Any = None
         for rule in any_rules:
@@ -396,16 +432,14 @@ class ComputedValueEvaluator:
             # as ``_select_raw_any_branch``), so do not skip the rule early.
             if isinstance(conds, list) and conds and all(isinstance(c, dict) and self._eval_condition_any(c) for c in conds):
                 then = rule.get("then")
-                if isinstance(then, dict):
-                    return self._normalize_computed_value(then.get("value"))
-                return self._normalize_computed_value(then)
+                if then is None and "then" in rule:
+                    return None
+                return self._resolve_rule_payload(then)
             if else_value is None and "else" in rule:
                 else_value = rule.get("else")
         if else_value is None:
             return None
-        if isinstance(else_value, dict):
-            return self._normalize_computed_value(else_value.get("value"))
-        return self._normalize_computed_value(else_value)
+        return self._resolve_rule_payload(else_value)
 
     def evaluate(self, mapping_raw: Any) -> str | None:
         """Evaluate computed value for mappings with a rule engine."""
