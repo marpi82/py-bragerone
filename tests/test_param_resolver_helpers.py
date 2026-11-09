@@ -261,6 +261,27 @@ def test_eval_any_rules_dereferences_address_selector_branch_payloads() -> None:
     assert _evaluator(("P31.s13", 1 << 2), ("P32.v0", 21), ("P32.v221", 19))._eval_any_rules(rules) == "19"
     assert _evaluator(("P31.s13", 0))._eval_any_rules(rules) is None
 
+    evaluator = _evaluator(("P32.v0", 21), ("P32.v7", 7))
+    # Bare address-selector dict (no nested ``value`` key).
+    assert evaluator._resolve_rule_payload({"group": "P32", "number": 0, "use": "v"}) == "21"
+    # Non-selector dict falls through to label normalization (no usable token).
+    assert evaluator._resolve_rule_payload({"icon": "TEMPERATURE"}) is None
+    # Skip non-dict / malformed selectors, then hit a live register.
+    assert (
+        evaluator._resolve_rule_payload(
+            [
+                "skip",
+                {"group": "P32", "number": "bad", "use": "v"},
+                {"group": 32, "number": 0, "use": "v"},
+                {"group": "P32", "number": 0, "use": ""},
+                {"group": "P9", "number": 1, "use": "v"},  # absent → keep walking
+                {"group": "P32", "number": 7, "use": "v"},
+            ]
+        )
+        == "7"
+    )
+    assert evaluator._resolve_rule_payload([{"group": "P9", "number": 1, "use": "v"}]) is None
+
 
 def test_card_unit_measurement_helpers() -> None:
     """Measurement companions need a primary u-path or units-table text/transform."""
