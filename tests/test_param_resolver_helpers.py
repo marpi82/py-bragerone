@@ -253,6 +253,39 @@ def test_eval_condition_any_store_getter_and_address_selectors() -> None:
         {"P7.v0": "WORK"},
     )
 
+    # Non-finite readings must not raise in bit/mask coercion — skip to next selector.
+    nan_eval = _evaluator(("P10.v0", float("nan")), ("P11.v0", "Infinity"), ("P12.v0", 1))
+    assert ComputedValueEvaluator._coerce_condition_reading("NaN") == "NaN"
+    assert ComputedValueEvaluator._coerce_condition_reading("Infinity") == "Infinity"
+    assert (
+        nan_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": 1,
+                "value": [
+                    {"group": "P10", "number": 0, "use": "v", "bit": 0},
+                    {"group": "P11", "number": 0, "use": "v", "mask": 1},
+                    {"group": "P12", "number": 0, "use": "v"},
+                ],
+            }
+        )
+        is True
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "operation": "equalTo",
+                "expected": 1,
+                "value": [
+                    {"group": "P10", "number": 0, "use": "v", "bit": 0},
+                    {"group": "P12", "number": 0, "use": "v"},
+                ],
+            },
+            {"P10.v0": float("nan"), "P12.v0": 1},
+        )
+        is True
+    )
+
 
 def test_eval_any_rules_skips_junk_and_normalizes_then() -> None:
     """Walk if/elseif chains, skip invalid rules, and normalize then-values."""

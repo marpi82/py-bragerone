@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -194,6 +195,10 @@ class ComputedValueEvaluator:
                 return int(text)
             with contextlib.suppress(TypeError, ValueError):
                 as_float = float(text)
+                # Keep "NaN" / "Infinity" as strings — promoting them to floats
+                # makes later int() bit/mask coercion raise.
+                if not math.isfinite(as_float):
+                    return raw
                 return int(as_float) if as_float.is_integer() else as_float
             return raw
         return raw
@@ -410,6 +415,9 @@ class ComputedValueEvaluator:
             # non-bool numbers, then compare remaining types (bool 0/1, string labels).
             current = self._coerce_condition_reading(raw_val)
             if isinstance(current, int | float) and not isinstance(current, bool):
+                # Non-finite floats (NaN/Inf) cannot be bit/mask-coerced — skip.
+                if not math.isfinite(current):
+                    continue
                 bit = sel.get("bit")
                 mask = sel.get("mask")
                 raw_int = int(current)
@@ -2548,6 +2556,9 @@ class ParamResolver:
 
             current = ComputedValueEvaluator._coerce_condition_reading(flat_values.get(key))
             if isinstance(current, int | float) and not isinstance(current, bool):
+                # Non-finite floats (NaN/Inf) cannot be bit/mask-coerced — skip.
+                if not math.isfinite(current):
+                    continue
                 raw_int = int(current)
                 bit = ref.get("bit")
                 mask = ref.get("mask")
