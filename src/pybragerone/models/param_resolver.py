@@ -9,7 +9,9 @@ CLI/config-time tooling to opt into richer behavior.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -177,6 +179,57 @@ class ComputedValueEvaluator:
         return expected
 
     @staticmethod
+    def _coerce_condition_reading(raw: Any) -> Any:
+        """Coerce ParamStore readings for condition compares (string ints/floats).
+
+        Shared by :meth:`_eval_condition_any` and :meth:`ParamResolver._eval_status_rule`
+        so decimal strings such as ``"10.0"`` still satisfy ``greaterThan`` guards.
+        """
+        if isinstance(raw, bool) or raw is None:
+            return raw
+        if isinstance(raw, int | float):
+            return raw
+        if isinstance(raw, str):
+            text = raw.strip()
+            with contextlib.suppress(TypeError, ValueError):
+                return int(text)
+            with contextlib.suppress(TypeError, ValueError):
+                as_float = float(text)
+                # Keep "NaN" / "Infinity" as strings — promoting them to floats
+                # makes later int() bit/mask coercion raise.
+                if not math.isfinite(as_float):
+                    return raw
+                return int(as_float) if as_float.is_integer() else as_float
+            return raw
+        return raw
+
+    @staticmethod
+    def _apply_condition_bit_mask(current: Any, *, bit: Any, mask: Any) -> tuple[bool, Any]:
+        """Apply bit/mask extraction.
+
+        Returns:
+            ``(True, value)`` for a usable reading (unmasked values unchanged;
+            bools count as 0/1 under bit/mask). ``(False, None)`` to skip the
+            selector when a bit/mask guard sees a nonnumeric reading — so
+            ``"Infinity" notEqualTo 0`` cannot spuriously match.
+        """
+        has_bit = isinstance(bit, int)
+        has_mask = isinstance(mask, int)
+        if not has_bit and not has_mask:
+            return True, current
+
+        if isinstance(current, bool):
+            raw_int = 1 if current else 0
+        elif isinstance(current, int | float) and math.isfinite(current):
+            raw_int = int(current)
+        else:
+            return False, None
+
+        if has_bit:
+            return True, 1 if ((raw_int >> bit) & 1) else 0
+        return True, raw_int & mask
+
+    @staticmethod
     def _regex_from_literal(value: Any) -> re.Pattern[str] | None:
         if not isinstance(value, str):
             return None
@@ -251,14 +304,21 @@ class ComputedValueEvaluator:
             return bool(actual == expected_norm)
         if op == "notEqualTo":
             return bool(actual != expected_norm)
-        if op == "greaterThan":
-            return actual is not None and expected_norm is not None and actual > expected_norm
-        if op == "greaterThanOrEqualTo":
-            return actual is not None and expected_norm is not None and actual >= expected_norm
-        if op == "lessThan":
-            return actual is not None and expected_norm is not None and actual < expected_norm
-        if op == "lessThanOrEqualTo":
-            return actual is not None and expected_norm is not None and actual <= expected_norm
+        if op in {"greaterThan", "greaterThanOrEqualTo", "lessThan", "lessThanOrEqualTo"}:
+            # Mixed types (e.g. status label vs int) must not raise — treat as non-match
+            # so branch selection can fall through to else instead of crashing resolve.
+            if actual is None or expected_norm is None:
+                return False
+            try:
+                if op == "greaterThan":
+                    return bool(actual > expected_norm)
+                if op == "greaterThanOrEqualTo":
+                    return bool(actual >= expected_norm)
+                if op == "lessThan":
+                    return bool(actual < expected_norm)
+                return bool(actual <= expected_norm)
+            except TypeError:
+                return False
 
         if op in {"matches", "notMatches"}:
             pattern = cls._regex_from_literal(expected_norm)
@@ -310,6 +370,25 @@ class ComputedValueEvaluator:
         return None
 
     @staticmethod
+    def _serialize_register_value(value: Any) -> str | None:
+        r"""Serialize a live store reading without STATUS-label tokenization.
+
+        Label normalization strips dotted enum namespaces (``o.WORK`` → ``WORK``)
+        and drops non-integer floats — both corrupt half-degree setpoints such as
+        ``21.5`` / ``"21.5"`` when address selectors dereference a register.
+        """
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
+            return str(int(value)) if value.is_integer() else str(value)
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return None
+
+    @staticmethod
     def _operation_name(op: Any) -> str | None:
         if op is None:
             return None
@@ -358,25 +437,53 @@ class ComputedValueEvaluator:
                 if op == "equalTo" and self._coerce_expected(expected) is None:
                     return True
                 continue
-            if not isinstance(raw_val, int):
-                try:
-                    raw_val = int(raw_val)
-                except (TypeError, ValueError):
-                    continue
+            # Match ``_eval_status_rule``: coerce numerics, apply bit/mask (bools as
+            # 0/1; skip nonnumeric masked readings), then compare remaining types.
+            current = self._coerce_condition_reading(raw_val)
+            usable, current = self._apply_condition_bit_mask(current, bit=sel.get("bit"), mask=sel.get("mask"))
+            if not usable:
+                continue
 
-            bit = sel.get("bit")
-            mask = sel.get("mask")
-            if isinstance(bit, int):
-                actual = 1 if ((raw_val >> bit) & 1) else 0
-            elif isinstance(mask, int):
-                actual = raw_val & mask
-            else:
-                actual = raw_val
-
-            if self._compare_condition(op=op, actual=actual, expected=expected):
+            if self._compare_condition(op=op, actual=current, expected=expected):
                 return True
 
         return False
+
+    def _resolve_rule_payload(self, payload: Any) -> str | None:
+        """Normalize a matched ``then``/``else`` payload to a display token.
+
+        STATUS diodes yield string/int labels. Writable cards such as
+        ``ZADANA_TEMP_CO*_WRITE`` yield a branch object whose ``value`` (or the
+        payload itself) is an address-selector list — dereference the live store
+        register instead of returning ``None`` for the list shape. Register
+        readings use :meth:`_serialize_register_value` so half-degree floats are
+        preserved; literal labels still go through :meth:`_normalize_computed_value`.
+        """
+        if isinstance(payload, dict):
+            if "value" in payload:
+                return self._resolve_rule_payload(payload.get("value"))
+            group = payload.get("group")
+            number = payload.get("number")
+            use = payload.get("use")
+            if isinstance(group, str) and isinstance(number, int) and isinstance(use, str) and use:
+                return self._serialize_register_value(self._read_address_value(f"{group}.{use[0]}{number}"))
+            return self._normalize_computed_value(payload)
+
+        if isinstance(payload, list):
+            for entry in payload:
+                if not isinstance(entry, dict):
+                    continue
+                group = entry.get("group")
+                number = entry.get("number")
+                use = entry.get("use")
+                if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
+                    continue
+                resolved = self._serialize_register_value(self._read_address_value(f"{group}.{use[0]}{number}"))
+                if resolved is not None:
+                    return resolved
+            return None
+
+        return self._normalize_computed_value(payload)
 
     def _eval_any_rules(self, any_rules: list[Any]) -> str | None:
         """Evaluate SPA ``if`` / ``elseif`` / ``else`` rule lists.
@@ -384,6 +491,8 @@ class ComputedValueEvaluator:
         Matches the STATUS / DEVICE_STATE card shape (e.g. pump diodes): walk
         conditional branches in order; when none match, use the first ``else``
         value. A matched branch with ``then: null`` means undefined (stop).
+        Branch payloads may be literal labels or address-selector objects/lists
+        (indoor-temp write cards under ``raw.any``).
         """
         else_value: Any = None
         for rule in any_rules:
@@ -396,16 +505,14 @@ class ComputedValueEvaluator:
             # as ``_select_raw_any_branch``), so do not skip the rule early.
             if isinstance(conds, list) and conds and all(isinstance(c, dict) and self._eval_condition_any(c) for c in conds):
                 then = rule.get("then")
-                if isinstance(then, dict):
-                    return self._normalize_computed_value(then.get("value"))
-                return self._normalize_computed_value(then)
+                if then is None and "then" in rule:
+                    return None
+                return self._resolve_rule_payload(then)
             if else_value is None and "else" in rule:
                 else_value = rule.get("else")
         if else_value is None:
             return None
-        if isinstance(else_value, dict):
-            return self._normalize_computed_value(else_value.get("value"))
-        return self._normalize_computed_value(else_value)
+        return self._resolve_rule_payload(else_value)
 
     def evaluate(self, mapping_raw: Any) -> str | None:
         """Evaluate computed value for mappings with a rule engine."""
@@ -2252,6 +2359,35 @@ class ParamResolver:
                         if isinstance(addr, str) and addr:
                             _add(addr, bit=tgt.get("bit"), mask=tgt.get("mask"))
 
+        def _add_selector(sel: Any) -> None:
+            if not isinstance(sel, dict):
+                return
+            group = sel.get("group")
+            number = sel.get("number")
+            use = sel.get("use")
+            if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
+                return
+            _add(f"{group}.{use[0]}{number}", bit=sel.get("bit"), mask=sel.get("mask"))
+
+        def _add_branch_selectors(branch: Any) -> None:
+            if isinstance(branch, list):
+                for sel in branch:
+                    _add_selector(sel)
+                return
+            if not isinstance(branch, dict):
+                return
+            if ParamResolver._is_address_selector_entry(branch):
+                _add_selector(branch)
+                return
+            for slot in ("value", "command"):
+                slot_val = branch.get(slot)
+                if isinstance(slot_val, list):
+                    for sel in slot_val:
+                        _add_selector(sel)
+                elif isinstance(slot_val, dict):
+                    # SPA sometimes nests a single selector object under value/command.
+                    _add_selector(slot_val)
+
         any_rules = raw.get("any")
         if isinstance(any_rules, list):
             for rule in any_rules:
@@ -2268,15 +2404,9 @@ class ParamResolver:
                         if not isinstance(values, list):
                             continue
                         for sel in values:
-                            if not isinstance(sel, dict):
-                                continue
-                            group = sel.get("group")
-                            number = sel.get("number")
-                            use = sel.get("use")
-                            if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
-                                continue
-                            address = f"{group}.{use[0]}{number}"
-                            _add(address, bit=sel.get("bit"), mask=sel.get("mask"))
+                            _add_selector(sel)
+                for branch_key in ("then", "else"):
+                    _add_branch_selectors(rule.get(branch_key))
 
         paths = raw.get("paths")
         if isinstance(paths, dict):
@@ -2420,39 +2550,35 @@ class ParamResolver:
     @staticmethod
     def _eval_status_rule(rule: dict[str, Any], flat_values: Mapping[str, Any]) -> bool:
         expected = rule.get("expected")
-        operation = str(rule.get("operation") or "")
+        operation = ComputedValueEvaluator._operation_name(rule.get("operation"))
         refs = rule.get("value")
-        if not isinstance(refs, list) or not refs:
+        if operation is None or not isinstance(refs, list) or not refs:
             return False
 
-        ref = refs[0]
-        if not isinstance(ref, dict):
-            return False
+        expected_norm = ComputedValueEvaluator._coerce_expected(expected)
 
-        group = ref.get("group")
-        use = ref.get("use")
-        number = ref.get("number")
-        if not isinstance(group, str) or not isinstance(use, str) or not isinstance(number, int):
-            return False
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            group = ref.get("group")
+            use = ref.get("use")
+            number = ref.get("number")
+            if not isinstance(group, str) or not isinstance(use, str) or not isinstance(number, int) or not use:
+                continue
 
-        key = f"{group}.{use}{number}"
-        current = flat_values.get(key)
-        expected_norm = None if isinstance(expected, str) and expected.strip() == "void 0" else expected
+            key = f"{group}.{use[0]}{number}"
+            if key not in flat_values:
+                if operation == "equalTo" and expected_norm is None:
+                    return True
+                continue
 
-        if operation == "e.equalTo":
-            return bool(current == expected_norm)
-        if operation == "e.notEqualTo":
-            return bool(current != expected_norm)
+            current = ComputedValueEvaluator._coerce_condition_reading(flat_values.get(key))
+            usable, current = ComputedValueEvaluator._apply_condition_bit_mask(current, bit=ref.get("bit"), mask=ref.get("mask"))
+            if not usable:
+                continue
 
-        if current is None:
-            return False
-
-        if operation in {"e.matches", "e.notMatches"} and isinstance(expected_norm, str):
-            pattern = ComputedValueEvaluator._regex_from_literal(expected_norm)
-            if pattern is None:
-                return False
-            matched = bool(pattern.search(str(current)))
-            return matched if operation == "e.matches" else not matched
+            if ComputedValueEvaluator._compare_condition(op=operation, actual=current, expected=expected_norm):
+                return True
 
         return False
 
@@ -2477,7 +2603,45 @@ class ParamResolver:
         return status_paths
 
     @classmethod
-    def _select_raw_any_branch(cls, any_rules: Any, flat_values: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    def _normalize_any_branch_payload(cls, payload: Any) -> Mapping[str, Any] | None:
+        """Normalize ``then``/``else`` payloads into a mapping with a ``value`` slot.
+
+        Supported shapes (same as :meth:`ComputedValueEvaluator._resolve_rule_payload`):
+
+        - branch card ``{"value": [...], "command": [...], "status": ...}``
+        - bare address-selector list ``[{group, number, use}, ...]``
+        - bare address-selector object ``{group, number, use}``
+        """
+        if isinstance(payload, list) and cls._is_address_selector_list(payload):
+            return {"value": payload}
+        if isinstance(payload, Mapping):
+            if cls._is_address_selector_entry(payload):
+                return {"value": [dict(payload)]}
+            return payload
+        return None
+
+    @classmethod
+    def _any_branch_binds_register_value(cls, payload: Any) -> bool:
+        """Return whether a ``then``/``else`` payload binds a live register reading."""
+        if isinstance(payload, list):
+            return cls._is_address_selector_list(payload)
+        if isinstance(payload, Mapping):
+            if cls._is_address_selector_entry(payload):
+                return True
+            value = payload.get("value")
+            if cls._is_address_selector_list(value):
+                return True
+            return cls._is_address_selector_entry(value)
+        return False
+
+    @classmethod
+    def _select_raw_any_branch(
+        cls,
+        any_rules: Any,
+        flat_values: Mapping[str, Any],
+        *,
+        condition_eval: Any | None = None,
+    ) -> Mapping[str, Any] | None:
         if not isinstance(any_rules, list):
             return None
 
@@ -2491,15 +2655,15 @@ class ParamResolver:
                 conds = rule.get("elseif")
 
             if isinstance(conds, list) and conds:
-                ok = all(isinstance(c, dict) and cls._eval_status_rule(c, flat_values) for c in conds)
+                if condition_eval is not None:
+                    ok = all(isinstance(c, dict) and bool(condition_eval(c)) for c in conds)
+                else:
+                    ok = all(isinstance(c, dict) and cls._eval_status_rule(c, flat_values) for c in conds)
                 if ok:
-                    then_val = rule.get("then")
-                    return then_val if isinstance(then_val, Mapping) else None
+                    return cls._normalize_any_branch_payload(rule.get("then"))
 
             if explicit_else is None:
-                else_val = rule.get("else")
-                if isinstance(else_val, Mapping):
-                    explicit_else = else_val
+                explicit_else = cls._normalize_any_branch_payload(rule.get("else"))
 
         return explicit_else
 
@@ -2643,19 +2807,88 @@ class ParamResolver:
 
         return True, "visible:default"
 
+    @classmethod
+    def _any_branch_register_value_address(
+        cls,
+        mapping: ParamMap | None,
+        *,
+        flat_values: Mapping[str, Any],
+        condition_eval: Any | None = None,
+    ) -> tuple[str, str, int] | None:
+        """Return the active ``raw.any`` value-register address when branches bind selectors.
+
+        STATUS diodes use string/enum ``then`` payloads and are ignored here so they
+        keep flowing through :meth:`ComputedValueEvaluator.evaluate`.
+
+        Pass ``condition_eval`` (typically ``ComputedValueEvaluator._eval_condition_any``)
+        so ``storeGetter`` guards use the same runtime context as the evaluator —
+        the flat-values-only matcher cannot see those and would wrongly take ``else``.
+        """
+        if mapping is None or not isinstance(mapping.raw, Mapping):
+            return None
+        any_rules = mapping.raw.get("any")
+        if not isinstance(any_rules, list) or not any_rules:
+            return None
+        if not any(
+            isinstance(rule, Mapping) and any(cls._any_branch_binds_register_value(rule.get(key)) for key in ("then", "else"))
+            for rule in any_rules
+        ):
+            return None
+        branch = cls._select_raw_any_branch(any_rules, flat_values, condition_eval=condition_eval)
+        if not isinstance(branch, Mapping):
+            return None
+        value_payload = branch.get("value")
+        # Within one active branch, prefer a populated selector over an earlier empty
+        # one (same as ComputedValueEvaluator list walk). Do not cross branches —
+        # that would ignore the runtime guard.
+        if isinstance(value_payload, list):
+            first: tuple[str, str, int] | None = None
+            for entry in value_payload:
+                if not isinstance(entry, Mapping):
+                    continue
+                addr = cls._mapping_primary_address(entry)
+                if addr is None:
+                    continue
+                if first is None:
+                    first = addr
+                key = cls._addr_key(addr[0], addr[1], addr[2])
+                # Match ComputedValueEvaluator list walk: whitespace / bool / non-scalar
+                # readings are unusable even when the key is present in the store.
+                if ComputedValueEvaluator._serialize_register_value(flat_values.get(key)) is not None:
+                    return addr
+            return first
+        return cls._mapping_primary_address(value_payload)
+
     async def resolve_value(self, symbol: str) -> ResolvedValue:
         """Resolve a symbol to a unified display value (direct or computed)."""
         mapping = await self.get_param_mapping(symbol)
         addr_tuple = self._mapping_canonical_address(symbol, mapping)
+        # Flatten only when raw.any branch selection needs a store snapshot —
+        # ordinary direct parameters must not pay O(N) traverse cost per resolve.
+        flat_values: Mapping[str, Any] = {}
+        register_addr: tuple[str, str, int] | None = None
+        if (
+            mapping is not None
+            and isinstance(mapping.raw, Mapping)
+            and isinstance(mapping.raw.get("any"), list)
+            and mapping.raw.get("any")
+        ):
+            flat_values = self._store.flatten()
+            register_addr = self._any_branch_register_value_address(
+                mapping,
+                flat_values=flat_values,
+                condition_eval=self._evaluator._eval_condition_any,
+            )
 
         address_key: str | None = None
         unit: str | dict[str, str] | None = None
         unit_meta: str | dict[str, str] | None = None
         raw_unit_code: Any = None
         mapping_unit_meta: Any = None
-        if addr_tuple is not None:
-            address_key = self._addr_key(addr_tuple[0], addr_tuple[1], addr_tuple[2])
-            fam = self._store.get_family(addr_tuple[0], addr_tuple[2])
+        effective_addr = register_addr if register_addr is not None else addr_tuple
+        if effective_addr is not None:
+            address_key = self._addr_key(effective_addr[0], effective_addr[1], effective_addr[2])
+            fam = self._store.get_family(effective_addr[0], effective_addr[2])
             if fam is not None:
                 raw_unit_code = fam.unit_code
             if mapping is not None and mapping.units is not None:
@@ -2670,6 +2903,43 @@ class ParamResolver:
 
         unit = await self._unit_display_value(unit_meta)
         unit_value_labels = self._unit_options_map(unit_meta)
+
+        # Conditional write cards (``ZADANA_TEMP_CO*_WRITE``): read the active
+        # branch register and apply the unit transform — do not treat the reading
+        # as a STATUS computed label (which would skip the transform). Keep
+        # ``kind="computed"`` so CLI refresh watches guard + branch dependencies.
+        if register_addr is not None:
+            raw_val = None
+            fam = self._store.get_family(register_addr[0], register_addr[2])
+            if fam is not None:
+                raw_val = fam.get(register_addr[1])
+            # Match evaluator / visibility: bool, whitespace, and non-scalars are
+            # rejected readings — keep the active address but do not surface them
+            # as display values (and do not fall through to the inactive primary).
+            if ComputedValueEvaluator._serialize_register_value(raw_val) is None:
+                return ResolvedValue(
+                    symbol=symbol,
+                    kind="computed",
+                    address=address_key,
+                    value=None,
+                    value_label=None,
+                    unit=unit,
+                )
+            display_val = self._apply_numeric_transform(
+                raw_val, unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
+            )
+            if isinstance(display_val, str):
+                resolved_display = await self._resolve_units_value_token(display_val)
+                if isinstance(resolved_display, str):
+                    display_val = resolved_display
+            return ResolvedValue(
+                symbol=symbol,
+                kind="computed",
+                address=address_key,
+                value=display_val,
+                value_label=await self._resolve_units_value_token(self._unit_mapping_value_label(unit_value_labels, display_val)),
+                unit=unit,
+            )
 
         if mapping is not None and self._mapping_has_computed_rules(mapping):
             computed_value = self._evaluator.evaluate(mapping.raw)

@@ -135,6 +135,212 @@ def test_eval_condition_any_store_getter_and_address_selectors() -> None:
     }
     assert evaluator._eval_condition_any(raw_skip) is False
 
+    # Decimal-string readings must coerce like _eval_status_rule (not int()-only).
+    from pybragerone.models.param_resolver import ComputedValueEvaluator
+
+    decimal_eval = _evaluator(("P5.v0", "10.0"), ("P8.v0", "WORK"), ("P9.v0", ["nope"]))
+    assert ComputedValueEvaluator._coerce_condition_reading("10.5") == 10.5
+    assert ComputedValueEvaluator._coerce_condition_reading(["nope"]) == ["nope"]
+    assert (
+        decimal_eval._eval_condition_any(
+            {
+                "operation": "greaterThan",
+                "expected": 5,
+                "value": [{"group": "P5", "number": 0, "use": "v"}],
+            }
+        )
+        is True
+    )
+    assert (
+        decimal_eval._eval_condition_any(
+            {
+                "operation": "greaterThan",
+                "expected": 5,
+                "value": [{"group": "P8", "number": 0, "use": "v"}],
+            }
+        )
+        is False
+    )
+    assert (
+        decimal_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": 1,
+                "value": [{"group": "P9", "number": 0, "use": "v"}],
+            }
+        )
+        is False
+    )
+
+    # Bool readings must keep Python equality with 0/1 (same as _eval_status_rule).
+    bool_eval = _evaluator(("P5.s0", True), ("P6.s0", False), ("P7.v0", "WORK"))
+    assert (
+        bool_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": 1,
+                "value": [{"group": "P5", "number": 0, "use": "s"}],
+            }
+        )
+        is True
+    )
+    assert (
+        bool_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": 0,
+                "value": [{"group": "P6", "number": 0, "use": "s"}],
+            }
+        )
+        is True
+    )
+    assert (
+        bool_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": 1,
+                "value": [{"group": "P6", "number": 0, "use": "s"}],
+            }
+        )
+        is False
+    )
+    # String-valued guards must compare labels, not be skipped as non-numeric.
+    assert (
+        bool_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": "WORK",
+                "value": [{"group": "P7", "number": 0, "use": "v"}],
+            }
+        )
+        is True
+    )
+    assert (
+        bool_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": "IDLE",
+                "value": [{"group": "P7", "number": 0, "use": "v"}],
+            }
+        )
+        is False
+    )
+    assert ParamResolver._eval_status_rule(
+        {
+            "operation": "equalTo",
+            "expected": 1,
+            "value": [{"group": "P5", "number": 0, "use": "s"}],
+        },
+        {"P5.s0": True},
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "operation": "equalTo",
+                "expected": 1,
+                "value": [{"group": "P6", "number": 0, "use": "s"}],
+            },
+            {"P6.s0": False},
+        )
+        is False
+    )
+    assert ParamResolver._eval_status_rule(
+        {
+            "operation": "equalTo",
+            "expected": "WORK",
+            "value": [{"group": "P7", "number": 0, "use": "v"}],
+        },
+        {"P7.v0": "WORK"},
+    )
+
+    # Non-finite / nonnumeric masked readings must skip — not spuriously match.
+    nan_eval = _evaluator(("P10.v0", float("nan")), ("P11.v0", "Infinity"), ("P12.v0", 1))
+    assert ComputedValueEvaluator._coerce_condition_reading("NaN") == "NaN"
+    assert ComputedValueEvaluator._coerce_condition_reading("Infinity") == "Infinity"
+    assert (
+        nan_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": 1,
+                "value": [
+                    {"group": "P10", "number": 0, "use": "v", "bit": 0},
+                    {"group": "P11", "number": 0, "use": "v", "mask": 1},
+                    {"group": "P12", "number": 0, "use": "v"},
+                ],
+            }
+        )
+        is True
+    )
+    assert (
+        nan_eval._eval_condition_any(
+            {
+                "operation": "notEqualTo",
+                "expected": 0,
+                "value": [{"group": "P11", "number": 0, "use": "v", "mask": 0x0A}],
+            }
+        )
+        is False
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "operation": "equalTo",
+                "expected": 1,
+                "value": [
+                    {"group": "P10", "number": 0, "use": "v", "bit": 0},
+                    {"group": "P12", "number": 0, "use": "v"},
+                ],
+            },
+            {"P10.v0": float("nan"), "P12.v0": 1},
+        )
+        is True
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "operation": "notEqualTo",
+                "expected": 0,
+                "value": [{"group": "P11", "number": 0, "use": "v", "mask": 0x0A}],
+            },
+            {"P11.v0": "Infinity"},
+        )
+        is False
+    )
+
+    # Bools under bit/mask count as 0/1 (True >> 2 → 0); unmasked labels still compare.
+    bool_mask_eval = _evaluator(("P13.s0", True), ("P14.v0", "WORK"))
+    assert (
+        bool_mask_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": 0,
+                "value": [{"group": "P13", "number": 0, "use": "s", "bit": 2}],
+            }
+        )
+        is True
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "operation": "equalTo",
+                "expected": 0,
+                "value": [{"group": "P13", "number": 0, "use": "s", "bit": 2}],
+            },
+            {"P13.s0": True},
+        )
+        is True
+    )
+    assert (
+        bool_mask_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": "WORK",
+                "value": [{"group": "P14", "number": 0, "use": "v"}],
+            }
+        )
+        is True
+    )
+
 
 def test_eval_any_rules_skips_junk_and_normalizes_then() -> None:
     """Walk if/elseif chains, skip invalid rules, and normalize then-values."""
@@ -146,6 +352,7 @@ def test_eval_any_rules_skips_junk_and_normalizes_then() -> None:
     assert evaluator._eval_any_rules(["skip", {"if": None}, {"if": []}, {"if": [cond], "then": "o.WORK"}]) == "WORK"
     assert evaluator._eval_any_rules([{"elseif": [cond], "then": {"value": "e.ON"}}]) == "e.ON"
     assert evaluator._eval_any_rules([{"if": [cond], "then": 3.0}]) == "3"
+    assert evaluator._normalize_computed_value(None) is None
     assert evaluator._normalize_computed_value("") is None
     assert evaluator._normalize_computed_value(1.5) is None
     assert evaluator._operation_name("  ") is None
@@ -230,6 +437,67 @@ def test_eval_any_rules_uses_else_and_mask_like_pump_diode() -> None:
     ]
     assert off_eval._eval_any_rules(inline_else) == "OFF"
     assert on_eval._eval_any_rules(inline_else) == "OFF"
+
+
+def test_eval_any_rules_dereferences_address_selector_branch_payloads() -> None:
+    """Conditional write cards (ZADANA_TEMP_CO*_WRITE) bind value via address selectors."""
+    if_branch = {
+        "if": [
+            {
+                "expected": 0,
+                "operation": "u.equalTo",
+                "value": [{"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+            }
+        ],
+        "then": {
+            "command": [{"group": "P32", "number": 0, "use": "v"}],
+            "value": [{"group": "P32", "number": 0, "use": "v"}],
+        },
+    }
+    else_branch = {
+        "else": {
+            "command": [{"group": "P32", "number": 221, "use": "v"}],
+            "value": [{"group": "P32", "number": 221, "use": "v"}],
+        }
+    }
+    rules = [if_branch, else_branch]
+
+    # bit2 clear → P32.v0
+    assert _evaluator(("P31.s13", 0), ("P32.v0", 21), ("P32.v221", 19))._eval_any_rules(rules) == "21"
+    # bit2 set → else P32.v221
+    assert _evaluator(("P31.s13", 1 << 2), ("P32.v0", 21), ("P32.v221", 19))._eval_any_rules(rules) == "19"
+    assert _evaluator(("P31.s13", 0))._eval_any_rules(rules) is None
+
+    evaluator = _evaluator(("P32.v0", 21), ("P32.v7", 7), ("P32.v8", 21.5), ("P32.v9", "21.5"))
+    # Bare address-selector dict (no nested ``value`` key).
+    assert evaluator._resolve_rule_payload({"group": "P32", "number": 0, "use": "v"}) == "21"
+    # Non-selector dict falls through to label normalization (no usable token).
+    assert evaluator._resolve_rule_payload({"icon": "TEMPERATURE"}) is None
+    # Half-degree setpoints must not go through STATUS-label tokenization.
+    assert evaluator._resolve_rule_payload({"group": "P32", "number": 8, "use": "v"}) == "21.5"
+    assert evaluator._resolve_rule_payload([{"group": "P32", "number": 9, "use": "v"}]) == "21.5"
+    assert evaluator._serialize_register_value(21.5) == "21.5"
+    assert evaluator._serialize_register_value("21.5") == "21.5"
+    assert evaluator._serialize_register_value(21.0) == "21"
+    assert evaluator._serialize_register_value(True) is None
+    assert evaluator._serialize_register_value(None) is None
+    assert evaluator._serialize_register_value("  ") is None
+    assert evaluator._serialize_register_value({"x": 1}) is None
+    # Skip non-dict / malformed selectors, then hit a live register.
+    assert (
+        evaluator._resolve_rule_payload(
+            [
+                "skip",
+                {"group": "P32", "number": "bad", "use": "v"},
+                {"group": 32, "number": 0, "use": "v"},
+                {"group": "P32", "number": 0, "use": ""},
+                {"group": "P9", "number": 1, "use": "v"},  # absent → keep walking
+                {"group": "P32", "number": 7, "use": "v"},
+            ]
+        )
+        == "7"
+    )
+    assert evaluator._resolve_rule_payload([{"group": "P9", "number": 1, "use": "v"}]) is None
 
 
 def test_card_unit_measurement_helpers() -> None:
@@ -379,6 +647,129 @@ def test_format_command_rules_cleans_tags_and_targets() -> None:
     assert ParamResolver._format_command_rules(None) == []
 
 
+def test_eval_status_rule_handles_bits_masks_and_absent_null() -> None:
+    """Expanded _eval_status_rule must match SPA bit/mask/null-absent semantics."""
+    values = {"P31.s13": 0b0100, "P6.v1": 0x0F}
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 1,
+                "operation": "equalTo",
+                "value": ["skip", {"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+            },
+            values,
+        )
+        is True
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 0x0F,
+                "operation": "u.equalTo",
+                "value": [{"group": "P6", "number": 1, "use": "v", "mask": 0xFF}],
+            },
+            values,
+        )
+        is True
+    )
+    # Numeric-string store readings must still apply bit/mask (ParamStore may keep strings).
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 0,
+                "operation": "equalTo",
+                "value": [{"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+            },
+            {"P31.s13": "0"},
+        )
+        is True
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 0x0F,
+                "operation": "u.equalTo",
+                "value": [{"group": "P6", "number": 1, "use": "v", "mask": 0xFF}],
+            },
+            {"P6.v1": "15"},
+        )
+        is True
+    )
+    # Float-looking numeric strings still coerce for ordered compares.
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 5,
+                "operation": "greaterThan",
+                "value": [{"group": "P5", "number": 0, "use": "v"}],
+            },
+            {"P5.v0": "10.0"},
+        )
+        is True
+    )
+    # Non-numeric labels must not raise — treat as non-match and keep else usable.
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 5,
+                "operation": "greaterThan",
+                "value": [{"group": "P5", "number": 0, "use": "v"}],
+            },
+            {"P5.v0": "WORK"},
+        )
+        is False
+    )
+    assert ParamResolver._select_raw_any_branch(
+        [
+            {
+                "if": [
+                    {
+                        "expected": 5,
+                        "operation": "greaterThan",
+                        "value": [{"group": "P5", "number": 0, "use": "v"}],
+                    }
+                ],
+                "then": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+            },
+            {"else": {"value": [{"group": "P32", "number": 221, "use": "v"}]}},
+        ],
+        {"P5.v0": "WORK"},
+    ) == {"value": [{"group": "P32", "number": 221, "use": "v"}]}
+    from pybragerone.models.param_resolver import ComputedValueEvaluator
+
+    assert ComputedValueEvaluator._compare_condition(op="greaterThan", actual="WORK", expected=5) is False
+    assert ComputedValueEvaluator._compare_condition(op="lessThan", actual=None, expected=5) is False
+    assert ComputedValueEvaluator._compare_condition(op="greaterThanOrEqualTo", actual=5, expected=5) is True
+    assert ComputedValueEvaluator._compare_condition(op="lessThanOrEqualTo", actual=4, expected=5) is True
+    # Nested {"value": ...} STATUS wrappers still normalize; non-mapping status rows are skipped.
+    assert ComputedValueEvaluator._normalize_computed_value({"value": "e.ON"}) == "e.ON"
+    assert ParamResolver._status_paths_from_raw_status({"INVISIBLE": ["skip", {"group": "P1", "number": 0, "use": "s"}]}) == [
+        {"group": "P1", "number": 0, "use": "s", "condition": "INVISIBLE"}
+    ]
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": None,
+                "operation": "equalTo",
+                "value": [{"group": "P9", "number": 1, "use": "v"}],
+            },
+            values,
+        )
+        is True
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 1,
+                "operation": "equalTo",
+                "value": [{"group": "P9", "number": 1, "use": "v"}],
+            },
+            values,
+        )
+        is False
+    )
+
+
 def test_eval_status_rule_and_select_raw_any_branch() -> None:
     """Match status rules and pick the first matching any-branch (or else)."""
     values = {"P5.s0": 1, "P5.v1": "WORK"}
@@ -424,6 +815,17 @@ def test_eval_status_rule_and_select_raw_any_branch() -> None:
     assert fallback == {"ok": True}
     assert ParamResolver._select_raw_any_branch("nope", values) is None
     assert ParamResolver._select_raw_any_branch([{"if": []}], values) is None
+
+    bare_list = [{"group": "P32", "number": 0, "use": "v"}]
+    assert ParamResolver._select_raw_any_branch(
+        [{"if": [equal], "then": bare_list}],
+        values,
+    ) == {"value": bare_list}
+    bare_obj = {"group": "P32", "number": 221, "use": "v"}
+    assert ParamResolver._select_raw_any_branch(
+        [{"if": [{**equal, "expected": 9}], "else": bare_obj}],
+        values,
+    ) == {"value": [bare_obj]}
 
 
 def test_status_paths_for_visibility_prefers_paths_then_raw_then_branch() -> None:
@@ -539,19 +941,23 @@ def test_format_channels_and_status_helpers() -> None:
         {
             "rules": [
                 "skip",
+                {"conditions": "not-a-list"},
                 {
                     "conditions": [
+                        "skip-cond",
+                        {"targets": "not-a-list"},
                         {
                             "targets": [
                                 {"address": "P1.v0", "bit": 2},
                                 {"address": "P1.v0", "bit": 2},
                                 {"address": ""},
                             ]
-                        }
+                        },
                     ]
                 },
             ],
             "any": [
+                "skip-rule",
                 {
                     "if": [
                         {
@@ -561,7 +967,7 @@ def test_format_channels_and_status_helpers() -> None:
                             ]
                         }
                     ]
-                }
+                },
             ],
             "paths": {
                 "value": [

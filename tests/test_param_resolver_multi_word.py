@@ -645,3 +645,778 @@ async def test_resolve_value_status_computed_rules_still_work_after_fix() -> Non
     resolved_off = await resolver.resolve_value("STATUS_P5_0")
     assert resolved_off.kind == "computed"
     assert resolved_off.value == "e.OFF"
+
+
+async def test_resolve_value_any_branch_register_applies_unit_transform(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ZADANA-style raw.any selectors must transform register readings, not emit raw words."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.ZADANA_TEMP_CO0_WRITE",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 0,
+                        "operation": "equalTo",
+                        "value": [{"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+                    }
+                ],
+                "then": {
+                    "command": [{"group": "P32", "number": 0, "use": "v"}],
+                    "value": [{"group": "P32", "number": 0, "use": "v"}],
+                },
+            },
+            {
+                "else": {
+                    "command": [{"group": "P32", "number": 221, "use": "v"}],
+                    "value": [{"group": "P32", "number": 221, "use": "v"}],
+                }
+            },
+        ],
+    }
+    mapping = ParamMap(
+        key="ZADANA_TEMP_CO0_WRITE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    class _TransformAssets(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return {"value": "e => e * 0.1", "text": "°C"}
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(mapping)), lang="en")
+    await store.upsert_async("P31.s13", 0)
+    await store.upsert_async("P32.v0", 215)
+    await store.upsert_async("P32.u0", 1)
+    resolved = await resolver.resolve_value("ZADANA_TEMP_CO0_WRITE")
+    assert resolved.kind == "computed"
+    assert resolved.address == "P32.v0"
+    assert resolved.value == 21.5
+
+    await store.upsert_async("P31.s13", 1 << 2)
+    await store.upsert_async("P32.v221", 190)
+    await store.upsert_async("P32.u221", 1)
+    resolved_else = await resolver.resolve_value("ZADANA_TEMP_CO0_WRITE")
+    assert resolved_else.kind == "computed"
+    assert resolved_else.address == "P32.v221"
+    assert resolved_else.value == 19.0
+
+    # String transform tokens still go through units i18n resolution.
+    class _StringTransformAssets(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return {"value": "e => e", "text": "°C"}
+
+        async def get_i18n(self, lang: str, namespace: str) -> dict[str, Any]:
+            if namespace == "units":
+                return {"temp": {"x": "warm"}}
+            return {}
+
+    string_resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StringTransformAssets(mapping)), lang="en")
+
+    def _string_display(value: Any, expr: Any) -> Any:
+        return "units.temp.x" if value == 215 else value
+
+    monkeypatch.setattr(ParamResolver, "_apply_numeric_transform", staticmethod(_string_display))
+    await store.upsert_async("P31.s13", 0)
+    await store.upsert_async("P32.v0", 215)
+    await store.upsert_async("P32.u0", 1)
+    string_resolved = await string_resolver.resolve_value("ZADANA_TEMP_CO0_WRITE")
+    assert string_resolved.value == "warm"
+
+    # Selected register with no family in the store → raw_val stays None (fam is None).
+    empty_store = ParamStore()
+    await empty_store.upsert_async("P31.s13", 0)
+    empty_resolver = ParamResolver(store=empty_store, assets=cast(AssetsProtocol, _TransformAssets(mapping)), lang="en")
+    empty_resolved = await empty_resolver.resolve_value("ZADANA_TEMP_CO0_WRITE")
+    assert empty_resolved.kind == "computed"
+    assert empty_resolved.address == "P32.v0"
+    assert empty_resolved.value is None
+
+    # Non-string token resolution must keep the original display string.
+    async def _drop_token(self: ParamResolver, token: str | None) -> str | None:
+        _ = self
+        return None if token == "units.temp.x" else token
+
+    monkeypatch.setattr(ParamResolver, "_resolve_units_value_token", _drop_token)
+    await store.upsert_async("P31.s13", 0)
+    await store.upsert_async("P32.v0", 215)
+    non_str_resolved = await string_resolver.resolve_value("ZADANA_TEMP_CO0_WRITE")
+    assert non_str_resolved.value == "units.temp.x"
+
+    # Mapping-shaped any rules without a selectable Mapping branch → no register addr.
+    assert (
+        ParamResolver._any_branch_register_value_address(
+            ParamMap(
+                key="X",
+                group=None,
+                paths={},
+                component_type=None,
+                units=None,
+                limits=None,
+                status_flags=[],
+                status_conditions=None,
+                command_rules=[],
+                origin="inline:test",
+                raw={
+                    "any": [
+                        {
+                            "if": [{"expected": 1, "operation": "equalTo", "value": [{"group": "P1", "number": 0, "use": "v"}]}],
+                            "then": "ON",
+                            "else": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+                        }
+                    ]
+                },
+            ),
+            flat_values={"P1.v0": 1},
+        )
+        is None
+    )
+
+
+async def test_resolve_value_any_branch_string_status_bit_selects_if() -> None:
+    """Numeric-string status words must still drive bit guards for branch selection."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.ZADANA_TEMP_CO0_WRITE",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 0,
+                        "operation": "equalTo",
+                        "value": [{"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+                    }
+                ],
+                "then": {
+                    "value": [{"group": "P32", "number": 0, "use": "v"}],
+                },
+            },
+            {
+                "else": {
+                    "value": [{"group": "P32", "number": 221, "use": "v"}],
+                }
+            },
+        ],
+    }
+    mapping = ParamMap(
+        key="ZADANA_TEMP_CO0_WRITE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    class _TransformAssets(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return {"value": "e => e * 0.1", "text": "°C"}
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(mapping)), lang="en")
+    await store.upsert_async("P31.s13", "0")
+    await store.upsert_async("P32.v0", 215)
+    await store.upsert_async("P32.u0", 1)
+    await store.upsert_async("P32.v221", 190)
+    resolved = await resolver.resolve_value("ZADANA_TEMP_CO0_WRITE")
+    assert resolved.address == "P32.v0"
+    assert resolved.value == 21.5
+    assert resolved.kind == "computed"
+
+
+async def test_resolve_value_any_branch_bare_selector_payloads_transform() -> None:
+    """Bare then/else selector lists and objects still take the unit-transform path."""
+    store = ParamStore()
+    raw_list = {
+        "name": "parameters.ZADANA_BARE_LIST",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 0,
+                        "operation": "equalTo",
+                        "value": [{"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+                    }
+                ],
+                "then": [{"group": "P32", "number": 0, "use": "v"}],
+            },
+            {"else": [{"group": "P32", "number": 221, "use": "v"}]},
+        ],
+    }
+    mapping_list = ParamMap(
+        key="ZADANA_BARE_LIST",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw_list,
+    )
+
+    class _TransformAssets(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return {"value": "e => e * 0.1", "text": "°C"}
+
+    list_resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(mapping_list)), lang="en")
+    await store.upsert_async("P31.s13", 0)
+    await store.upsert_async("P32.v0", 215)
+    await store.upsert_async("P32.u0", 1)
+    list_resolved = await list_resolver.resolve_value("ZADANA_BARE_LIST")
+    assert list_resolved.kind == "computed"
+    assert list_resolved.address == "P32.v0"
+    assert list_resolved.value == 21.5
+
+    raw_obj = {
+        "name": "parameters.ZADANA_BARE_OBJ",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 0,
+                        "operation": "equalTo",
+                        "value": [{"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+                    }
+                ],
+                "then": {"group": "P32", "number": 0, "use": "v"},
+            },
+            {"else": {"group": "P32", "number": 221, "use": "v"}},
+        ],
+    }
+    mapping_obj = ParamMap(
+        key="ZADANA_BARE_OBJ",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw_obj,
+    )
+    obj_resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(mapping_obj)), lang="en")
+    await store.upsert_async("P31.s13", 1 << 2)
+    await store.upsert_async("P32.v221", 190)
+    await store.upsert_async("P32.u221", 1)
+    obj_resolved = await obj_resolver.resolve_value("ZADANA_BARE_OBJ")
+    assert obj_resolved.kind == "computed"
+    assert obj_resolved.address == "P32.v221"
+    assert obj_resolved.value == 19.0
+
+
+def test_extract_mapping_rule_inputs_includes_any_branch_registers() -> None:
+    """CLI refresh deps must include guard + then/else register addresses for raw.any cards."""
+    raw = {
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 0,
+                        "operation": "equalTo",
+                        "value": [{"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+                    }
+                ],
+                "then": {
+                    "command": [{"group": "P32", "number": 0, "use": "v"}],
+                    "value": [{"group": "P32", "number": 0, "use": "v"}],
+                },
+            },
+            {
+                "else": {
+                    "command": [{"group": "P32", "number": 221, "use": "v"}],
+                    "value": [{"group": "P32", "number": 221, "use": "v"}],
+                }
+            },
+        ],
+    }
+    inputs = ParamResolver._extract_mapping_rule_inputs(raw)
+    addresses = {entry["address"] for entry in inputs}
+    assert addresses == {"P31.s13", "P32.v0", "P32.v221"}
+
+    # Bare list / bare selector then-else shapes + skip non-dict selectors / string then.
+    bare = {
+        "any": [
+            {
+                "if": [
+                    "skip-cond",
+                    {"expected": 1, "operation": "equalTo", "value": ["skip", {"group": "P1", "number": 0, "use": "v"}]},
+                ],
+                "then": [{"group": "P32", "number": 7, "use": "v"}, "skip"],
+                "else": "ON",
+            },
+            {"else": {"group": "P32", "number": 8, "use": "v"}},
+        ],
+        # Classic command-style rules: skip non-dict targets.
+        "rules": [
+            {
+                "conditions": [
+                    {
+                        "targets": ["skip-tgt", {"address": "P9.v1", "bit": 1}],
+                    }
+                ]
+            }
+        ],
+    }
+    bare_addrs = {entry["address"] for entry in ParamResolver._extract_mapping_rule_inputs(bare)}
+    assert bare_addrs == {"P1.v0", "P32.v7", "P32.v8", "P9.v1"}
+
+    # Object-valued value/command slots (not only lists) must appear in refresh deps.
+    obj_slots = {
+        "any": [
+            {
+                "if": [{"expected": 1, "operation": "equalTo", "value": {"group": "P1", "number": 0, "use": "v"}}],
+                "else": {
+                    "value": {"group": "P32", "number": 11, "use": "v"},
+                    "command": {"group": "P32", "number": 12, "use": "v"},
+                },
+            }
+        ]
+    }
+    obj_addrs = {entry["address"] for entry in ParamResolver._extract_mapping_rule_inputs(obj_slots)}
+    # Non-list if.value is skipped; object then/else slots are collected.
+    assert obj_addrs == {"P32.v11", "P32.v12"}
+
+
+def test_any_branch_register_address_guards_empty_mapping() -> None:
+    """Register-address helper must no-op for missing/empty raw.any mappings."""
+    assert ParamResolver._any_branch_register_value_address(None, flat_values={}) is None
+    empty = ParamMap(
+        key="X",
+        group=None,
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"any": []},
+    )
+    assert ParamResolver._any_branch_register_value_address(empty, flat_values={}) is None
+    non_map_raw = ParamMap(
+        key="Y",
+        group=None,
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw="not-a-mapping",  # type: ignore[arg-type]
+    )
+    assert ParamResolver._any_branch_register_value_address(non_map_raw, flat_values={}) is None
+
+
+async def test_resolve_value_rejects_unusable_active_branch_reading() -> None:
+    """Bool/whitespace active-branch readings must not surface as display values."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.UNUSABLE_READING",
+        "any": [{"else": {"value": [{"group": "P32", "number": 0, "use": "v"}]}}],
+    }
+    mapping = ParamMap(
+        key="UNUSABLE_READING",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping)), lang="en")
+    await store.upsert_async("P32.v0", True)
+    rejected = await resolver.resolve_value("UNUSABLE_READING")
+    assert rejected.address == "P32.v0"
+    assert rejected.value is None
+    assert rejected.kind == "computed"
+
+    await store.upsert_async("P32.v0", "  ")
+    blank = await resolver.resolve_value("UNUSABLE_READING")
+    assert blank.address == "P32.v0"
+    assert blank.value is None
+
+
+async def test_resolve_value_string_guard_selects_then_branch() -> None:
+    """String-valued equalTo guards via condition_eval must match status-rule semantics."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.STRING_GATE",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": "WORK",
+                        "operation": "equalTo",
+                        "value": [{"group": "P5", "number": 0, "use": "v"}],
+                    }
+                ],
+                "then": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+            },
+            {"else": {"value": [{"group": "P32", "number": 221, "use": "v"}]}},
+        ],
+    }
+    mapping = ParamMap(
+        key="STRING_GATE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping)), lang="en")
+    await store.upsert_async("P32.v0", 21)
+    await store.upsert_async("P32.v221", 19)
+
+    await store.upsert_async("P5.v0", "WORK")
+    assert (await resolver.resolve_value("STRING_GATE")).address == "P32.v0"
+
+    await store.upsert_async("P5.v0", "IDLE")
+    assert (await resolver.resolve_value("STRING_GATE")).address == "P32.v221"
+
+
+async def test_resolve_value_bool_guard_selects_then_branch() -> None:
+    """Bool store readings must satisfy equalTo 0/1 guards via condition_eval."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.BOOL_GATE",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 1,
+                        "operation": "equalTo",
+                        "value": [{"group": "P5", "number": 0, "use": "s"}],
+                    }
+                ],
+                "then": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+            },
+            {"else": {"value": [{"group": "P32", "number": 221, "use": "v"}]}},
+        ],
+    }
+    mapping = ParamMap(
+        key="BOOL_GATE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping)), lang="en")
+    await store.upsert_async("P32.v0", 21)
+    await store.upsert_async("P32.v221", 19)
+
+    await store.upsert_async("P5.s0", True)
+    assert (await resolver.resolve_value("BOOL_GATE")).address == "P32.v0"
+
+    await store.upsert_async("P5.s0", False)
+    assert (await resolver.resolve_value("BOOL_GATE")).address == "P32.v221"
+
+
+async def test_resolve_value_decimal_string_guard_selects_then_branch() -> None:
+    """Decimal-string guards via condition_eval must match float-aware status rules."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.DECIMAL_GATE",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 5,
+                        "operation": "greaterThan",
+                        "value": [{"group": "P5", "number": 0, "use": "v"}],
+                    }
+                ],
+                "then": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+            },
+            {"else": {"value": [{"group": "P32", "number": 221, "use": "v"}]}},
+        ],
+    }
+    mapping = ParamMap(
+        key="DECIMAL_GATE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    class _TransformAssets(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return {"value": "e => e * 0.1", "text": "°C"}
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(mapping)), lang="en")
+    await store.upsert_async("P5.v0", "10.0")
+    await store.upsert_async("P32.v0", 215)
+    await store.upsert_async("P32.u0", 1)
+    await store.upsert_async("P32.v221", 190)
+    await store.upsert_async("P32.u221", 1)
+
+    hit = await resolver.resolve_value("DECIMAL_GATE")
+    assert hit.address == "P32.v0"
+    assert hit.value == 21.5
+
+
+async def test_resolve_value_store_getter_guard_selects_then_branch() -> None:
+    """StoreGetter guards must use runtime context — flat-values-only matching picks else."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.STORE_GETTER_GATE",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": "online",
+                        "operation": "equalTo",
+                        "value": {"storeGetter": "module.state"},
+                    }
+                ],
+                "then": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+            },
+            {"else": {"value": [{"group": "P32", "number": 221, "use": "v"}]}},
+        ],
+    }
+    mapping = ParamMap(
+        key="STORE_GETTER_GATE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    class _TransformAssets(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return {"value": "e => e * 0.1", "text": "°C"}
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(mapping)), lang="en")
+    await store.upsert_async("P32.v0", 215)
+    await store.upsert_async("P32.u0", 1)
+    await store.upsert_async("P32.v221", 190)
+    await store.upsert_async("P32.u221", 1)
+
+    # Without context the getter misses → else (same as evaluator).
+    offline = await resolver.resolve_value("STORE_GETTER_GATE")
+    assert offline.address == "P32.v221"
+    assert offline.value == 19.0
+
+    resolver.set_runtime_context({"module": {"state": "online"}})
+    online = await resolver.resolve_value("STORE_GETTER_GATE")
+    assert online.address == "P32.v0"
+    assert online.value == 21.5
+
+
+async def test_resolve_value_prefers_populated_selector_in_active_branch() -> None:
+    """Within one guarded branch, skip empty selectors before taking a live reading."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.MULTI_SELECTOR",
+        "any": [
+            {
+                "else": {
+                    "value": [
+                        {"group": "P32", "number": 0, "use": "v"},
+                        {"group": "P32", "number": 221, "use": "v"},
+                    ]
+                }
+            }
+        ],
+    }
+    mapping = ParamMap(
+        key="MULTI_SELECTOR",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    class _TransformAssets(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return {"value": "e => e * 0.1", "text": "°C"}
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(mapping)), lang="en")
+    await store.upsert_async("P32.v221", 190)
+    await store.upsert_async("P32.u221", 1)
+    resolved = await resolver.resolve_value("MULTI_SELECTOR")
+    assert resolved.address == "P32.v221"
+    assert resolved.value == 19.0
+
+    # Whitespace / bool readings are unusable — skip to the next selector.
+    await store.upsert_async("P32.v0", "  ")
+    whitespace_resolved = await resolver.resolve_value("MULTI_SELECTOR")
+    assert whitespace_resolved.address == "P32.v221"
+    assert whitespace_resolved.value == 19.0
+    await store.upsert_async("P32.v0", True)
+    bool_resolved = await resolver.resolve_value("MULTI_SELECTOR")
+    assert bool_resolved.address == "P32.v221"
+    assert bool_resolved.value == 19.0
+
+    # Guard still wins: empty active then must not fall through to a populated else.
+    gated = {
+        "name": "parameters.GATED",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 0,
+                        "operation": "equalTo",
+                        "value": [{"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+                    }
+                ],
+                "then": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+            },
+            {"else": {"value": [{"group": "P32", "number": 221, "use": "v"}]}},
+        ],
+    }
+    gated_mapping = ParamMap(
+        key="GATED",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=gated,
+    )
+    gated_store = ParamStore()
+    gated_resolver = ParamResolver(store=gated_store, assets=cast(AssetsProtocol, _TransformAssets(gated_mapping)), lang="en")
+    await gated_store.upsert_async("P31.s13", 0)
+    await gated_store.upsert_async("P32.v221", 190)
+    await gated_store.upsert_async("P32.u221", 1)
+    gated_resolved = await gated_resolver.resolve_value("GATED")
+    assert gated_resolved.address == "P32.v0"
+    assert gated_resolved.value is None
+
+    # Skip non-dict / non-address entries; non-list value payloads still resolve.
+    messy = {
+        "name": "parameters.MESSY",
+        "any": [
+            {
+                "else": {
+                    "value": ["skip", {"icon": "TEMP"}, {"group": "P32", "number": 221, "use": "v"}],
+                }
+            }
+        ],
+    }
+    messy_mapping = ParamMap(
+        key="MESSY",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=messy,
+    )
+    messy_resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(messy_mapping)), lang="en")
+    messy_resolved = await messy_resolver.resolve_value("MESSY")
+    assert messy_resolved.address == "P32.v221"
+    assert messy_resolved.value == 19.0
+
+    obj_value = {
+        "name": "parameters.OBJ_VALUE",
+        "any": [{"else": {"value": {"group": "P32", "number": 221, "use": "v"}}}],
+    }
+    obj_mapping = ParamMap(
+        key="OBJ_VALUE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=obj_value,
+    )
+    obj_resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(obj_mapping)), lang="en")
+    obj_resolved = await obj_resolver.resolve_value("OBJ_VALUE")
+    assert obj_resolved.address == "P32.v221"
+    assert obj_resolved.value == 19.0
+
+
+async def test_resolve_value_skips_flatten_without_raw_any(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ordinary direct symbols must not flatten the whole store on every resolve."""
+    store = ParamStore()
+    mapping = ParamMap(
+        key="PARAM_DIRECT",
+        group="P4",
+        paths={"value": [{"group": "P4", "number": 1, "use": "v"}]},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"name": "parameters.PARAM_DIRECT", "value": [{"group": "P4", "number": 1, "use": "v"}]},
+    )
+    resolver = _resolver(mapping, store)
+    await store.upsert_async("P4.v1", 42)
+
+    called = {"n": 0}
+    original = ParamStore.flatten
+
+    def _counting_flatten(self: ParamStore) -> dict[str, Any]:
+        called["n"] += 1
+        return original(self)
+
+    monkeypatch.setattr(ParamStore, "flatten", _counting_flatten)
+    resolved = await resolver.resolve_value("PARAM_DIRECT")
+    assert resolved.value == 42
+    assert called["n"] == 0
