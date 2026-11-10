@@ -7,6 +7,25 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.11.1rc1] - 2026-11-10
+
+### Fixed
+
+- ``ComputedValueEvaluator`` / ``ParamResolver.resolve_value`` dereference
+  ``raw.any`` ``then``/``else`` address-selector objects and lists (SPA
+  ``ZADANA_TEMP_CO*_WRITE``) instead of returning ``null`` for the list shape
+  (#474).
+- Preserve fractional store readings and unit transforms on the active-branch
+  path so half-degree setpoints stay scaled (e.g. ``215`` → ``21.5``) (#474).
+- Prefer populated selectors within the active guarded branch, track nested
+  object selectors in ``mapping.inputs``, and reject unusable active-branch
+  readings (bool / whitespace) (#474).
+- Align ``condition_any`` guards with status-rule semantics: ``storeGetter``
+  branch selection, decimal-string coercion, bool↔0/1 equality, string label
+  compares, non-finite skip, and bool/nonnumeric bit-mask handling (#474).
+- Harden ordered compares against mixed-type ``TypeError`` so branch selection
+  falls through instead of crashing resolve (#474).
+
 ## [2026.10.2rc5] - 2026-11-08
 
 ### Added
@@ -572,7 +591,8 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc5...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.11.1rc1...HEAD
+[2026.11.1rc1]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc5...2026.11.1rc1
 [2026.10.2rc5]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc4...2026.10.2rc5
 [2026.10.2rc4]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc3...2026.10.2rc4
 [2026.10.2rc3]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc2...2026.10.2rc3
