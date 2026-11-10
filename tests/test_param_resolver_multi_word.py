@@ -645,3 +645,116 @@ async def test_resolve_value_status_computed_rules_still_work_after_fix() -> Non
     resolved_off = await resolver.resolve_value("STATUS_P5_0")
     assert resolved_off.kind == "computed"
     assert resolved_off.value == "e.OFF"
+
+
+async def test_resolve_value_any_branch_register_applies_unit_transform(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ZADANA-style raw.any selectors must transform register readings, not emit raw words."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.ZADANA_TEMP_CO0_WRITE",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 0,
+                        "operation": "equalTo",
+                        "value": [{"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+                    }
+                ],
+                "then": {
+                    "command": [{"group": "P32", "number": 0, "use": "v"}],
+                    "value": [{"group": "P32", "number": 0, "use": "v"}],
+                },
+            },
+            {
+                "else": {
+                    "command": [{"group": "P32", "number": 221, "use": "v"}],
+                    "value": [{"group": "P32", "number": 221, "use": "v"}],
+                }
+            },
+        ],
+    }
+    mapping = ParamMap(
+        key="ZADANA_TEMP_CO0_WRITE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    class _TransformAssets(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return {"value": "e => e * 0.1", "text": "°C"}
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(mapping)), lang="en")
+    await store.upsert_async("P31.s13", 0)
+    await store.upsert_async("P32.v0", 215)
+    await store.upsert_async("P32.u0", 1)
+    resolved = await resolver.resolve_value("ZADANA_TEMP_CO0_WRITE")
+    assert resolved.kind == "direct"
+    assert resolved.address == "P32.v0"
+    assert resolved.value == 21.5
+
+    await store.upsert_async("P31.s13", 1 << 2)
+    await store.upsert_async("P32.v221", 190)
+    await store.upsert_async("P32.u221", 1)
+    resolved_else = await resolver.resolve_value("ZADANA_TEMP_CO0_WRITE")
+    assert resolved_else.address == "P32.v221"
+    assert resolved_else.value == 19.0
+
+    # String transform tokens still go through units i18n resolution.
+    class _StringTransformAssets(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return {"value": "e => e", "text": "°C"}
+
+        async def get_i18n(self, lang: str, namespace: str) -> dict[str, Any]:
+            if namespace == "units":
+                return {"temp": {"x": "warm"}}
+            return {}
+
+    string_resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StringTransformAssets(mapping)), lang="en")
+
+    def _string_display(value: Any, expr: Any) -> Any:
+        return "units.temp.x" if value == 215 else value
+
+    monkeypatch.setattr(ParamResolver, "_apply_numeric_transform", staticmethod(_string_display))
+    await store.upsert_async("P31.s13", 0)
+    await store.upsert_async("P32.v0", 215)
+    await store.upsert_async("P32.u0", 1)
+    string_resolved = await string_resolver.resolve_value("ZADANA_TEMP_CO0_WRITE")
+    assert string_resolved.value == "warm"
+
+    # Mapping-shaped any rules without a selectable Mapping branch → no register addr.
+    assert (
+        ParamResolver._any_branch_register_value_address(
+            ParamMap(
+                key="X",
+                group=None,
+                paths={},
+                component_type=None,
+                units=None,
+                limits=None,
+                status_flags=[],
+                status_conditions=None,
+                command_rules=[],
+                origin="inline:test",
+                raw={
+                    "any": [
+                        {
+                            "if": [{"expected": 1, "operation": "equalTo", "value": [{"group": "P1", "number": 0, "use": "v"}]}],
+                            "then": "ON",
+                            "else": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+                        }
+                    ]
+                },
+            ),
+            flat_values={"P1.v0": 1},
+        )
+        is None
+    )

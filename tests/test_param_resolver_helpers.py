@@ -440,6 +440,55 @@ def test_format_command_rules_cleans_tags_and_targets() -> None:
     assert ParamResolver._format_command_rules(None) == []
 
 
+def test_eval_status_rule_handles_bits_masks_and_absent_null() -> None:
+    """Expanded _eval_status_rule must match SPA bit/mask/null-absent semantics."""
+    values = {"P31.s13": 0b0100, "P6.v1": 0x0F}
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 1,
+                "operation": "equalTo",
+                "value": ["skip", {"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+            },
+            values,
+        )
+        is True
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 0x0F,
+                "operation": "u.equalTo",
+                "value": [{"group": "P6", "number": 1, "use": "v", "mask": 0xFF}],
+            },
+            values,
+        )
+        is True
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": None,
+                "operation": "equalTo",
+                "value": [{"group": "P9", "number": 1, "use": "v"}],
+            },
+            values,
+        )
+        is True
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 1,
+                "operation": "equalTo",
+                "value": [{"group": "P9", "number": 1, "use": "v"}],
+            },
+            values,
+        )
+        is False
+    )
+
+
 def test_eval_status_rule_and_select_raw_any_branch() -> None:
     """Match status rules and pick the first matching any-branch (or else)."""
     values = {"P5.s0": 1, "P5.v1": "WORK"}

@@ -2475,39 +2475,40 @@ class ParamResolver:
     @staticmethod
     def _eval_status_rule(rule: dict[str, Any], flat_values: Mapping[str, Any]) -> bool:
         expected = rule.get("expected")
-        operation = str(rule.get("operation") or "")
+        operation = ComputedValueEvaluator._operation_name(rule.get("operation"))
         refs = rule.get("value")
-        if not isinstance(refs, list) or not refs:
+        if operation is None or not isinstance(refs, list) or not refs:
             return False
 
-        ref = refs[0]
-        if not isinstance(ref, dict):
-            return False
+        expected_norm = ComputedValueEvaluator._coerce_expected(expected)
 
-        group = ref.get("group")
-        use = ref.get("use")
-        number = ref.get("number")
-        if not isinstance(group, str) or not isinstance(use, str) or not isinstance(number, int):
-            return False
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            group = ref.get("group")
+            use = ref.get("use")
+            number = ref.get("number")
+            if not isinstance(group, str) or not isinstance(use, str) or not isinstance(number, int) or not use:
+                continue
 
-        key = f"{group}.{use}{number}"
-        current = flat_values.get(key)
-        expected_norm = None if isinstance(expected, str) and expected.strip() == "void 0" else expected
+            key = f"{group}.{use[0]}{number}"
+            if key not in flat_values:
+                if operation == "equalTo" and expected_norm is None:
+                    return True
+                continue
 
-        if operation == "e.equalTo":
-            return bool(current == expected_norm)
-        if operation == "e.notEqualTo":
-            return bool(current != expected_norm)
+            current = flat_values.get(key)
+            if isinstance(current, int | float) and not isinstance(current, bool):
+                raw_int = int(current)
+                bit = ref.get("bit")
+                mask = ref.get("mask")
+                if isinstance(bit, int):
+                    current = 1 if ((raw_int >> bit) & 1) else 0
+                elif isinstance(mask, int):
+                    current = raw_int & mask
 
-        if current is None:
-            return False
-
-        if operation in {"e.matches", "e.notMatches"} and isinstance(expected_norm, str):
-            pattern = ComputedValueEvaluator._regex_from_literal(expected_norm)
-            if pattern is None:
-                return False
-            matched = bool(pattern.search(str(current)))
-            return matched if operation == "e.matches" else not matched
+            if ComputedValueEvaluator._compare_condition(op=operation, actual=current, expected=expected_norm):
+                return True
 
         return False
 
@@ -2698,19 +2699,54 @@ class ParamResolver:
 
         return True, "visible:default"
 
+    @classmethod
+    def _any_branch_register_value_address(
+        cls,
+        mapping: ParamMap | None,
+        *,
+        flat_values: Mapping[str, Any],
+    ) -> tuple[str, str, int] | None:
+        """Return the active ``raw.any`` value-register address when branches bind selectors.
+
+        STATUS diodes use string/enum ``then`` payloads and are ignored here so they
+        keep flowing through :meth:`ComputedValueEvaluator.evaluate`.
+        """
+        if mapping is None or not isinstance(mapping.raw, Mapping):
+            return None
+        any_rules = mapping.raw.get("any")
+        if not isinstance(any_rules, list) or not any_rules:
+            return None
+        if not any(
+            isinstance(rule, Mapping)
+            and any(
+                isinstance(rule.get(key), Mapping) and cls._is_address_selector_list(rule.get(key, {}).get("value"))
+                for key in ("then", "else")
+                if isinstance(rule.get(key), Mapping)
+            )
+            for rule in any_rules
+        ):
+            return None
+        branch = cls._select_raw_any_branch(any_rules, flat_values)
+        if not isinstance(branch, Mapping):
+            return None
+        return cls._mapping_primary_address(branch.get("value"))
+
     async def resolve_value(self, symbol: str) -> ResolvedValue:
         """Resolve a symbol to a unified display value (direct or computed)."""
         mapping = await self.get_param_mapping(symbol)
         addr_tuple = self._mapping_canonical_address(symbol, mapping)
+        flat_values = self._store.flatten()
 
         address_key: str | None = None
         unit: str | dict[str, str] | None = None
         unit_meta: str | dict[str, str] | None = None
         raw_unit_code: Any = None
         mapping_unit_meta: Any = None
-        if addr_tuple is not None:
-            address_key = self._addr_key(addr_tuple[0], addr_tuple[1], addr_tuple[2])
-            fam = self._store.get_family(addr_tuple[0], addr_tuple[2])
+        register_addr = self._any_branch_register_value_address(mapping, flat_values=flat_values)
+        effective_addr = register_addr if register_addr is not None else addr_tuple
+        if effective_addr is not None:
+            address_key = self._addr_key(effective_addr[0], effective_addr[1], effective_addr[2])
+            fam = self._store.get_family(effective_addr[0], effective_addr[2])
             if fam is not None:
                 raw_unit_code = fam.unit_code
             if mapping is not None and mapping.units is not None:
@@ -2725,6 +2761,30 @@ class ParamResolver:
 
         unit = await self._unit_display_value(unit_meta)
         unit_value_labels = self._unit_options_map(unit_meta)
+
+        # Conditional write cards (``ZADANA_TEMP_CO*_WRITE``): read the active
+        # branch register and apply the unit transform — do not treat the reading
+        # as a STATUS computed label (which would skip the transform).
+        if register_addr is not None:
+            raw_val = None
+            fam = self._store.get_family(register_addr[0], register_addr[2])
+            if fam is not None:
+                raw_val = fam.get(register_addr[1])
+            display_val = self._apply_numeric_transform(
+                raw_val, unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
+            )
+            if isinstance(display_val, str):
+                resolved_display = await self._resolve_units_value_token(display_val)
+                if isinstance(resolved_display, str):
+                    display_val = resolved_display
+            return ResolvedValue(
+                symbol=symbol,
+                kind="direct",
+                address=address_key,
+                value=display_val,
+                value_label=await self._resolve_units_value_token(self._unit_mapping_value_label(unit_value_labels, display_val)),
+                unit=unit,
+            )
 
         if mapping is not None and self._mapping_has_computed_rules(mapping):
             computed_value = self._evaluator.evaluate(mapping.raw)
