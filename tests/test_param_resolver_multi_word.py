@@ -1026,6 +1026,60 @@ def test_any_branch_register_address_guards_empty_mapping() -> None:
     assert ParamResolver._any_branch_register_value_address(non_map_raw, flat_values={}) is None
 
 
+async def test_resolve_value_store_getter_guard_selects_then_branch() -> None:
+    """StoreGetter guards must use runtime context — flat-values-only matching picks else."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.STORE_GETTER_GATE",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": "online",
+                        "operation": "equalTo",
+                        "value": {"storeGetter": "module.state"},
+                    }
+                ],
+                "then": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+            },
+            {"else": {"value": [{"group": "P32", "number": 221, "use": "v"}]}},
+        ],
+    }
+    mapping = ParamMap(
+        key="STORE_GETTER_GATE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    class _TransformAssets(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return {"value": "e => e * 0.1", "text": "°C"}
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(mapping)), lang="en")
+    await store.upsert_async("P32.v0", 215)
+    await store.upsert_async("P32.u0", 1)
+    await store.upsert_async("P32.v221", 190)
+    await store.upsert_async("P32.u221", 1)
+
+    # Without context the getter misses → else (same as evaluator).
+    offline = await resolver.resolve_value("STORE_GETTER_GATE")
+    assert offline.address == "P32.v221"
+    assert offline.value == 19.0
+
+    resolver.set_runtime_context({"module": {"state": "online"}})
+    online = await resolver.resolve_value("STORE_GETTER_GATE")
+    assert online.address == "P32.v0"
+    assert online.value == 21.5
+
+
 async def test_resolve_value_prefers_populated_selector_in_active_branch() -> None:
     """Within one guarded branch, skip empty selectors before taking a live reading."""
     store = ParamStore()

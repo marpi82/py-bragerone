@@ -2606,7 +2606,13 @@ class ParamResolver:
         return False
 
     @classmethod
-    def _select_raw_any_branch(cls, any_rules: Any, flat_values: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    def _select_raw_any_branch(
+        cls,
+        any_rules: Any,
+        flat_values: Mapping[str, Any],
+        *,
+        condition_eval: Any | None = None,
+    ) -> Mapping[str, Any] | None:
         if not isinstance(any_rules, list):
             return None
 
@@ -2620,7 +2626,10 @@ class ParamResolver:
                 conds = rule.get("elseif")
 
             if isinstance(conds, list) and conds:
-                ok = all(isinstance(c, dict) and cls._eval_status_rule(c, flat_values) for c in conds)
+                if condition_eval is not None:
+                    ok = all(isinstance(c, dict) and bool(condition_eval(c)) for c in conds)
+                else:
+                    ok = all(isinstance(c, dict) and cls._eval_status_rule(c, flat_values) for c in conds)
                 if ok:
                     return cls._normalize_any_branch_payload(rule.get("then"))
 
@@ -2775,11 +2784,16 @@ class ParamResolver:
         mapping: ParamMap | None,
         *,
         flat_values: Mapping[str, Any],
+        condition_eval: Any | None = None,
     ) -> tuple[str, str, int] | None:
         """Return the active ``raw.any`` value-register address when branches bind selectors.
 
         STATUS diodes use string/enum ``then`` payloads and are ignored here so they
         keep flowing through :meth:`ComputedValueEvaluator.evaluate`.
+
+        Pass ``condition_eval`` (typically ``ComputedValueEvaluator._eval_condition_any``)
+        so ``storeGetter`` guards use the same runtime context as the evaluator —
+        the flat-values-only matcher cannot see those and would wrongly take ``else``.
         """
         if mapping is None or not isinstance(mapping.raw, Mapping):
             return None
@@ -2791,7 +2805,7 @@ class ParamResolver:
             for rule in any_rules
         ):
             return None
-        branch = cls._select_raw_any_branch(any_rules, flat_values)
+        branch = cls._select_raw_any_branch(any_rules, flat_values, condition_eval=condition_eval)
         if not isinstance(branch, Mapping):
             return None
         value_payload = branch.get("value")
@@ -2831,7 +2845,11 @@ class ParamResolver:
             and mapping.raw.get("any")
         ):
             flat_values = self._store.flatten()
-            register_addr = self._any_branch_register_value_address(mapping, flat_values=flat_values)
+            register_addr = self._any_branch_register_value_address(
+                mapping,
+                flat_values=flat_values,
+                condition_eval=self._evaluator._eval_condition_any,
+            )
 
         address_key: str | None = None
         unit: str | dict[str, str] | None = None
