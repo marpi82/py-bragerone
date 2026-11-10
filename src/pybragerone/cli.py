@@ -1189,6 +1189,10 @@ async def _run_tui(
                 resolved = await resolver.resolve_value(sym)
                 it.value = resolved.value
                 it.value_label = resolved.value_label
+                # Conditional cards may switch active branch register on refresh.
+                it.address = resolved.address
+                it.unit = resolved.unit
+                it.kind = resolved.kind
 
             _recompute_visible_groups()
             _ensure_selected_symbol()

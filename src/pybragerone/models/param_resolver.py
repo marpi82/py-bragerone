@@ -9,6 +9,7 @@ CLI/config-time tooling to opt into richer behavior.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 from collections.abc import Iterable, Mapping, Sequence
@@ -2307,6 +2308,32 @@ class ParamResolver:
                         if isinstance(addr, str) and addr:
                             _add(addr, bit=tgt.get("bit"), mask=tgt.get("mask"))
 
+        def _add_selector(sel: Any) -> None:
+            if not isinstance(sel, dict):
+                return
+            group = sel.get("group")
+            number = sel.get("number")
+            use = sel.get("use")
+            if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
+                return
+            _add(f"{group}.{use[0]}{number}", bit=sel.get("bit"), mask=sel.get("mask"))
+
+        def _add_branch_selectors(branch: Any) -> None:
+            if isinstance(branch, list):
+                for sel in branch:
+                    _add_selector(sel)
+                return
+            if not isinstance(branch, dict):
+                return
+            if ParamResolver._is_address_selector_entry(branch):
+                _add_selector(branch)
+                return
+            for slot in ("value", "command"):
+                slot_val = branch.get(slot)
+                if isinstance(slot_val, list):
+                    for sel in slot_val:
+                        _add_selector(sel)
+
         any_rules = raw.get("any")
         if isinstance(any_rules, list):
             for rule in any_rules:
@@ -2323,15 +2350,9 @@ class ParamResolver:
                         if not isinstance(values, list):
                             continue
                         for sel in values:
-                            if not isinstance(sel, dict):
-                                continue
-                            group = sel.get("group")
-                            number = sel.get("number")
-                            use = sel.get("use")
-                            if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
-                                continue
-                            address = f"{group}.{use[0]}{number}"
-                            _add(address, bit=sel.get("bit"), mask=sel.get("mask"))
+                            _add_selector(sel)
+                for branch_key in ("then", "else"):
+                    _add_branch_selectors(rule.get(branch_key))
 
         paths = raw.get("paths")
         if isinstance(paths, dict):
@@ -2498,6 +2519,11 @@ class ParamResolver:
                 continue
 
             current = flat_values.get(key)
+            # ParamStore may keep numeric readings as strings; coerce before bit/mask
+            # so branch selection matches ComputedValueEvaluator / SPA semantics.
+            if isinstance(current, str):
+                with contextlib.suppress(TypeError, ValueError):
+                    current = int(current.strip())
             if isinstance(current, int | float) and not isinstance(current, bool):
                 raw_int = int(current)
                 bit = ref.get("bit")
@@ -2533,6 +2559,35 @@ class ParamResolver:
         return status_paths
 
     @classmethod
+    def _normalize_any_branch_payload(cls, payload: Any) -> Mapping[str, Any] | None:
+        """Normalize ``then``/``else`` payloads into a mapping with a ``value`` slot.
+
+        Supported shapes (same as :meth:`ComputedValueEvaluator._resolve_rule_payload`):
+
+        - branch card ``{"value": [...], "command": [...], "status": ...}``
+        - bare address-selector list ``[{group, number, use}, ...]``
+        - bare address-selector object ``{group, number, use}``
+        """
+        if isinstance(payload, list) and cls._is_address_selector_list(payload):
+            return {"value": payload}
+        if isinstance(payload, Mapping):
+            if cls._is_address_selector_entry(payload):
+                return {"value": [dict(payload)]}
+            return payload
+        return None
+
+    @classmethod
+    def _any_branch_binds_register_value(cls, payload: Any) -> bool:
+        """Return whether a ``then``/``else`` payload binds a live register reading."""
+        if isinstance(payload, list):
+            return cls._is_address_selector_list(payload)
+        if isinstance(payload, Mapping):
+            if cls._is_address_selector_entry(payload):
+                return True
+            return cls._is_address_selector_list(payload.get("value"))
+        return False
+
+    @classmethod
     def _select_raw_any_branch(cls, any_rules: Any, flat_values: Mapping[str, Any]) -> Mapping[str, Any] | None:
         if not isinstance(any_rules, list):
             return None
@@ -2549,13 +2604,10 @@ class ParamResolver:
             if isinstance(conds, list) and conds:
                 ok = all(isinstance(c, dict) and cls._eval_status_rule(c, flat_values) for c in conds)
                 if ok:
-                    then_val = rule.get("then")
-                    return then_val if isinstance(then_val, Mapping) else None
+                    return cls._normalize_any_branch_payload(rule.get("then"))
 
             if explicit_else is None:
-                else_val = rule.get("else")
-                if isinstance(else_val, Mapping):
-                    explicit_else = else_val
+                explicit_else = cls._normalize_any_branch_payload(rule.get("else"))
 
         return explicit_else
 
@@ -2717,12 +2769,7 @@ class ParamResolver:
         if not isinstance(any_rules, list) or not any_rules:
             return None
         if not any(
-            isinstance(rule, Mapping)
-            and any(
-                isinstance(rule.get(key), Mapping) and cls._is_address_selector_list(rule.get(key, {}).get("value"))
-                for key in ("then", "else")
-                if isinstance(rule.get(key), Mapping)
-            )
+            isinstance(rule, Mapping) and any(cls._any_branch_binds_register_value(rule.get(key)) for key in ("then", "else"))
             for rule in any_rules
         ):
             return None
@@ -2735,14 +2782,24 @@ class ParamResolver:
         """Resolve a symbol to a unified display value (direct or computed)."""
         mapping = await self.get_param_mapping(symbol)
         addr_tuple = self._mapping_canonical_address(symbol, mapping)
-        flat_values = self._store.flatten()
+        # Flatten only when raw.any branch selection needs a store snapshot —
+        # ordinary direct parameters must not pay O(N) traverse cost per resolve.
+        flat_values: Mapping[str, Any] = {}
+        register_addr: tuple[str, str, int] | None = None
+        if (
+            mapping is not None
+            and isinstance(mapping.raw, Mapping)
+            and isinstance(mapping.raw.get("any"), list)
+            and mapping.raw.get("any")
+        ):
+            flat_values = self._store.flatten()
+            register_addr = self._any_branch_register_value_address(mapping, flat_values=flat_values)
 
         address_key: str | None = None
         unit: str | dict[str, str] | None = None
         unit_meta: str | dict[str, str] | None = None
         raw_unit_code: Any = None
         mapping_unit_meta: Any = None
-        register_addr = self._any_branch_register_value_address(mapping, flat_values=flat_values)
         effective_addr = register_addr if register_addr is not None else addr_tuple
         if effective_addr is not None:
             address_key = self._addr_key(effective_addr[0], effective_addr[1], effective_addr[2])
@@ -2764,7 +2821,8 @@ class ParamResolver:
 
         # Conditional write cards (``ZADANA_TEMP_CO*_WRITE``): read the active
         # branch register and apply the unit transform — do not treat the reading
-        # as a STATUS computed label (which would skip the transform).
+        # as a STATUS computed label (which would skip the transform). Keep
+        # ``kind="computed"`` so CLI refresh watches guard + branch dependencies.
         if register_addr is not None:
             raw_val = None
             fam = self._store.get_family(register_addr[0], register_addr[2])
@@ -2779,7 +2837,7 @@ class ParamResolver:
                     display_val = resolved_display
             return ResolvedValue(
                 symbol=symbol,
-                kind="direct",
+                kind="computed",
                 address=address_key,
                 value=display_val,
                 value_label=await self._resolve_units_value_token(self._unit_mapping_value_label(unit_value_labels, display_val)),

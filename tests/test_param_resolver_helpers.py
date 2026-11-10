@@ -465,6 +465,29 @@ def test_eval_status_rule_handles_bits_masks_and_absent_null() -> None:
         )
         is True
     )
+    # Numeric-string store readings must still apply bit/mask (ParamStore may keep strings).
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 0,
+                "operation": "equalTo",
+                "value": [{"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+            },
+            {"P31.s13": "0"},
+        )
+        is True
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 0x0F,
+                "operation": "u.equalTo",
+                "value": [{"group": "P6", "number": 1, "use": "v", "mask": 0xFF}],
+            },
+            {"P6.v1": "15"},
+        )
+        is True
+    )
     assert (
         ParamResolver._eval_status_rule(
             {
@@ -534,6 +557,17 @@ def test_eval_status_rule_and_select_raw_any_branch() -> None:
     assert fallback == {"ok": True}
     assert ParamResolver._select_raw_any_branch("nope", values) is None
     assert ParamResolver._select_raw_any_branch([{"if": []}], values) is None
+
+    bare_list = [{"group": "P32", "number": 0, "use": "v"}]
+    assert ParamResolver._select_raw_any_branch(
+        [{"if": [equal], "then": bare_list}],
+        values,
+    ) == {"value": bare_list}
+    bare_obj = {"group": "P32", "number": 221, "use": "v"}
+    assert ParamResolver._select_raw_any_branch(
+        [{"if": [{**equal, "expected": 9}], "else": bare_obj}],
+        values,
+    ) == {"value": [bare_obj]}
 
 
 def test_status_paths_for_visibility_prefers_paths_then_raw_then_branch() -> None:
