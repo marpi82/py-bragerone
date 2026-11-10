@@ -1026,6 +1026,39 @@ def test_any_branch_register_address_guards_empty_mapping() -> None:
     assert ParamResolver._any_branch_register_value_address(non_map_raw, flat_values={}) is None
 
 
+async def test_resolve_value_rejects_unusable_active_branch_reading() -> None:
+    """Bool/whitespace active-branch readings must not surface as display values."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.UNUSABLE_READING",
+        "any": [{"else": {"value": [{"group": "P32", "number": 0, "use": "v"}]}}],
+    }
+    mapping = ParamMap(
+        key="UNUSABLE_READING",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping)), lang="en")
+    await store.upsert_async("P32.v0", True)
+    rejected = await resolver.resolve_value("UNUSABLE_READING")
+    assert rejected.address == "P32.v0"
+    assert rejected.value is None
+    assert rejected.kind == "computed"
+
+    await store.upsert_async("P32.v0", "  ")
+    blank = await resolver.resolve_value("UNUSABLE_READING")
+    assert blank.address == "P32.v0"
+    assert blank.value is None
+
+
 async def test_resolve_value_bool_guard_selects_then_branch() -> None:
     """Bool store readings must satisfy equalTo 0/1 guards via condition_eval."""
     store = ParamStore()

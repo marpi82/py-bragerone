@@ -2898,6 +2898,18 @@ class ParamResolver:
             fam = self._store.get_family(register_addr[0], register_addr[2])
             if fam is not None:
                 raw_val = fam.get(register_addr[1])
+            # Match evaluator / visibility: bool, whitespace, and non-scalars are
+            # rejected readings — keep the active address but do not surface them
+            # as display values (and do not fall through to the inactive primary).
+            if ComputedValueEvaluator._serialize_register_value(raw_val) is None:
+                return ResolvedValue(
+                    symbol=symbol,
+                    kind="computed",
+                    address=address_key,
+                    value=None,
+                    value_label=None,
+                    unit=unit,
+                )
             display_val = self._apply_numeric_transform(
                 raw_val, unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
             )
