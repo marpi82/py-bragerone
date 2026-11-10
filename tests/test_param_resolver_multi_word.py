@@ -730,6 +730,26 @@ async def test_resolve_value_any_branch_register_applies_unit_transform(monkeypa
     string_resolved = await string_resolver.resolve_value("ZADANA_TEMP_CO0_WRITE")
     assert string_resolved.value == "warm"
 
+    # Selected register with no family in the store → raw_val stays None (fam is None).
+    empty_store = ParamStore()
+    await empty_store.upsert_async("P31.s13", 0)
+    empty_resolver = ParamResolver(store=empty_store, assets=cast(AssetsProtocol, _TransformAssets(mapping)), lang="en")
+    empty_resolved = await empty_resolver.resolve_value("ZADANA_TEMP_CO0_WRITE")
+    assert empty_resolved.kind == "direct"
+    assert empty_resolved.address == "P32.v0"
+    assert empty_resolved.value is None
+
+    # Non-string token resolution must keep the original display string.
+    async def _drop_token(self: ParamResolver, token: str | None) -> str | None:
+        _ = self
+        return None if token == "units.temp.x" else token
+
+    monkeypatch.setattr(ParamResolver, "_resolve_units_value_token", _drop_token)
+    await store.upsert_async("P31.s13", 0)
+    await store.upsert_async("P32.v0", 215)
+    non_str_resolved = await string_resolver.resolve_value("ZADANA_TEMP_CO0_WRITE")
+    assert non_str_resolved.value == "units.temp.x"
+
     # Mapping-shaped any rules without a selectable Mapping branch → no register addr.
     assert (
         ParamResolver._any_branch_register_value_address(
