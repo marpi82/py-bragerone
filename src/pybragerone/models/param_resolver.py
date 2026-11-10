@@ -407,19 +407,24 @@ class ComputedValueEvaluator:
                     return True
                 continue
             raw_val = self._coerce_condition_reading(raw_val)
-            if not isinstance(raw_val, int | float) or isinstance(raw_val, bool):
+            # Match ``_eval_status_rule``: apply bit/mask only to non-bool numerics,
+            # but still compare bool readings (``True == 1`` / ``False == 0``).
+            compared: Any
+            if isinstance(raw_val, int | float) and not isinstance(raw_val, bool):
+                bit = sel.get("bit")
+                mask = sel.get("mask")
+                if isinstance(bit, int):
+                    compared = 1 if ((int(raw_val) >> bit) & 1) else 0
+                elif isinstance(mask, int):
+                    compared = int(raw_val) & mask
+                else:
+                    compared = raw_val
+            elif isinstance(raw_val, bool):
+                compared = raw_val
+            else:
                 continue
 
-            bit = sel.get("bit")
-            mask = sel.get("mask")
-            if isinstance(bit, int):
-                actual = 1 if ((int(raw_val) >> bit) & 1) else 0
-            elif isinstance(mask, int):
-                actual = int(raw_val) & mask
-            else:
-                actual = raw_val
-
-            if self._compare_condition(op=op, actual=actual, expected=expected):
+            if self._compare_condition(op=op, actual=compared, expected=expected):
                 return True
 
         return False

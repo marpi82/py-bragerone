@@ -1026,6 +1026,49 @@ def test_any_branch_register_address_guards_empty_mapping() -> None:
     assert ParamResolver._any_branch_register_value_address(non_map_raw, flat_values={}) is None
 
 
+async def test_resolve_value_bool_guard_selects_then_branch() -> None:
+    """Bool store readings must satisfy equalTo 0/1 guards via condition_eval."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.BOOL_GATE",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 1,
+                        "operation": "equalTo",
+                        "value": [{"group": "P5", "number": 0, "use": "s"}],
+                    }
+                ],
+                "then": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+            },
+            {"else": {"value": [{"group": "P32", "number": 221, "use": "v"}]}},
+        ],
+    }
+    mapping = ParamMap(
+        key="BOOL_GATE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping)), lang="en")
+    await store.upsert_async("P32.v0", 21)
+    await store.upsert_async("P32.v221", 19)
+
+    await store.upsert_async("P5.s0", True)
+    assert (await resolver.resolve_value("BOOL_GATE")).address == "P32.v0"
+
+    await store.upsert_async("P5.s0", False)
+    assert (await resolver.resolve_value("BOOL_GATE")).address == "P32.v221"
+
+
 async def test_resolve_value_decimal_string_guard_selects_then_branch() -> None:
     """Decimal-string guards via condition_eval must match float-aware status rules."""
     store = ParamStore()

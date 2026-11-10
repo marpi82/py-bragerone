@@ -172,6 +172,58 @@ def test_eval_condition_any_store_getter_and_address_selectors() -> None:
         is False
     )
 
+    # Bool readings must keep Python equality with 0/1 (same as _eval_status_rule).
+    bool_eval = _evaluator(("P5.s0", True), ("P6.s0", False))
+    assert (
+        bool_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": 1,
+                "value": [{"group": "P5", "number": 0, "use": "s"}],
+            }
+        )
+        is True
+    )
+    assert (
+        bool_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": 0,
+                "value": [{"group": "P6", "number": 0, "use": "s"}],
+            }
+        )
+        is True
+    )
+    assert (
+        bool_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": 1,
+                "value": [{"group": "P6", "number": 0, "use": "s"}],
+            }
+        )
+        is False
+    )
+    assert ParamResolver._eval_status_rule(
+        {
+            "operation": "equalTo",
+            "expected": 1,
+            "value": [{"group": "P5", "number": 0, "use": "s"}],
+        },
+        {"P5.s0": True},
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "operation": "equalTo",
+                "expected": 1,
+                "value": [{"group": "P6", "number": 0, "use": "s"}],
+            },
+            {"P6.s0": False},
+        )
+        is False
+    )
+
 
 def test_eval_any_rules_skips_junk_and_normalizes_then() -> None:
     """Walk if/elseif chains, skip invalid rules, and normalize then-values."""
