@@ -135,6 +135,43 @@ def test_eval_condition_any_store_getter_and_address_selectors() -> None:
     }
     assert evaluator._eval_condition_any(raw_skip) is False
 
+    # Decimal-string readings must coerce like _eval_status_rule (not int()-only).
+    from pybragerone.models.param_resolver import ComputedValueEvaluator
+
+    decimal_eval = _evaluator(("P5.v0", "10.0"), ("P8.v0", "WORK"), ("P9.v0", ["nope"]))
+    assert ComputedValueEvaluator._coerce_condition_reading("10.5") == 10.5
+    assert ComputedValueEvaluator._coerce_condition_reading(["nope"]) == ["nope"]
+    assert (
+        decimal_eval._eval_condition_any(
+            {
+                "operation": "greaterThan",
+                "expected": 5,
+                "value": [{"group": "P5", "number": 0, "use": "v"}],
+            }
+        )
+        is True
+    )
+    assert (
+        decimal_eval._eval_condition_any(
+            {
+                "operation": "greaterThan",
+                "expected": 5,
+                "value": [{"group": "P8", "number": 0, "use": "v"}],
+            }
+        )
+        is False
+    )
+    assert (
+        decimal_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": 1,
+                "value": [{"group": "P9", "number": 0, "use": "v"}],
+            }
+        )
+        is False
+    )
+
 
 def test_eval_any_rules_skips_junk_and_normalizes_then() -> None:
     """Walk if/elseif chains, skip invalid rules, and normalize then-values."""
@@ -734,15 +771,18 @@ def test_format_channels_and_status_helpers() -> None:
         {
             "rules": [
                 "skip",
+                {"conditions": "not-a-list"},
                 {
                     "conditions": [
+                        "skip-cond",
+                        {"targets": "not-a-list"},
                         {
                             "targets": [
                                 {"address": "P1.v0", "bit": 2},
                                 {"address": "P1.v0", "bit": 2},
                                 {"address": ""},
                             ]
-                        }
+                        },
                     ]
                 },
             ],

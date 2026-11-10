@@ -1026,6 +1026,55 @@ def test_any_branch_register_address_guards_empty_mapping() -> None:
     assert ParamResolver._any_branch_register_value_address(non_map_raw, flat_values={}) is None
 
 
+async def test_resolve_value_decimal_string_guard_selects_then_branch() -> None:
+    """Decimal-string guards via condition_eval must match float-aware status rules."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.DECIMAL_GATE",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 5,
+                        "operation": "greaterThan",
+                        "value": [{"group": "P5", "number": 0, "use": "v"}],
+                    }
+                ],
+                "then": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+            },
+            {"else": {"value": [{"group": "P32", "number": 221, "use": "v"}]}},
+        ],
+    }
+    mapping = ParamMap(
+        key="DECIMAL_GATE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    class _TransformAssets(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return {"value": "e => e * 0.1", "text": "°C"}
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(mapping)), lang="en")
+    await store.upsert_async("P5.v0", "10.0")
+    await store.upsert_async("P32.v0", 215)
+    await store.upsert_async("P32.u0", 1)
+    await store.upsert_async("P32.v221", 190)
+    await store.upsert_async("P32.u221", 1)
+
+    hit = await resolver.resolve_value("DECIMAL_GATE")
+    assert hit.address == "P32.v0"
+    assert hit.value == 21.5
+
+
 async def test_resolve_value_store_getter_guard_selects_then_branch() -> None:
     """StoreGetter guards must use runtime context — flat-values-only matching picks else."""
     store = ParamStore()

@@ -178,6 +178,27 @@ class ComputedValueEvaluator:
         return expected
 
     @staticmethod
+    def _coerce_condition_reading(raw: Any) -> Any:
+        """Coerce ParamStore readings for condition compares (string ints/floats).
+
+        Shared by :meth:`_eval_condition_any` and :meth:`ParamResolver._eval_status_rule`
+        so decimal strings such as ``"10.0"`` still satisfy ``greaterThan`` guards.
+        """
+        if isinstance(raw, bool) or raw is None:
+            return raw
+        if isinstance(raw, int | float):
+            return raw
+        if isinstance(raw, str):
+            text = raw.strip()
+            with contextlib.suppress(TypeError, ValueError):
+                return int(text)
+            with contextlib.suppress(TypeError, ValueError):
+                as_float = float(text)
+                return int(as_float) if as_float.is_integer() else as_float
+            return raw
+        return raw
+
+    @staticmethod
     def _regex_from_literal(value: Any) -> re.Pattern[str] | None:
         if not isinstance(value, str):
             return None
@@ -385,18 +406,16 @@ class ComputedValueEvaluator:
                 if op == "equalTo" and self._coerce_expected(expected) is None:
                     return True
                 continue
-            if not isinstance(raw_val, int):
-                try:
-                    raw_val = int(raw_val)
-                except (TypeError, ValueError):
-                    continue
+            raw_val = self._coerce_condition_reading(raw_val)
+            if not isinstance(raw_val, int | float) or isinstance(raw_val, bool):
+                continue
 
             bit = sel.get("bit")
             mask = sel.get("mask")
             if isinstance(bit, int):
-                actual = 1 if ((raw_val >> bit) & 1) else 0
+                actual = 1 if ((int(raw_val) >> bit) & 1) else 0
             elif isinstance(mask, int):
-                actual = raw_val & mask
+                actual = int(raw_val) & mask
             else:
                 actual = raw_val
 
@@ -2528,17 +2547,7 @@ class ParamResolver:
                     return True
                 continue
 
-            current = flat_values.get(key)
-            # ParamStore may keep numeric readings as strings; coerce before bit/mask
-            # so branch selection matches ComputedValueEvaluator / SPA semantics.
-            if isinstance(current, str):
-                text = current.strip()
-                with contextlib.suppress(TypeError, ValueError):
-                    current = int(text)
-                if isinstance(current, str):
-                    with contextlib.suppress(TypeError, ValueError):
-                        as_float = float(text)
-                        current = int(as_float) if as_float.is_integer() else as_float
+            current = ComputedValueEvaluator._coerce_condition_reading(flat_values.get(key))
             if isinstance(current, int | float) and not isinstance(current, bool):
                 raw_int = int(current)
                 bit = ref.get("bit")
