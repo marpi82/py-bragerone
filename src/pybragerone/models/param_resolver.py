@@ -2596,7 +2596,10 @@ class ParamResolver:
         if isinstance(payload, Mapping):
             if cls._is_address_selector_entry(payload):
                 return True
-            return cls._is_address_selector_list(payload.get("value"))
+            value = payload.get("value")
+            if cls._is_address_selector_list(value):
+                return True
+            return cls._is_address_selector_entry(value)
         return False
 
     @classmethod
@@ -2788,7 +2791,25 @@ class ParamResolver:
         branch = cls._select_raw_any_branch(any_rules, flat_values)
         if not isinstance(branch, Mapping):
             return None
-        return cls._mapping_primary_address(branch.get("value"))
+        value_payload = branch.get("value")
+        # Within one active branch, prefer a populated selector over an earlier empty
+        # one (same as ComputedValueEvaluator list walk). Do not cross branches —
+        # that would ignore the runtime guard.
+        if isinstance(value_payload, list):
+            first: tuple[str, str, int] | None = None
+            for entry in value_payload:
+                if not isinstance(entry, Mapping):
+                    continue
+                addr = cls._mapping_primary_address(entry)
+                if addr is None:
+                    continue
+                if first is None:
+                    first = addr
+                key = cls._addr_key(addr[0], addr[1], addr[2])
+                if key in flat_values and flat_values.get(key) is not None:
+                    return addr
+            return first
+        return cls._mapping_primary_address(value_payload)
 
     async def resolve_value(self, symbol: str) -> ResolvedValue:
         """Resolve a symbol to a unified display value (direct or computed)."""

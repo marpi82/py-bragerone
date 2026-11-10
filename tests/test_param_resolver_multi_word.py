@@ -1010,6 +1010,135 @@ def test_any_branch_register_address_guards_empty_mapping() -> None:
     assert ParamResolver._any_branch_register_value_address(non_map_raw, flat_values={}) is None
 
 
+async def test_resolve_value_prefers_populated_selector_in_active_branch() -> None:
+    """Within one guarded branch, skip empty selectors before taking a live reading."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.MULTI_SELECTOR",
+        "any": [
+            {
+                "else": {
+                    "value": [
+                        {"group": "P32", "number": 0, "use": "v"},
+                        {"group": "P32", "number": 221, "use": "v"},
+                    ]
+                }
+            }
+        ],
+    }
+    mapping = ParamMap(
+        key="MULTI_SELECTOR",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+
+    class _TransformAssets(_StubAssets):
+        async def get_unit_descriptor(self, unit_code: Any) -> dict[str, Any] | None:
+            return {"value": "e => e * 0.1", "text": "°C"}
+
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(mapping)), lang="en")
+    await store.upsert_async("P32.v221", 190)
+    await store.upsert_async("P32.u221", 1)
+    resolved = await resolver.resolve_value("MULTI_SELECTOR")
+    assert resolved.address == "P32.v221"
+    assert resolved.value == 19.0
+
+    # Guard still wins: empty active then must not fall through to a populated else.
+    gated = {
+        "name": "parameters.GATED",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": 0,
+                        "operation": "equalTo",
+                        "value": [{"bit": 2, "group": "P31", "number": 13, "use": "s"}],
+                    }
+                ],
+                "then": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+            },
+            {"else": {"value": [{"group": "P32", "number": 221, "use": "v"}]}},
+        ],
+    }
+    gated_mapping = ParamMap(
+        key="GATED",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=gated,
+    )
+    gated_resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(gated_mapping)), lang="en")
+    await store.upsert_async("P31.s13", 0)
+    gated_resolved = await gated_resolver.resolve_value("GATED")
+    assert gated_resolved.address == "P32.v0"
+    assert gated_resolved.value is None
+
+    # Skip non-dict / non-address entries; non-list value payloads still resolve.
+    messy = {
+        "name": "parameters.MESSY",
+        "any": [
+            {
+                "else": {
+                    "value": ["skip", {"icon": "TEMP"}, {"group": "P32", "number": 221, "use": "v"}],
+                }
+            }
+        ],
+    }
+    messy_mapping = ParamMap(
+        key="MESSY",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=messy,
+    )
+    messy_resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(messy_mapping)), lang="en")
+    messy_resolved = await messy_resolver.resolve_value("MESSY")
+    assert messy_resolved.address == "P32.v221"
+    assert messy_resolved.value == 19.0
+
+    obj_value = {
+        "name": "parameters.OBJ_VALUE",
+        "any": [{"else": {"value": {"group": "P32", "number": 221, "use": "v"}}}],
+    }
+    obj_mapping = ParamMap(
+        key="OBJ_VALUE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=obj_value,
+    )
+    obj_resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(obj_mapping)), lang="en")
+    obj_resolved = await obj_resolver.resolve_value("OBJ_VALUE")
+    assert obj_resolved.address == "P32.v221"
+    assert obj_resolved.value == 19.0
+
+
 async def test_resolve_value_skips_flatten_without_raw_any(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ordinary direct symbols must not flatten the whole store on every resolve."""
     store = ParamStore()
