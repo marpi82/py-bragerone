@@ -949,6 +949,66 @@ def test_extract_mapping_rule_inputs_includes_any_branch_registers() -> None:
     addresses = {entry["address"] for entry in inputs}
     assert addresses == {"P31.s13", "P32.v0", "P32.v221"}
 
+    # Bare list / bare selector then-else shapes + skip non-dict selectors / string then.
+    bare = {
+        "any": [
+            {
+                "if": [
+                    "skip-cond",
+                    {"expected": 1, "operation": "equalTo", "value": ["skip", {"group": "P1", "number": 0, "use": "v"}]},
+                ],
+                "then": [{"group": "P32", "number": 7, "use": "v"}, "skip"],
+                "else": "ON",
+            },
+            {"else": {"group": "P32", "number": 8, "use": "v"}},
+        ],
+        # Classic command-style rules: skip non-dict targets.
+        "rules": [
+            {
+                "conditions": [
+                    {
+                        "targets": ["skip-tgt", {"address": "P9.v1", "bit": 1}],
+                    }
+                ]
+            }
+        ],
+    }
+    bare_addrs = {entry["address"] for entry in ParamResolver._extract_mapping_rule_inputs(bare)}
+    assert bare_addrs == {"P1.v0", "P32.v7", "P32.v8", "P9.v1"}
+
+
+def test_any_branch_register_address_guards_empty_mapping() -> None:
+    """Register-address helper must no-op for missing/empty raw.any mappings."""
+    assert ParamResolver._any_branch_register_value_address(None, flat_values={}) is None
+    empty = ParamMap(
+        key="X",
+        group=None,
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw={"any": []},
+    )
+    assert ParamResolver._any_branch_register_value_address(empty, flat_values={}) is None
+    non_map_raw = ParamMap(
+        key="Y",
+        group=None,
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw="not-a-mapping",  # type: ignore[arg-type]
+    )
+    assert ParamResolver._any_branch_register_value_address(non_map_raw, flat_values={}) is None
+
 
 async def test_resolve_value_skips_flatten_without_raw_any(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ordinary direct symbols must not flatten the whole store on every resolve."""

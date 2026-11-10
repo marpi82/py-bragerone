@@ -252,14 +252,21 @@ class ComputedValueEvaluator:
             return bool(actual == expected_norm)
         if op == "notEqualTo":
             return bool(actual != expected_norm)
-        if op == "greaterThan":
-            return actual is not None and expected_norm is not None and actual > expected_norm
-        if op == "greaterThanOrEqualTo":
-            return actual is not None and expected_norm is not None and actual >= expected_norm
-        if op == "lessThan":
-            return actual is not None and expected_norm is not None and actual < expected_norm
-        if op == "lessThanOrEqualTo":
-            return actual is not None and expected_norm is not None and actual <= expected_norm
+        if op in {"greaterThan", "greaterThanOrEqualTo", "lessThan", "lessThanOrEqualTo"}:
+            # Mixed types (e.g. status label vs int) must not raise — treat as non-match
+            # so branch selection can fall through to else instead of crashing resolve.
+            if actual is None or expected_norm is None:
+                return False
+            try:
+                if op == "greaterThan":
+                    return bool(actual > expected_norm)
+                if op == "greaterThanOrEqualTo":
+                    return bool(actual >= expected_norm)
+                if op == "lessThan":
+                    return bool(actual < expected_norm)
+                return bool(actual <= expected_norm)
+            except TypeError:
+                return False
 
         if op in {"matches", "notMatches"}:
             pattern = cls._regex_from_literal(expected_norm)
@@ -2522,8 +2529,13 @@ class ParamResolver:
             # ParamStore may keep numeric readings as strings; coerce before bit/mask
             # so branch selection matches ComputedValueEvaluator / SPA semantics.
             if isinstance(current, str):
+                text = current.strip()
                 with contextlib.suppress(TypeError, ValueError):
-                    current = int(current.strip())
+                    current = int(text)
+                if isinstance(current, str):
+                    with contextlib.suppress(TypeError, ValueError):
+                        as_float = float(text)
+                        current = int(as_float) if as_float.is_integer() else as_float
             if isinstance(current, int | float) and not isinstance(current, bool):
                 raw_int = int(current)
                 bit = ref.get("bit")

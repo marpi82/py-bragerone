@@ -488,6 +488,57 @@ def test_eval_status_rule_handles_bits_masks_and_absent_null() -> None:
         )
         is True
     )
+    # Float-looking numeric strings still coerce for ordered compares.
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 5,
+                "operation": "greaterThan",
+                "value": [{"group": "P5", "number": 0, "use": "v"}],
+            },
+            {"P5.v0": "10.0"},
+        )
+        is True
+    )
+    # Non-numeric labels must not raise — treat as non-match and keep else usable.
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "expected": 5,
+                "operation": "greaterThan",
+                "value": [{"group": "P5", "number": 0, "use": "v"}],
+            },
+            {"P5.v0": "WORK"},
+        )
+        is False
+    )
+    assert ParamResolver._select_raw_any_branch(
+        [
+            {
+                "if": [
+                    {
+                        "expected": 5,
+                        "operation": "greaterThan",
+                        "value": [{"group": "P5", "number": 0, "use": "v"}],
+                    }
+                ],
+                "then": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+            },
+            {"else": {"value": [{"group": "P32", "number": 221, "use": "v"}]}},
+        ],
+        {"P5.v0": "WORK"},
+    ) == {"value": [{"group": "P32", "number": 221, "use": "v"}]}
+    from pybragerone.models.param_resolver import ComputedValueEvaluator
+
+    assert ComputedValueEvaluator._compare_condition(op="greaterThan", actual="WORK", expected=5) is False
+    assert ComputedValueEvaluator._compare_condition(op="lessThan", actual=None, expected=5) is False
+    assert ComputedValueEvaluator._compare_condition(op="greaterThanOrEqualTo", actual=5, expected=5) is True
+    assert ComputedValueEvaluator._compare_condition(op="lessThanOrEqualTo", actual=4, expected=5) is True
+    # Nested {"value": ...} STATUS wrappers still normalize; non-mapping status rows are skipped.
+    assert ComputedValueEvaluator._normalize_computed_value({"value": "e.ON"}) == "e.ON"
+    assert ParamResolver._status_paths_from_raw_status({"INVISIBLE": ["skip", {"group": "P1", "number": 0, "use": "s"}]}) == [
+        {"group": "P1", "number": 0, "use": "s", "condition": "INVISIBLE"}
+    ]
     assert (
         ParamResolver._eval_status_rule(
             {
