@@ -204,6 +204,32 @@ class ComputedValueEvaluator:
         return raw
 
     @staticmethod
+    def _apply_condition_bit_mask(current: Any, *, bit: Any, mask: Any) -> tuple[bool, Any]:
+        """Apply bit/mask extraction.
+
+        Returns:
+            ``(True, value)`` for a usable reading (unmasked values unchanged;
+            bools count as 0/1 under bit/mask). ``(False, None)`` to skip the
+            selector when a bit/mask guard sees a nonnumeric reading — so
+            ``"Infinity" notEqualTo 0`` cannot spuriously match.
+        """
+        has_bit = isinstance(bit, int)
+        has_mask = isinstance(mask, int)
+        if not has_bit and not has_mask:
+            return True, current
+
+        if isinstance(current, bool):
+            raw_int = 1 if current else 0
+        elif isinstance(current, int | float) and math.isfinite(current):
+            raw_int = int(current)
+        else:
+            return False, None
+
+        if has_bit:
+            return True, 1 if ((raw_int >> bit) & 1) else 0
+        return True, raw_int & mask
+
+    @staticmethod
     def _regex_from_literal(value: Any) -> re.Pattern[str] | None:
         if not isinstance(value, str):
             return None
@@ -411,20 +437,12 @@ class ComputedValueEvaluator:
                 if op == "equalTo" and self._coerce_expected(expected) is None:
                     return True
                 continue
-            # Match ``_eval_status_rule``: coerce numerics, apply bit/mask only to
-            # non-bool numbers, then compare remaining types (bool 0/1, string labels).
+            # Match ``_eval_status_rule``: coerce numerics, apply bit/mask (bools as
+            # 0/1; skip nonnumeric masked readings), then compare remaining types.
             current = self._coerce_condition_reading(raw_val)
-            if isinstance(current, int | float) and not isinstance(current, bool):
-                # Non-finite floats (NaN/Inf) cannot be bit/mask-coerced — skip.
-                if not math.isfinite(current):
-                    continue
-                bit = sel.get("bit")
-                mask = sel.get("mask")
-                raw_int = int(current)
-                if isinstance(bit, int):
-                    current = 1 if ((raw_int >> bit) & 1) else 0
-                elif isinstance(mask, int):
-                    current = raw_int & mask
+            usable, current = self._apply_condition_bit_mask(current, bit=sel.get("bit"), mask=sel.get("mask"))
+            if not usable:
+                continue
 
             if self._compare_condition(op=op, actual=current, expected=expected):
                 return True
@@ -2555,17 +2573,9 @@ class ParamResolver:
                 continue
 
             current = ComputedValueEvaluator._coerce_condition_reading(flat_values.get(key))
-            if isinstance(current, int | float) and not isinstance(current, bool):
-                # Non-finite floats (NaN/Inf) cannot be bit/mask-coerced — skip.
-                if not math.isfinite(current):
-                    continue
-                raw_int = int(current)
-                bit = ref.get("bit")
-                mask = ref.get("mask")
-                if isinstance(bit, int):
-                    current = 1 if ((raw_int >> bit) & 1) else 0
-                elif isinstance(mask, int):
-                    current = raw_int & mask
+            usable, current = ComputedValueEvaluator._apply_condition_bit_mask(current, bit=ref.get("bit"), mask=ref.get("mask"))
+            if not usable:
+                continue
 
             if ComputedValueEvaluator._compare_condition(op=operation, actual=current, expected=expected_norm):
                 return True

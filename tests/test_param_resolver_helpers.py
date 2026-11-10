@@ -253,7 +253,7 @@ def test_eval_condition_any_store_getter_and_address_selectors() -> None:
         {"P7.v0": "WORK"},
     )
 
-    # Non-finite readings must not raise in bit/mask coercion — skip to next selector.
+    # Non-finite / nonnumeric masked readings must skip — not spuriously match.
     nan_eval = _evaluator(("P10.v0", float("nan")), ("P11.v0", "Infinity"), ("P12.v0", 1))
     assert ComputedValueEvaluator._coerce_condition_reading("NaN") == "NaN"
     assert ComputedValueEvaluator._coerce_condition_reading("Infinity") == "Infinity"
@@ -272,6 +272,16 @@ def test_eval_condition_any_store_getter_and_address_selectors() -> None:
         is True
     )
     assert (
+        nan_eval._eval_condition_any(
+            {
+                "operation": "notEqualTo",
+                "expected": 0,
+                "value": [{"group": "P11", "number": 0, "use": "v", "mask": 0x0A}],
+            }
+        )
+        is False
+    )
+    assert (
         ParamResolver._eval_status_rule(
             {
                 "operation": "equalTo",
@@ -282,6 +292,51 @@ def test_eval_condition_any_store_getter_and_address_selectors() -> None:
                 ],
             },
             {"P10.v0": float("nan"), "P12.v0": 1},
+        )
+        is True
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "operation": "notEqualTo",
+                "expected": 0,
+                "value": [{"group": "P11", "number": 0, "use": "v", "mask": 0x0A}],
+            },
+            {"P11.v0": "Infinity"},
+        )
+        is False
+    )
+
+    # Bools under bit/mask count as 0/1 (True >> 2 → 0); unmasked labels still compare.
+    bool_mask_eval = _evaluator(("P13.s0", True), ("P14.v0", "WORK"))
+    assert (
+        bool_mask_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": 0,
+                "value": [{"group": "P13", "number": 0, "use": "s", "bit": 2}],
+            }
+        )
+        is True
+    )
+    assert (
+        ParamResolver._eval_status_rule(
+            {
+                "operation": "equalTo",
+                "expected": 0,
+                "value": [{"group": "P13", "number": 0, "use": "s", "bit": 2}],
+            },
+            {"P13.s0": True},
+        )
+        is True
+    )
+    assert (
+        bool_mask_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": "WORK",
+                "value": [{"group": "P14", "number": 0, "use": "v"}],
+            }
         )
         is True
     )
@@ -297,6 +352,7 @@ def test_eval_any_rules_skips_junk_and_normalizes_then() -> None:
     assert evaluator._eval_any_rules(["skip", {"if": None}, {"if": []}, {"if": [cond], "then": "o.WORK"}]) == "WORK"
     assert evaluator._eval_any_rules([{"elseif": [cond], "then": {"value": "e.ON"}}]) == "e.ON"
     assert evaluator._eval_any_rules([{"if": [cond], "then": 3.0}]) == "3"
+    assert evaluator._normalize_computed_value(None) is None
     assert evaluator._normalize_computed_value("") is None
     assert evaluator._normalize_computed_value(1.5) is None
     assert evaluator._operation_name("  ") is None
