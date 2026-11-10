@@ -976,6 +976,22 @@ def test_extract_mapping_rule_inputs_includes_any_branch_registers() -> None:
     bare_addrs = {entry["address"] for entry in ParamResolver._extract_mapping_rule_inputs(bare)}
     assert bare_addrs == {"P1.v0", "P32.v7", "P32.v8", "P9.v1"}
 
+    # Object-valued value/command slots (not only lists) must appear in refresh deps.
+    obj_slots = {
+        "any": [
+            {
+                "if": [{"expected": 1, "operation": "equalTo", "value": {"group": "P1", "number": 0, "use": "v"}}],
+                "else": {
+                    "value": {"group": "P32", "number": 11, "use": "v"},
+                    "command": {"group": "P32", "number": 12, "use": "v"},
+                },
+            }
+        ]
+    }
+    obj_addrs = {entry["address"] for entry in ParamResolver._extract_mapping_rule_inputs(obj_slots)}
+    # Non-list if.value is skipped; object then/else slots are collected.
+    assert obj_addrs == {"P32.v11", "P32.v12"}
+
 
 def test_any_branch_register_address_guards_empty_mapping() -> None:
     """Register-address helper must no-op for missing/empty raw.any mappings."""
@@ -1051,6 +1067,16 @@ async def test_resolve_value_prefers_populated_selector_in_active_branch() -> No
     assert resolved.address == "P32.v221"
     assert resolved.value == 19.0
 
+    # Whitespace / bool readings are unusable — skip to the next selector.
+    await store.upsert_async("P32.v0", "  ")
+    whitespace_resolved = await resolver.resolve_value("MULTI_SELECTOR")
+    assert whitespace_resolved.address == "P32.v221"
+    assert whitespace_resolved.value == 19.0
+    await store.upsert_async("P32.v0", True)
+    bool_resolved = await resolver.resolve_value("MULTI_SELECTOR")
+    assert bool_resolved.address == "P32.v221"
+    assert bool_resolved.value == 19.0
+
     # Guard still wins: empty active then must not fall through to a populated else.
     gated = {
         "name": "parameters.GATED",
@@ -1081,8 +1107,11 @@ async def test_resolve_value_prefers_populated_selector_in_active_branch() -> No
         origin="inline:test",
         raw=gated,
     )
-    gated_resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _TransformAssets(gated_mapping)), lang="en")
-    await store.upsert_async("P31.s13", 0)
+    gated_store = ParamStore()
+    gated_resolver = ParamResolver(store=gated_store, assets=cast(AssetsProtocol, _TransformAssets(gated_mapping)), lang="en")
+    await gated_store.upsert_async("P31.s13", 0)
+    await gated_store.upsert_async("P32.v221", 190)
+    await gated_store.upsert_async("P32.u221", 1)
     gated_resolved = await gated_resolver.resolve_value("GATED")
     assert gated_resolved.address == "P32.v0"
     assert gated_resolved.value is None

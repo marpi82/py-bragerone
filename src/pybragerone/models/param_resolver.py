@@ -2340,6 +2340,9 @@ class ParamResolver:
                 if isinstance(slot_val, list):
                     for sel in slot_val:
                         _add_selector(sel)
+                elif isinstance(slot_val, dict):
+                    # SPA sometimes nests a single selector object under value/command.
+                    _add_selector(slot_val)
 
         any_rules = raw.get("any")
         if isinstance(any_rules, list):
@@ -2806,7 +2809,9 @@ class ParamResolver:
                 if first is None:
                     first = addr
                 key = cls._addr_key(addr[0], addr[1], addr[2])
-                if key in flat_values and flat_values.get(key) is not None:
+                # Match ComputedValueEvaluator list walk: whitespace / bool / non-scalar
+                # readings are unusable even when the key is present in the store.
+                if ComputedValueEvaluator._serialize_register_value(flat_values.get(key)) is not None:
                     return addr
             return first
         return cls._mapping_primary_address(value_payload)
