@@ -1059,6 +1059,49 @@ async def test_resolve_value_rejects_unusable_active_branch_reading() -> None:
     assert blank.value is None
 
 
+async def test_resolve_value_string_guard_selects_then_branch() -> None:
+    """String-valued equalTo guards via condition_eval must match status-rule semantics."""
+    store = ParamStore()
+    raw = {
+        "name": "parameters.STRING_GATE",
+        "any": [
+            {
+                "if": [
+                    {
+                        "expected": "WORK",
+                        "operation": "equalTo",
+                        "value": [{"group": "P5", "number": 0, "use": "v"}],
+                    }
+                ],
+                "then": {"value": [{"group": "P32", "number": 0, "use": "v"}]},
+            },
+            {"else": {"value": [{"group": "P32", "number": 221, "use": "v"}]}},
+        ],
+    }
+    mapping = ParamMap(
+        key="STRING_GATE",
+        group="P32",
+        paths={},
+        component_type=None,
+        units=None,
+        limits=None,
+        status_flags=[],
+        status_conditions=None,
+        command_rules=[],
+        origin="inline:test",
+        raw=raw,
+    )
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _StubAssets(mapping)), lang="en")
+    await store.upsert_async("P32.v0", 21)
+    await store.upsert_async("P32.v221", 19)
+
+    await store.upsert_async("P5.v0", "WORK")
+    assert (await resolver.resolve_value("STRING_GATE")).address == "P32.v0"
+
+    await store.upsert_async("P5.v0", "IDLE")
+    assert (await resolver.resolve_value("STRING_GATE")).address == "P32.v221"
+
+
 async def test_resolve_value_bool_guard_selects_then_branch() -> None:
     """Bool store readings must satisfy equalTo 0/1 guards via condition_eval."""
     store = ParamStore()

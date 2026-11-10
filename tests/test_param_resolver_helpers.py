@@ -173,7 +173,7 @@ def test_eval_condition_any_store_getter_and_address_selectors() -> None:
     )
 
     # Bool readings must keep Python equality with 0/1 (same as _eval_status_rule).
-    bool_eval = _evaluator(("P5.s0", True), ("P6.s0", False))
+    bool_eval = _evaluator(("P5.s0", True), ("P6.s0", False), ("P7.v0", "WORK"))
     assert (
         bool_eval._eval_condition_any(
             {
@@ -204,6 +204,27 @@ def test_eval_condition_any_store_getter_and_address_selectors() -> None:
         )
         is False
     )
+    # String-valued guards must compare labels, not be skipped as non-numeric.
+    assert (
+        bool_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": "WORK",
+                "value": [{"group": "P7", "number": 0, "use": "v"}],
+            }
+        )
+        is True
+    )
+    assert (
+        bool_eval._eval_condition_any(
+            {
+                "operation": "equalTo",
+                "expected": "IDLE",
+                "value": [{"group": "P7", "number": 0, "use": "v"}],
+            }
+        )
+        is False
+    )
     assert ParamResolver._eval_status_rule(
         {
             "operation": "equalTo",
@@ -222,6 +243,14 @@ def test_eval_condition_any_store_getter_and_address_selectors() -> None:
             {"P6.s0": False},
         )
         is False
+    )
+    assert ParamResolver._eval_status_rule(
+        {
+            "operation": "equalTo",
+            "expected": "WORK",
+            "value": [{"group": "P7", "number": 0, "use": "v"}],
+        },
+        {"P7.v0": "WORK"},
     )
 
 
@@ -839,6 +868,7 @@ def test_format_channels_and_status_helpers() -> None:
                 },
             ],
             "any": [
+                "skip-rule",
                 {
                     "if": [
                         {
@@ -848,7 +878,7 @@ def test_format_channels_and_status_helpers() -> None:
                             ]
                         }
                     ]
-                }
+                },
             ],
             "paths": {
                 "value": [
