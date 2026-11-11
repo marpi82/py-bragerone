@@ -20,8 +20,9 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   Python ``%y``; treat wall-clock ``2000-01-01 12:00`` as unset in every
   representation; reject timezone-aware datetimes instead of stripping
   ``tzinfo``; keep parse-only unit meta out of ``ResolvedValue.unit``; CLI
-  write prep detects parse-only DATE_TIME meta and applies raw min/max after
-  encode (#479).
+  write prep detects parse-only DATE_TIME meta and applies chronological
+  min/max after encode (numeric wire order is wrong across Luxon's century
+  window) (#479).
 
 ## [2026.11.1rc1] - 2026-11-10
 
