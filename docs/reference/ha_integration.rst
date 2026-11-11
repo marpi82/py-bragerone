@@ -285,7 +285,10 @@ automatically). For activity feed display values use
 ``ParamResolver.resolve_raw_display_value(raw, unit_code=...)`` so numeric unit
 transforms and SPA ``DATE_TIME`` (``yyMMddHHmm``) display codecs match parameter
 entities. DATE_TIME values are naive local wall-clock; convert aware HA
-datetimes before calling ``format_server_date_time``.
+datetimes before calling ``format_server_date_time``. Two-digit years follow
+Luxon's default ``twoDigitCutoffYear`` (60): ``00-60`` -> ``2000-2060``,
+``61-99`` -> ``1961-1999``. The controller unset sentinel
+(``0001011200`` / ``2000-01-01 12:00``) formats as empty on read.
 
 The Home Assistant integration caches entity descriptors in the config entry;
 after upgrading to a release that adds static-route overlays, users need a

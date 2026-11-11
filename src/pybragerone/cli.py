@@ -305,10 +305,28 @@ async def _prepare_symbol_write_value(
         unit_code = desc.get("unit")
     mapping = desc.get("mapping")
     units_source = mapping.get("units_source") if isinstance(mapping, Mapping) else None
-    if is_date_time_unit(unit_code=unit_code) or is_date_time_unit(unit_code=units_source):
+    # Prefer Mapping unit meta (parse-only DATE_TIME descriptors); fall back to code-shaped sources.
+    unit_meta = units_source if isinstance(units_source, Mapping) else None
+    if is_date_time_unit(unit_code=unit_code, unit_meta=unit_meta) or is_date_time_unit(unit_code=units_source):
+        from pybragerone.models.date_time import DATE_TIME_UNSET_RAW
+
         encoded = format_server_date_time(requested_value)
         if encoded is None:
             return False, requested_value, f"invalid DATE_TIME value: {requested_value!r}"
+        # Apply the same raw min/max gate as numeric writes when bounds are numeric.
+        # The unset sentinel is always allowed so callers can clear the register.
+        if encoded != DATE_TIME_UNSET_RAW:
+            encoded_num = _as_float(encoded)
+            if encoded_num is not None:
+                out_of_bounds = (min_raw_num is not None and encoded_num < min_raw_num) or (
+                    max_raw_num is not None and encoded_num > max_raw_num
+                )
+                if out_of_bounds:
+                    return (
+                        False,
+                        encoded,
+                        f"value out of range: raw[{min_raw}..{max_raw}] wire={encoded} requested={requested_value}",
+                    )
         return True, encoded, None
 
     transform_expr = await _symbol_numeric_transform_expr(resolver, desc)

@@ -15,9 +15,13 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
-- DATE_TIME: zero-pad JSON numbers that drop leading year zeros; reject
-  timezone-aware datetimes instead of stripping ``tzinfo``; keep parse-only
-  unit meta out of ``ResolvedValue.unit`` (#479).
+- DATE_TIME: zero-pad JSON numbers *and* short digit strings that drop leading
+  year zeros; map ``yy`` with Luxon's ``twoDigitCutoffYear`` (60) instead of
+  Python ``%y``; treat wall-clock ``2000-01-01 12:00`` as unset in every
+  representation; reject timezone-aware datetimes instead of stripping
+  ``tzinfo``; keep parse-only unit meta out of ``ResolvedValue.unit``; CLI
+  write prep detects parse-only DATE_TIME meta and applies raw min/max after
+  encode (#479).
 
 ## [2026.11.1rc1] - 2026-11-10
 

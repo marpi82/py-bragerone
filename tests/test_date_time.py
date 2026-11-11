@@ -11,8 +11,11 @@ import pytest
 from pybragerone.api.client import BragerOneApiClient
 from pybragerone.models.catalog import LiveAssetsCatalog, ParamMap
 from pybragerone.models.date_time import (
+    DATE_TIME_UNSET_DT,
     DATE_TIME_UNSET_RAW,
+    LUXON_TWO_DIGIT_CUTOFF_YEAR,
     _digits_wire_text,
+    _parse_wire_digits,
     format_display_date_time,
     format_server_date_time,
     is_date_time_unit,
@@ -83,6 +86,10 @@ def test_json_number_zero_pads_leading_year_digits() -> None:
     assert parse_server_date_time(503111430) == datetime(2005, 3, 11, 14, 30)
     assert format_display_date_time(503111430) == "2005/03/11 14:30"
     assert format_server_date_time(503111430) == "0503111430"
+    # Digit *strings* also lose leading zeros in some payloads — pad the same way.
+    assert parse_server_date_time("503111430") == datetime(2005, 3, 11, 14, 30)
+    assert format_server_date_time("503111430") == "0503111430"
+    assert format_server_date_time("1011200") == DATE_TIME_UNSET_RAW
     # Unset sentinel ``0001011200`` as a JSON number.
     assert parse_server_date_time(1011200) is None
     assert format_display_date_time(1011200) is None
@@ -91,11 +98,62 @@ def test_json_number_zero_pads_leading_year_digits() -> None:
     assert format_server_date_time(1011200.0) == DATE_TIME_UNSET_RAW
     # Too many digits / non-integral float stay invalid.
     assert parse_server_date_time(12345678901) is None
+    assert parse_server_date_time("12345678901") is None
+    assert format_server_date_time("12345678901") is None
     assert parse_server_date_time(2503111430.5) is None
     assert parse_server_date_time(-2503111430) is None
+    assert format_server_date_time(-1) is None
+    assert format_server_date_time(2503111430.5) is None
     # ``bool`` is an ``int`` subclass — helper must reject it explicitly.
     assert _digits_wire_text(True) is None
     assert _digits_wire_text(False) is None
+    # Defensive guards on the internal wire parser.
+    assert _parse_wire_digits("250311143") is None  # wrong length
+    assert _parse_wire_digits("25ab111430") is None  # non-digit
+
+
+
+def test_luxon_two_digit_year_cutoff() -> None:
+    """Wire ``yy`` follows Luxon cutoff 60, not Python ``%y`` (which uses 69)."""
+    assert LUXON_TWO_DIGIT_CUTOFF_YEAR == 60
+    # ``60`` → 2060 (Python ``%y`` would also map 60→2060; cutoff edge).
+    assert parse_server_date_time("6003111430") == datetime(2060, 3, 11, 14, 30)
+    assert format_server_date_time(datetime(2060, 3, 11, 14, 30)) == "6003111430"
+    # ``61`` → 1961 under Luxon (Python ``%y`` would incorrectly yield 2061).
+    assert parse_server_date_time("6103111430") == datetime(1961, 3, 11, 14, 30)
+    assert format_server_date_time(datetime(1961, 3, 11, 14, 30)) == "6103111430"
+    assert parse_server_date_time("6503111430") == datetime(1965, 3, 11, 14, 30)
+    assert format_server_date_time("1965/03/11 14:30") == "6503111430"
+    # Years outside the unique Luxon window cannot encode losslessly.
+    assert format_server_date_time(datetime(2061, 3, 11, 14, 30)) is None
+    assert format_server_date_time(datetime(2065, 3, 11, 14, 30)) is None
+    assert format_server_date_time("2065/03/11 14:30") is None
+    assert format_server_date_time(datetime(1960, 3, 11, 14, 30)) is None
+    assert format_server_date_time(datetime(1899, 3, 11, 14, 30)) is None
+
+
+def test_unset_wall_clock_datetime_and_display() -> None:
+    """``2000-01-01 12:00`` is the unset sentinel in every representation."""
+    assert datetime(2000, 1, 1, 12, 0) == DATE_TIME_UNSET_DT
+    assert parse_server_date_time(DATE_TIME_UNSET_DT) is None
+    assert parse_server_date_time(datetime(2000, 1, 1, 12, 0, 45)) is None
+    assert parse_server_date_time("2000/01/01 12:00") is None
+    assert format_display_date_time(DATE_TIME_UNSET_DT) is None
+    assert format_display_date_time("2000/01/01 12:00") is None
+    assert format_server_date_time(DATE_TIME_UNSET_DT) == DATE_TIME_UNSET_RAW
+    assert format_server_date_time(datetime(2000, 1, 1, 12, 0, 45)) == DATE_TIME_UNSET_RAW
+    assert format_server_date_time("2000/01/01 12:00") == DATE_TIME_UNSET_RAW
+    # Nearby wall clocks stay real values (year ``00`` is otherwise valid).
+    assert parse_server_date_time("0001011201") == datetime(2000, 1, 1, 12, 1)
+    assert format_server_date_time(datetime(2000, 1, 1, 12, 1)) == "0001011201"
+    assert parse_server_date_time("0003111430") == datetime(2000, 3, 11, 14, 30)
+
+
+def test_seconds_truncated_on_encode_and_parse() -> None:
+    """Wire format is minute resolution; seconds/microseconds are dropped."""
+    with_seconds = datetime(2025, 3, 11, 14, 30, 45, 123456)
+    assert parse_server_date_time(with_seconds) == datetime(2025, 3, 11, 14, 30)
+    assert format_server_date_time(with_seconds) == "2503111430"
 
 
 def test_aware_datetime_rejected() -> None:
