@@ -24,7 +24,7 @@ uv run --group dev --group test poe validate   # fmt + lint + typecheck + securi
 uv sync --locked --group dev --no-install-project && uv build --no-build-isolation  # wheel + sdist (locked backend)
 ```
 
-Pre-commit hooks exist; **pre-push** runs pytest with an **80% project** floor plus **100% patch** coverage vs `origin/main` (`scripts/check_patch_coverage.sh`, same diff basis as Codecov PR patch). CI uploads `coverage.xml` to Codecov (`codecov-commenter` on PRs). Patch coverage target is 100% on pull requests only (`only_pulls` in `codecov.yml` — avoids false failures on main merge commits with a bad compare base); project coverage is informational — the 80% floor stays on pre-push. Coverage omits CLI entrypoints (`cli.py`, `__main__.py`); those are not the library runtime used by Home Assistant.
+Pre-commit hooks exist; **pre-push** runs pytest with an **80% project** floor plus **100% patch** coverage vs `origin/main` (`scripts/check_patch_coverage.sh` with `--branch-coverage` and `codecov.yml` excludes — Codecov PR patch parity). CI uploads `coverage.xml` to Codecov (`codecov-commenter` on PRs). Patch coverage target is 100% on pull requests only (`only_pulls` in `codecov.yml` — avoids false failures on main merge commits with a bad compare base); project coverage is informational — the 80% floor stays on pre-push. Coverage omits CLI entrypoints (`cli.py`, `__main__.py`); those are not the library runtime used by Home Assistant.
 
 ## Architecture in one paragraph
 
@@ -57,6 +57,17 @@ Before implementing a bugfix or feature (protocol/SPA parity, catalog/unit codec
 - Live-API tests must be marked `@pytest.mark.needs_internet`.
 - Hypothesis for property-based tests; fuzz harness lives in `fuzz/` (atheris).
 - Parser resilience (catalog/tree-sitter) is heavily tested in `tests/test_catalog_*.py` — keep it that way; upstream JS assets change without notice. Optional captured dumps live in `tests/assets/{index,params,menus,i18n}/` (`*.js` gitignored) and are parsed by `tests/test_catalog_captured_assets.py` (skipped when empty). Scheduled watch: `.github/workflows/upstream-assets.yml` (unauthenticated `/system/version` + `index-*.js` fingerprint; when it parses, also requires language config, units descriptor table, and `units` i18n — not a `ci.yml` gate).
+
+## Pre-commit quality gate
+
+Before committing (or when asked for a **pre-commit review** / **review przed commitem**), run the Copilot-parity inspection in [`.cursor/rules/pre-commit-quality.mdc`](.cursor/rules/pre-commit-quality.mdc) and the checklist in [`.github/skills/code-review/SKILL.md`](.github/skills/code-review/SKILL.md), then enforce Codecov-parity patch coverage:
+
+```bash
+git fetch origin main   # if origin/main may be stale/missing
+uv run --group dev --group test poe patch-cov   # 80% project + 100% patch (--branch-coverage, codecov.yml excludes)
+```
+
+`poe cov` also writes root `coverage.xml` (gitignored) for targeted gap-filling; keep `poe test` / `addopts` coverage-free for speed. Prefer concrete register/payload counterexamples in findings and regressions (transforms, selector shapes, condition coercion, catalog merge/priority).
 
 ## Docs
 
