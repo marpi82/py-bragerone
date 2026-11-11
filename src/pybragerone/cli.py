@@ -293,10 +293,23 @@ async def _prepare_symbol_write_value(
     desc: Mapping[str, Any],
     requested_value: Any,
 ) -> tuple[bool, Any, str | None]:
+    from pybragerone.models.date_time import format_server_date_time, is_date_time_unit
+
     min_raw = desc.get("min")
     max_raw = desc.get("max")
     min_raw_num = _as_float(min_raw)
     max_raw_num = _as_float(max_raw)
+
+    unit_code = desc.get("unit_code")
+    if unit_code is None:
+        unit_code = desc.get("unit")
+    mapping = desc.get("mapping")
+    units_source = mapping.get("units_source") if isinstance(mapping, Mapping) else None
+    if is_date_time_unit(unit_code=unit_code) or is_date_time_unit(unit_code=units_source):
+        encoded = format_server_date_time(requested_value)
+        if encoded is None:
+            return False, requested_value, f"invalid DATE_TIME value: {requested_value!r}"
+        return True, encoded, None
 
     transform_expr = await _symbol_numeric_transform_expr(resolver, desc)
     transform = ParamResolver._parse_numeric_transform(transform_expr)
