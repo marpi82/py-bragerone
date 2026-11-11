@@ -515,7 +515,7 @@ async def test_resolve_value_composes_and_resolves_string_display(
 
     resolver = _resolver(_multi_word_mapping(), store)
 
-    def _string_display(_self_or_cls: object, raw_value: Any, _raw_expr: Any) -> str:
+    def _string_display(raw_value: Any, _raw_expr: Any = None) -> str:
         assert raw_value == 38063
         return "units.202.0"
 
@@ -526,7 +526,7 @@ async def test_resolve_value_composes_and_resolves_string_display(
             return label.strip()
         return None
 
-    monkeypatch.setattr(ParamResolver, "_apply_numeric_transform", _string_display)
+    monkeypatch.setattr(ParamResolver, "_apply_numeric_transform", staticmethod(_string_display))
     monkeypatch.setattr(ParamResolver, "_resolve_units_value_token", _resolve_token)
 
     resolved = await resolver.resolve_value("PARAM_P4_59")
@@ -590,13 +590,13 @@ async def test_resolve_value_string_display_keeps_value_when_token_unresolved(
 
     resolver = _resolver(_multi_word_mapping(convert=None), store)
 
-    def _string_display(_self_or_cls: object, _raw_value: Any, _raw_expr: Any) -> str:
+    def _string_display(_raw_value: Any, _raw_expr: Any = None) -> str:
         return "literal-display"
 
     async def _resolve_token(_self: ParamResolver, _label: str | None) -> str | None:
         return None
 
-    monkeypatch.setattr(ParamResolver, "_apply_numeric_transform", _string_display)
+    monkeypatch.setattr(ParamResolver, "_apply_numeric_transform", staticmethod(_string_display))
     monkeypatch.setattr(ParamResolver, "_resolve_units_value_token", _resolve_token)
 
     resolved = await resolver.resolve_value("PARAM_P4_59")
