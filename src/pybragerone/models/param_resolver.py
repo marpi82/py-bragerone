@@ -10,6 +10,7 @@ CLI/config-time tooling to opt into richer behavior.
 from __future__ import annotations
 
 import contextlib
+import inspect
 import logging
 import math
 import re
@@ -137,6 +138,13 @@ class AssetsProtocol(Protocol):
 
     async def discover_status_bar_parameter_tokens(self) -> set[str]:
         """Return SPA footer status-bar parameter tokens from the asset index."""
+        return set()
+
+    async def discover_device_tile_parameter_tokens(
+        self,
+        devices: Sequence[DeviceMenuRef] | None = None,
+    ) -> set[str]:
+        """Return SPA home-tile parameter tokens for the given module devices."""
         return set()
 
 
@@ -3250,6 +3258,26 @@ class ParamResolver:
         if not callable(discover):
             return set()
         result = await discover()
+        if not isinstance(result, set):
+            return set()
+        return {str(token) for token in result if isinstance(token, str) and token}
+
+    async def discover_device_tile_parameter_tokens(
+        self,
+        devices: Sequence[DeviceMenuRef] | None = None,
+    ) -> set[str]:
+        """Return SPA home-tile parameter tokens for the given module devices."""
+        discover = getattr(self._assets, "discover_device_tile_parameter_tokens", None)
+        if not callable(discover):
+            return set()
+        try:
+            signature = inspect.signature(discover)
+        except (TypeError, ValueError):
+            signature = None
+        if signature is not None and "devices" in signature.parameters:
+            result = await discover(devices=devices)
+        else:
+            result = await discover()
         if not isinstance(result, set):
             return set()
         return {str(token) for token in result if isinstance(token, str) and token}
