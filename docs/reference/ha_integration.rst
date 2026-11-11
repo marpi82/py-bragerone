@@ -276,6 +276,9 @@ parameter tokens from ``deviceMenu/static/<path>.ts`` chunks referenced in
 ``index-*.js``. Use ``LiveAssetsCatalog.discover_static_route_tokens``,
 ``LiveAssetsCatalog.discover_status_bar_parameter_tokens`` (footer
 ``STATUS_BAR_*`` param chunks from the vite map),
+``LiveAssetsCatalog.discover_device_tile_parameter_tokens`` (home dashboard
+``deviceTile/{manuf}/{dev}`` ``tilesGroup`` bindings — including LEVEL_MAX menu
+symbols that SPA still shows on tiles without ``permissionModule``),
 ``LiveAssetsCatalog.fetch_alarm_name_source`` (picks the ``Alarms-*`` webpack
 chunk that actually contains the ``AlarmName`` enum when several share the
 basename), and pass

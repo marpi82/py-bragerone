@@ -47,6 +47,11 @@ _OBFUSCATED_IDENTIFIER_RE = re.compile(r"_0x[0-9a-fA-F]*")
 # Leftover single-arg helper text: ``_0xabc('TOKEN')`` → TOKEN (defense when AST
 # collapse misses and the call string becomes MenuParameter.token).
 _OBFUSCATED_SINGLE_ARG_CALL_RE = re.compile(r"""(?<![A-Za-z0-9_$])_0x[0-9a-fA-F]*\(\s*(['"])(?P<tok>[A-Z][A-Z0-9_]*)\1\s*\)""")
+# Home-tile chunks also call the public helper by name (unobfuscated in some builds).
+_LOAD_PARAMETER_CALL_RE = re.compile(r"""(?<![A-Za-z0-9_$])loadParameter\(\s*(['"])(?P<tok>[A-Z][A-Z0-9_]*)\1\s*\)""")
+# Tile chunks call many obfuscated helpers; only keep catalog parameter families so
+# enum/component literals (``AUTO``, ``TILE_SWITCH``, …) are not candidate symbols.
+_TILE_PARAMETER_TOKEN_RE = re.compile(r"^(?:PARAM_|STATUS_|COMMAND_|URUCHOMIENIE_|ZADANA_)[A-Z0-9_]+$")
 # Minified bundles spell booleans as unary expressions: ``!0``/``!![]`` are true,
 # ``!1``/``![]`` are false. Bare ``true``/``false`` are deliberately absent — at this
 # layer they are indistinguishable from the quoted strings ``'true'``/``'false'``.
@@ -99,6 +104,8 @@ class AssetIndex:
             (variant ``0`` when present, else first candidate).
         menu_variant_map: Mapping from ``(deviceMenu, variant)`` to hashed stems for SPA
             ``extends`` refs such as ``153:1211`` (#438).
+        tile_map: Mapping from ``(manuf_code, dev_code)`` to hashed ``deviceTile`` stems
+            (SPA home dashboard tiles; default chunk is ``(0, 0)``).
         inline_param_candidates: List of (start_byte, end_byte) tuples indicating potential
             inline parameter maps detected within ``index-*.js``.
         index_bytes: Raw bytes of the index file for potential inline parsing.
@@ -112,6 +119,8 @@ class AssetIndex:
     menu_variant_map: dict[tuple[int, str], str] = field(default_factory=dict)
     # static side-menu route chunks: path basename -> asset basename (e.g. timezones -> timezones)
     static_route_map: dict[str, str] = field(default_factory=dict)
+    # deviceTile/manuf/dev.ts -> hashed stem (home dashboard tiles)
+    tile_map: dict[tuple[int, int], str] = field(default_factory=dict)
     # inline parameter maps detected within index-*.js
     inline_param_candidates: list[tuple[int, int]] = field(default_factory=list)  # (start_byte, end_byte)
     # raw index for potential inline parsing
@@ -1368,10 +1377,11 @@ class LiveAssetsCatalog:
         self._index_token_raw_maps = None
         self._index_token_raw_maps_sig = None
         self._log.info(
-            "INDEX: assets=%d basenames=%d menus=%d inline_param_candidates=%d",
+            "INDEX: assets=%d basenames=%d menus=%d tiles=%d inline_param_candidates=%d",
             sum(len(v) for v in self._idx.assets_by_basename.values()),
             len(self._idx.assets_by_basename),
             len(self._idx.menu_map),
+            len(self._idx.tile_map),
             len(self._idx.inline_param_candidates),
         )
 
@@ -1526,6 +1536,31 @@ class LiveAssetsCatalog:
         except Exception as static_exc:
             self._log.debug("Static deviceMenu route parsing failed: %s", static_exc)
 
+        tile_map: dict[tuple[int, int], str] = {}
+        try:
+            # Mirror deviceMenu import shape for home dashboard tiles:
+            #   "../../config/router/deviceTile/0/0.ts":()=>...import("./0-C-o8CJ8v.js")
+            #   "../../config/router/deviceTile/153/1211.ts":()=>...import("./1211-CrKFnoNa.js")
+            device_tile_pattern = re.compile(
+                r"['\"](?:(?:\.\./)+config/router|/src/config/router)/deviceTile/(\d+)/(\d+)\.ts['\"]"
+                r"\s*:\s*\(\)\s*=>\s*[A-Za-z_$][\w$]*\s*\(\s*\(\)\s*=>\s*import\s*\(\s*"
+                r"['\"]\./([A-Za-z0-9_.-]+-[A-Za-z0-9_-]+)\.js['\"]\s*\)"
+            )
+            for match in device_tile_pattern.finditer(text):
+                manuf_code = int(match.group(1))
+                dev_code = int(match.group(2))
+                tile_stem = str(match.group(3))
+                tile_map.setdefault((manuf_code, dev_code), tile_stem)
+                self._log.debug(
+                    "Found deviceTile mapping: %d/%d -> %s",
+                    manuf_code,
+                    dev_code,
+                    tile_stem,
+                )
+        except Exception as tile_exc:
+            self._log.debug("Regex deviceTile parsing failed: %s", tile_exc)
+            tile_map = {}
+
         # Prepare limited code for AST parsing (needed for inline param candidates)
         ast_limit = min(1000000, len(code))
         limited_code = code[:ast_limit]
@@ -1566,6 +1601,7 @@ class LiveAssetsCatalog:
             menu_map=menu_map,
             menu_variant_map=menu_variant_map,
             static_route_map=static_route_map,
+            tile_map=tile_map,
             inline_param_candidates=inline_candidates,
             index_bytes=code,
         )
@@ -1578,6 +1614,24 @@ class LiveAssetsCatalog:
         tokens.update(_HELPER_TOKEN_RE.findall(text))
         tokens.update(_LEFTOVER_QUOTED_TOKEN_RE.findall(text))
         return tokens
+
+    @staticmethod
+    def _extract_tile_parameter_tokens_from_js(code: bytes) -> set[str]:
+        """Return catalog parameter tokens bound by a ``deviceTile`` chunk.
+
+        Home tiles call ``loadParameter('TOKEN')`` / obfuscated single-arg helpers
+        with tokens beyond ``PARAM_*`` / ``STATUS_*`` (e.g. ``URUCHOMIENIE_*``,
+        ``ZADANA_*_WRITE``). Menu leftover extraction intentionally excludes those
+        to avoid permission/enum noise, so tiles need a dedicated extractor that
+        still rejects unrelated ALL-CAPS literals (``AUTO``, ``TILE_SWITCH``, …).
+        """
+        text = code.decode("utf-8", errors="replace")
+        tokens: set[str] = set()
+        for match in _OBFUSCATED_SINGLE_ARG_CALL_RE.finditer(text):
+            tokens.add(match.group("tok"))
+        for match in _LOAD_PARAMETER_CALL_RE.finditer(text):
+            tokens.add(match.group("tok"))
+        return {token for token in tokens if _TILE_PARAMETER_TOKEN_RE.fullmatch(token) is not None}
 
     async def discover_status_bar_parameter_tokens(self) -> set[str]:
         """Return SPA footer status-bar parameter tokens from the vite asset map.
@@ -1595,6 +1649,65 @@ class LiveAssetsCatalog:
         for basename in self._idx.assets_by_basename:
             if basename.startswith("STATUS_BAR_") and basename.isupper():
                 tokens.add(basename)
+        return tokens
+
+    async def discover_device_tile_parameter_tokens(
+        self,
+        devices: Sequence[DeviceMenuRef] | None = None,
+    ) -> set[str]:
+        """Return SPA home-tile parameter tokens for the given module devices.
+
+        Mirrors SPA ``getTilesConstruction``: when any device-specific
+        ``deviceTile/{manuf}/{dev}`` chunk is present (and SPA would treat the
+        module as standalone), those chunks **replace** the default ``0/0``
+        group — they are not merged with it. Otherwise fall back to
+        ``deviceTile/0/0``. Tile bindings have no ``permissionModule``, so
+        LEVEL_MAX menu symbols can still appear on the dashboard for LEVEL_1
+        accounts (#478).
+        """
+        await self._ensure_index_loaded()
+        # Match ``discover_static_route_tokens``: only proceed when an index load
+        # left bytes or basename assets (``tile_map`` alone can be stale).
+        if not (self._idx.index_bytes or self._idx.assets_by_basename):
+            return set()
+
+        stems: list[str] = []
+        if devices:
+            for ref in devices:
+                stem = self._idx.tile_map.get((ref.manuf_code, ref.dev_code))
+                if stem is not None:
+                    stems.append(stem)
+        if not stems:
+            default_stem = self._idx.tile_map.get((0, 0))
+            if default_stem is not None:
+                stems.append(default_stem)
+        if not stems:
+            return set()
+
+        generation = self._index_generation
+        tokens: set[str] = set()
+        seen_stems: set[str] = set()
+        for stem in stems:
+            if stem in seen_stems:
+                continue
+            seen_stems.add(stem)
+            asset_ref = self._idx.find_asset_for_full_name(stem)
+            if asset_ref is None:
+                # Stem may already be registered as a basename key (tests / odd hashes).
+                asset_ref = self._idx.find_asset_for_basename(stem)
+            if asset_ref is None:
+                self._log.debug("No asset found for deviceTile stem %s", stem)
+                continue
+            try:
+                code = await self._api.get_bytes(asset_ref.url)
+            except Exception as exc:
+                self._log.debug("deviceTile asset fetch failed for %s: %s", stem, exc)
+                continue
+            if generation != self._index_generation:
+                return set()
+            tokens.update(self._extract_tile_parameter_tokens_from_js(code))
+            if generation != self._index_generation:
+                return set()
         return tokens
 
     async def discover_static_route_tokens(self, route_path: str) -> set[str]:

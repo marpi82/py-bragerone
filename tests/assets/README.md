@@ -19,6 +19,7 @@ Empty directories skip.
 | `index/` | `index-<hash>.js` | Build asset index + language config from the file |
 | `params/` | `PARAM_*-<hash>.js`, `STATUS_*-<hash>.js` | Parse a ParamMap object |
 | `menus/` | `module.menu-<hash>.js` | Parse raw route dicts from the JS export |
+| `tiles/` | `deviceTile` chunk e.g. `0-C-o8CJ8v.js` | Optional local check in `test_device_tile_discovery.py` |
 | `i18n/` | `parameters-<hash>.js`, `units-<hash>.js` | Parse `export default { ... }` translations |
 
 Do not commit credentials.
