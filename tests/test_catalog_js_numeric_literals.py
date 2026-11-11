@@ -183,10 +183,11 @@ def test_units_descriptor_table_score_empty_and_param_penalty() -> None:
 
 
 def test_is_unit_descriptor_entry_requires_known_keys() -> None:
-    """Only mappings with text/options/value/valuePrepare count as unit descriptors."""
+    """Mappings with text/options/value/valuePrepare/parse count as unit descriptors."""
     assert LiveAssetsCatalog._is_unit_descriptor_entry("x") is False
     assert LiveAssetsCatalog._is_unit_descriptor_entry({"foo": 1}) is False
     assert LiveAssetsCatalog._is_unit_descriptor_entry({"text": "units.1"}) is True
+    assert LiveAssetsCatalog._is_unit_descriptor_entry({"parse": "e=>e"}) is True
 
 
 def test_parse_units_table_returns_empty_on_tree_sitter_failure() -> None:

@@ -32,6 +32,15 @@ REST **primes** the state (snapshots); WebSocket delivers **deltas only** and ne
 
 Parameter addressing: `P<n>.<chan><idx>` (channels: `v` value, `s` status bitmask, `u` unit/enum, `n`/`x` min/max, `t` type).
 
+## Issues and PRs (required workflow)
+
+Before implementing a bugfix or feature (protocol/SPA parity, catalog/unit codecs, public API used by HA, etc.):
+
+1. **Open GitHub issue(s) first** in this repo (and link a sibling `ha-bragerone` issue when the integration must follow). Capture repro, asset/symbol evidence, and expected SPA behavior.
+2. **Prefer small slices**: one concern per issue and per PR when practical. If HA depends on a library change, land and release (or clearly pin) `py-bragerone` before the integration PR; cross-link issues.
+3. **Every PR references its issue** (`Fixes #N` / `Refs #N`). Do not bundle unrelated library fixes into one PR.
+4. **Ops-only live writes** (register restores via CLI) may run when the user explicitly asks; note them on the related issue when one exists.
+
 ## Non-negotiable conventions
 
 1. **English only** in code, comments, docstrings.

@@ -1266,6 +1266,8 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
     assert ParamResolver._unit_options_map({"options": {"0": "Off"}}) == {"0": "Off"}
     assert ParamResolver._unit_options_map({"text": "x", "0": "Off"}) is None
     assert ParamResolver._unit_options_map({"0": "Off"}) == {"0": "Off"}
+    assert ParamResolver._unit_options_map({"parse": "e=>DateTime.fromFormat(e,serverDateFormat)"}) is None
+    assert ParamResolver._unit_options_map({"value": "e=>e*0.1"}) is None
 
 
 def test_format_channel_entries_keeps_index_zero() -> None:

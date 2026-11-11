@@ -293,10 +293,51 @@ async def _prepare_symbol_write_value(
     desc: Mapping[str, Any],
     requested_value: Any,
 ) -> tuple[bool, Any, str | None]:
+    from pybragerone.models.date_time import (
+        DATE_TIME_UNSET_RAW,
+        format_server_date_time,
+        is_date_time_unit,
+        parse_server_date_time,
+    )
+
     min_raw = desc.get("min")
     max_raw = desc.get("max")
     min_raw_num = _as_float(min_raw)
     max_raw_num = _as_float(max_raw)
+
+    unit_code = desc.get("unit_code")
+    if unit_code is None:
+        unit_code = desc.get("unit")
+    mapping = desc.get("mapping")
+    units_source = mapping.get("units_source") if isinstance(mapping, Mapping) else None
+    # Prefer Mapping unit meta (parse-only DATE_TIME descriptors); fall back to code-shaped sources.
+    unit_meta = units_source if isinstance(units_source, Mapping) else None
+    if is_date_time_unit(unit_code=unit_code, unit_meta=unit_meta) or is_date_time_unit(unit_code=units_source):
+        encoded = format_server_date_time(requested_value)
+        if encoded is None:
+            return False, requested_value, f"invalid DATE_TIME value: {requested_value!r}"
+        # Unset sentinel is always allowed so callers can clear the register.
+        # Prefer chronological compare: wire ``yyMMddHHmm`` as a number is not
+        # ordered across Luxon's century window (e.g. 1965 wire ``65…`` > 2025 ``25…``).
+        if encoded != DATE_TIME_UNSET_RAW:
+            encoded_dt = parse_server_date_time(encoded)
+            min_dt = parse_server_date_time(min_raw) if min_raw is not None else None
+            max_dt = parse_server_date_time(max_raw) if max_raw is not None else None
+            if encoded_dt is not None and (min_dt is not None or max_dt is not None):
+                out_of_bounds = (min_dt is not None and encoded_dt < min_dt) or (max_dt is not None and encoded_dt > max_dt)
+            else:
+                encoded_num = _as_float(encoded)
+                out_of_bounds = encoded_num is not None and (
+                    (min_raw_num is not None and encoded_num < min_raw_num)
+                    or (max_raw_num is not None and encoded_num > max_raw_num)
+                )
+            if out_of_bounds:
+                return (
+                    False,
+                    encoded,
+                    f"value out of range: raw[{min_raw}..{max_raw}] wire={encoded} requested={requested_value}",
+                )
+        return True, encoded, None
 
     transform_expr = await _symbol_numeric_transform_expr(resolver, desc)
     transform = ParamResolver._parse_numeric_transform(transform_expr)

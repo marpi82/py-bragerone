@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from .api.modules import DeviceMenuRef
 from .catalog import LiveAssetsCatalog, ParamMap
+from .date_time import format_display_date_time, is_date_time_unit
 from .i18n import I18nResolver
 from .menu import MenuResult
 from .param import ParamStore
@@ -1482,8 +1483,7 @@ class ParamResolver:
             resolved = await self._resolve_units_value_token(label)
             return resolved if resolved is not None else label
 
-        transform_expr = unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
-        display_val = self._apply_numeric_transform(raw, transform_expr)
+        display_val = self._apply_unit_display_value(raw, unit_meta=unit_meta, unit_code=unit_code)
         if isinstance(display_val, str):
             resolved_display = await self._resolve_units_value_token(display_val)
             if isinstance(resolved_display, str):
@@ -1658,6 +1658,20 @@ class ParamResolver:
             return int(transformed)
         return transformed
 
+    @classmethod
+    def _apply_unit_display_value(
+        cls,
+        raw_value: Any,
+        *,
+        unit_meta: Any = None,
+        unit_code: Any = None,
+    ) -> Any:
+        """Apply SPA unit display transforms (DATE_TIME codec, then numeric ``value``)."""
+        if is_date_time_unit(unit_code=unit_code, unit_meta=unit_meta):
+            return format_display_date_time(raw_value)
+        transform_expr = unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
+        return cls._apply_numeric_transform(raw_value, transform_expr)
+
     @staticmethod
     def _unit_options_map(unit: Any) -> dict[str, str] | None:
         if not isinstance(unit, Mapping):
@@ -1667,7 +1681,9 @@ class ParamResolver:
         if isinstance(options_any, Mapping):
             return {str(key).strip(): str(val).strip() for key, val in options_any.items()}
 
-        special = {"text", "value", "valuePrepare", "colors"}
+        # Descriptor metadata keys — not enum option labels. Includes SPA ``parse``
+        # (DATE_TIME codec) so parse-only units do not become fake option maps.
+        special = {"text", "value", "valuePrepare", "colors", "parse"}
         if any(key in unit for key in special):
             return None
 
@@ -1682,7 +1698,8 @@ class ParamResolver:
             options = self._unit_options_map(unit)
             if options is not None:
                 return options
-            return {str(key).strip(): str(val).strip() for key, val in unit.items()}
+            # Measurement / parse-only descriptors have no displayable unit label.
+            return None
 
         text_token = text_raw.strip()
         resolved_token = await self._resolve_i18n_token(text_token)
@@ -2925,9 +2942,7 @@ class ParamResolver:
                     value_label=None,
                     unit=unit,
                 )
-            display_val = self._apply_numeric_transform(
-                raw_val, unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
-            )
+            display_val = self._apply_unit_display_value(raw_val, unit_meta=unit_meta, unit_code=raw_unit_code)
             if isinstance(display_val, str):
                 resolved_display = await self._resolve_units_value_token(display_val)
                 if isinstance(resolved_display, str):
@@ -2951,9 +2966,7 @@ class ParamResolver:
                 fam = self._store.get_family(addr_tuple[0], addr_tuple[2])
                 if fam is not None:
                     raw_val = fam.get(addr_tuple[1])
-                display_val = self._apply_numeric_transform(
-                    raw_val, unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
-                )
+                display_val = self._apply_unit_display_value(raw_val, unit_meta=unit_meta, unit_code=raw_unit_code)
                 if isinstance(display_val, str):
                     resolved_display = await self._resolve_units_value_token(display_val)
                     if isinstance(resolved_display, str):
@@ -2987,9 +3000,7 @@ class ParamResolver:
         if mapping is not None:
             composed = self.compose_mapping_register_value(self._store, mapping)
             if composed is not None:
-                display_val = self._apply_numeric_transform(
-                    composed, unit_meta.get("value") if isinstance(unit_meta, Mapping) else None
-                )
+                display_val = self._apply_unit_display_value(composed, unit_meta=unit_meta, unit_code=raw_unit_code)
                 if isinstance(display_val, str):
                     resolved_display = await self._resolve_units_value_token(display_val)
                     if isinstance(resolved_display, str):
@@ -3011,7 +3022,7 @@ class ParamResolver:
             if fam is not None:
                 val = fam.get(addr_tuple[1])
 
-        display_val = self._apply_numeric_transform(val, unit_meta.get("value") if isinstance(unit_meta, Mapping) else None)
+        display_val = self._apply_unit_display_value(val, unit_meta=unit_meta, unit_code=raw_unit_code)
         if isinstance(display_val, str):
             resolved_display = await self._resolve_units_value_token(display_val)
             if isinstance(resolved_display, str):

@@ -7,6 +7,23 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Added
+
+- SPA ``DATE_TIME`` (CustomUnit ``0x270f`` / ``9999``) wire codec:
+  ``yyMMddHHmm`` ↔ display ``yyyy/MM/dd HH:mm`` / naive datetime, with catalog
+  retention of ``parse``-only unit descriptors (#477 / #479).
+
+### Fixed
+
+- DATE_TIME: zero-pad JSON numbers *and* short digit strings that drop leading
+  year zeros; map ``yy`` with Luxon's ``twoDigitCutoffYear`` (60) instead of
+  Python ``%y``; treat wall-clock ``2000-01-01 12:00`` as unset in every
+  representation; reject timezone-aware datetimes instead of stripping
+  ``tzinfo``; keep parse-only unit meta out of ``ResolvedValue.unit``; CLI
+  write prep detects parse-only DATE_TIME meta and applies chronological
+  min/max after encode (numeric wire order is wrong across Luxon's century
+  window) (#479).
+
 ## [2026.11.1rc1] - 2026-11-10
 
 ### Fixed

@@ -2926,7 +2926,8 @@ class LiveAssetsCatalog:
     def _is_unit_descriptor_entry(value: Any) -> bool:
         if not isinstance(value, Mapping):
             return False
-        return any(k in value for k in ("text", "options", "value", "valuePrepare"))
+        # SPA ``DATE_TIME`` (CustomUnit 0x270f) ships as ``{parse: e => fromFormat(...)}`` only.
+        return any(k in value for k in ("text", "options", "value", "valuePrepare", "parse"))
 
     @staticmethod
     def _units_descriptor_table_score(parsed: Mapping[str, Mapping[str, Any]]) -> tuple[int, int, int]:
