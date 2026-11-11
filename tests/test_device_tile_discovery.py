@@ -30,6 +30,8 @@ const CIRCUIT_CO1_TILE={'parameters':{
   w:{'parameter':loadParameter('ZADANA_TEMP_CO1_WRITE')}
 }};
 const NOISE=_0x1f8d48('DISPLAY_PARAMETER_LEVEL_MAX');
+const ENUM=_0x9999('AUTO');
+const COMP=_0x9999('TILE_SWITCH');
 export{tilesGroup};
 """
 
@@ -37,7 +39,7 @@ _CAPTURED_TILE = Path(__file__).resolve().parent / "assets" / "tiles" / "0-C-o8C
 
 
 def test_extract_tile_parameter_tokens_keeps_catalog_like_names() -> None:
-    """Tile helper calls yield PARAM/STATUS/URUCHOMIENIE/ZADANA tokens, not DISPLAY_*."""
+    """Tile helper calls yield PARAM/STATUS/URUCHOMIENIE/ZADANA tokens, not enum noise."""
     tokens = LiveAssetsCatalog._extract_tile_parameter_tokens_from_js(_TILE_CHUNK)
     assert "PARAM_P30_5" in tokens
     assert "PARAM_P30_8" in tokens
@@ -46,6 +48,8 @@ def test_extract_tile_parameter_tokens_keeps_catalog_like_names() -> None:
     assert "ZADANA_TEMP_CO1_WRITE" in tokens
     assert "STATUS_POMPY_CIEPLA_STATUS" in tokens
     assert "DISPLAY_PARAMETER_LEVEL_MAX" not in tokens
+    assert "AUTO" not in tokens
+    assert "TILE_SWITCH" not in tokens
 
 
 def test_tile_map_populated_from_index() -> None:
@@ -178,6 +182,21 @@ async def test_discover_device_tile_parameter_tokens_unloaded_index() -> None:
     api = AsyncMock()
     catalog = LiveAssetsCatalog(api)
     catalog._idx = AssetIndex()
+
+    async def _noop() -> None:
+        return None
+
+    catalog._ensure_index_loaded = _noop  # type: ignore[method-assign]
+    assert await catalog.discover_device_tile_parameter_tokens() == set()
+    api.get_bytes.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_discover_device_tile_parameter_tokens_ignores_stale_tile_map_alone() -> None:
+    """tile_map without index bytes/basenames is treated as unloaded."""
+    api = AsyncMock()
+    catalog = LiveAssetsCatalog(api)
+    catalog._idx = AssetIndex(tile_map={(0, 0): "0-C-o8CJ8v"})
 
     async def _noop() -> None:
         return None

@@ -9,6 +9,11 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Added
 
+- SPA home ``deviceTile`` discovery: ``AssetIndex.tile_map`` plus
+  ``LiveAssetsCatalog.discover_device_tile_parameter_tokens`` /
+  ``ParamResolver.discover_device_tile_parameter_tokens`` so dashboard-bound
+  symbols (including LEVEL_MAX menu tokens shown without ``permissionModule``)
+  enter HA candidates (#478).
 - SPA ``DATE_TIME`` (CustomUnit ``0x270f`` / ``9999``) wire codec:
   ``yyMMddHHmm`` ↔ display ``yyyy/MM/dd HH:mm`` / naive datetime, with catalog
   retention of ``parse``-only unit descriptors (#477 / #479).

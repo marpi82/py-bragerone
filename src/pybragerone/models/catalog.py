@@ -49,6 +49,9 @@ _OBFUSCATED_IDENTIFIER_RE = re.compile(r"_0x[0-9a-fA-F]*")
 _OBFUSCATED_SINGLE_ARG_CALL_RE = re.compile(r"""(?<![A-Za-z0-9_$])_0x[0-9a-fA-F]*\(\s*(['"])(?P<tok>[A-Z][A-Z0-9_]*)\1\s*\)""")
 # Home-tile chunks also call the public helper by name (unobfuscated in some builds).
 _LOAD_PARAMETER_CALL_RE = re.compile(r"""(?<![A-Za-z0-9_$])loadParameter\(\s*(['"])(?P<tok>[A-Z][A-Z0-9_]*)\1\s*\)""")
+# Tile chunks call many obfuscated helpers; only keep catalog parameter families so
+# enum/component literals (``AUTO``, ``TILE_SWITCH``, …) are not candidate symbols.
+_TILE_PARAMETER_TOKEN_RE = re.compile(r"^(?:PARAM_|STATUS_|COMMAND_|URUCHOMIENIE_|ZADANA_)[A-Z0-9_]+$")
 # Minified bundles spell booleans as unary expressions: ``!0``/``!![]`` are true,
 # ``!1``/``![]`` are false. Bare ``true``/``false`` are deliberately absent — at this
 # layer they are indistinguishable from the quoted strings ``'true'``/``'false'``.
@@ -1614,12 +1617,13 @@ class LiveAssetsCatalog:
 
     @staticmethod
     def _extract_tile_parameter_tokens_from_js(code: bytes) -> set[str]:
-        """Return catalog-like parameter tokens bound by a ``deviceTile`` chunk.
+        """Return catalog parameter tokens bound by a ``deviceTile`` chunk.
 
         Home tiles call ``loadParameter('TOKEN')`` / obfuscated single-arg helpers
         with tokens beyond ``PARAM_*`` / ``STATUS_*`` (e.g. ``URUCHOMIENIE_*``,
         ``ZADANA_*_WRITE``). Menu leftover extraction intentionally excludes those
-        to avoid permission/enum noise, so tiles need a dedicated extractor.
+        to avoid permission/enum noise, so tiles need a dedicated extractor that
+        still rejects unrelated ALL-CAPS literals (``AUTO``, ``TILE_SWITCH``, …).
         """
         text = code.decode("utf-8", errors="replace")
         tokens: set[str] = set()
@@ -1627,9 +1631,7 @@ class LiveAssetsCatalog:
             tokens.add(match.group("tok"))
         for match in _LOAD_PARAMETER_CALL_RE.finditer(text):
             tokens.add(match.group("tok"))
-        return {
-            token for token in tokens if _CATALOG_LIKE_TOKEN_RE.fullmatch(token) is not None and not token.startswith("DISPLAY_")
-        }
+        return {token for token in tokens if _TILE_PARAMETER_TOKEN_RE.fullmatch(token) is not None}
 
     async def discover_status_bar_parameter_tokens(self) -> set[str]:
         """Return SPA footer status-bar parameter tokens from the vite asset map.
@@ -1655,20 +1657,24 @@ class LiveAssetsCatalog:
     ) -> set[str]:
         """Return SPA home-tile parameter tokens for the given module devices.
 
-        Mirrors SPA ``getTilesConstruction``: when any device has a specific
-        ``deviceTile/{manuf}/{dev}`` chunk, load those; otherwise fall back to the
-        default ``deviceTile/0/0`` tile group. Tile bindings have no
-        ``permissionModule``, so LEVEL_MAX menu symbols can still appear on the
-        dashboard for LEVEL_1 accounts (#478).
+        Mirrors SPA ``getTilesConstruction``: when any device-specific
+        ``deviceTile/{manuf}/{dev}`` chunk is present (and SPA would treat the
+        module as standalone), those chunks **replace** the default ``0/0``
+        group — they are not merged with it. Otherwise fall back to
+        ``deviceTile/0/0``. Tile bindings have no ``permissionModule``, so
+        LEVEL_MAX menu symbols can still appear on the dashboard for LEVEL_1
+        accounts (#478).
         """
         await self._ensure_index_loaded()
-        if not (self._idx.index_bytes or self._idx.assets_by_basename or self._idx.tile_map):
+        # Match ``discover_static_route_tokens``: only proceed when an index load
+        # left bytes or basename assets (``tile_map`` alone can be stale).
+        if not (self._idx.index_bytes or self._idx.assets_by_basename):
             return set()
 
         stems: list[str] = []
         if devices:
             for ref in devices:
-                stem = self._idx.tile_map.get((int(ref.manuf_code), int(ref.dev_code)))
+                stem = self._idx.tile_map.get((ref.manuf_code, ref.dev_code))
                 if stem is not None:
                     stems.append(stem)
         if not stems:
