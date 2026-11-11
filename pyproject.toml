@@ -203,7 +203,7 @@ security = ["bandit", "pip-audit"]
 validate = ["fmt", "lint", "typecheck", "security", "test"]
 # Tests
 test = { cmd = "pytest -q" }
-cov = { cmd = "pytest -q --cov=pybragerone --cov-report=term-missing" }
+cov = { cmd = "pytest -q --cov=pybragerone --cov-report=term-missing --cov-report=xml" }
 patch-cov = { shell = "scripts/check_patch_coverage.sh" }
 bench = { cmd = "pytest tests/test_bench_micro.py --codspeed" }
 upstream-assets = { cmd = "python scripts/check_upstream_assets.py" }

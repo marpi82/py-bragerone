@@ -1,0 +1,61 @@
+---
+description: Pre-commit quality gate — Copilot-parity review + 100% patch coverage. Use when the user says "pre-commit review", "review przed commitem", asks to review before commit, or when you are about to git commit local changes.
+alwaysApply: false
+---
+
+# Pre-commit quality gate — py-bragerone
+
+Act as a pre-commit inspector at least as thorough as GitHub Copilot Balanced review.
+Run this protocol on the working-tree diff (staged + unstaged) before committing.
+
+Also follow `.github/skills/code-review/SKILL.md`. Prefer concrete counterexamples over vague style notes.
+
+## Output format
+
+1. Bullet findings first, severity-tagged (`blocker` / `major` / `minor`), each with path and a concrete counterexample when applicable.
+2. Then apply fixes and/or add pytest regressions (do not ask the user to paste logs).
+3. Finish by running `uv run --group dev --group test poe patch-cov` until green (or report remaining blockers).
+
+## Pass A — Data-flow contract (P0)
+
+- REST **prime** still runs at startup and after every reconnect; WebSocket remains deltas-only.
+- Resolver / catalog / ParamStore changes must not break `ResolvedValue`, visibility, or HA-facing describe metadata.
+- Public API used by ha-bragerone stays stable or is called out as breaking.
+
+## Pass B — Behavioral counterexamples (P0)
+
+For every changed resolver/catalog/API branch, simulate concrete register / payload values:
+
+- Gate true vs false (bit/mask, `ClauseOperation`, numeric strings like `"0"`, bools, `NaN`/`Infinity`).
+- Fractional readings (`21.5` / `"21.5"`) must not be dropped or corrupted by STATUS-label normalization.
+- Dereferenced register readings still receive unit transforms (`215` → `21.5` with `×0.1`); distinguish readings from literal STATUS labels.
+- All supported selector shapes (address string, object, list, nested under `value`) behave the same in resolve, describe, `mapping.inputs`, and branch selection.
+- Missing / unusable selector → fall through to the next usable reading; do not return whitespace or rejectable scalars as success.
+
+## Pass C — Consistency surfaces (P1)
+
+- Condition coercion is shared between visibility and value-resolution evaluators.
+- `mapping.inputs` / dependency extraction includes object-valued `value` and `command` slots (not only lists).
+- Catalog route merges: merge parameter sections by path; apply layers in ascending priority; do not `break` after the first standalone device menu.
+- When callers pass device refs, prefer device-specific REST construction over stale JS chunk shortcuts.
+
+## Pass D — Perf / lifecycle (P1–P2)
+
+- Do not `ParamStore.flatten()` the entire store on every ordinary resolve — snapshot only when `raw.any` (or equivalent) needs it, or read referenced addresses.
+- Offload blocking Tree-sitter / SSL / file work with `asyncio.to_thread()` (never block the loop).
+- Tree-sitter node access: null-check nodes before `.text` / child navigation.
+- Watch ReDoS risk in new parsing regexes.
+
+## Pass E — Docs / changelog (P2)
+
+- Public behavior changes update `docs/` (Sphinx `-W`).
+- Keep existing Unreleased changelog entries when adding a new fix note; do not wipe sibling API notes.
+
+## Pass F — 100% patch coverage (Codecov parity)
+
+1. Ensure `origin/main` exists (`git fetch origin main` if needed).
+2. Run `uv run --group dev --group test poe patch-cov` (80% project + 100% patch with `--branch-coverage` and codecov.yml excludes; CLI entrypoints excluded).
+3. On failure: read root `coverage.xml` and the uncovered list; add/adjust tests for those lines/branches only — preferably using Pass B counterexamples (`httpx_mock` for HTTP).
+4. Re-run until green. Do not weaken coverage thresholds or remove `omit` for CLI unless intentional.
+
+`poe test` stays fast (no coverage). Prefer `poe patch-cov` (or `poe cov` for XML + term-missing) when analyzing coverage — never ask the user to paste coverage output.

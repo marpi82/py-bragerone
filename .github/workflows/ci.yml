@@ -205,10 +205,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --group docs
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y graphviz
+      # Graphviz is not required: docs/conf.py does not load the graphviz extension.
+      # Skipping apt install avoids flaky mirror/DNS failures on ubuntu-latest runners.
 
       - name: Build Sphinx docs
         env:
