@@ -3,10 +3,15 @@
 BragerOne's web app stores vacation-style timestamps as a 10-digit string in
 ``serverDateFormat`` (``yyMMddHHmm``) and displays them via Luxon as
 ``yyyy/MM/dd HH:mm``. Custom unit code ``0x270f`` / ``9999`` / ``DATE_TIME``.
+
+Wire and display values are **naive local wall-clock**. Callers (e.g. Home
+Assistant) must convert aware datetimes to the controller's local wall time
+before encode; aware inputs are rejected rather than silently dropping ``tzinfo``.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Final
 
@@ -53,7 +58,7 @@ def normalize_date_time_unit_key(unit_code: Any) -> str | None:
 
 def unit_meta_looks_like_date_time(unit_meta: Any) -> bool:
     """Return True when a units-table entry is the SPA DATE_TIME ``parse`` codec."""
-    if not isinstance(unit_meta, dict):
+    if not isinstance(unit_meta, Mapping):
         return False
     parse_expr = unit_meta.get("parse")
     if parse_expr is None:
@@ -75,26 +80,47 @@ def is_date_time_unit(*, unit_code: Any = None, unit_meta: Any = None) -> bool:
     return unit_meta_looks_like_date_time(unit_meta)
 
 
+def _digits_wire_text(raw: int | float) -> str | None:
+    """Normalize a JSON number into a 10-digit ``yyMMddHHmm`` string, or ``None``."""
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, float):
+        if not raw.is_integer():
+            return None
+        raw = int(raw)
+    if raw < 0:
+        return None
+    text = str(raw)
+    if not text.isdigit() or len(text) > 10:
+        return None
+    # JSON numbers drop leading zeros (year 00-09 / unset sentinel as int).
+    return text.zfill(10)
+
+
 def parse_server_date_time(raw: Any) -> datetime | None:
-    """Parse a Brager wire value into a naive ``datetime``.
+    """Parse a Brager wire value into a naive wall-clock ``datetime``.
 
     Returns:
-        Parsed datetime, or ``None`` for missing / unset sentinel / invalid input.
+        Parsed naive datetime, or ``None`` for missing / unset sentinel / invalid /
+        timezone-aware input (callers must convert to local wall time first).
     """
     if raw is None or isinstance(raw, bool):
         return None
     if isinstance(raw, datetime):
-        return raw.replace(tzinfo=None) if raw.tzinfo is not None else raw
-    text = str(raw).strip()
+        # Reject aware values — stripping tzinfo would shift the wall clock.
+        if raw.tzinfo is not None:
+            return None
+        return raw
+    if isinstance(raw, int | float):
+        text = _digits_wire_text(raw)
+        if text is None:
+            return None
+    else:
+        text = str(raw).strip()
     if not text or text == DATE_TIME_UNSET_RAW:
         return None
-    # Digits-only wire form (allow int-like floats that stringify with .0).
-    if isinstance(raw, float) and raw.is_integer():
-        text = str(int(raw))
-    elif isinstance(raw, int):
-        text = str(raw)
     if text.isdigit():
-        # ``yyMMddHHmm`` is always 10 digits.
+        # ``yyMMddHHmm`` is always 10 digits (after int zero-pad above).
         if len(text) != 10:
             return None
         try:
@@ -109,7 +135,7 @@ def parse_server_date_time(raw: Any) -> datetime | None:
 
 
 def format_server_date_time(value: Any) -> str | None:
-    """Encode a datetime / display string to the Brager ``yyMMddHHmm`` wire string."""
+    """Encode a naive datetime / display string to the Brager ``yyMMddHHmm`` wire string."""
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, str):
@@ -125,6 +151,11 @@ def format_server_date_time(value: Any) -> str | None:
         if parsed is None:
             return None
         return parsed.strftime(SERVER_DATE_TIME_FORMAT)
+    if isinstance(value, int | float):
+        # Preserve the unset sentinel when JSON delivered it as a number.
+        digits = _digits_wire_text(value)
+        if digits == DATE_TIME_UNSET_RAW:
+            return DATE_TIME_UNSET_RAW
     parsed = parse_server_date_time(value)
     if parsed is None:
         return None

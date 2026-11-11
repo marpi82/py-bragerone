@@ -7,6 +7,18 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Added
+
+- SPA ``DATE_TIME`` (CustomUnit ``0x270f`` / ``9999``) wire codec:
+  ``yyMMddHHmm`` ↔ display ``yyyy/MM/dd HH:mm`` / naive datetime, with catalog
+  retention of ``parse``-only unit descriptors (#477 / #479).
+
+### Fixed
+
+- DATE_TIME: zero-pad JSON numbers that drop leading year zeros; reject
+  timezone-aware datetimes instead of stripping ``tzinfo``; keep parse-only
+  unit meta out of ``ResolvedValue.unit`` (#479).
+
 ## [2026.11.1rc1] - 2026-11-10
 
 ### Fixed

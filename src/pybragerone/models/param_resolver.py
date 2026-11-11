@@ -1681,7 +1681,9 @@ class ParamResolver:
         if isinstance(options_any, Mapping):
             return {str(key).strip(): str(val).strip() for key, val in options_any.items()}
 
-        special = {"text", "value", "valuePrepare", "colors"}
+        # Descriptor metadata keys — not enum option labels. Includes SPA ``parse``
+        # (DATE_TIME codec) so parse-only units do not become fake option maps.
+        special = {"text", "value", "valuePrepare", "colors", "parse"}
         if any(key in unit for key in special):
             return None
 
@@ -1696,7 +1698,8 @@ class ParamResolver:
             options = self._unit_options_map(unit)
             if options is not None:
                 return options
-            return {str(key).strip(): str(val).strip() for key, val in unit.items()}
+            # Measurement / parse-only descriptors have no displayable unit label.
+            return None
 
         text_token = text_raw.strip()
         resolved_token = await self._resolve_i18n_token(text_token)

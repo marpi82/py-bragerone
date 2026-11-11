@@ -283,7 +283,9 @@ basename), and pass
 ``build_panel_groups`` with a primed ``ParamStore`` so overlays are resolved
 automatically). For activity feed display values use
 ``ParamResolver.resolve_raw_display_value(raw, unit_code=...)`` so numeric unit
-transforms match parameter entities.
+transforms and SPA ``DATE_TIME`` (``yyMMddHHmm``) display codecs match parameter
+entities. DATE_TIME values are naive local wall-clock; convert aware HA
+datetimes before calling ``format_server_date_time``.
 
 The Home Assistant integration caches entity descriptors in the config entry;
 after upgrading to a release that adds static-route overlays, users need a
