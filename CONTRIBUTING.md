@@ -13,7 +13,7 @@ The project uses GitHub Issues and Pull Requests for discussion and review. Do *
 
 ## Requirements for acceptable contributions
 
-- **Tests**: major new functionality MUST come with tests; bug fixes should add a regression test where practical. All tests must pass offline (`pytest --run-live` is opt-in only).
+- **Tests**: major new functionality MUST come with tests; bug fixes should add a regression test where practical. All tests must pass offline (`pytest --run-live` is opt-in only). Before push (and ideally before commit), run `uv run --group dev --group test poe patch-cov` for Codecov-parity 100% patch coverage.
 - **Style**: `ruff format` + `ruff check` clean, `mypy --strict` clean, English only in code and docs, Google-style docstrings. Run `uv run --group dev --group test poe validate` before pushing.
 - **DCO**: every commit MUST be signed off (`git commit -s`) to certify the [Developer Certificate of Origin](https://developercertificate.org/) — i.e. that you are legally authorized to contribute the change under the project's MIT license.
 
@@ -31,8 +31,11 @@ uv run ruff check .
 uv run ruff format --check
 uv run mypy
 uv run pytest -q
+uv run --group dev --group test poe patch-cov   # Codecov-parity 100% patch before push/commit
 uv run --group dev poe security
 ```
+
+Optional Cursor pre-commit review: see `.cursor/rules/pre-commit-quality.mdc` and `AGENTS.md`.
 
 ## Coding standards
 
