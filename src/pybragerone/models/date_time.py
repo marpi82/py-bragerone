@@ -40,7 +40,7 @@ def normalize_date_time_unit_key(unit_code: Any) -> str | None:
         return None
     if text in DATE_TIME_UNIT_KEYS or text.upper() == DATE_TIME_UNIT_NAME:
         return DATE_TIME_UNIT_CODE if text != DATE_TIME_UNIT_NAME else DATE_TIME_UNIT_NAME
-    # Hex literals as strings.
+    # Hex literals as strings (covers forms not already listed in DATE_TIME_UNIT_KEYS).
     lowered = text.lower()
     if lowered.startswith("0x"):
         try:
@@ -48,8 +48,6 @@ def normalize_date_time_unit_key(unit_code: Any) -> str | None:
                 return DATE_TIME_UNIT_CODE
         except ValueError:
             return None
-    if text.isdigit() and text == DATE_TIME_UNIT_CODE:
-        return DATE_TIME_UNIT_CODE
     return None
 
 

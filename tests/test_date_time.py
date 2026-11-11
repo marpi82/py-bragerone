@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -15,7 +15,9 @@ from pybragerone.models.date_time import (
     format_display_date_time,
     format_server_date_time,
     is_date_time_unit,
+    normalize_date_time_unit_key,
     parse_server_date_time,
+    unit_meta_looks_like_date_time,
 )
 from pybragerone.models.param_resolver import ParamResolver
 
@@ -32,6 +34,11 @@ def test_parse_and_format_round_trip() -> None:
     assert format_display_date_time(raw) == "2025/03/11 14:30"
     assert format_server_date_time(parsed) == raw
     assert format_server_date_time("2025/03/11 14:30") == raw
+    assert format_server_date_time(2503111430) == raw
+    assert format_server_date_time(2503111430.0) == raw
+    aware = datetime(2025, 3, 11, 14, 30, tzinfo=UTC)
+    assert parse_server_date_time(aware) == datetime(2025, 3, 11, 14, 30)
+    assert parse_server_date_time(parsed) == parsed
 
 
 def test_unset_and_invalid_are_empty() -> None:
@@ -40,7 +47,50 @@ def test_unset_and_invalid_are_empty() -> None:
     assert format_display_date_time(DATE_TIME_UNSET_RAW) is None
     assert parse_server_date_time("24H0H0H0?2") is None
     assert parse_server_date_time("1") is None
+    assert parse_server_date_time(None) is None
+    assert parse_server_date_time(True) is None
+    assert parse_server_date_time("") is None
+    assert parse_server_date_time("2513139999") is None  # invalid month/day/time
     assert format_server_date_time("not-a-date") is None
+    assert format_server_date_time(None) is None
+    assert format_server_date_time(True) is None
+    assert format_server_date_time("") is None
+    assert format_server_date_time("   ") is None
+    assert format_server_date_time(DATE_TIME_UNSET_RAW) == DATE_TIME_UNSET_RAW
+    assert format_server_date_time("2503111430") == "2503111430"
+    assert format_server_date_time("2513139999") is None
+    assert format_server_date_time(object()) is None
+
+
+def test_normalize_date_time_unit_key_variants() -> None:
+    """Accept SPA named/numeric/hex keys; reject empty and non-DATE_TIME values."""
+    assert normalize_date_time_unit_key(None) is None
+    assert normalize_date_time_unit_key(True) is None
+    assert normalize_date_time_unit_key(52) is None
+    assert normalize_date_time_unit_key(9999.5) is None
+    assert normalize_date_time_unit_key(9999.0) == "9999"
+    assert normalize_date_time_unit_key("   ") is None
+    assert normalize_date_time_unit_key("DATE_TIME") == "DATE_TIME"
+    assert normalize_date_time_unit_key("date_time") == "9999"
+    assert normalize_date_time_unit_key("9999") == "9999"
+    assert normalize_date_time_unit_key("0x270f") == "9999"
+    assert normalize_date_time_unit_key("0X270F") == "9999"
+    assert normalize_date_time_unit_key("0x0000270f") == "9999"
+    assert normalize_date_time_unit_key("0x") is None
+    assert normalize_date_time_unit_key("0xZZZZ") is None
+    assert normalize_date_time_unit_key("0x1234") is None
+    assert normalize_date_time_unit_key("52") is None
+
+
+def test_unit_meta_looks_like_date_time_variants() -> None:
+    """Detect DATE_TIME parse meta including callable tree-sitter materializations."""
+    assert unit_meta_looks_like_date_time("not-a-dict") is False
+    assert unit_meta_looks_like_date_time({}) is False
+    assert unit_meta_looks_like_date_time({"parse": 123}) is False
+    assert unit_meta_looks_like_date_time({"parse": lambda e: e}) is True
+    assert unit_meta_looks_like_date_time({"parse": lambda e: e, "text": "units.1"}) is False
+    assert unit_meta_looks_like_date_time({"parse": "yyMMddHHmm"}) is True
+    assert unit_meta_looks_like_date_time({"parse": "plain"}) is False
 
 
 def test_is_date_time_unit_keys() -> None:
