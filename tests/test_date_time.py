@@ -112,7 +112,6 @@ def test_json_number_zero_pads_leading_year_digits() -> None:
     assert _parse_wire_digits("25ab111430") is None  # non-digit
 
 
-
 def test_luxon_two_digit_year_cutoff() -> None:
     """Wire ``yy`` follows Luxon cutoff 60, not Python ``%y`` (which uses 69)."""
     assert LUXON_TWO_DIGIT_CUTOFF_YEAR == 60
