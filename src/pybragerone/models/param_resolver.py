@@ -44,6 +44,9 @@ _UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
 # Bare menu-title i18n namespaces (``MAINMENU_*``, ``MENUSERWIS_*``, ``MENU_*``, …).
 # Require the known prefixes so abbreviations like ``DHW`` do not trigger asset fetches.
 _MENU_TITLE_TOKEN_RE = re.compile(r"^(?:MAINMENU|MENUSERWIS|MENUPALNIKA|MENU)_[A-Z0-9_]+$")
+# Unresolved SPA i18n key paths (``dashboard.navbar.settings``). Literals with spaces
+# or digit-only segments (``Pompa c.o.``, ``v1.2``) must not match (#485).
+_DOTTED_I18N_KEY_RE = re.compile(r"^[A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)+$")
 # ParamStore flat keys referenced by SPA ``displayDropdown`` (e.g. ``P6.v219``).
 _ROUTE_DROPDOWN_VALUE_KEY_RE = re.compile(r"^P\d+\.[a-z]\d+$", re.IGNORECASE)
 
@@ -300,6 +303,12 @@ class ComputedValueEvaluator:
 
             return None
 
+        # SPA ``modulesMap.*.connectedAt`` is ``null`` when offline. ``Module`` DTOs
+        # coerce upstream null → ``0`` for typed connectivity; treat numeric ``0`` on
+        # ``connectedAt`` paths as ``None`` so ``notEqualTo null`` ENABLED guards match
+        # the web UI (#484).
+        if parts[-1] == "connectedAt" and current == 0:
+            return None
         return current
 
     @classmethod
@@ -735,7 +744,15 @@ class ParamResolver:
         if isinstance(dn, str) and dn.strip():
             # Prefer bare MAINMENU_* over leaking ``menu.MAINMENU_*`` when i18n missed.
             bare = cls._bare_menu_title_token(dn)
-            return bare if bare is not None else dn.strip()
+            if bare is not None:
+                return bare
+            dn_norm = dn.strip()
+            # Unresolved dotted i18n key paths (e.g. ``dashboard.navbar.settings``)
+            # fall through to route name / path so raw keys are not preferred over a
+            # better ``route.name`` fallback (#485). Literal titles with spaces or
+            # digit segments (``Pompa c.o.``, ``v1.2``) are kept as-is.
+            if not _DOTTED_I18N_KEY_RE.fullmatch(dn_norm):
+                return dn_norm
         route_name = getattr(route, "name", None)
         if isinstance(route_name, str) and route_name.strip():
             bare = cls._bare_menu_title_token(route_name)
@@ -785,6 +802,10 @@ class ParamResolver:
         - the ``menu`` namespace (a few ``MAINMENU_*`` / ``MENUSERWIS_*`` keys), and
         - dedicated string-default namespaces named like the token itself
           (``MAINMENU_MENU_TERMOSTATU`` → ``"Menu termostatów"``).
+
+        Also overlays foreign packs referenced by route ``displayName`` keys such as
+        ``dashboard.navbar.settings`` (time-zone setup leaf) so dotted lookups resolve
+        instead of leaking raw i18n keys into HA panel paths (#485).
         """
         routes_i18n = dict(await self._i18n.get_namespace("routes"))
         menu_i18n = await self._i18n.get_namespace("menu")
@@ -804,7 +825,57 @@ class ParamResolver:
             title = self._string_namespace_title(token, table)
             if title is not None:
                 routes_i18n[token] = title
+
+        for pack in sorted(self._collect_display_name_i18n_packs(menu)):
+            table = await self._i18n.get_namespace(pack)
+            if not (isinstance(table, Mapping) and table):
+                continue
+            existing_pack = routes_i18n.get(pack)
+            if isinstance(existing_pack, Mapping):
+                # Fill missing leaves from the foreign pack without overwriting
+                # titles already present under ``routes`` (#485 partial stub).
+                routes_i18n[pack] = self._deep_fill_missing_i18n(dict(existing_pack), table)
+            else:
+                routes_i18n[pack] = dict(table)
         return routes_i18n
+
+    @classmethod
+    def _deep_fill_missing_i18n(cls, base: dict[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
+        """Merge *overlay* into *base*, only filling absent / blank string leaves."""
+        out = dict(base)
+        for key, value in overlay.items():
+            existing = out.get(key)
+            if isinstance(value, Mapping):
+                nested_base = existing if isinstance(existing, dict) else {}
+                out[str(key)] = cls._deep_fill_missing_i18n(dict(nested_base), value)
+                continue
+            if isinstance(existing, str) and existing.strip():
+                continue
+            if isinstance(value, str) and value.strip():
+                out[str(key)] = value.strip()
+        return out
+
+    @classmethod
+    def _collect_display_name_i18n_packs(cls, menu: MenuResult) -> set[str]:
+        """Collect root i18n pack names from dotted route ``displayName`` keys.
+
+        Skips ``routes.*`` / ``menu.*`` (already handled) and route-name style
+        ``modules.*`` / ``companies.*`` trees that live under the routes namespace.
+        """
+        packs: set[str] = set()
+        skip_roots = frozenset({"routes", "menu", "modules", "companies"})
+        for route, _ancestors in cls._iter_routes_with_ancestors(menu.routes):
+            meta = getattr(route, "meta", None)
+            dn = getattr(meta, "display_name", None) if meta is not None else None
+            if not isinstance(dn, str):
+                continue
+            token = dn.strip()
+            if not token or "." not in token:
+                continue
+            root = token.split(".", 1)[0].strip()
+            if root and root.casefold() not in skip_roots:
+                packs.add(root)
+        return packs
 
     @classmethod
     def _route_allowed_in_module_item(cls, route: Any) -> bool:
@@ -2726,21 +2797,38 @@ class ParamResolver:
             return ""
         return (cls._clean_symbolic_tag(condition) or condition).strip()
 
-    @classmethod
+    def _status_rule_matches(self, rule: dict[str, Any], flat_values: Mapping[str, Any]) -> bool:
+        """Evaluate one status ``if``/``elseif`` rule, including ``storeGetter`` maps (#484).
+
+        Address-selector lists stay on :meth:`_eval_status_rule`. Mapping
+        ``value: {storeGetter: ...}`` (e.g. ``COMMAND_MODULE_RESTART`` ENABLED)
+        uses the runtime-context evaluator — the flat-values matcher cannot see
+        ``modulesMap.{devid}.connectedAt`` and would falsely take ``else: ![]``.
+        A bare address-selector object (not wrapped in a list) is normalised to a
+        one-element list for the same flat-values matcher.
+        """
+        value = rule.get("value")
+        if isinstance(value, Mapping):
+            if "storeGetter" in value:
+                return self._evaluator._eval_condition_any(rule)
+            return self._eval_status_rule({**rule, "value": [value]}, flat_values)
+        return self._eval_status_rule(rule, flat_values)
+
     def _status_flag_value(
-        cls,
+        self,
         *,
         status_paths: list[dict[str, Any]],
         flag_condition: str,
         flat_values: Mapping[str, Any],
     ) -> bool | None:
+        """Resolve one SPA status flag (``INVISIBLE`` / ``ENABLED`` / …) from path rows."""
         explicit_else: bool | None = None
-        wanted = cls._status_condition_name(flag_condition).casefold()
+        wanted = self._status_condition_name(flag_condition).casefold()
         if not wanted:
             return None
 
         for status in status_paths:
-            condition = cls._status_condition_name(status.get("condition")).casefold()
+            condition = self._status_condition_name(status.get("condition")).casefold()
             if condition != wanted:
                 continue
 
@@ -2759,16 +2847,16 @@ class ParamResolver:
             ifs = status.get("if")
             if ifs is None:
                 ifs = status.get("elseif")
-            then_val = cls._to_bool_value(status.get("then"))
+            then_val = self._to_bool_value(status.get("then"))
             if (
                 isinstance(ifs, list)
                 and then_val is not None
-                and all(isinstance(rule, dict) and cls._eval_status_rule(rule, flat_values) for rule in ifs)
+                and all(isinstance(rule, dict) and self._status_rule_matches(rule, flat_values) for rule in ifs)
             ):
                 return then_val
 
             if "else" in status:
-                explicit_else = cls._to_bool_value(status.get("else"))
+                explicit_else = self._to_bool_value(status.get("else"))
 
         return explicit_else
 
@@ -2799,6 +2887,11 @@ class ParamResolver:
         - when the ``DEVICE_AVAILABLE`` flag resolves falsey, the parameter is hidden;
         - when the ``ENABLED`` flag resolves falsey, the parameter is hidden
           (home ``deviceTile`` SWITCH cards such as heat-pump start);
+        - ``ENABLED`` / status ``if`` rules may use ``storeGetter`` maps
+          (e.g. ``modulesMap.{devid}.connectedAt`` on ``COMMAND_MODULE_RESTART``);
+          those need :meth:`set_runtime_context` the same way value resolve does.
+          StoreGetter reads of ``connectedAt`` map numeric ``0`` (``Module`` DTO
+          offline coerce) to ``None`` so SPA ``notEqualTo null`` matches offline;
         - when a flag path is present but its backing value is missing, the flag
           is treated as unknown and does not hide the parameter — unless the
           status rule list supplies an explicit ``else`` that resolves falsey

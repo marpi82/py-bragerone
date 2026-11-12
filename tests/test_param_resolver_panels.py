@@ -743,3 +743,98 @@ async def test_panel_title_i18n_overlays_mainmenu_string_namespaces() -> None:
         row.get("name") == "MAINMENU_MENU_BUFOR" and row.get("accepted") is True and row.get("reason") == "accepted"
         for row in diagnostics
     )
+
+
+async def test_panel_title_i18n_overlays_dashboard_display_name_pack() -> None:
+    """``dashboard.navbar.settings`` displayName resolves via the dashboard i18n pack (#485)."""
+    from typing import Any, cast
+    from unittest.mock import AsyncMock
+
+    from pybragerone.models.i18n import I18nResolver
+    from pybragerone.models.param import ParamStore
+    from pybragerone.models.param_resolver import AssetsProtocol
+
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "timezones",
+                    "name": "MAINMENU_STREFY_CZASOWE",
+                    "meta": {
+                        "displayName": "MAINMENU_STREFY_CZASOWE",
+                        "parameters": {"read": [{"parameter": "E(A.READ,'PARAM_1')"}]},
+                    },
+                    "children": [
+                        {
+                            "path": "setup",
+                            "name": "modules.menu.timeZones.setup",
+                            "meta": {
+                                "displayName": "dashboard.navbar.settings",
+                                "parameters": {"write": [{"parameter": "E(A.WRITE,'PARAM_219')"}]},
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    namespaces: dict[str, dict[str, Any]] = {
+        "routes": {"modules": {"menu": {"timeZones": {"setup": "Setup fallback"}}}},
+        "menu": {},
+        "MAINMENU_STREFY_CZASOWE": {"MAINMENU_STREFY_CZASOWE": "Strefy czasowe"},
+        "dashboard": {"navbar": {"settings": "Ustawienia"}},
+    }
+
+    class _StubI18n:
+        async def get_namespace(self, namespace: str, *, lang: str | None = None) -> dict[str, Any]:
+            _ = lang
+            return dict(namespaces.get(namespace, {}))
+
+    assets = AsyncMock()
+    resolver = ParamResolver(
+        store=ParamStore(),
+        assets=cast(AssetsProtocol, assets),
+        lang="pl",
+        i18n=cast(I18nResolver, _StubI18n()),
+    )
+    title_i18n = await resolver._panel_title_i18n(menu)
+    assert title_i18n["dashboard"]["navbar"]["settings"] == "Ustawienia"
+    groups = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True, routes_i18n=title_i18n)
+    assert "Strefy czasowe/Ustawienia" in groups
+    assert groups["Strefy czasowe/Ustawienia"] == ["PARAM_219"]
+
+    # Existing leaf titles win; missing leaves are filled from the foreign pack.
+    namespaces["routes"]["dashboard"] = {"navbar": {"menu": "Keep menu"}}
+    namespaces["dashboard"] = {"navbar": {"menu": "Should not win", "settings": "Ustawienia filled"}}
+    namespaces["empty_pack"] = {}
+    menu_with_empty = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "setup",
+                    "name": "modules.menu.timeZones.setup",
+                    "meta": {
+                        "displayName": "dashboard.navbar.settings",
+                        "parameters": {"write": [{"parameter": "E(A.WRITE,'PARAM_219')"}]},
+                    },
+                    "children": [
+                        {
+                            "path": "x",
+                            "name": "modules.menu.x",
+                            "meta": {
+                                "displayName": "empty_pack.unused",
+                                "parameters": {"read": [{"parameter": "E(A.READ,'PARAM_1')"}]},
+                            },
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+    title_i18n_keep = await resolver._panel_title_i18n(menu_with_empty)
+    assert title_i18n_keep["dashboard"]["navbar"]["menu"] == "Keep menu"
+    assert title_i18n_keep["dashboard"]["navbar"]["settings"] == "Ustawienia filled"
+    assert "empty_pack" not in title_i18n_keep
+    assert ParamResolver._collect_display_name_i18n_packs(menu_with_empty) == {"dashboard", "empty_pack"}
+    groups_filled = ParamResolver.build_panel_groups_from_menu(menu_with_empty, all_panels=True, routes_i18n=title_i18n_keep)
+    assert groups_filled.get("Ustawienia filled") == ["PARAM_219"]
