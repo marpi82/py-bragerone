@@ -349,6 +349,36 @@ async def test_visibility_diagnostics_cover_ha_hide_reasons() -> None:
     assert visible is False
     assert reason == "hidden:enabled"
 
+    # Bare address-selector object (not a list) still evaluates the bit path.
+    object_selector_desc = {
+        "mapping": {
+            "paths": {
+                "status": [
+                    {
+                        "condition": "ENABLED",
+                        "if": [
+                            {
+                                "expected": 0,
+                                "operation": "equalTo",
+                                "value": {"group": "P31", "number": 0, "use": "s", "bit": 3},
+                            }
+                        ],
+                        "then": "!![]",
+                    },
+                    {"condition": "ENABLED", "else": "![]"},
+                ]
+            }
+        }
+    }
+    store.upsert("P31.s0", 0)  # bit 3 clear → equalTo 0 → ENABLED true
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=object_selector_desc, resolved=None)
+    assert visible is True
+    assert reason == "visible:default"
+    store.upsert("P31.s0", 1 << 3)  # bit 3 set → if fails → else hidden
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=object_selector_desc, resolved=None)
+    assert visible is False
+    assert reason == "hidden:enabled"
+
     # COMMAND_MODULE_RESTART: ENABLED via storeGetter modulesMap.{devid}.connectedAt (#484).
     restart_desc = {
         "mapping": {
@@ -381,11 +411,20 @@ async def test_visibility_diagnostics_cover_ha_hide_reasons() -> None:
     visible, reason = resolver.parameter_visibility_diagnostics(desc=restart_desc, resolved=None)
     assert visible is True
     assert reason == "visible:default"
-    # SPA rule is ``notEqualTo null`` (same as JS ``0 != null``) — numeric 0 stays ENABLED.
+    # Module DTO coerces SPA null → 0; storeGetter maps 0 back to None for SPA parity (#484).
     resolver.set_runtime_context({"devid": "FTTCTBSLCE", "modulesMap": {"FTTCTBSLCE": {"connectedAt": 0}}})
     visible, reason = resolver.parameter_visibility_diagnostics(desc=restart_desc, resolved=None)
-    assert visible is True
-    assert reason == "visible:default"
+    assert visible is False
+    assert reason == "hidden:enabled"
+    # Missing devid / modulesMap entry → unresolved storeGetter → hidden:enabled.
+    resolver.set_runtime_context({"modulesMap": {"FTTCTBSLCE": {"connectedAt": 1794459623}}})
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=restart_desc, resolved=None)
+    assert visible is False
+    assert reason == "hidden:enabled"
+    resolver.set_runtime_context({"devid": "FTTCTBSLCE", "modulesMap": {}})
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=restart_desc, resolved=None)
+    assert visible is False
+    assert reason == "hidden:enabled"
     resolver.set_runtime_context(None)
 
     # ``elseif`` status gates (same shape as raw.any branches).

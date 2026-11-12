@@ -1219,6 +1219,29 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
         )
         == "UNKNOWN_TOKEN"
     )
+    # Literal titles with spaces / digit segments are not treated as i18n keys (#485).
+    assert (
+        ParamResolver._route_title(
+            SimpleNamespace(
+                name="modules.menu.pump",
+                path="pump",
+                meta=SimpleNamespace(display_name="Pompa c.o."),
+            ),
+            routes_i18n={"modules": {"menu": {}}},
+        )
+        == "Pompa c.o."
+    )
+    assert (
+        ParamResolver._route_title(
+            SimpleNamespace(
+                name="modules.menu.firmware",
+                path="firmware",
+                meta=SimpleNamespace(display_name="v1.2"),
+            ),
+            routes_i18n={"modules": {"menu": {}}},
+        )
+        == "v1.2"
+    )
     assert (
         ParamResolver._route_title(
             SimpleNamespace(name="modules.menu.missing", path="x", meta=None),

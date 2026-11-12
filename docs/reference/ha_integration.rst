@@ -268,13 +268,15 @@ parameters:
   (``INVISIBLE``, ``DEVICE_AVAILABLE``, ``ENABLED``). ``ENABLED`` / status ``if``
   rules may use ``storeGetter`` maps (e.g. ``modulesMap.{devid}.connectedAt`` on
   ``COMMAND_MODULE_RESTART``); call ``set_runtime_context`` the same way as for
-  value resolve. Composite SPA cards with ``value2+`` are not force-hidden;
+  value resolve. StoreGetter reads of ``connectedAt`` map numeric ``0`` to
+  ``None`` so ``Module`` DTO offline coerce matches SPA ``null`` (offline →
+  ``hidden:enabled``). Composite SPA cards with ``value2+`` are not force-hidden;
   ``describe_symbol`` ``value_slots`` lists companion channels only when the card
   unit is a measurement (primary ``u`` path / units-table ``text``). Enum-only
   cards (e.g. ``HEAT_PUMP_STATE``) keep the primary slot alone. Primary ``value``
   keeps a stable ``unique_id``. Panel titles overlay foreign i18n packs referenced
-  by dotted ``displayName`` keys (``dashboard.*``) so unresolved keys do not leak
-  into hierarchical paths.
+  by dotted ``displayName`` keys (``dashboard.*``); unresolved i18n-key-shaped
+  titles fall through to ``route.name`` / path.
 
 Static menu shells (e.g. ``MAINMENU_STREFY_CZASOWE`` / path ``timezones``) load
 parameter tokens from ``deviceMenu/static/<path>.ts`` chunks referenced in

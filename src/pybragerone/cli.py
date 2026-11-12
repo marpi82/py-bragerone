@@ -1095,7 +1095,8 @@ async def _run_tui(
                     "devid": devid_text,
                     "modulesMap": {
                         devid_text: {
-                            "connectedAt": selected_module.connectedAt,
+                            # SPA null offline; Module coerces null→0 (#484).
+                            "connectedAt": selected_module.connectedAt or None,
                         }
                     },
                 }

@@ -44,6 +44,9 @@ _UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
 # Bare menu-title i18n namespaces (``MAINMENU_*``, ``MENUSERWIS_*``, ``MENU_*``, …).
 # Require the known prefixes so abbreviations like ``DHW`` do not trigger asset fetches.
 _MENU_TITLE_TOKEN_RE = re.compile(r"^(?:MAINMENU|MENUSERWIS|MENUPALNIKA|MENU)_[A-Z0-9_]+$")
+# Unresolved SPA i18n key paths (``dashboard.navbar.settings``). Literals with spaces
+# or digit-only segments (``Pompa c.o.``, ``v1.2``) must not match (#485).
+_DOTTED_I18N_KEY_RE = re.compile(r"^[A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)+$")
 # ParamStore flat keys referenced by SPA ``displayDropdown`` (e.g. ``P6.v219``).
 _ROUTE_DROPDOWN_VALUE_KEY_RE = re.compile(r"^P\d+\.[a-z]\d+$", re.IGNORECASE)
 
@@ -300,6 +303,12 @@ class ComputedValueEvaluator:
 
             return None
 
+        # SPA ``modulesMap.*.connectedAt`` is ``null`` when offline. ``Module`` DTOs
+        # coerce upstream null → ``0`` for typed connectivity; treat numeric ``0`` on
+        # ``connectedAt`` paths as ``None`` so ``notEqualTo null`` ENABLED guards match
+        # the web UI (#484).
+        if parts[-1] == "connectedAt" and current == 0:
+            return None
         return current
 
     @classmethod
@@ -737,10 +746,13 @@ class ParamResolver:
             bare = cls._bare_menu_title_token(dn)
             if bare is not None:
                 return bare
-            # Unresolved dotted i18n keys (e.g. ``dashboard.navbar.settings``) must not
-            # leak into HA panel paths — fall through to route name / path (#485).
-            if "." not in dn.strip():
-                return dn.strip()
+            dn_norm = dn.strip()
+            # Unresolved dotted i18n key paths (e.g. ``dashboard.navbar.settings``)
+            # fall through to route name / path so raw keys are not preferred over a
+            # better ``route.name`` fallback (#485). Literal titles with spaces or
+            # digit segments (``Pompa c.o.``, ``v1.2``) are kept as-is.
+            if not _DOTTED_I18N_KEY_RE.fullmatch(dn_norm):
+                return dn_norm
         route_name = getattr(route, "name", None)
         if isinstance(route_name, str) and route_name.strip():
             bare = cls._bare_menu_title_token(route_name)
@@ -2792,10 +2804,14 @@ class ParamResolver:
         ``value: {storeGetter: ...}`` (e.g. ``COMMAND_MODULE_RESTART`` ENABLED)
         uses the runtime-context evaluator — the flat-values matcher cannot see
         ``modulesMap.{devid}.connectedAt`` and would falsely take ``else: ![]``.
+        A bare address-selector object (not wrapped in a list) is normalised to a
+        one-element list for the same flat-values matcher.
         """
         value = rule.get("value")
         if isinstance(value, Mapping):
-            return self._evaluator._eval_condition_any(rule)
+            if "storeGetter" in value:
+                return self._evaluator._eval_condition_any(rule)
+            return self._eval_status_rule({**rule, "value": [value]}, flat_values)
         return self._eval_status_rule(rule, flat_values)
 
     def _status_flag_value(
@@ -2873,7 +2889,9 @@ class ParamResolver:
           (home ``deviceTile`` SWITCH cards such as heat-pump start);
         - ``ENABLED`` / status ``if`` rules may use ``storeGetter`` maps
           (e.g. ``modulesMap.{devid}.connectedAt`` on ``COMMAND_MODULE_RESTART``);
-          those need :meth:`set_runtime_context` the same way value resolve does;
+          those need :meth:`set_runtime_context` the same way value resolve does.
+          StoreGetter reads of ``connectedAt`` map numeric ``0`` (``Module`` DTO
+          offline coerce) to ``None`` so SPA ``notEqualTo null`` matches offline;
         - when a flag path is present but its backing value is missing, the flag
           is treated as unknown and does not hide the parameter — unless the
           status rule list supplies an explicit ``else`` that resolves falsey
