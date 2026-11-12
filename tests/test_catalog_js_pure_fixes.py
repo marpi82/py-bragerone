@@ -170,6 +170,9 @@ def test_typeof_and_bitwise_ops_consume_spa_arrows() -> None:
     assert _Parser("5|2").parse_value() == 7
     assert _Parser("5^1").parse_value() == 4
     assert _Parser("8>>>1").parse_value() == 4
+    assert _Parser("2*3").parse_value() == 6
+    assert _Parser("8/2").parse_value() == 4.0
+    assert _Parser("7%4").parse_value() == 3
     # Non-int operands keep source-like leftovers (still advance the cursor).
     assert _Parser("'a'>>1").parse_value() == "a>>1"
     assert _Parser("'a'<<1").parse_value() == "a<<1"
@@ -180,6 +183,13 @@ def test_typeof_and_bitwise_ops_consume_spa_arrows() -> None:
     # Logical ops must not be eaten by bitwise parsers.
     assert _Parser("0||7").parse_value() == 7
     assert _Parser("0&&7").parse_value() == 0
+    # JavaScript equality binds tighter than bitwise; bool equality coerces like ToInt32.
+    assert _Parser("1===1&0").parse_value() == 0
+    assert _Parser("1===0|1").parse_value() == 1
+    assert _Parser("1===1^0").parse_value() == 1
+    assert _Parser("true<<1").parse_value() == 2
+    assert _Parser("2.0>>1").parse_value() == 1
+    assert _Parser("1.5&1").parse_value() == "1.5&1"
 
 
 def test_factory_call_valuecallback_typeof_does_not_clobber_number() -> None:
