@@ -36,6 +36,32 @@ def test_public_token_from_helper_args_shapes() -> None:
     assert _public_token_from_helper_args("_0xabc", []) is None
     assert _public_token_from_helper_args("_0xabc", ["NOPE", "PARAM_1"]) is None
     assert _public_token_from_helper_args("_0xabc", ["WRITE", 12]) is None
+    # Two-arg helpers must not collapse DISPLAY_* (oracle keeps call text).
+    assert _public_token_from_helper_args("_0xabc", ["WRITE", "DISPLAY_PARAMETER_LEVEL_1"]) is None
+
+
+def test_bang_leftover_and_does_not_invent_value_path() -> None:
+    """``![] && [path]`` stays unevaluable leftover (matches tree-sitter oracle)."""
+    value = _Parser("![] && [{group:'P6', number:1, use:'v'}]").parse_value()
+    assert isinstance(value, str)
+    assert value.startswith("![]")
+    parser = _Parser("")
+    assert parser._is_unevaluable_leftover(0) is False
+    assert parser._is_unevaluable_leftover("   ") is False
+    assert parser._is_unevaluable_leftover("!1") is True
+    assert _Parser("!1 || fallback").parse_value() == "!1||fallback"
+
+
+def test_divide_by_zero_keeps_source_text() -> None:
+    """``1/0`` / ``1%0`` must not raise; keep source-like leftover."""
+    assert _Parser("1/0").parse_value() == "1/0"
+    assert _Parser("1%0").parse_value() == "1%0"
+    assert extract_root_export(b"export default {a: 1/0}") == {"a": "1/0"}
+
+
+def test_comma_operator_in_paren_keeps_last_expr_for_helper_call() -> None:
+    """``(0, _0xabc)('PARAM_45')`` collapses to PARAM_45 like SPA IIFE helpers."""
+    assert _Parser("(0,_0xabc)('PARAM_45')").parse_value() == "PARAM_45"
 
 
 def test_array_map_method_success_failure_and_non_callable() -> None:

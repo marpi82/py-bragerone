@@ -36,8 +36,9 @@ Trust boundaries
    untrusted input: the primary REST DTOs (auth, objects, modules) are
    validated with pydantic models, while some snapshot/prime endpoints
    deliberately return raw data for flexibility; live JS assets are always
-   parsed defensively (tree-sitter, no code execution, soft-fail on
-   unexpected shapes).
+   parsed defensively with a pure-Python JS value extractor (optional
+   ``[parsers]`` tree-sitter oracle in tests only; soft-fail on unexpected
+   shapes; no ``eval``/``exec`` of asset source).
 2. **Library ↔ host application** (e.g. Home Assistant integration) — the
    public API (``BragerOneApiClient``, ``BragerOneGateway``) is the only
    intended surface; internal modules are not re-exported.
@@ -81,9 +82,11 @@ Countering common implementation weaknesses
 --------------------------------------------
 
 - **Injection**: no ``eval``/``exec`` and no shell invocation on untrusted
-  runtime data; JavaScript assets are parsed with tree-sitter, never
-  executed. (One deliberate exception: the Sphinx build ``exec``es a
-  trusted, repo-generated version file in ``docs/conf.py``.)
+  runtime data; JavaScript assets are interpreted by a bounded pure-Python
+  value parser (object/array/literal/factory subset), never passed to
+  ``eval``. Optional ``tree-sitter`` remains a test/CI oracle via the
+  ``[parsers]`` extra. (One deliberate exception: the Sphinx build
+  ``exec``es a trusted, repo-generated version file in ``docs/conf.py``.)
 - **Secrets exposure**: in-repo controls: gitleaks runs in CI and
   pre-commit, and nothing sensitive is stored in the repository. The CLI
   takes account credentials from ``--email``/``--password`` or the
@@ -97,11 +100,10 @@ Countering common implementation weaknesses
   secret scanning with push protection enabled.
 - **Broken crypto**: the library implements no cryptography itself; transport
   security is delegated to Python's TLS stack (TLS 1.2+).
-- **Memory safety**: the library itself is pure Python, but it relies on the
-  native ``tree-sitter``/``tree-sitter-javascript`` extensions for asset
-  parsing; that native boundary handles untrusted JS bytes and is covered
-  by the parser-resilience test suite (malformed-shape fixtures) and by the
-  catalog fuzz harness (``fuzz/fuzz_catalog.py``).
+- **Memory safety**: production catalog parsing is pure Python. The optional
+  ``[parsers]`` extra may load native ``tree-sitter``/``tree-sitter-javascript``
+  for oracle/parity tests; resilience fixtures and ``fuzz/fuzz_catalog.py``
+  cover malformed shapes on both paths.
 - **Vulnerable dependencies**: dependencies are declared in
   ``pyproject.toml`` and pinned in ``uv.lock``; Dependabot and Renovate keep
   them current; pip-audit scans them in CI; security exceptions (if any) are
