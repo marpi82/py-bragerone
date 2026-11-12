@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.13.2, <3.15"
 
 [[package]]
@@ -1740,8 +1740,6 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "python-socketio", extra = ["asyncio-client"] },
-    { name = "tree-sitter" },
-    { name = "tree-sitter-javascript" },
     { name = "typing-extensions" },
 ]
 
@@ -1753,6 +1751,10 @@ cli = [
 ]
 keyring = [
     { name = "keyring" },
+]
+parsers = [
+    { name = "tree-sitter" },
+    { name = "tree-sitter-javascript" },
 ]
 
 [package.dev-dependencies]
@@ -1787,6 +1789,8 @@ test = [
     { name = "pytest-codspeed" },
     { name = "pytest-cov" },
     { name = "pytest-httpx" },
+    { name = "tree-sitter" },
+    { name = "tree-sitter-javascript" },
 ]
 
 [package.metadata]
@@ -1797,12 +1801,12 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.10.4,<3.0.0" },
     { name = "python-socketio", extras = ["asyncio-client"], specifier = ">=5.14.0,<6.0.0" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=12.6.0" },
-    { name = "tree-sitter", specifier = ">=0.21.3" },
-    { name = "tree-sitter-javascript", specifier = ">=0.21.1" },
+    { name = "tree-sitter", marker = "extra == 'parsers'", specifier = ">=0.21.3" },
+    { name = "tree-sitter-javascript", marker = "extra == 'parsers'", specifier = ">=0.21.1" },
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.16.0" },
     { name = "typing-extensions", specifier = ">=4.15.0,<5.0.0" },
 ]
-provides-extras = ["cli", "keyring"]
+provides-extras = ["cli", "keyring", "parsers"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1834,6 +1838,8 @@ test = [
     { name = "pytest-codspeed", specifier = ">=5.0.3,<5.1.0" },
     { name = "pytest-cov", specifier = ">=7.0.0,<8.0.0" },
     { name = "pytest-httpx", specifier = ">=0.35.0,<0.37.0" },
+    { name = "tree-sitter", specifier = ">=0.21.3" },
+    { name = "tree-sitter-javascript", specifier = ">=0.21.1" },
 ]
 
 [[package]]

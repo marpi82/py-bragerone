@@ -29,13 +29,13 @@ def _catalog() -> LiveAssetsCatalog:
 def _normalize_for_parity(value: Any) -> Any:
     """Drop callables / normalize arrows so pure vs tree-sitter can compare."""
     if callable(value) and not isinstance(value, type):
-        return "<callable>"
+        return "<factory>"
     if isinstance(value, Mapping):
         return {str(k): _normalize_for_parity(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_normalize_for_parity(v) for v in value]
     if isinstance(value, str) and "=>" in value:
-        return "<arrow>"
+        return "<factory>"
     return value
 
 
@@ -137,6 +137,22 @@ def test_language_config_pure_matches_treesitter_fixtures(js: bytes) -> None:
     assert isinstance(treesitter, TranslationConfig)
     assert pure.default_translation == treesitter.default_translation
     _assert_parity(pure.translations, treesitter.translations, label="language")
+
+
+_PARAMS_ASSETS = sorted((_ASSETS / "params").glob("*.js")) if (_ASSETS / "params").is_dir() else []
+
+
+@pytest.mark.skipif(not _PARAMS_ASSETS, reason="no captured param assets")
+@pytest.mark.parametrize("path", _PARAMS_ASSETS, ids=lambda p: p.name)
+def test_param_root_object_pure_matches_treesitter_captured(path: Path) -> None:
+    """Captured PARAM/STATUS chunks: pure root object ≡ tree-sitter (callables normalized)."""
+    catalog = _catalog()
+    code = path.read_bytes()
+    _assert_parity(
+        catalog._extract_root_object_from_js(code),
+        catalog._extract_root_object_from_js_treesitter(code),
+        label=path.name,
+    )
 
 
 @pytest.mark.skipif(not _I18N_ASSETS, reason="no captured i18n assets")

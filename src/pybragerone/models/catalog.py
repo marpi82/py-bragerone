@@ -19,11 +19,10 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-import tree_sitter_javascript
-from tree_sitter import Language, Node, Parser, Tree
-
 from .api.modules import DeviceMenuRef
 from .catalog_js_pure import (
+    extract_root_export,
+    extract_root_object,
     find_language_config_object,
     iter_top_level_object_assignments,
     parse_i18n_module,
@@ -33,10 +32,25 @@ from .menu import MenuResult, js_public_member_name
 from .menu_manager import MenuManager, RawMenuData
 
 if TYPE_CHECKING:
+    from tree_sitter import Language, Node, Tree
+
     from ..api import BragerOneApiClient
 
-JS_LANGUAGE = Language(tree_sitter_javascript.language())
 LOG = logging.getLogger(__name__)
+_JS_LANGUAGE: Language | None = None
+
+
+def _js_language() -> Language:
+    """Lazy-load the tree-sitter JavaScript grammar (optional ``[parsers]`` extra)."""
+    global _JS_LANGUAGE
+    if _JS_LANGUAGE is None:
+        import tree_sitter_javascript
+        from tree_sitter import Language as _Language
+
+        _JS_LANGUAGE = _Language(tree_sitter_javascript.language())
+    return _JS_LANGUAGE
+
+
 INDEX_ASSET_RE = re.compile(r"/assets/(index-[A-Za-z0-9_-]+\.js)")
 _HELPER_ACTIONS = frozenset({"READ", "WRITE", "STATUS"})
 # Only ``PARAM_*`` / ``STATUS_*`` are addressable tokens. Any other quoted upper-case
@@ -237,11 +251,12 @@ class _TS:
     def __init__(self) -> None:
         """Initialize the parser with JavaScript language support.
 
-        Sets up a tree-sitter Parser instance configured to parse JavaScript
-        and TypeScript code using the tree-sitter-javascript grammar.
+        Requires the optional ``[parsers]`` extra (``tree-sitter`` packages).
         """
-        self.parser = Parser()
-        self.parser.language = JS_LANGUAGE
+        from tree_sitter import Parser as _Parser
+
+        self.parser = _Parser()
+        self.parser.language = _js_language()
 
     def parse(self, code: bytes) -> Tree:
         """Parse JavaScript code into an Abstract Syntax Tree (AST).
@@ -251,12 +266,6 @@ class _TS:
 
         Returns:
             A tree-sitter Tree object representing the parsed AST.
-
-        Example:
-            >>> parser = _TS()
-            >>> tree = parser.parse(b'const x = 42;')
-            >>> print(tree.root_node.type)
-            program
         """
         return self.parser.parse(code)
 
@@ -1301,7 +1310,7 @@ class LiveAssetsCatalog:
         self._api = api
         self._timeout = request_timeout
         self._asset_sema = asyncio.Semaphore(max(1, concurrency))
-        self._ts = _TS()
+        self._ts: _TS | None = None
         self._idx = AssetIndex()
         self._log = logger or logging.getLogger(__name__)
         self._last_index_url: str | None = None
@@ -1355,6 +1364,12 @@ class LiveAssetsCatalog:
     async def __aexit__(self, *exc: Any) -> None:
         """Exit the async context manager."""
         pass
+
+    def _ensure_ts(self) -> _TS:
+        """Return a tree-sitter parser, loading the optional ``[parsers]`` extra on demand."""
+        if self._ts is None:
+            self._ts = _TS()
+        return self._ts
 
     # ---------- INDEX ----------
 
@@ -1571,25 +1586,20 @@ class LiveAssetsCatalog:
         ast_limit = min(1000000, len(code))
         limited_code = code[:ast_limit]
 
-        # 3) Inline param-map candidates (AST on limited data)
+        # 3) Inline param-map candidates (optional tree-sitter oracle; pure path uses token maps)
         inline_candidates: list[tuple[int, int]] = []
 
         if len(limited_code) > 0:
             try:
-                # Reuse tree if available, or parse again for param candidates
-                if "tree" not in locals():
-                    tree = self._ts.parse(limited_code)
-
+                tree = self._ensure_ts().parse(limited_code)
                 objects_checked = 0
-                max_param_objects = 10  # More objects for param search
+                max_param_objects = 10
 
                 for n in _walk(tree.root_node):
                     if n.type == "object" and objects_checked < max_param_objects:
                         objects_checked += 1
-
                         approx_len = n.end_byte - n.start_byte
-                        if approx_len > 200:  # heuristic: larger objects are more likely to be maps
-                            # quick "shape" of param-map: look for keywords inside
+                        if approx_len > 200:
                             obj_start = n.start_byte
                             obj_end = min(n.end_byte, len(limited_code))
                             snippet = limited_code[obj_start:obj_end]
@@ -1598,7 +1608,6 @@ class LiveAssetsCatalog:
                                 for key in (b"group", b"pool", b"use", b"value", b"unit", b"status", b"componentType")
                             ):
                                 inline_candidates.append((obj_start, obj_end))
-
             except Exception as param_e:
                 self._log.debug("Param candidates AST parsing failed: %s", param_e)
 
@@ -2170,17 +2179,14 @@ class LiveAssetsCatalog:
         return self._menu_manager.get_debug_info(device_menu)
 
     def _parse_menu_export(self, code: bytes) -> tuple[list[dict[str, Any]], int]:
-        """Parse a menu Vite/REST export into ``(routes, priority)``.
+        """Parse a menu Vite/REST export into ``(routes, priority)`` (pure-Python path).
 
         Extended chunks often wrap routes as ``{priority, deviceMenu: [...]}``;
         priority defaults to ``0`` when absent or non-int (#438).
         """
-        tree = self._ts.parse(code)
-        bindings = _collect_bindings(code, tree.root_node)
-        root = _find_export_root(code, tree.root_node)
-        if root is None:
+        export_obj = extract_root_export(code)
+        if export_obj is None:
             return [], 0
-        export_obj = _node_to_python(code, root, bindings)
 
         priority = 0
         if isinstance(export_obj, Mapping):
@@ -2608,65 +2614,36 @@ class LiveAssetsCatalog:
             return parsed
 
     def _parse_index_token_raw_maps(self, code: bytes) -> dict[str, dict[str, Any]]:
-        try:
-            tree = self._ts.parse(code)
-            bindings = _collect_bindings(code, tree.root_node)
-        except Exception:
-            return {}
-
+        """Collect PARAM_*/STATUS_* object maps embedded in index JS (pure path)."""
         out: dict[str, dict[str, Any]] = {}
         token_name_re = re.compile(r"^[A-Z][A-Z0-9_]+$")
 
-        for node in _walk(tree.root_node):
-            if node.type != "pair":
-                continue
-            key_node = node.child_by_field_name("key")
-            value_node = node.child_by_field_name("value")
-            if key_node is None or value_node is None:
-                continue
+        def _ingest(candidate: Mapping[str, Any]) -> None:
+            for key_text, value in candidate.items():
+                if not isinstance(key_text, str) or not token_name_re.match(key_text):
+                    continue
+                if isinstance(value, Mapping):
+                    out[key_text] = dict(value)
 
-            raw_key = _node_text(code, key_node)
-            key_text = _string_value(raw_key) if _is_string(key_node) else raw_key
-            if not token_name_re.match(key_text):
-                continue
-
-            value = _node_to_python(code, value_node, bindings)
-            if isinstance(value, Mapping):
-                out[key_text] = dict(value)
-
+        try:
+            for candidate in iter_top_level_object_assignments(code):
+                _ingest(candidate)
+            root = extract_root_object(code)
+            if isinstance(root, Mapping):
+                _ingest(root)
+        except Exception:
+            return out
         return out
 
     def _parse_param_map_from_index_token(self, code: bytes, key: str, origin: str) -> ParamMap | None:
-        """Parse a single token mapping directly from index AST by key lookup.
-
-        This handles bundles where token definitions are nested in large objects and
-        may use shorthand factory calls (e.g. ``STATUS_P5_10: eE({...})``).
-        """
+        """Parse a single token mapping from index JS by key lookup (pure path)."""
         try:
-            tree = self._ts.parse(code)
-            bindings = _collect_bindings(code, tree.root_node)
+            maps = self._parse_index_token_raw_maps(code)
         except Exception:
             return None
-
-        for node in _walk(tree.root_node):
-            if node.type != "pair":
-                continue
-            key_node = node.child_by_field_name("key")
-            value_node = node.child_by_field_name("value")
-            if key_node is None or value_node is None:
-                continue
-
-            raw_key = _node_text(code, key_node)
-            key_text = _string_value(raw_key) if _is_string(key_node) else raw_key
-            if key_text != key:
-                continue
-
-            resolved_value = _node_to_python(code, value_node, bindings)
-            if isinstance(resolved_value, Mapping):
-                parsed = self._build_param_map_from_obj(dict(resolved_value), key, origin=origin)
-                if parsed is not None:
-                    return parsed
-
+        resolved_value = maps.get(key)
+        if isinstance(resolved_value, Mapping):
+            return self._build_param_map_from_obj(dict(resolved_value), key, origin=origin)
         return None
 
     def _build_param_map_from_obj(self, obj: dict[str, Any], key: str, origin: str) -> ParamMap | None:
@@ -2882,11 +2859,15 @@ class LiveAssetsCatalog:
         return self._build_param_map_from_obj(obj, key, origin)
 
     def _extract_root_object_from_js(self, code: bytes) -> dict[str, Any] | None:
-        """Extract root exported object from JavaScript bytes.
+        """Extract root exported object from JavaScript bytes (pure-Python path).
 
         Returns a plain Python dictionary when extraction succeeds, otherwise ``None``.
         """
-        tree = self._ts.parse(code)
+        return extract_root_object(code)
+
+    def _extract_root_object_from_js_treesitter(self, code: bytes) -> dict[str, Any] | None:
+        """Tree-sitter oracle for ParamMap / root-object parity tests."""
+        tree = self._ensure_ts().parse(code)
         bindings = _collect_bindings(code, tree.root_node)
         root = _find_export_root(code, tree.root_node)
         if root is None:
@@ -3142,7 +3123,7 @@ class LiveAssetsCatalog:
     def _parse_units_descriptor_table_from_index_treesitter(self, code: bytes) -> dict[str, dict[str, Any]]:
         """Tree-sitter oracle for units-table parity tests."""
         try:
-            tree = self._ts.parse(code)
+            tree = self._ensure_ts().parse(code)
             bindings = _collect_bindings(code, tree.root_node)
         except Exception as exc:
             self._log.debug("Failed to parse units descriptor table from index: %s", exc)
@@ -3335,7 +3316,7 @@ class LiveAssetsCatalog:
     def _parse_i18n_from_js_treesitter(self, code: bytes) -> dict[str, Any]:
         """Tree-sitter oracle for i18n parity tests."""
         try:
-            tree = self._ts.parse(code)
+            tree = self._ensure_ts().parse(code)
             root = tree.root_node
             code_text = code.decode("utf-8", errors="replace")
 
@@ -3456,7 +3437,7 @@ class LiveAssetsCatalog:
 
     def _parse_language_config_from_js_treesitter(self, js_bytes: bytes) -> TranslationConfig:
         """Tree-sitter oracle for language-config parity tests."""
-        tree = self._ts.parse(js_bytes)
+        tree = self._ensure_ts().parse(js_bytes)
         root = tree.root_node
 
         def is_language_config_object(obj_node: Node) -> bool:
