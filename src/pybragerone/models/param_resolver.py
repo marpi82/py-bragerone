@@ -2755,7 +2755,10 @@ class ParamResolver:
                     return bool((raw >> bit) & 1)
                 return None
 
+            # Match ``raw.any`` branch keys: ``if`` and ``elseif`` are both gates.
             ifs = status.get("if")
+            if ifs is None:
+                ifs = status.get("elseif")
             then_val = cls._to_bool_value(status.get("then"))
             if (
                 isinstance(ifs, list)

@@ -24,7 +24,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   hidden (``hidden:enabled``), including ``deviceTile`` SWITCH cards whose
   ``ENABLED`` rule lists fall through to ``else: ![]`` when the backing
   register is absent; ``_to_bool_value`` now accepts minified ``!![]`` /
-  ``![]`` spellings used by those rules (#482).
+  ``![]`` (shared by ``INVISIBLE`` / ``DEVICE_AVAILABLE`` / ``ENABLED``);
+  status flag ``elseif`` gates are evaluated like ``if`` (#482).
 - DATE_TIME: zero-pad JSON numbers *and* short digit strings that drop leading
   year zeros; map ``yy`` with Luxon's ``twoDigitCutoffYear`` (60) instead of
   Python ``%y``; treat wall-clock ``2000-01-01 12:00`` as unset in every

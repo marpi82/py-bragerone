@@ -349,6 +349,72 @@ async def test_visibility_diagnostics_cover_ha_hide_reasons() -> None:
     assert visible is False
     assert reason == "hidden:enabled"
 
+    # ``elseif`` status gates (same shape as raw.any branches).
+    elseif_desc = {
+        "mapping": {
+            "paths": {
+                "status": [
+                    {
+                        "condition": "ENABLED",
+                        "if": [
+                            {
+                                "expected": 9,
+                                "operation": "equalTo",
+                                "value": [{"group": "P31", "number": 0, "use": "s", "bit": 3}],
+                            }
+                        ],
+                        "then": "!![]",
+                    },
+                    {
+                        "condition": "ENABLED",
+                        "elseif": [
+                            {
+                                "expected": 0,
+                                "operation": "equalTo",
+                                "value": [{"group": "P31", "number": 0, "use": "s", "bit": 3}],
+                            }
+                        ],
+                        "then": "!![]",
+                    },
+                    {"condition": "ENABLED", "else": "![]"},
+                ]
+            }
+        }
+    }
+    store.upsert("P31.s0", 0)
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=elseif_desc, resolved=None)
+    assert visible is True
+    assert reason == "visible:default"
+
+    # Shared !![] / ![] parsing also applies to DEVICE_AVAILABLE.
+    device_desc = {
+        "mapping": {
+            "paths": {
+                "status": [
+                    {
+                        "condition": "DEVICE_AVAILABLE",
+                        "if": [
+                            {
+                                "expected": 1,
+                                "operation": "equalTo",
+                                "value": [{"group": "P1", "number": 0, "use": "v"}],
+                            }
+                        ],
+                        "then": "!![]",
+                    },
+                    {"condition": "DEVICE_AVAILABLE", "else": "![]"},
+                ]
+            }
+        }
+    }
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=device_desc, resolved=None)
+    assert visible is False
+    assert reason == "hidden:device-unavailable"
+    store.upsert("P1.v0", 1)
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=device_desc, resolved=None)
+    assert visible is True
+    assert reason == "visible:default"
+
 
 async def test_describe_symbol_omits_enum_only_composite_companions() -> None:
     """HEAT_PUMP_STATE cards keep primary status only — timer value2/value3 stay out."""
