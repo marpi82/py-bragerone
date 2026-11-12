@@ -45,6 +45,102 @@ def collapse_public_token(expr: Any) -> Any:
     return expr
 
 
+def _body_builds_object_factory(body_src: str) -> bool:
+    """Return True when an arrow body looks like a ParamMap object factory."""
+    stripped = body_src.strip()
+    if stripped.startswith("(") and "{" in stripped:
+        return True
+    if stripped.startswith("{") and ("return" in stripped or stripped.startswith("{{") is False):
+        # Statement block with object assignment/return, or direct object.
+        if "return" in stripped or re.search(r"\bconst\b.*=\s*\{", stripped):
+            return True
+        # Direct object expression ``({...})`` already handled; bare ``{...}`` block.
+        return "return" in stripped
+    return False
+
+
+def _parse_destructure_params(params_src: str) -> list[tuple[str, str, Any]]:
+    """Parse ``({id: a, number: b = 1})`` into ``(src_key, local_name, default)`` specs."""
+    text = params_src.strip()
+    if text.startswith("(") and text.endswith(")"):
+        text = text[1:-1].strip()
+    if text.startswith("{") and text.endswith("}"):
+        text = text[1:-1]
+    specs: list[tuple[str, str, Any]] = []
+    for item in re.split(r",(?![^\{\[\(]*[\]\}\)])", text):
+        part = item.strip()
+        if not part:
+            continue
+        default: Any = None
+        if "=" in part:
+            part, default_src = part.split("=", 1)
+            part = part.strip()
+            default_src = default_src.strip()
+            try:
+                default = _Parser(default_src).parse_value()
+            except Exception:
+                default = default_src
+        if ":" in part:
+            src_key, local = part.split(":", 1)
+            specs.append((src_key.strip(), local.strip(), default))
+        else:
+            specs.append((part, part, default))
+    return specs
+
+
+def _eval_factory_body(body_src: str, local_bindings: dict[str, Any]) -> Any:
+    """Evaluate a factory arrow body to an object using the pure parser."""
+    stripped = body_src.strip()
+    if stripped.startswith("(") and stripped.endswith(")"):
+        stripped = stripped[1:-1].strip()
+    if stripped.startswith("{") and "return" not in stripped and "const" not in stripped:
+        return _Parser(stripped, bindings=local_bindings).parse_value()
+
+    # Statement block: ``{ const x = {...}; return x; }``
+    inner = stripped[1:-1] if stripped.startswith("{") and stripped.endswith("}") else stripped
+    block_bindings = dict(local_bindings)
+    for _kind, start, end in _scan_top_level_declarations(inner):
+        decl = inner[start:end]
+        body = re.sub(r"^(?:const|let|var)\s+", "", decl.strip().rstrip(";"), count=1)
+        for declarator in _split_top_level_declarators(body):
+            match = re.match(r"^([A-Za-z_$][\w$]*)\s*=\s*", declarator)
+            if match is None:
+                continue
+            name = match.group(1)
+            value_src = declarator[match.end() :]
+            try:
+                block_bindings[name] = _Parser(value_src, bindings=block_bindings).parse_value()
+            except Exception:
+                LOG.debug("Pure factory body binding failed for %s", name, exc_info=True)
+                continue
+    ret = re.search(r"\breturn\b", inner)
+    if ret is not None:
+        return _Parser(inner[ret.end() :], bindings=block_bindings).parse_value()
+    return None
+
+
+def make_object_factory(params_src: str, body_src: str, bindings: dict[str, Any] | None) -> Any:
+    """Build a Python callable for ``({…}) => { const o={…}; return o; }`` factories."""
+    if not _body_builds_object_factory(body_src):
+        return f"{params_src}=>{body_src.strip()}"
+    specs = _parse_destructure_params(params_src)
+    base = dict(bindings or {})
+
+    def _factory(arg: Any) -> Any:
+        arg_map = arg if isinstance(arg, Mapping) else {}
+        local = dict(base)
+        for src_key, local_name, default in specs:
+            if src_key in arg_map:
+                local[local_name] = arg_map[src_key]
+            elif default is not None:
+                local[local_name] = default
+            else:
+                local[local_name] = None
+        return _eval_factory_body(body_src, local)
+
+    return _factory
+
+
 def _read_hex(text: str, start: int, length: int) -> int | None:
     """Read exactly *length* hex digits at *start*, or return None."""
     chunk = text[start : start + length]
@@ -252,20 +348,30 @@ class _Parser:
         alternative = self._parse_conditional()
         return consequence if value else alternative
 
+    def _is_nullish(self, value: Any) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, str) and value.strip() in {"undefined", "void 0", "void 0x0"}:
+            return True
+        return bool(isinstance(value, str) and value.startswith("_0x"))
+
     def _parse_logical_or(self) -> Any:
-        left = self._parse_logical_and()
+        left = self._parse_nullish()
         while True:
             self._skip_ws_and_comments()
             if not self._match("||"):
                 return left
-            # Unevaluable leftovers (member/call strings) keep full source elsewhere;
-            # for catalog leaves prefer short-circuit like tree-sitter when left is concrete.
-            if isinstance(left, str) and (left.startswith("_0x") or "[" in left or "(" in left or left in self.bindings):
-                # Keep parity soft: evaluate right only when left is falsy-like.
-                right = self._parse_logical_and()
-                return left if left else right
-            right = self._parse_logical_and()
+            right = self._parse_nullish()
             left = left if left else right
+
+    def _parse_nullish(self) -> Any:
+        left = self._parse_logical_and()
+        while True:
+            self._skip_ws_and_comments()
+            if not self._match("??"):
+                return left
+            right = self._parse_logical_and()
+            left = right if self._is_nullish(left) else left
 
     def _parse_logical_and(self) -> Any:
         left = self._parse_equality()
@@ -280,11 +386,17 @@ class _Parser:
         left = self._parse_additive()
         while True:
             self._skip_ws_and_comments()
-            if self._match("===") or self._match("!==") or self._match("==") or self._match("!="):
-                _ = self._parse_additive()
-                # Equality is rare in i18n/units leaves; keep left for structure.
-                continue
-            return left
+            op = None
+            for candidate in ("===", "!==", "==", "!="):
+                if self.source.startswith(candidate, self.i):
+                    op = candidate
+                    break
+            if op is None:
+                return left
+            self.i += len(op)
+            right = self._parse_additive()
+            equal = left == right or (self._is_nullish(left) and self._is_nullish(right))
+            left = equal if op in {"===", "=="} else (not equal)
 
     def _parse_additive(self) -> Any:
         left = self._parse_multiplicative()
@@ -352,31 +464,30 @@ class _Parser:
         while True:
             self._skip_ws_and_comments()
             if self._peek() == "(":
-                # Call expression — keep leftover source for later slices.
                 call_start = self.i
                 self._advance()
-                depth = 1
-                while self.i < self.n and depth:
-                    ch = self._peek()
-                    if ch in "\"'`":
-                        self._read_string()
-                        continue
-                    if ch == "(":
-                        depth += 1
-                    elif ch == ")":
-                        depth -= 1
-                    self._advance()
-                leftover = (
-                    self.source[call_start - len(str(value)) : self.i]
-                    if isinstance(value, str)
-                    else self.source[call_start : self.i]
-                )
-                # Prefer full text from identifier start when value was an identifier name.
-                if isinstance(value, str) and value.isidentifier():
-                    # Reconstruct poorly; store a compact call leftover.
+                args: list[Any] = []
+                self._skip_ws_and_comments()
+                if self._peek() != ")":
+                    while True:
+                        args.append(self.parse_value())
+                        self._skip_ws_and_comments()
+                        if self._match(","):
+                            continue
+                        break
+                self._match(")")
+                if callable(value) and not isinstance(value, type):
+                    try:
+                        value = value(args[0]) if len(args) == 1 else value(args)
+                    except Exception:
+                        LOG.debug("Pure factory call failed", exc_info=True)
+                        value = f"<call:{call_start}>"
+                    continue
+                # Leftover call text for unresolved callees.
+                if isinstance(value, str) and (_IDENT_RE.fullmatch(value) or value.startswith("_0x")):
                     value = f"{value}{self.source[call_start : self.i]}"
                 else:
-                    value = leftover or value
+                    value = self.source[call_start : self.i]
                 continue
             if self._peek() == "[":
                 self._advance()
@@ -404,7 +515,6 @@ class _Parser:
                 value = collapse_public_token(leftover)
                 continue
             if self._match("=>"):
-                # Arrow function: consume body as opaque source.
                 body_start = self.i
                 self._skip_ws_and_comments()
                 if self._peek() == "{":
@@ -412,7 +522,8 @@ class _Parser:
                 else:
                     _ = self._parse_conditional()
                 params = value if isinstance(value, str) else "..."
-                value = f"{params}=>{self.source[body_start : self.i].strip()}"
+                body_src = self.source[body_start : self.i]
+                value = make_object_factory(params, body_src, self.bindings)
                 continue
             return value
 
@@ -432,20 +543,23 @@ class _Parser:
             return self._parse_array()
 
         if ch == "(":
+            paren_start = self.i
             self._advance()
-            # Possibly arrow params ``({...})=>`` or grouped expression.
-            start = self.i
+            self._skip_ws_and_comments()
             if self._peek() == "{":
-                # Could be destructuring params or object in parens.
-                obj_or_block = self._parse_object()
+                # Destructuring arrow params ``({id: x = def, ...})=>`` must not be
+                # parsed as a plain object (defaults use ``=`` which breaks pairs).
+                brace_start = self.i
+                self._skip_balanced("{", "}")
                 self._skip_ws_and_comments()
                 if self._match(")"):
                     self._skip_ws_and_comments()
                     if self.source.startswith("=>", self.i):
-                        return f"({self.source[start - 1 : self.i]})"
-                    return obj_or_block
-                # Unclosed — treat as leftover.
-                return obj_or_block
+                        return self.source[paren_start : self.i]
+                    # Grouped object literal ``({...})``.
+                    return _Parser(self.source[brace_start:], bindings=self.bindings)._parse_object()
+                # Fall through: reset and parse as grouped expression.
+                self.i = paren_start + 1
             value = self.parse_value()
             self._match(")")
             return value
@@ -801,6 +915,34 @@ def _largest_object_literal(source: str, bindings: dict[str, Any]) -> Any | None
             best_size = consumed
         i += 1
     return best
+
+
+def extract_root_export(code: bytes) -> Any | None:
+    """Extract the root ``export default`` value (object or array) from a JS module."""
+    source = code.decode("utf-8", errors="replace")
+    bindings = collect_bindings(source)
+    value: Any | None = None
+
+    for match in _EXPORT_DEFAULT_RE.finditer(source):
+        parser = _Parser(source[match.end() :], bindings=bindings)
+        value = parser.parse_value()
+        break
+
+    if value is None:
+        as_default = _EXPORT_AS_DEFAULT_RE.search(source)
+        if as_default is not None:
+            value = bindings.get(as_default.group(1))
+
+    if value is None:
+        value = _largest_object_literal(source, bindings)
+
+    return value
+
+
+def extract_root_object(code: bytes) -> dict[str, Any] | None:
+    """Extract the root exported object from a JS module (ParamMap / generic export)."""
+    value = extract_root_export(code)
+    return value if isinstance(value, dict) else None
 
 
 def parse_i18n_module(code: bytes) -> dict[str, Any]:
