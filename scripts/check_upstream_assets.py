@@ -2,7 +2,7 @@
 
 Fetches unauthenticated ``GET /v1/system/version`` and the web-app homepage to
 read the current ``index-*.js`` filename. Heavy catalog parsing (pure-Python
-value extractor; optional tree-sitter oracle in tests) runs only when that
+value extractor) runs only when that
 fingerprint is new or ``--always-parse`` is set.
 """
 

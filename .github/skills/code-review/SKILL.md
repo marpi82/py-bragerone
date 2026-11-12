@@ -54,7 +54,7 @@ Simulate concrete register and payload values; do not stop at "looks plausible".
 
 - [ ] New behavior covered; HTTP mocked with pytest-httpx; suite passes offline.
 - [ ] Live-API tests marked `@pytest.mark.needs_internet`.
-- [ ] Parser changes (catalog/tree-sitter) include malformed-input fixtures.
+- [ ] Parser changes (catalog pure JS parser) include malformed-input fixtures.
 - [ ] Resolver/catalog fixes include **regression fixtures with concrete register/payload values** (counterexamples).
 - [ ] Project coverage floor (80%) and **100% patch** (`uv run --group dev --group test poe patch-cov`, branch coverage + codecov excludes; CLI omitted) are not weakened.
 

@@ -9,9 +9,9 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Changed
 
-- Catalog asset parsing is pure-Python by default (``catalog_js_pure``);
-  ``tree-sitter`` / ``tree-sitter-javascript`` moved to the optional
-  ``[parsers]`` extra for CI/oracle parity (#489 / #355).
+- Fold the pure JavaScript catalog parser into ``catalog`` and drop
+  ``catalog_js_pure``, the optional ``[parsers]`` extra, and all
+  tree-sitter oracle code paths (#498 / Refs #489).
 
 ### Added
 

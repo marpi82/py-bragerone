@@ -20,36 +20,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from .api.modules import DeviceMenuRef
-from .catalog_js_pure import (
-    extract_root_export,
-    extract_root_object,
-    find_language_config_object,
-    iter_top_level_object_assignments,
-    parse_i18n_module,
-    parse_js_number,
-)
 from .menu import MenuResult, js_public_member_name
 from .menu_manager import MenuManager, RawMenuData
 
 if TYPE_CHECKING:
-    from tree_sitter import Language, Node, Tree
-
     from ..api import BragerOneApiClient
-
-LOG = logging.getLogger(__name__)
-_JS_LANGUAGE: Language | None = None
-
-
-def _js_language() -> Language:
-    """Lazy-load the tree-sitter JavaScript grammar (optional ``[parsers]`` extra)."""
-    global _JS_LANGUAGE
-    if _JS_LANGUAGE is None:
-        import tree_sitter_javascript
-        from tree_sitter import Language as _Language
-
-        _JS_LANGUAGE = _Language(tree_sitter_javascript.language())
-    return _JS_LANGUAGE
-
 
 INDEX_ASSET_RE = re.compile(r"/assets/(index-[A-Za-z0-9_-]+\.js)")
 _HELPER_ACTIONS = frozenset({"READ", "WRITE", "STATUS"})
@@ -78,6 +53,1489 @@ _TILE_PARAMETER_TOKEN_RE = re.compile(r"^(?:PARAM_|STATUS_|COMMAND_|URUCHOMIENIE
 _JS_BOOL_LITERALS = {"!0": True, "!1": False, "![]": False, "!![]": True}
 # ``void 0`` is spelled ``void 0x0`` once the bundle rewrites numeric literals as hex.
 _JS_UNDEFINED_LITERALS = frozenset({"void 0", "void 0x0", "undefined"})
+
+LOG = logging.getLogger(__name__)
+
+_JS_SIMPLE_ESCAPES = {
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+    "0": "\0",
+}
+_JS_LINE_CONTINUATIONS = frozenset("\n\r\u2028\u2029")
+_IDENT_RE = re.compile(r"[A-Za-z_$][\w$]*")
+_EXPORT_AS_DEFAULT_RE = re.compile(r"export\s*\{[^}]*?([A-Za-z0-9_$]+)\s+as\s+default")
+_EXPORT_DEFAULT_RE = re.compile(r"export\s+default\b")
+_TRAILING_PUBLIC_SUBSCRIPT_RE = re.compile(r"""\[['\"]([A-Z][A-Z0-9_]*)['\"]\]\s*$""")
+_HELPER_PARAM_TOKEN_RE = re.compile(r"^(?:PARAM|STATUS)_[A-Z0-9_]+$")
+_TEMPLATE_INTERPOLATION_RE = re.compile(r"\$\{([A-Za-z_$][\w$]*)\}")
+
+
+def collapse_public_token(expr: Any) -> Any:
+    """Collapse leftover member/IIFE text to a public TOKEN when possible."""
+    if not isinstance(expr, str):
+        return expr
+    public = js_public_member_name(expr)
+    if public is not None:
+        return public
+    match = _TRAILING_PUBLIC_SUBSCRIPT_RE.search(expr)
+    if match is not None:
+        return match.group(1)
+    return expr
+
+
+def _body_builds_object_factory(body_src: str) -> bool:
+    """Return True when an arrow body looks like a ParamMap object factory."""
+    stripped = body_src.strip()
+    if stripped.startswith("(") and "{" in stripped:
+        return True
+    if stripped.startswith("{") and ("return" in stripped or stripped.startswith("{{") is False):
+        # Statement block with object assignment/return, or direct object.
+        if "return" in stripped or re.search(r"\bconst\b.*=\s*\{", stripped):
+            return True
+        # Direct object expression ``({...})`` already handled; bare ``{...}`` block.
+        return "return" in stripped
+    return False
+
+
+def _parse_destructure_params(params_src: str) -> list[tuple[str, str, Any]]:
+    """Parse ``({id: a, number: b = 1})`` into ``(src_key, local_name, default)`` specs."""
+    text = params_src.strip()
+    if text.startswith("(") and text.endswith(")"):
+        text = text[1:-1].strip()
+    if text.startswith("{") and text.endswith("}"):
+        text = text[1:-1]
+    specs: list[tuple[str, str, Any]] = []
+    for item in re.split(r",(?![^\{\[\(]*[\]\}\)])", text):
+        part = item.strip()
+        if not part:
+            continue
+        default: Any = None
+        if "=" in part:
+            part, default_src = part.split("=", 1)
+            part = part.strip()
+            default_src = default_src.strip()
+            try:
+                default = _Parser(default_src).parse_value()
+            except Exception:
+                default = default_src
+        if ":" in part:
+            src_key, local = part.split(":", 1)
+            specs.append((src_key.strip(), local.strip(), default))
+        else:
+            specs.append((part, part, default))
+    return specs
+
+
+def _eval_factory_body(body_src: str, local_bindings: dict[str, Any]) -> Any:
+    """Evaluate a factory arrow body to an object using the pure parser."""
+    stripped = body_src.strip()
+    if stripped.startswith("(") and stripped.endswith(")"):
+        stripped = stripped[1:-1].strip()
+    if stripped.startswith("{") and "return" not in stripped and "const" not in stripped:
+        return _Parser(stripped, bindings=local_bindings).parse_value()
+
+    # Statement block: ``{ const x = {...}; return x; }``
+    inner = stripped[1:-1] if stripped.startswith("{") and stripped.endswith("}") else stripped
+    block_bindings = dict(local_bindings)
+    for _kind, start, end in _scan_top_level_declarations(inner):
+        decl = inner[start:end]
+        body = re.sub(r"^(?:const|let|var)\s+", "", decl.strip().rstrip(";"), count=1)
+        for declarator in _split_top_level_declarators(body):
+            match = re.match(r"^([A-Za-z_$][\w$]*)\s*=\s*", declarator)
+            if match is None:
+                continue
+            name = match.group(1)
+            value_src = declarator[match.end() :]
+            try:
+                block_bindings[name] = _Parser(value_src, bindings=block_bindings).parse_value()
+            except Exception:
+                LOG.debug("Pure factory body binding failed for %s", name, exc_info=True)
+                continue
+    ret = re.search(r"\breturn\b", inner)
+    if ret is not None:
+        return _Parser(inner[ret.end() :], bindings=block_bindings).parse_value()
+    return None
+
+
+def make_object_factory(params_src: str, body_src: str, bindings: dict[str, Any] | None) -> Any:
+    """Build a Python callable for ``({…}) => { const o={…}; return o; }`` factories."""
+    if not _body_builds_object_factory(body_src):
+        return f"{params_src}=>{body_src.strip()}"
+    specs = _parse_destructure_params(params_src)
+    base = dict(bindings or {})
+    # Bare identifier params (``x=>…`` / ``(_0x…)=>…``) bind the whole call argument.
+    # Object-destructure params (``({id:e, number:n})=>…``) bind from a mapping argument.
+    destructured = "{" in params_src
+
+    def _factory(arg: Any) -> Any:
+        local = dict(base)
+        if not destructured and len(specs) == 1:
+            _src_key, local_name, default = specs[0]
+            local[local_name] = default if arg is None and default is not None else arg
+            return _eval_factory_body(body_src, local)
+        arg_map = arg if isinstance(arg, Mapping) else {}
+        for src_key, local_name, default in specs:
+            if src_key in arg_map:
+                local[local_name] = arg_map[src_key]
+            elif default is not None:
+                local[local_name] = default
+            else:
+                local[local_name] = None
+        return _eval_factory_body(body_src, local)
+
+    return _factory
+
+
+def _read_hex(text: str, start: int, length: int) -> int | None:
+    """Read exactly *length* hex digits at *start*, or return None."""
+    chunk = text[start : start + length]
+    if len(chunk) != length:
+        return None
+    try:
+        return int(chunk, 16)
+    except ValueError:
+        return None
+
+
+def _safe_chr(code: int) -> str:
+    """Convert a code point to a character, replacing lone surrogates."""
+    if 0xD800 <= code <= 0xDFFF or code > 0x10FFFF:
+        return "\ufffd"
+    return chr(code)
+
+
+def decode_js_escapes(text: str) -> str:
+    """Decode JavaScript escape sequences in a string literal body."""
+    if "\\" not in text:
+        return text
+
+    out: list[str] = []
+    i = 0
+    n = len(text)
+
+    while i < n:
+        ch = text[i]
+        if ch != "\\" or i + 1 >= n:
+            out.append(ch)
+            i += 1
+            continue
+
+        esc = text[i + 1]
+        i += 2
+
+        if esc in _JS_LINE_CONTINUATIONS:
+            if esc == "\r" and i < n and text[i] == "\n":
+                i += 1
+            continue
+
+        if esc == "x":
+            code = _read_hex(text, i, 2)
+            if code is not None:
+                out.append(_safe_chr(code))
+                i += 2
+                continue
+            out.append(esc)
+            continue
+
+        if esc == "u":
+            if i < n and text[i] == "{":
+                close = text.find("}", i + 1)
+                code = _read_hex(text, i + 1, close - i - 1) if close > i + 1 else None
+                if code is not None:
+                    out.append(_safe_chr(code))
+                    i = close + 1
+                    continue
+                out.append(esc)
+                continue
+
+            code = _read_hex(text, i, 4)
+            if code is None:
+                out.append(esc)
+                continue
+            i += 4
+
+            if 0xD800 <= code <= 0xDBFF and text[i : i + 2] == "\\u":
+                low = _read_hex(text, i + 2, 4)
+                if low is not None and 0xDC00 <= low <= 0xDFFF:
+                    out.append(chr(0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)))
+                    i += 6
+                    continue
+
+            out.append(_safe_chr(code))
+            continue
+
+        if esc in _JS_SIMPLE_ESCAPES and not (esc == "0" and i < n and text[i].isdigit()):
+            out.append(_JS_SIMPLE_ESCAPES[esc])
+            continue
+
+        out.append(esc)
+
+    return "".join(out)
+
+
+def parse_js_number(text: str) -> int | float | None:
+    """Parse a JavaScript numeric literal (hex/octal/binary/decimal/float/BigInt)."""
+    raw = text.strip().replace("_", "")
+    if not raw:
+        return None
+
+    sign = 1
+    if raw[0] in "+-":
+        sign = -1 if raw[0] == "-" else 1
+        raw = raw[1:]
+
+    if raw.endswith(("n", "N")) and len(raw) > 1:
+        raw = raw[:-1]
+
+    prefix = raw[:2].lower()
+    radix = {"0x": 16, "0o": 8, "0b": 2}.get(prefix)
+    if radix is not None:
+        try:
+            return sign * int(raw[2:], radix)
+        except ValueError:
+            return None
+
+    try:
+        if any(c in raw for c in ".eE"):
+            return sign * float(raw)
+        return sign * int(raw)
+    except ValueError:
+        return None
+
+
+def js_property_key(text: str) -> str:
+    """Convert a non-string property key literal to the JS property name."""
+    number = parse_js_number(text)
+    if number is None:
+        return text
+    if isinstance(number, float) and number.is_integer():
+        return str(int(number))
+    return str(number)
+
+
+def string_value(text: str, *, bindings: Mapping[str, Any] | None = None) -> str:
+    """Strip surrounding quotes and decode JS escapes.
+
+    Template literals (backticks) optionally interpolate simple ``${ident}``
+    bindings the same way the catalog path does.
+    """
+    quote = text[0] if text else ""
+    body = decode_js_escapes(text[1:-1]) if len(text) >= 2 and quote in "\"'`" and text[-1] == quote else decode_js_escapes(text)
+    if quote == "`" and bindings:
+
+        def _replace(match: re.Match[str]) -> str:
+            name = match.group(1)
+            if name in bindings:
+                return str(bindings[name])
+            return match.group(0)
+
+        body = _TEMPLATE_INTERPOLATION_RE.sub(_replace, body)
+    return body
+
+
+def _public_token_from_helper_args(callee: str, args: list[Any]) -> str | None:
+    """Collapse obfuscated helper calls to a catalog token when args allow it."""
+    if _OBFUSCATED_IDENTIFIER_RE.fullmatch(callee) is None:
+        return None
+    if len(args) == 1:
+        token = args[0]
+        if isinstance(token, str) and _CATALOG_LIKE_TOKEN_RE.fullmatch(token) is not None:
+            return token
+        return None
+    if len(args) < 2:
+        return None
+    action = args[0]
+    token = args[-1]
+    if not isinstance(action, str) or action not in _HELPER_ACTIONS:
+        return None
+    # Match: two-arg helpers only collapse PARAM_*/STATUS_* (not DISPLAY_*).
+    if not isinstance(token, str) or _HELPER_PARAM_TOKEN_RE.fullmatch(token) is None:
+        return None
+    return token
+
+
+def _array_map_method(receiver: list[Any]) -> Any:
+    """Return a callable implementing ``array['map'](callback)`` for menu write-lists."""
+
+    def _map(callback: Any) -> list[Any]:
+        if callable(callback) and not isinstance(callback, type):
+            try:
+                return [callback(item) for item in receiver]
+            except Exception:
+                LOG.debug("Pure array map callback failed; keeping receiver tokens", exc_info=True)
+        # Fall back to the literal token list so MenuResult still sees PARAM_* entries.
+        return list(receiver)
+
+    return _map
+
+
+_MAX_PARSE_DEPTH = 250
+
+
+class _Parser:
+    """Recursive-descent parser over a single JS source string."""
+
+    def __init__(self, source: str, *, bindings: dict[str, Any] | None = None) -> None:
+        """Initialize parser state."""
+        self.source = source
+        self.i = 0
+        self.n = len(source)
+        self.bindings = dict(bindings or {})
+        self._depth = 0
+
+    def _peek(self) -> str:
+        return self.source[self.i] if self.i < self.n else ""
+
+    def _advance(self, count: int = 1) -> str:
+        start = self.i
+        self.i = min(self.n, self.i + count)
+        return self.source[start : self.i]
+
+    def _skip_ws_and_comments(self) -> None:
+        while self.i < self.n:
+            ch = self.source[self.i]
+            if ch.isspace():
+                self.i += 1
+                continue
+            if ch == "/" and self.i + 1 < self.n:
+                nxt = self.source[self.i + 1]
+                if nxt == "/":
+                    self.i += 2
+                    while self.i < self.n and self.source[self.i] not in "\r\n":
+                        self.i += 1
+                    continue
+                if nxt == "*":
+                    end = self.source.find("*/", self.i + 2)
+                    self.i = self.n if end < 0 else end + 2
+                    continue
+            break
+
+    def _match(self, text: str) -> bool:
+        self._skip_ws_and_comments()
+        if self.source.startswith(text, self.i):
+            self.i += len(text)
+            return True
+        return False
+
+    def _match_keyword(self, word: str) -> bool:
+        self._skip_ws_and_comments()
+        if not self.source.startswith(word, self.i):
+            return False
+        end = self.i + len(word)
+        if end < self.n and (_IDENT_RE.match(self.source[end]) or self.source[end] in "0123456789$"):
+            return False
+        self.i = end
+        return True
+
+    def _skip_one_value_span(self) -> None:
+        """Advance past one value-shaped span without building a Python object."""
+        self._skip_ws_and_comments()
+        ch = self._peek()
+        # ``ch and`` guards against ``"" in "{[("`` (empty substring is True in Python).
+        if ch and ch in "{[(":
+            closer = {"{": "}", "[": "]", "(": ")"}[ch]
+            self._skip_balanced(ch, closer)
+            return
+        if ch and ch in "\"'`":
+            self._read_string()
+            return
+        if ch in "+-":
+            self._advance()
+            ch = self._peek()
+        if ch and (ch.isdigit() or ch == "." or self.source.startswith(("0x", "0X", "0o", "0O", "0b", "0B"), self.i)):
+            self._read_number()
+            return
+        if ch and (_IDENT_RE.match(ch) is not None or ch in "_$"):
+            self._read_identifier()
+            return
+        if ch:
+            self._advance()
+
+    def parse_value(self) -> Any:
+        """Parse one JS value expression (stops at top-level comma/semicolon/brace)."""
+        self._skip_ws_and_comments()
+        if self.i >= self.n:
+            return None
+        if self._depth >= _MAX_PARSE_DEPTH:
+            # Degrade pathologically nested payloads (see TestDeepNestingResilience).
+            LOG.warning("Pure JS value exceeded parse depth %d; degrading to None", _MAX_PARSE_DEPTH)
+            self._skip_one_value_span()
+            return None
+        self._depth += 1
+        try:
+            try:
+                return self._parse_conditional()
+            except RecursionError:
+                # Match catalog semantics: degrade nested subtrees instead of crashing.
+                LOG.warning("Pure JS value too deeply nested; degrading to None")
+                self._skip_one_value_span()
+                return None
+        finally:
+            self._depth -= 1
+
+    def _parse_conditional(self) -> Any:
+        value = self._parse_logical_or()
+        self._skip_ws_and_comments()
+        # ``?.`` is optional chaining (handled in postfix), not a ternary.
+        if self._peek() != "?" or self.source.startswith("?.", self.i):
+            return value
+        self._advance()
+        consequence = self._parse_conditional()
+        if not self._match(":"):
+            return value
+        alternative = self._parse_conditional()
+        return consequence if self._js_truthy(value) else alternative
+
+    def _is_nullish(self, value: Any) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, str) and value.strip() in {"undefined", "void 0", "void 0x0"}:
+            return True
+        return bool(isinstance(value, str) and value.startswith("_0x"))
+
+    def _js_truthy(self, value: Any) -> bool:
+        """Approximate JavaScript truthiness (nullish ``_0x…`` leftovers are falsy)."""
+        if self._is_nullish(value) or value is False:
+            return False
+        return bool(value != 0 and value != "")
+
+    def _is_unevaluable_leftover(self, value: Any) -> bool:
+        """Return whether *value* is unevaluated source text for ``||`` / ``&&``.
+
+        Unary bang leftovers (``![]``, ``!1``) and similar
+        must not short-circuit as truthy strings (``![] && [path]`` must not invent
+        a value path).
+        """
+        if not isinstance(value, str):
+            return False
+        stripped = value.strip()
+        if not stripped:
+            return False
+        return stripped.startswith("!")
+
+    def _eval_optional_subscript(self, value: Any, index: Any) -> Any:
+        """Evaluate ``receiver?.['index']`` like the catalog path (#329)."""
+        if isinstance(value, Mapping) and isinstance(index, str):
+            return value.get(index)
+        # Unbound / nullish obfuscated receivers are undefined (SPA ``||`` fallback).
+        if self._is_nullish(value):
+            return None
+        if isinstance(value, str) and (_IDENT_RE.fullmatch(value) is not None or value.startswith("_0x")):
+            return None
+        return None
+
+    def _eval_optional_member(self, value: Any, name: str) -> Any:
+        """Evaluate ``receiver?.name`` optional member access."""
+        if not name:
+            return None
+        if isinstance(value, Mapping):
+            return value.get(name)
+        if self._is_nullish(value):
+            return None
+        if isinstance(value, str) and (_IDENT_RE.fullmatch(value) is not None or value.startswith("_0x")):
+            return None
+        return None
+
+    def _parse_logical_or(self) -> Any:
+        left = self._parse_nullish()
+        while True:
+            self._skip_ws_and_comments()
+            if not self._match("||"):
+                return left
+            right = self._parse_nullish()
+            if self._is_unevaluable_leftover(left):  # noqa: SIM108
+                left = f"{left}||{right}"
+            else:
+                left = left if self._js_truthy(left) else right
+
+    def _parse_nullish(self) -> Any:
+        left = self._parse_logical_and()
+        while True:
+            self._skip_ws_and_comments()
+            if not self._match("??"):
+                return left
+            right = self._parse_logical_and()
+            left = right if self._is_nullish(left) else left
+
+    def _parse_logical_and(self) -> Any:
+        left = self._parse_bitwise_or()
+        while True:
+            self._skip_ws_and_comments()
+            if not self._match("&&"):
+                return left
+            right = self._parse_bitwise_or()
+            if self._is_unevaluable_leftover(left):  # noqa: SIM108
+                left = f"{left}&&{right}"
+            else:
+                left = right if self._js_truthy(left) else left
+
+    def _parse_equality(self) -> Any:
+        left = self._parse_shift()
+        while True:
+            self._skip_ws_and_comments()
+            op = None
+            for candidate in ("===", "!==", "==", "!="):
+                if self.source.startswith(candidate, self.i):
+                    op = candidate
+                    break
+            if op is None:
+                return left
+            self.i += len(op)
+            right = self._parse_shift()
+            equal = left == right or (self._is_nullish(left) and self._is_nullish(right))
+            left = equal if op in {"===", "=="} else (not equal)
+
+    def _js_to_int32(self, value: Any) -> int | None:
+        """Coerce a value the way JS bitwise ops do (``ToInt32``-ish).
+
+        Booleans become ``0``/``1`` so equality results combine with ``&``/``|``/``^``
+        (``1===1&0`` → ``0``). Non-integral floats and non-numerics return ``None``.
+        """
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float) and value.is_integer():
+            return int(value)
+        return None
+
+    def _js_typeof(self, operand: Any) -> str:
+        """Return a JavaScript-like ``typeof`` string for an already-parsed operand."""
+        if operand is None or self._is_nullish(operand):
+            return "undefined"
+        if isinstance(operand, bool):
+            return "boolean"
+        if isinstance(operand, (int, float)) and not isinstance(operand, bool):
+            return "number"
+        if isinstance(operand, str):
+            return "string"
+        if isinstance(operand, (list, dict)):
+            return "object"
+        if callable(operand):
+            return "function"
+        return "undefined"
+
+    def _parse_bitwise_or(self) -> Any:
+        """Parse ``|`` (not ``||``) so SPA bitmasks inside arrows consume fully (#495)."""
+        left = self._parse_bitwise_xor()
+        while True:
+            self._skip_ws_and_comments()
+            if self.source.startswith("||", self.i):
+                return left
+            if not self._match("|"):
+                return left
+            right = self._parse_bitwise_xor()
+            left_i, right_i = self._js_to_int32(left), self._js_to_int32(right)
+            left = left_i | right_i if left_i is not None and right_i is not None else f"{left}|{right}"
+
+    def _parse_bitwise_xor(self) -> Any:
+        left = self._parse_bitwise_and()
+        while True:
+            self._skip_ws_and_comments()
+            if not self._match("^"):
+                return left
+            right = self._parse_bitwise_and()
+            left_i, right_i = self._js_to_int32(left), self._js_to_int32(right)
+            left = left_i ^ right_i if left_i is not None and right_i is not None else f"{left}^{right}"
+
+    def _parse_bitwise_and(self) -> Any:
+        """Parse ``&`` (not ``&&``) for SPA ``x>>bit&0x1`` filters inside arrows (#495)."""
+        left = self._parse_equality()
+        while True:
+            self._skip_ws_and_comments()
+            if self.source.startswith("&&", self.i):
+                return left
+            if not self._match("&"):
+                return left
+            right = self._parse_equality()
+            left_i, right_i = self._js_to_int32(left), self._js_to_int32(right)
+            left = left_i & right_i if left_i is not None and right_i is not None else f"{left}&{right}"
+
+    def _parse_shift(self) -> Any:
+        left = self._parse_additive()
+        while True:
+            self._skip_ws_and_comments()
+            op = None
+            for candidate in (">>>", "<<", ">>"):
+                if self.source.startswith(candidate, self.i):
+                    op = candidate
+                    break
+            if op is None:
+                return left
+            self.i += len(op)
+            right = self._parse_additive()
+            left_i, right_i = self._js_to_int32(left), self._js_to_int32(right)
+            if left_i is not None and right_i is not None:
+                if op == "<<":
+                    left = left_i << right_i
+                elif op == ">>":
+                    left = left_i >> right_i
+                else:
+                    left = (left_i % 0x100000000) >> right_i
+            else:
+                left = f"{left}{op}{right}"
+
+    def _parse_additive(self) -> Any:
+        left = self._parse_multiplicative()
+        while True:
+            self._skip_ws_and_comments()
+            if self._match("+"):
+                right = self._parse_multiplicative()
+                if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+                    left = left + right
+                elif isinstance(left, str) or isinstance(right, str):
+                    left = f"{left}{right}"
+                else:
+                    left = f"{left}+{right}"
+                continue
+            if self._match("-"):
+                right = self._parse_multiplicative()
+                left = left - right if isinstance(left, (int, float)) and isinstance(right, (int, float)) else f"{left}-{right}"
+                continue
+            return left
+
+    def _parse_multiplicative(self) -> Any:
+        left = self._parse_unary()
+        while True:
+            self._skip_ws_and_comments()
+            op = None
+            for candidate in ("*", "/", "%"):
+                if self.source.startswith(candidate, self.i):
+                    op = candidate
+                    break
+            if op is None:
+                return left
+            self.i += len(op)
+            right = self._parse_unary()
+            if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+                if op == "*":
+                    left = left * right
+                elif op == "/":
+                    # Keep source text on divide-by-zero (oracle returns ``"1/0"``).
+                    left = f"{left}/{right}" if right == 0 else left / right
+                else:
+                    left = f"{left}%{right}" if right == 0 else left % right
+            else:
+                left = f"{left}{op}{right}"
+
+    def _parse_unary(self) -> Any:
+        self._skip_ws_and_comments()
+        start = self.i
+        if self._match_keyword("void"):
+            _ = self._parse_unary()
+            return None
+        if self._match_keyword("typeof"):
+            # SPA ``valueCallback`` arrows use ``typeof x==='number'?…`` (#495). Without
+            # this unary the arrow body stops at ``typeof`` and the rest of the object
+            # literal is misread as keys (overwriting ``number: 0x1`` with ``"number"``).
+            return self._js_typeof(self._parse_unary())
+        if self._match("!"):
+            # Match catalog semantics: unary leftovers stay as source text
+            # (``!![]``, ``!0``), except we still parse the operand to advance the cursor.
+            _ = self._parse_unary()
+            return self.source[start : self.i].replace(" ", "")
+        if self._match("-") or self._match("+"):
+            sign = self.source[start]
+            operand = self._parse_unary()
+            if isinstance(operand, (int, float)):
+                return -operand if sign == "-" else operand
+            return f"{sign}{operand}"
+        return self._parse_postfix()
+
+    def _parse_postfix(self) -> Any:
+        value = self._parse_primary()
+        while True:
+            self._skip_ws_and_comments()
+            if self._peek() == "(":
+                call_start = self.i
+                self._advance()
+                args: list[Any] = []
+                self._skip_ws_and_comments()
+                if self._peek() != ")":
+                    while True:
+                        args.append(self.parse_value())
+                        self._skip_ws_and_comments()
+                        if self._match(","):
+                            continue
+                        break
+                self._match(")")
+                if callable(value) and not isinstance(value, type):
+                    try:
+                        value = value(args[0]) if len(args) == 1 else value(args)
+                    except Exception:
+                        LOG.debug("Pure factory call failed", exc_info=True)
+                        value = f"<call:{call_start}>"
+                    continue
+                # Obfuscated helpers: ``_0x2d2290('WRITE', 'PARAM_45')`` → ``PARAM_45``.
+                if isinstance(value, str):
+                    helper_token = _public_token_from_helper_args(value, args)
+                    if helper_token is not None:
+                        value = helper_token
+                        continue
+                # Leftover call text for unresolved callees.
+                if isinstance(value, str) and (_IDENT_RE.fullmatch(value) or value.startswith("_0x")):
+                    value = f"{value}{self.source[call_start : self.i]}"
+                else:
+                    value = self.source[call_start : self.i]
+                continue
+            # Optional chaining: ``_0x?.['minValue']`` / ``obj?.prop`` (issue #329).
+            if self.source.startswith("?.", self.i):
+                self.i += 2
+                self._skip_ws_and_comments()
+                if self._peek() == "[":
+                    self._advance()
+                    index = self.parse_value()
+                    self._match("]")
+                    value = self._eval_optional_subscript(value, index)
+                    continue
+                name = self._read_identifier()
+                value = self._eval_optional_member(value, name)
+                continue
+            if self._peek() == "[":
+                self._advance()
+                index = self.parse_value()
+                self._match("]")
+                if isinstance(value, Mapping) and isinstance(index, str) and index in value:
+                    value = value[index]
+                    continue
+                # Live menus: ``['PARAM_45',…]['map'](x => ({…}))`` — keep a map method so
+                # the following call evaluates (or falls back to the literal token list).
+                if isinstance(value, list) and index == "map":
+                    value = _array_map_method(value)
+                    continue
+                # ``_0xabc['TOKEN']`` / ``ParameterCustomComponent['THREE_WAY_VALVE']``
+                # collapse to the public token, matching catalog semantics.
+                if (
+                    isinstance(index, str)
+                    and isinstance(value, str)
+                    and (value.startswith("_0x") or _IDENT_RE.fullmatch(value) is not None)
+                ):
+                    value = index
+                    continue
+                leftover = f"{value}[{index!r}]"
+                value = collapse_public_token(leftover)
+                continue
+            if self._peek() == ".":
+                self._advance()
+                name = self._read_identifier()
+                leftover = f"{value}.{name}" if name else str(value)
+                value = collapse_public_token(leftover)
+                continue
+            if self._match("=>"):
+                body_start = self.i
+                self._skip_ws_and_comments()
+                if self._peek() == "{":
+                    self._skip_balanced("{", "}")
+                else:
+                    _ = self._parse_conditional()
+                params = value if isinstance(value, str) else "..."
+                body_src = self.source[body_start : self.i]
+                value = make_object_factory(params, body_src, self.bindings)
+                continue
+            return value
+
+    def _parse_primary(self) -> Any:
+        self._skip_ws_and_comments()
+        ch = self._peek()
+        if not ch:
+            return None
+
+        if ch in "\"'`":
+            return string_value(self._read_string(), bindings=self.bindings)
+
+        if ch == "{":
+            return self._parse_object()
+
+        if ch == "[":
+            return self._parse_array()
+
+        if ch == "(":
+            paren_start = self.i
+            self._advance()
+            self._skip_ws_and_comments()
+            if self._peek() == "{":
+                # Destructuring arrow params ``({id: x = def, ...})=>`` must not be
+                # parsed as a plain object (defaults use ``=`` which breaks pairs).
+                brace_start = self.i
+                self._skip_balanced("{", "}")
+                self._skip_ws_and_comments()
+                if self._match(")"):
+                    self._skip_ws_and_comments()
+                    if self.source.startswith("=>", self.i):
+                        return self.source[paren_start : self.i]
+                    # Grouped object literal ``({...})``.
+                    return _Parser(self.source[brace_start:], bindings=self.bindings)._parse_object()
+                # Fall through: reset and parse as grouped expression.
+                self.i = paren_start + 1
+            # Comma operator: ``(0, _0xabc)`` → last expression (SPA helper IIFEs).
+            value = self.parse_value()
+            while True:
+                self._skip_ws_and_comments()
+                if not self._match(","):
+                    break
+                value = self.parse_value()
+            self._match(")")
+            return value
+
+        if ch.isdigit() or (ch == "." and self.i + 1 < self.n and self.source[self.i + 1].isdigit()):
+            return self._read_number()
+
+        # Boolean / null keywords and identifiers.
+        if self._match_keyword("true"):
+            return True
+        if self._match_keyword("false"):
+            return False
+        if self._match_keyword("null"):
+            return None
+        if self._match_keyword("undefined"):
+            return None
+
+        ident = self._read_identifier()
+        if ident:
+            if ident in self.bindings:
+                return self.bindings[ident]
+            return ident
+
+        # Skip unknown character to avoid infinite loops.
+        self._advance()
+        return None
+
+    def _parse_object(self) -> dict[str, Any]:
+        obj: dict[str, Any] = {}
+        if not self._match("{"):
+            return obj
+        while True:
+            self._skip_ws_and_comments()
+            if self._peek() == "}" or not self._peek():
+                self._match("}")
+                return obj
+            if self._match("..."):
+                spread = self.parse_value()
+                if isinstance(spread, Mapping):
+                    obj.update(spread)
+                self._match(",")
+                continue
+
+            key = self._parse_object_key()
+            self._skip_ws_and_comments()
+            if not self._match(":"):
+                # Shorthand property.
+                if isinstance(key, str) and key in self.bindings:
+                    obj[key] = self.bindings[key]
+                elif isinstance(key, str):
+                    obj[key] = key
+                self._match(",")
+                if self._peek() == "}":
+                    self._match("}")
+                    return obj
+                continue
+
+            value = self.parse_value()
+            obj[str(key)] = value
+            self._match(",")
+            if self._peek() == "}":
+                self._match("}")
+                return obj
+
+    def _parse_object_key(self) -> str:
+        self._skip_ws_and_comments()
+        ch = self._peek()
+        if ch in "\"'`":
+            return string_value(self._read_string())
+        if ch == "[":
+            self._advance()
+            # Computed keys may be IIFEs / arrows; take the bracket span as text and collapse.
+            start = self.i
+            depth = 1
+            while self.i < self.n and depth:
+                c = self._peek()
+                if c in "\"'`":
+                    self._read_string()
+                    continue
+                if c == "[":
+                    depth += 1
+                elif c == "]":
+                    depth -= 1
+                if depth:
+                    self._advance()
+            inner_src = self.source[start : self.i]
+            self._match("]")
+            try:
+                inner_parser = _Parser(inner_src, bindings=self.bindings)
+                inner = inner_parser.parse_value()
+                collapsed = collapse_public_token(inner if isinstance(inner, str) else inner_src)
+                return str(collapsed)
+            except Exception:
+                return str(collapse_public_token(inner_src))
+        if ch.isdigit() or ch == ".":
+            number = self._read_number()
+            return js_property_key(str(number) if not isinstance(number, str) else number)
+        start = self.i
+        if self.source.startswith("0x", self.i) or self.source.startswith("0X", self.i):
+            num = self._read_number()
+            return js_property_key(str(int(num)) if isinstance(num, float) and num.is_integer() else str(num))
+        ident = self._read_identifier()
+        if ident:
+            return ident
+        self._advance()
+        return self.source[start : self.i]
+
+    def _parse_array(self) -> list[Any]:
+        out: list[Any] = []
+        if not self._match("["):
+            return out
+        while True:
+            self._skip_ws_and_comments()
+            if self._peek() == "]" or not self._peek():
+                self._match("]")
+                return out
+            if self._match(","):
+                continue
+            out.append(self.parse_value())
+            self._match(",")
+            if self._peek() == "]":
+                self._match("]")
+                return out
+
+    def _read_string(self) -> str:
+        quote = self._advance()
+        start = self.i
+        while self.i < self.n:
+            ch = self.source[self.i]
+            if ch == "\\":
+                self.i += 2
+                continue
+            if ch == quote:
+                body = self.source[start : self.i]
+                self.i += 1
+                return quote + body + quote
+            self.i += 1
+        return quote + self.source[start:]
+
+    def _read_number(self) -> int | float | str:
+        start = self.i
+        if self.source.startswith(("0x", "0X", "0o", "0O", "0b", "0B"), self.i):
+            self.i += 2
+            while self.i < self.n and self.source[self.i] in "0123456789abcdefABCDEF_":
+                self.i += 1
+        else:
+            while self.i < self.n and (self.source[self.i].isdigit() or self.source[self.i] == "_"):
+                self.i += 1
+            if self.i < self.n and self.source[self.i] == ".":
+                self.i += 1
+                while self.i < self.n and (self.source[self.i].isdigit() or self.source[self.i] == "_"):
+                    self.i += 1
+            if self.i < self.n and self.source[self.i] in "eE":
+                self.i += 1
+                if self.i < self.n and self.source[self.i] in "+-":
+                    self.i += 1
+                while self.i < self.n and self.source[self.i].isdigit():
+                    self.i += 1
+        if self.i < self.n and self.source[self.i] in "nN":
+            self.i += 1
+        text = self.source[start : self.i]
+        parsed = parse_js_number(text)
+        return text if parsed is None else parsed
+
+    def _read_identifier(self) -> str:
+        self._skip_ws_and_comments()
+        match = _IDENT_RE.match(self.source, self.i)
+        if match is None:
+            return ""
+        self.i = match.end()
+        return match.group(0)
+
+    def _skip_balanced(self, open_ch: str, close_ch: str) -> None:
+        if self._peek() != open_ch:
+            return
+        self._advance()
+        depth = 1
+        while self.i < self.n and depth:
+            ch = self._peek()
+            if ch in "\"'`":
+                self._read_string()
+                continue
+            if ch == open_ch:
+                depth += 1
+            elif ch == close_ch:
+                depth -= 1
+            self._advance()
+
+
+def _scan_top_level_declarations(source: str) -> list[tuple[str, int, int]]:
+    """Return ``(kind, start, end)`` spans for top-level ``const``/``let``/``var`` decls."""
+    out: list[tuple[str, int, int]] = []
+    i = 0
+    n = len(source)
+    while i < n:
+        ch = source[i]
+        if ch in "\"'`":
+            quote = ch
+            i += 1
+            while i < n:
+                if source[i] == "\\":
+                    i += 2
+                    continue
+                if source[i] == quote:
+                    i += 1
+                    break
+                i += 1
+            continue
+        if ch == "/" and i + 1 < n and source[i + 1] == "/":
+            i += 2
+            while i < n and source[i] not in "\r\n":
+                i += 1
+            continue
+        if ch == "/" and i + 1 < n and source[i + 1] == "*":
+            end = source.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+            continue
+        # Prefer explicit search from i.
+        kw = None
+        for word in ("const", "let", "var"):
+            if (
+                source.startswith(word, i)
+                and (i + len(word) >= n or not (source[i + len(word)].isalnum() or source[i + len(word)] in "_$"))
+                and (i == 0 or not (source[i - 1].isalnum() or source[i - 1] in "_$"))
+            ):
+                kw = word
+                break
+        if kw is None:
+            i += 1
+            continue
+        start = i
+        i += len(kw)
+        # Scan until top-level semicolon (not inside braces/parens/brackets/strings).
+        depth_brace = depth_paren = depth_bracket = 0
+        while i < n:
+            c = source[i]
+            if c in "\"'`":
+                quote = c
+                i += 1
+                while i < n:
+                    if source[i] == "\\":
+                        i += 2
+                        continue
+                    if source[i] == quote:
+                        i += 1
+                        break
+                    i += 1
+                continue
+            if c == "{":
+                depth_brace += 1
+            elif c == "}":
+                depth_brace = max(0, depth_brace - 1)
+            elif c == "(":
+                depth_paren += 1
+            elif c == ")":
+                depth_paren = max(0, depth_paren - 1)
+            elif c == "[":
+                depth_bracket += 1
+            elif c == "]":
+                depth_bracket = max(0, depth_bracket - 1)
+            elif c == ";" and depth_brace == depth_paren == depth_bracket == 0:
+                i += 1
+                break
+            i += 1
+        out.append((kw, start, i))
+    return out
+
+
+def _split_top_level_declarators(body: str) -> list[str]:
+    """Split ``a=1, b={…}, c='x'`` on top-level commas."""
+    parts: list[str] = []
+    depth_brace = depth_paren = depth_bracket = 0
+    start = 0
+    i = 0
+    n = len(body)
+    while i < n:
+        ch = body[i]
+        if ch in "\"'`":
+            quote = ch
+            i += 1
+            while i < n:
+                if body[i] == "\\":
+                    i += 2
+                    continue
+                if body[i] == quote:
+                    i += 1
+                    break
+                i += 1
+            continue
+        if ch == "{":
+            depth_brace += 1
+        elif ch == "}":
+            depth_brace = max(0, depth_brace - 1)
+        elif ch == "(":
+            depth_paren += 1
+        elif ch == ")":
+            depth_paren = max(0, depth_paren - 1)
+        elif ch == "[":
+            depth_bracket += 1
+        elif ch == "]":
+            depth_bracket = max(0, depth_bracket - 1)
+        elif ch == "," and depth_brace == depth_paren == depth_bracket == 0:
+            parts.append(body[start:i].strip())
+            start = i + 1
+        i += 1
+    tail = body[start:].strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def collect_bindings(source: str) -> dict[str, Any]:
+    """Collect ``const``/``let``/``var`` bindings from a module, left-to-right."""
+    bindings: dict[str, Any] = {}
+    for _kind, start, end in _scan_top_level_declarations(source):
+        decl = source[start:end]
+        body = re.sub(r"^(?:const|let|var)\s+", "", decl.strip().rstrip(";"), count=1)
+        for declarator in _split_top_level_declarators(body):
+            match = re.match(r"^([A-Za-z_$][\w$]*)\s*=\s*", declarator)
+            if match is None:
+                continue
+            name = match.group(1)
+            value_src = declarator[match.end() :]
+            parser = _Parser(value_src, bindings=bindings)
+            try:
+                value = parser.parse_value()
+            except Exception:
+                LOG.debug("Pure binding parse failed for %s", name, exc_info=True)
+                continue
+            bindings[name] = value
+    return bindings
+
+
+def _largest_object_literal(source: str, bindings: dict[str, Any]) -> Any | None:
+    """Return the largest successfully parsed object literal in *source*."""
+    best: Any | None = None
+    best_size = -1
+    i = 0
+    n = len(source)
+    while i < n:
+        if source[i] != "{":
+            i += 1
+            continue
+        parser = _Parser(source[i:], bindings=bindings)
+        try:
+            value = parser._parse_object()
+        except Exception:
+            i += 1
+            continue
+        consumed = parser.i
+        if isinstance(value, dict) and consumed > best_size:
+            best = value
+            best_size = consumed
+        i += 1
+    return best
+
+
+def extract_root_export(code: bytes) -> Any | None:
+    """Extract the root ``export default`` value (object or array) from a JS module."""
+    try:
+        source = code.decode("utf-8", errors="replace")
+        bindings = collect_bindings(source)
+        value: Any | None = None
+
+        for match in _EXPORT_DEFAULT_RE.finditer(source):
+            parser = _Parser(source[match.end() :], bindings=bindings)
+            value = parser.parse_value()
+            break
+
+        if value is None:
+            as_default = _EXPORT_AS_DEFAULT_RE.search(source)
+            if as_default is not None:
+                value = bindings.get(as_default.group(1))
+
+        if value is None:
+            value = _largest_object_literal(source, bindings)
+
+        return value
+    except RecursionError:
+        LOG.warning("Pure JS export too deeply nested; degrading to None")
+        return None
+
+
+def extract_root_object(code: bytes) -> dict[str, Any] | None:
+    """Extract the root exported object from a JS module (ParamMap / generic export)."""
+    try:
+        value = extract_root_export(code)
+        return value if isinstance(value, dict) else None
+    except RecursionError:
+        LOG.warning("Pure JS root object too deeply nested; degrading to None")
+        return None
+
+
+def parse_i18n_module(code: bytes) -> dict[str, Any]:
+    """Parse an i18n JS module into a translation dict.
+
+    Supports ``export default {…}``, ``export { X as default }``, string default
+    exports (wrapped as a one-key object), and a largest-object fallback.
+    """
+    try:
+        source = code.decode("utf-8", errors="replace")
+        bindings = collect_bindings(source)
+        translations: Any | None = None
+        default_export_name: str | None = None
+        saw_export_default = False
+
+        # ``export default <expr>``
+        for match in _EXPORT_DEFAULT_RE.finditer(source):
+            saw_export_default = True
+            parser = _Parser(source[match.end() :], bindings=bindings)
+            translations = parser.parse_value()
+            # Identify ``export default IDENT``.
+            tail = source[match.end() : match.end() + 64].lstrip()
+            ident_match = _IDENT_RE.match(tail)
+            if ident_match and translations == bindings.get(ident_match.group(0), translations):
+                default_export_name = ident_match.group(0)
+            break
+
+        if translations is None:
+            as_default = _EXPORT_AS_DEFAULT_RE.search(source)
+            if as_default is not None:
+                saw_export_default = True
+                default_export_name = as_default.group(1)
+                translations = bindings.get(default_export_name)
+
+        if translations is None and not saw_export_default:
+            translations = _largest_object_literal(source, bindings)
+
+        if isinstance(translations, dict):
+            # Reject garbage from malformed ``export default {[};`` style parses.
+            if saw_export_default and any("}" in str(k) or "{" in str(k) for k in translations):
+                return {}
+            return translations
+
+        if isinstance(translations, str):
+            cleaned = translations.strip()
+            if not cleaned:
+                return {}
+            key = default_export_name if default_export_name else "__default__"
+            return {key: cleaned}
+
+        if translations is not None:
+            LOG.warning("i18n export is not an object: %s", type(translations))
+        return {}
+    except Exception as exc:
+        LOG.warning("Failed to parse i18n bundle: %s", exc)
+        return {}
+
+
+def iter_top_level_object_assignments(code: bytes) -> list[dict[str, Any]]:
+    """Parse object literals assigned in top-level variable declarations."""
+    source = code.decode("utf-8", errors="replace")
+    bindings = collect_bindings(source)
+    objects: list[dict[str, Any]] = []
+    for value in bindings.values():
+        if isinstance(value, dict):
+            objects.append(value)
+    # Also scan assignment-like ``name={…}`` without keyword (obfuscated defines).
+    for match in re.finditer(r"=\s*\{", source):
+        parser = _Parser(source[match.start() + 1 :], bindings=bindings)
+        try:
+            value = parser.parse_value()
+        except Exception:
+            LOG.debug("Pure object-assignment scan failed", exc_info=True)
+            continue
+        if isinstance(value, dict):
+            objects.append(value)
+    return objects
+
+
+def is_translations_array_value(value: Any) -> bool:
+    """Return whether *value* looks like the SPA ``translations`` array in index JS."""
+    if not isinstance(value, list) or not value:
+        return False
+    objects = [item for item in value if isinstance(item, dict)]
+    if not objects:
+        return False
+    valid = sum(1 for item in objects if "id" in item and "flag" in item)
+    return valid >= len(objects) * 0.7
+
+
+def find_language_config_object(code: bytes) -> dict[str, Any] | None:
+    """Find ``{translations: [...], defaultTranslation: '...'}`` in index JS."""
+    source = code.decode("utf-8", errors="replace")
+    bindings = collect_bindings(source)
+
+    def _is_language_config(obj: Mapping[str, Any]) -> bool:
+        translations = obj.get("translations")
+        default = obj.get("defaultTranslation")
+        return is_translations_array_value(translations) and isinstance(default, str)
+
+    # Prefer objects from bindings / assignments.
+    candidates = iter_top_level_object_assignments(code)
+    # Deep scan: walk nested dicts in candidates.
+    stack: list[Any] = list(candidates)
+    seen: set[int] = set()
+    while stack:
+        cur = stack.pop()
+        if id(cur) in seen:
+            continue
+        seen.add(id(cur))
+        if isinstance(cur, dict):
+            if _is_language_config(cur):
+                return dict(cur)
+            stack.extend(cur.values())
+        elif isinstance(cur, list):
+            stack.extend(cur)
+
+    # Brute-force scan object literals (quoted live shape often not in const).
+    best: dict[str, Any] | None = None
+    i = 0
+    n = len(source)
+    while i < n:
+        if source[i] != "{":
+            i += 1
+            continue
+        parser = _Parser(source[i:], bindings=bindings)
+        try:
+            value = parser._parse_object()
+        except Exception:
+            i += 1
+            continue
+        if isinstance(value, dict) and _is_language_config(value):
+            best = value
+            # Keep searching for no reason to prefer first; first structural hit matches TS DFS.
+            return best
+        i += 1
+    return best
+
+
+def _string_value(text: str) -> str:
+    """Extract string literal value (quotes stripped, escapes decoded)."""
+    return string_value(text)
+
+
+def _decode_js_escapes(text: str) -> str:
+    """Backward-compatible alias for :func:`decode_js_escapes`."""
+    return decode_js_escapes(text)
+
+
+_parse_js_number = parse_js_number
+_js_property_key = js_property_key
+
+
+def parse_js_declaration(code: bytes, *, bindings: Mapping[str, Any] | None = None) -> Any:
+    """Parse the RHS of a ``const <name> = <expr>`` declaration (tests)."""
+    source = code.decode("utf-8", errors="replace")
+    match = re.search(r"const\s+\w+\s*=\s*(.*)", source, flags=re.DOTALL)
+    if match is None:
+        raise ValueError("expected const declaration")
+    expr = match.group(1).strip().rstrip(";")
+    local = dict(collect_bindings(source))
+    if bindings:
+        local.update(bindings)
+    return _Parser(expr, bindings=local).parse_value()
+
+
+def _find_inline_param_object_spans(code: bytes, *, max_objects: int = 10) -> list[tuple[int, int]]:
+    """Find large object-literal byte spans that resemble inline param maps."""
+    key_needles = (b"group", b"pool", b"use", b"value", b"unit", b"status", b"componentType")
+    limit = min(len(code), 1_000_000)
+    blob = code[:limit]
+    spans: list[tuple[int, int]] = []
+    i = 0
+    n = len(blob)
+    while i < n and len(spans) < max_objects:
+        if blob[i : i + 1] != b"{":
+            i += 1
+            continue
+        start = i
+        depth = 0
+        in_str: bytes | None = None
+        escape = False
+        j = i
+        closed = False
+        while j < n:
+            ch = blob[j : j + 1]
+            if in_str is not None:
+                if escape:
+                    escape = False
+                elif ch == b"\\":
+                    escape = True
+                elif ch == in_str:
+                    in_str = None
+                j += 1
+                continue
+            if ch in (b'"', b"'", b"`"):
+                in_str = ch
+                j += 1
+                continue
+            if ch == b"{":
+                depth += 1
+            elif ch == b"}":
+                depth -= 1
+                if depth == 0:
+                    end = j + 1
+                    if end - start > 200 and any(k in blob[start:end] for k in key_needles):
+                        spans.append((start, end))
+                    i = end
+                    closed = True
+                    break
+            j += 1
+        if not closed:
+            i += 1
+    return spans
+
+
+def _token_from_obfuscated_call_text(text: str) -> str | None:
+    """Extract a catalog-like token from leftover ``_0x…('TOKEN')`` call text."""
+    match = _OBFUSCATED_SINGLE_ARG_CALL_RE.fullmatch(text.strip())
+    if match is None:
+        match = _OBFUSCATED_SINGLE_ARG_CALL_RE.search(text)
+    if match is None:
+        return None
+    return match.group("tok")
+
+
+_JS_ESCAPE_LEAK_RE = re.compile(r"\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4})")
+
+
+def _count_js_escape_leaks(value: Any) -> int:
+    r"""Count strings that still contain JS ``\x`` / ``\u`` / ``\u{...}`` escape sequences.
+
+    After a successful parse those sequences should already have been decoded. A
+    leftover leak means a new escape form slipped past ``_decode_js_escapes``.
+    Incomplete fragments such as ``\\x2`` or ``\\u00`` are not JS escapes.
+    """
+    if isinstance(value, str):
+        return 1 if _JS_ESCAPE_LEAK_RE.search(value) else 0
+    if isinstance(value, Mapping):
+        return sum(_count_js_escape_leaks(item) for item in value.values())
+    if isinstance(value, list):
+        return sum(_count_js_escape_leaks(item) for item in value)
+    return 0
+
+
+def _i18n_import_base_and_hash(namespace: str, stem: str) -> tuple[str, str]:
+    """Split an i18n import stem into ``(base, hash)`` using the JSON namespace.
+
+    Vite hashes may contain hyphens (``info-Bpu026-3``) or end with one
+    (``tariff-Db9Vj8s-``). ``str.rpartition("-")`` would treat those as extra
+    base segments. The JSON path already names the namespace, so everything after
+    ``<namespace>-`` is the hash.
+
+    Args:
+        namespace: Namespace captured from the language JSON path (e.g. ``info``).
+        stem: Import filename without ``.js`` (e.g. ``info-Bpu026-3``).
+
+    Returns:
+        ``(base, hash)``. Hash is empty when the import has no ``-hash`` suffix.
+        When *stem* does not start with *namespace*, the whole stem is the base.
+    """
+    prefix = f"{namespace}-"
+    stem_l = stem.lower()
+    if stem_l.startswith(prefix.lower()):
+        return namespace, stem[len(namespace) + 1 :]
+    if stem_l == namespace.lower():
+        return namespace, ""
+    return stem, ""
 
 
 # ----------------------------- Data types -----------------------------
@@ -233,1041 +1691,6 @@ class ParamMap:
     raw: dict[str, Any]  # raw map (will be useful later for i18n/logging)
 
 
-# ----------------------------- Parser helpers -----------------------------
-
-
-class _TS:
-    """Lightweight wrapper around tree-sitter Parser for JavaScript/TypeScript.
-
-    This class provides a simplified interface to the tree-sitter parser
-    specifically configured for JavaScript language parsing.
-
-    Attributes:
-        parser: The underlying tree-sitter Parser instance.
-    """
-
-    __slots__ = ("parser",)
-
-    def __init__(self) -> None:
-        """Initialize the parser with JavaScript language support.
-
-        Requires the optional ``[parsers]`` extra (``tree-sitter`` packages).
-        """
-        from tree_sitter import Parser as _Parser
-
-        self.parser = _Parser()
-        self.parser.language = _js_language()
-
-    def parse(self, code: bytes) -> Tree:
-        """Parse JavaScript code into an Abstract Syntax Tree (AST).
-
-        Args:
-            code: The JavaScript source code as bytes to parse.
-
-        Returns:
-            A tree-sitter Tree object representing the parsed AST.
-        """
-        return self.parser.parse(code)
-
-
-def _node_text(code: bytes, n: Node) -> str:
-    """Extract text content from a tree-sitter Node.
-
-    Args:
-        code: The source code bytes the node comes from.
-        n: The tree-sitter Node to extract text from.
-
-    Returns:
-        The decoded text content of the node.
-    """
-    return code[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
-
-
-def _is_string(n: Node) -> bool:
-    """Check if a Node represents a string literal.
-
-    Args:
-        n: The tree-sitter Node to check.
-
-    Returns:
-        True if the node is a string or template_string type.
-    """
-    return n.type in {"string", "template_string"}
-
-
-def _parse_js_number(text: str) -> int | float | None:
-    """Parse a JavaScript numeric literal.
-
-    Covers the radix prefixes and separators the language allows, not just decimals:
-    obfuscated bundles routinely emit ``0x9`` where the source said ``9``.
-
-    Args:
-        text: Raw literal text, e.g. ``"0x1f"``, ``"1_000"``, ``"1.5e3"``, ``"10n"``.
-
-    Returns:
-        The numeric value, or None if the text is not a numeric literal.
-    """
-    raw = text.strip().replace("_", "")
-    if not raw:
-        return None
-
-    sign = 1
-    if raw[0] in "+-":
-        sign = -1 if raw[0] == "-" else 1
-        raw = raw[1:]
-
-    # BigInt literals carry a trailing marker that is not part of the value.
-    if raw.endswith(("n", "N")) and len(raw) > 1:
-        raw = raw[:-1]
-
-    prefix = raw[:2].lower()
-    radix = {"0x": 16, "0o": 8, "0b": 2}.get(prefix)
-    if radix is not None:
-        try:
-            return sign * int(raw[2:], radix)
-        except ValueError:
-            return None
-
-    try:
-        if any(c in raw for c in ".eE"):
-            return sign * float(raw)
-        return sign * int(raw)
-    except ValueError:
-        return None
-
-
-def _js_property_key(text: str) -> str:
-    """Convert a non-string property key literal to the property name JavaScript would use.
-
-    JavaScript coerces numeric keys through ``ToString``, so ``{0xa: 1}`` has the property
-    name ``"10"`` rather than ``"0xa"``.
-
-    Args:
-        text: Raw key text as it appears in the source.
-
-    Returns:
-        The resolved property name.
-    """
-    number = _parse_js_number(text)
-    if number is None:
-        return text
-    if isinstance(number, float) and number.is_integer():
-        return str(int(number))
-    return str(number)
-
-
-_JS_SIMPLE_ESCAPES = {
-    "b": "\b",
-    "f": "\f",
-    "n": "\n",
-    "r": "\r",
-    "t": "\t",
-    "v": "\v",
-    "0": "\0",
-}
-
-# JS allows a backslash before any of these to continue a literal onto the next line.
-_JS_LINE_CONTINUATIONS = frozenset("\n\r\u2028\u2029")
-
-
-def _read_hex(text: str, start: int, length: int) -> int | None:
-    """Read exactly *length* hex digits at *start*, or return None if they are not there."""
-    chunk = text[start : start + length]
-    if len(chunk) != length:
-        return None
-    try:
-        return int(chunk, 16)
-    except ValueError:
-        return None
-
-
-def _safe_chr(code: int) -> str:
-    """Convert a code point to a character, replacing lone surrogates.
-
-    Lone surrogates are valid Python ``str`` members but cannot be encoded to UTF-8, which
-    would blow up much later when a label is serialized. Substitute them here instead.
-    """
-    if 0xD800 <= code <= 0xDFFF or code > 0x10FFFF:
-        return "\ufffd"
-    return chr(code)
-
-
-def _decode_js_escapes(text: str) -> str:
-    r"""Decode JavaScript escape sequences in a string literal body.
-
-    Upstream ships the web app minified and obfuscated, which hex-escapes ordinary
-    characters — spaces become ``\x20``. Without decoding, those escapes survive verbatim
-    into units and translated labels.
-
-    ``codecs.decode(..., "unicode_escape")`` is deliberately not used: it round-trips through
-    latin-1 and corrupts non-ASCII text (e.g. Polish diacritics).
-
-    Args:
-        text: String literal body, without the surrounding quotes.
-
-    Returns:
-        The text with escape sequences resolved. Unrecognized escapes drop the backslash and
-        keep the following character, matching JavaScript.
-    """
-    if "\\" not in text:
-        return text
-
-    out: list[str] = []
-    i = 0
-    n = len(text)
-
-    while i < n:
-        ch = text[i]
-        if ch != "\\" or i + 1 >= n:
-            out.append(ch)
-            i += 1
-            continue
-
-        esc = text[i + 1]
-        i += 2
-
-        if esc in _JS_LINE_CONTINUATIONS:
-            if esc == "\r" and i < n and text[i] == "\n":
-                i += 1
-            continue
-
-        if esc == "x":
-            code = _read_hex(text, i, 2)
-            if code is not None:
-                out.append(_safe_chr(code))
-                i += 2
-                continue
-            out.append(esc)
-            continue
-
-        if esc == "u":
-            if i < n and text[i] == "{":
-                close = text.find("}", i + 1)
-                code = _read_hex(text, i + 1, close - i - 1) if close > i + 1 else None
-                if code is not None:
-                    out.append(_safe_chr(code))
-                    i = close + 1
-                    continue
-                out.append(esc)
-                continue
-
-            code = _read_hex(text, i, 4)
-            if code is None:
-                out.append(esc)
-                continue
-            i += 4
-
-            # A high surrogate followed by a low surrogate is one astral character.
-            if 0xD800 <= code <= 0xDBFF and text[i : i + 2] == "\\u":
-                low = _read_hex(text, i + 2, 4)
-                if low is not None and 0xDC00 <= low <= 0xDFFF:
-                    out.append(chr(0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)))
-                    i += 6
-                    continue
-
-            out.append(_safe_chr(code))
-            continue
-
-        # "\0" is NUL only when a digit does not follow it (otherwise it is legacy octal).
-        if esc in _JS_SIMPLE_ESCAPES and not (esc == "0" and i < n and text[i].isdigit()):
-            out.append(_JS_SIMPLE_ESCAPES[esc])
-            continue
-
-        out.append(esc)
-
-    return "".join(out)
-
-
-def _string_value(text: str) -> str:
-    """Extract the value from a string literal, removing quotes and decoding escapes.
-
-    Args:
-        text: The raw string text including quotes.
-
-    Returns:
-        The string value with surrounding quotes removed and JS escape sequences resolved.
-    """
-    if len(text) >= 2 and text[0] in "\"'`" and text[-1] == text[0]:
-        return _decode_js_escapes(text[1:-1])
-    return _decode_js_escapes(text)
-
-
-def _property_name(code: bytes, key_node: Node) -> str:
-    """Return the JavaScript property name a key node would produce at runtime.
-
-    Obfuscated bundles quote ordinary keys (``{'translations': ...}``), emit hex
-    numeric keys (``{0xa: ...}``) and hide status names behind computed keys
-    (``{[_0x4d7e32['INVISIBLE']]: …}``). Callers that compare against
-    ``"translations"`` or ``"INVISIBLE"`` must go through this helper; raw node
-    text keeps the quotes, the radix prefix and the subscript spelling.
-    """
-    raw = _node_text(code, key_node)
-    if _is_string(key_node):
-        return _string_value(raw)
-    if key_node.type == "number":
-        return _js_property_key(raw)
-    if key_node.type == "computed_property_name" and key_node.named_children:  # pragma: no branch
-        inner = key_node.named_children[0]
-        public = js_public_member_name(_node_text(code, inner))
-        return public if public is not None else _property_name(code, inner)
-    return raw
-
-
-_JS_ESCAPE_LEAK_RE = re.compile(r"\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4})")
-
-
-def _count_js_escape_leaks(value: Any) -> int:
-    r"""Count strings that still contain JS ``\x`` / ``\u`` / ``\u{...}`` escape sequences.
-
-    After a successful parse those sequences should already have been decoded. A
-    leftover leak means a new escape form slipped past ``_decode_js_escapes``.
-    Incomplete fragments such as ``\\x2`` or ``\\u00`` are not JS escapes.
-    """
-    if isinstance(value, str):
-        return 1 if _JS_ESCAPE_LEAK_RE.search(value) else 0
-    if isinstance(value, Mapping):
-        return sum(_count_js_escape_leaks(item) for item in value.values())
-    if isinstance(value, list):
-        return sum(_count_js_escape_leaks(item) for item in value)
-    return 0
-
-
-def _i18n_import_base_and_hash(namespace: str, stem: str) -> tuple[str, str]:
-    """Split an i18n import stem into ``(base, hash)`` using the JSON namespace.
-
-    Vite hashes may contain hyphens (``info-Bpu026-3``) or end with one
-    (``tariff-Db9Vj8s-``). ``str.rpartition("-")`` would treat those as extra
-    base segments. The JSON path already names the namespace, so everything after
-    ``<namespace>-`` is the hash.
-
-    Args:
-        namespace: Namespace captured from the language JSON path (e.g. ``info``).
-        stem: Import filename without ``.js`` (e.g. ``info-Bpu026-3``).
-
-    Returns:
-        ``(base, hash)``. Hash is empty when the import has no ``-hash`` suffix.
-        When *stem* does not start with *namespace*, the whole stem is the base.
-    """
-    prefix = f"{namespace}-"
-    stem_l = stem.lower()
-    if stem_l.startswith(prefix.lower()):
-        return namespace, stem[len(namespace) + 1 :]
-    if stem_l == namespace.lower():
-        return namespace, ""
-    return stem, ""
-
-
-def _split_top_level_csv(raw: str) -> list[str]:
-    parts: list[str] = []
-    cur: list[str] = []
-    depth = 0
-    for ch in raw:
-        if ch in "([{":
-            depth += 1
-        elif ch in ")]}":
-            depth = max(0, depth - 1)
-        if ch == "," and depth == 0:
-            part = "".join(cur).strip()
-            if part:
-                parts.append(part)
-            cur = []
-            continue
-        cur.append(ch)
-    tail = "".join(cur).strip()
-    if tail:
-        parts.append(tail)
-    return parts
-
-
-def _build_factory_callable(source: str, bindings: dict[str, Any] | None = None) -> Any:
-    text = source.strip()
-    match = re.match(
-        r"^\(\s*\{(?P<params>.*)\}\s*\)\s*=>\s*\((?P<body>\{.*\})\)\s*$",
-        text,
-        flags=re.DOTALL,
-    )
-    if match is None:
-        return source
-
-    params_text = match.group("params")
-    body_text = match.group("body")
-
-    param_specs: list[tuple[str, str, str | None]] = []
-    for item in _split_top_level_csv(params_text):
-        if ":" not in item:
-            continue
-        key_part, var_part = item.split(":", 1)
-        src_key = key_part.strip()
-        var_spec = var_part.strip()
-        default_expr: str | None = None
-        if "=" in var_spec:
-            var_name, default_expr_raw = var_spec.split("=", 1)
-            var_spec = var_name.strip()
-            default_expr = default_expr_raw.strip() or None
-        if src_key and var_spec:
-            param_specs.append((src_key, var_spec, default_expr))
-
-    base_bindings = dict(bindings or {})
-
-    def _factory(arg: Any) -> Any:
-        arg_map = arg if isinstance(arg, Mapping) else {}
-        local_bindings = dict(base_bindings)
-        for src_key, var_name, default_expr in param_specs:
-            if src_key in arg_map:
-                local_bindings[var_name] = arg_map.get(src_key)
-                continue
-            if isinstance(default_expr, str) and default_expr:
-                local_bindings[var_name] = local_bindings.get(default_expr, default_expr)
-            else:
-                local_bindings[var_name] = None
-
-        body_src = f"const __factory_obj = {body_text};"
-        tree = _TS().parse(body_src.encode("utf-8"))
-        for statement in tree.root_node.named_children:
-            if statement.type not in {"lexical_declaration", "variable_declaration"}:
-                continue
-            for declarator in statement.named_children:
-                if declarator.type != "variable_declarator":
-                    continue
-                name_node = declarator.child_by_field_name("name")
-                value_node = declarator.child_by_field_name("value")
-                if name_node is None or value_node is None:
-                    continue
-                if _node_text(body_src.encode("utf-8"), name_node).strip() != "__factory_obj":
-                    continue
-                return _node_to_python(body_src.encode("utf-8"), value_node, local_bindings)
-        return None
-
-    return _factory
-
-
-def _js_concat(left: Any, right: Any) -> Any:
-    """Apply the JavaScript ``+`` operator to two already-converted operands.
-
-    Returns:
-        The sum for two numbers, the concatenation when either side is a string,
-        or ``None`` when the operands are not primitives this parser can join.
-    """
-    numeric = (int, float)
-    both_numeric = isinstance(left, numeric) and isinstance(right, numeric)
-    if both_numeric and not isinstance(left, bool) and not isinstance(right, bool):
-        return left + right
-
-    def _text(value: Any) -> str | None:
-        if isinstance(value, str):
-            return value
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        if isinstance(value, int):
-            return str(value)
-        if isinstance(value, float):
-            return str(int(value)) if value.is_integer() else str(value)
-        return None
-
-    if not isinstance(left, str) and not isinstance(right, str):
-        return None
-    left_text, right_text = _text(left), _text(right)
-    if left_text is None or right_text is None:
-        return None
-    return left_text + right_text
-
-
-def _is_js_nullish(value: Any) -> bool:
-    """Return whether *value* corresponds to JavaScript ``null`` / ``undefined``.
-
-    Unresolved obfuscated identifiers (``_0x…`` leftovers) are treated as undefined so
-    nullish coalescing defaults such as ``name ?? 'parameters.PARAM_'+n`` still expand.
-    """
-    if value is None:
-        return True
-    if isinstance(value, str):
-        trimmed = value.strip()
-        if trimmed in _JS_UNDEFINED_LITERALS:
-            return True
-        if _OBFUSCATED_IDENTIFIER_RE.fullmatch(trimmed) is not None:
-            return True
-    return False
-
-
-def _js_nullish_aware_equal(left: Any, right: Any) -> bool:
-    """Equality used for both ``==``/``===`` and ``!=``/``!==`` in factory AST eval.
-
-    Intentionally collapses JavaScript ``null`` / ``undefined`` (and unresolved
-    ``_0x…`` leftovers) so ``x !== void 0x0`` / ``x === undefined`` work after
-    ``void`` has already become ``None``. This is not full JS loose or strict
-    equality — only the nullish/primitive subset the obfuscated builders emit.
-    """
-    if _is_js_nullish(left) and _is_js_nullish(right):
-        return True
-    return bool(left == right)
-
-
-def _eval_js_binary(operator: str, left: Any, right: Any) -> tuple[bool, Any]:
-    """Evaluate a subset of JavaScript binary operators on converted operands.
-
-    Returns:
-        ``(True, result)`` when *operator* is handled, otherwise ``(False, None)``.
-    """
-    if operator == "+":
-        joined = _js_concat(left, right)
-        if joined is not None:
-            return True, joined
-        return False, None
-    if operator == "??":
-        return True, right if _is_js_nullish(left) else left
-    if operator == "||":
-        return True, left if _js_truthy(left) else right
-    if operator == "&&":
-        return True, right if _js_truthy(left) else left
-    if operator in {"===", "=="}:
-        return True, _js_nullish_aware_equal(left, right)
-    if operator in {"!==", "!="}:
-        return True, not _js_nullish_aware_equal(left, right)
-    return False, None
-
-
-def _js_truthy(value: Any) -> bool:
-    """Approximate JavaScript truthiness for ternary conditions."""
-    if _is_js_nullish(value) or value is False:
-        return False
-    # ``0`` and ``0.0`` compare equal in Python, so a single zero check is enough.
-    return bool(value != 0 and value != "")
-
-
-def _is_unevaluable_logical_operand(
-    code: bytes,
-    node: Node | None,
-    value: Any,
-    bindings: dict[str, Any] | None,
-) -> bool:
-    """Return whether *value* is an unevaluated AST leftover for ``||`` / ``&&``.
-
-    ``_node_to_python`` returns raw source for unresolved identifiers, member
-    access, calls, and similar nodes. Treating that string as a known value makes
-    ``unknown || fallback`` and ``unknown.member || fallback`` short-circuit
-    incorrectly instead of leaving the expression unevaluable.
-    """
-    if node is None:
-        return False
-    raw = _node_text(code, node)
-    if value != raw:
-        return False
-    if node.type in {"identifier", "property_identifier"}:
-        return not (bindings and raw in bindings)
-    return True
-
-
-def _pattern_bindings(code: bytes, pattern: Node, arg: Any, bindings: dict[str, Any]) -> dict[str, Any]:
-    """Bind a destructured object parameter against one call argument.
-
-    Handles the three element shapes the bundle emits: ``{key: var}``,
-    ``{key: var = default}`` and the shorthand ``{key}`` / ``{key = default}``.
-
-    Args:
-        code: Source bytes containing ``pattern``.
-        pattern: An ``object_pattern`` node.
-        arg: The already-converted call argument.
-        bindings: Bindings used to evaluate default expressions.
-
-    Returns:
-        Local bindings for the function body.
-    """
-    out: dict[str, Any] = {}
-    arg_map = arg if isinstance(arg, Mapping) else {}
-    for element in pattern.named_children:
-        var_node: Node | None = None
-        default_node: Node | None = None
-        if element.type == "pair_pattern":
-            key_node = element.child_by_field_name("key")
-            value_node = element.child_by_field_name("value")
-            if key_node is None or value_node is None:  # pragma: no cover
-                continue
-            key = _property_name(code, key_node)
-            if value_node.type == "assignment_pattern":
-                var_node = value_node.child_by_field_name("left")
-                default_node = value_node.child_by_field_name("right")
-            else:
-                var_node = value_node
-        elif element.type == "shorthand_property_identifier_pattern":
-            key = _node_text(code, element)
-            var_node = element
-        elif element.type == "object_assignment_pattern":
-            var_node = element.child_by_field_name("left")
-            default_node = element.child_by_field_name("right")
-            if var_node is None:  # pragma: no cover
-                continue
-            key = _node_text(code, var_node)
-        else:
-            continue
-        if var_node is None:  # pragma: no cover
-            continue
-        name = _node_text(code, var_node)
-        if key in arg_map:
-            out[name] = arg_map[key]
-        elif default_node is not None:
-            out[name] = _node_to_python(code, default_node, bindings)
-        else:
-            out[name] = None
-    return out
-
-
-def _arrow_body_builds_object(code: bytes, body: Node) -> bool:
-    """Report whether an arrow body statically evaluates to an object literal.
-
-    Guards the factory path: unit transforms such as ``e => Number((e * .1).toFixed(1))``
-    must keep their source text, so only bodies that provably build an object qualify.
-    """
-    target = body
-    if target.type == "parenthesized_expression" and target.named_children:
-        target = target.named_children[0]
-    if target.type == "object":
-        return True
-    if target.type != "statement_block":
-        return False
-
-    assigned: dict[str, bool] = {}
-    for statement in target.named_children:
-        if statement.type in {"lexical_declaration", "variable_declaration"}:
-            for declarator in statement.named_children:
-                if declarator.type != "variable_declarator":  # pragma: no cover
-                    continue
-                name_node = declarator.child_by_field_name("name")
-                value_node = declarator.child_by_field_name("value")
-                if name_node is None or value_node is None:
-                    continue
-                assigned[_node_text(code, name_node)] = value_node.type == "object"
-        elif statement.type == "return_statement":
-            if not statement.named_children:
-                return False
-            returned = statement.named_children[0]
-            if returned.type == "object":
-                return True
-            if returned.type == "identifier":
-                return assigned.get(_node_text(code, returned), False)
-            return False
-    return False
-
-
-def _eval_arrow_body(code: bytes, body: Node, bindings: dict[str, Any]) -> Any:
-    """Evaluate an arrow-function body, including ``{ const x = {...}; return x; }``."""
-    if body.type != "statement_block":
-        target = body
-        if target.type == "parenthesized_expression" and target.named_children:  # pragma: no branch
-            target = target.named_children[0]
-        return _node_to_python(code, target, bindings)
-
-    local = dict(bindings)
-    for statement in body.named_children:
-        if statement.type in {"lexical_declaration", "variable_declaration"}:
-            for declarator in statement.named_children:
-                if declarator.type != "variable_declarator":  # pragma: no cover
-                    continue
-                name_node = declarator.child_by_field_name("name")
-                value_node = declarator.child_by_field_name("value")
-                if name_node is None or value_node is None:
-                    continue
-                local[_node_text(code, name_node)] = _node_to_python(code, value_node, local)
-        elif statement.type == "return_statement" and statement.named_children:
-            return _node_to_python(code, statement.named_children[0], local)
-    return None
-
-
-def _build_arrow_factory(code: bytes, node: Node, bindings: dict[str, Any] | None) -> Any:
-    """Return a callable for an arrow function that builds an object, else ``None``.
-
-    Live index parameters are emitted as ``basicParameterBuilder_P11({id, number})``,
-    where the builder destructures its argument and returns an object from a statement
-    block. Without this the call stays leftover text and the token resolves to nothing.
-    """
-    params = node.child_by_field_name("parameter") or node.child_by_field_name("parameters")
-    body = node.child_by_field_name("body")
-    if params is None or body is None:  # pragma: no cover
-        return None
-
-    pattern = params
-    if params.type == "formal_parameters":
-        named = params.named_children
-        if len(named) != 1:
-            return None
-        pattern = named[0]
-    if pattern.type not in {"identifier", "object_pattern"}:
-        return None
-    if not _arrow_body_builds_object(code, body):
-        return None
-
-    def _factory(
-        arg: Any,
-        *,
-        _pattern: Node = pattern,
-        _body: Node = body,
-        _code: bytes = code,
-        _bindings: dict[str, Any] | None = bindings,
-    ) -> Any:
-        local = dict(_bindings or {})
-        if _pattern.type == "identifier":
-            local[_node_text(_code, _pattern)] = arg
-        else:
-            local.update(_pattern_bindings(_code, _pattern, arg, local))
-        return _eval_arrow_body(_code, _body, local)
-
-    return _factory
-
-
-def _walk(node: Node) -> Iterable[Node]:
-    """Depth-first traversal of tree-sitter Node tree.
-
-    Args:
-        node: The root node to start traversal from.
-
-    Yields:
-        Each node in the tree in depth-first order.
-    """
-    stack = [node]
-    while stack:
-        cur = stack.pop()
-        yield cur
-        for i in range(cur.child_count - 1, -1, -1):
-            child = cur.child(i)
-            if child is not None:
-                stack.append(child)
-
-
-def _find_export_root(code: bytes, root: Node) -> Node | None:
-    """Find the root export object or array in a JavaScript AST.
-
-    This function implements a two-step strategy:
-    1. Look for explicit export statements containing object/array literals
-    2. Fall back to finding the largest object/array in the tree
-
-    Args:
-        code: The source code bytes (currently unused but kept for consistency).
-        root: The root node of the AST to search.
-
-    Returns:
-        The Node representing the main export object/array, or None if not found.
-    """
-    # 1) export default <expr>
-    for n in _walk(root):
-        if n.type == "export_statement":
-            # looking for object/array literal in export
-            for ch in n.named_children:
-                if ch.type in {"object", "array"}:
-                    return ch
-    # 2) fallback: largest object/array
-    best = None
-    best_sz = -1
-    for n in _walk(root):
-        if n.type in {"object", "array"}:
-            sz = n.end_byte - n.start_byte
-            if sz > best_sz:
-                best, best_sz = n, sz
-    return best
-
-
-def _eval_array_map_call(code: bytes, node: Node, bindings: dict[str, Any] | None) -> list[Any] | None:
-    """Evaluate ``array['map'](item => …)`` when the receiver is already a Python list.
-
-    Live device menus 153/2190 emit write lists as
-    ``['PARAM_45', …]['map'](x => ({permissionModule: …, parameter: helper(WRITE, x)}))``.
-    Leaving that as leftover source text made ``MenuResult`` iterate the string
-    character-by-character and raise thousands of validation errors.
-
-    Args:
-        code: Source bytes containing ``node``.
-        node: A ``call_expression`` node.
-        bindings: Identifier bindings for the surrounding chunk.
-
-    Returns:
-        The mapped list, or ``None`` when this call is not that shape.
-    """
-    func_node = node.child_by_field_name("function")
-    args_node = node.child_by_field_name("arguments")
-    if func_node is None or func_node.type != "subscript_expression" or args_node is None:
-        return None
-    obj_node = func_node.child_by_field_name("object")
-    index_node = func_node.child_by_field_name("index")
-    if obj_node is None or index_node is None or not _is_string(index_node):
-        return None
-    if _string_value(_node_text(code, index_node)) != "map":
-        return None
-    receiver = _node_to_python(code, obj_node, bindings)
-    callbacks = [_node_to_python(code, child, bindings) for child in args_node.named_children]
-    if not isinstance(receiver, list) or len(callbacks) != 1 or not callable(callbacks[0]):
-        return None
-    try:
-        return [callbacks[0](item) for item in receiver]
-    except Exception:
-        return None
-
-
-def _token_from_obfuscated_call_text(text: str) -> str | None:
-    """Extract a catalog-like token from leftover ``_0x…('TOKEN')`` call text."""
-    match = _OBFUSCATED_SINGLE_ARG_CALL_RE.fullmatch(text.strip())
-    if match is None:
-        match = _OBFUSCATED_SINGLE_ARG_CALL_RE.search(text)
-    if match is None:
-        return None
-    return match.group("tok")
-
-
-def _public_token_from_helper_args(code: bytes, func_node: Node | None, args: list[Any]) -> str | None:
-    """Return a catalog token from a leftover obfuscated helper call.
-
-    Live menus emit two shapes when the helper identifier stays obfuscated:
-
-    - ``_0x2d2290(_0x870f31['WRITE'], 'PARAM_45')`` — action + PARAM_*/STATUS_*
-    - ``_0x4d74a8('PARAM_1')`` / ``_0x4d74a8('COMMAND_MODULE_RESTART')`` — single
-      catalog-like argument (post ~1.03.41 menu chunks)
-
-    Readable calls that happen to share the two-arg signature
-    (``foo('WRITE', 'PARAM_45')``) keep their source text, because collapsing them
-    would erase semantics this parser cannot verify.
-
-    Args:
-        code: Source bytes containing ``func_node``.
-        func_node: The callee node of the call expression.
-        args: Already-converted call arguments.
-
-    Returns:
-        The public token, or ``None`` when this is not a recognized obfuscated
-        helper call.
-    """
-    if func_node is None or func_node.type != "identifier":
-        return None
-    if _OBFUSCATED_IDENTIFIER_RE.fullmatch(_node_text(code, func_node)) is None:
-        return None
-    if len(args) == 1:
-        token = args[0]
-        if isinstance(token, str) and _CATALOG_LIKE_TOKEN_RE.fullmatch(token) is not None:
-            return token
-        return None
-    if len(args) < 2:
-        return None
-    action = args[0]
-    token = args[-1]
-    if not isinstance(action, str) or action not in _HELPER_ACTIONS:
-        return None
-    if not isinstance(token, str) or _HELPER_TOKEN_RE.fullmatch(token) is None:
-        return None
-    return token
-
-
-def _node_to_python(code: bytes, node: Node, bindings: dict[str, Any] | None = None) -> Any:
-    """Convert an arbitrary AST node to a Python object.
-
-    When *bindings* is provided, identifier nodes are resolved using the
-    already-converted values stored in the mapping. This allows handling of the
-    common pattern where large dictionaries reuse previously declared constants
-    (e.g. i18n bundles exporting `const foo = "label"; const map = {key: foo};`).
-
-    Pathologically nested payloads (e.g. ``[[[[...]]]]``) can exceed the
-    interpreter recursion limit; in that case the offending subtree degrades
-    to ``None`` instead of crashing the parse.
-    """
-    try:
-        return _node_to_python_inner(code, node, bindings)
-    except RecursionError:
-        LOG.warning("JS asset too deeply nested to parse; degrading node type %r to None", node.type)
-        return None
-
-
-def _node_to_python_inner(code: bytes, node: Node, bindings: dict[str, Any] | None = None) -> Any:
-    """Recursive implementation of :func:`_node_to_python`."""
-    t = node.type
-
-    if t == "object":
-        obj: dict[str, Any] = {}
-        for prop in node.named_children:
-            if prop.type == "spread_element" and prop.named_children:
-                spread = _node_to_python(code, prop.named_children[0], bindings)
-                if isinstance(spread, Mapping):
-                    obj.update(spread)
-                continue
-            if prop.type != "pair":
-                continue
-            key_node = prop.child_by_field_name("key")
-            value_node = prop.child_by_field_name("value")
-            if key_node is None or value_node is None:
-                continue
-
-            key = _property_name(code, key_node)
-            obj[key] = _node_to_python(code, value_node, bindings)
-        return obj
-
-    if t == "array":
-        return [_node_to_python(code, child, bindings) for child in node.named_children]
-
-    if t == "parenthesized_expression" and node.named_children:
-        return _node_to_python(code, node.named_children[0], bindings)
-
-    if node.type == "template_string":
-        template = _node_text(code, node)
-        if bindings:
-            template = re.sub(
-                r"\$\{([A-Za-z_$][\w$]*)\}",
-                lambda m: str(bindings.get(m.group(1), m.group(0))),
-                template,
-            )
-        return _string_value(template)
-
-    if _is_string(node):
-        return _string_value(_node_text(code, node))
-
-    if t == "number":
-        text = _node_text(code, node)
-        parsed = _parse_js_number(text)
-        return text if parsed is None else parsed
-
-    if t in {"true", "false"}:
-        return t == "true"
-
-    if t == "null":
-        return None
-
-    if t == "undefined":
-        return None
-
-    if t in {"identifier", "property_identifier"}:
-        name = _node_text(code, node)
-        if bindings and name in bindings:
-            return bindings[name]
-        return name
-
-    if t == "unary_expression":
-        operator = node.child_by_field_name("operator")
-        if operator is not None and _node_text(code, operator) == "void":
-            return None
-        return _node_text(code, node)
-
-    if t == "ternary_expression":
-        condition = node.child_by_field_name("condition")
-        consequence = node.child_by_field_name("consequence")
-        alternative = node.child_by_field_name("alternative")
-        if condition is None or consequence is None or alternative is None:  # pragma: no cover
-            return _node_text(code, node)
-        if _js_truthy(_node_to_python(code, condition, bindings)):
-            return _node_to_python(code, consequence, bindings)
-        return _node_to_python(code, alternative, bindings)
-
-    if t == "subscript_expression":
-        obj_node = node.child_by_field_name("object")
-        index_node = node.child_by_field_name("index")
-        optional = any(child.type == "optional_chain" for child in node.children)
-        if index_node is not None and _is_string(index_node):
-            public = _string_value(_node_text(code, index_node))
-            # Import aliases: ``_0x521864['DISPLAY_MENU_DHW']``. Leave ``arr['map']`` and
-            # ``Math['floor']`` as leftover source so issue #285 can still see the receiver.
-            if obj_node is not None and obj_node.type == "identifier":
-                obj_name = _node_text(code, obj_node)
-                if bindings and obj_name in bindings:
-                    obj_val = bindings[obj_name]
-                    if isinstance(obj_val, Mapping) and public in obj_val:
-                        return obj_val[public]
-                    # Optional chain on a missing / nullish binding → undefined.
-                    if optional and (_is_js_nullish(obj_val) or isinstance(obj_val, Mapping)):
-                        return None
-                if obj_name.startswith("_0x"):
-                    # ``_0x?.['minValue']`` with no binding is undefined (SPA fallback
-                    # via ``|| […]``), not the public name used for import aliases.
-                    if optional:
-                        return None
-                    return public
-        leftover = _node_text(code, node)
-        public_leftover = js_public_member_name(leftover)
-        return public_leftover if public_leftover is not None else leftover
-
-    if t == "arrow_function":
-        factory = _build_arrow_factory(code, node, bindings)
-        if factory is not None:
-            return factory
-        raw_function = _node_text(code, node)
-        return _build_factory_callable(raw_function, bindings)
-
-    if t == "binary_expression":
-        operator = node.child_by_field_name("operator")
-        left_node = node.child_by_field_name("left")
-        right_node = node.child_by_field_name("right")
-        if operator is None or left_node is None or right_node is None:  # pragma: no cover
-            return _node_text(code, node)
-        op_text = _node_text(code, operator)
-        left_val = _node_to_python(code, left_node, bindings)
-        if op_text == "||":
-            if _is_unevaluable_logical_operand(code, left_node, left_val, bindings):
-                return _node_text(code, node)
-            return left_val if _js_truthy(left_val) else _node_to_python(code, right_node, bindings)
-        if op_text == "&&":
-            if _is_unevaluable_logical_operand(code, left_node, left_val, bindings):
-                return _node_text(code, node)
-            return left_val if not _js_truthy(left_val) else _node_to_python(code, right_node, bindings)
-        handled, result = _eval_js_binary(
-            op_text,
-            left_val,
-            _node_to_python(code, right_node, bindings),
-        )
-        if handled:
-            return result
-
-    if t == "call_expression":
-        func_node = node.child_by_field_name("function")
-        args_node = node.child_by_field_name("arguments")
-        mapped = _eval_array_map_call(code, node, bindings)
-        if mapped is not None:
-            return mapped
-        callee = _node_to_python(code, func_node, bindings) if func_node is not None else None
-        arg_nodes = args_node.named_children if args_node is not None else ()  # pragma: no branch
-        args = [_node_to_python(code, child, bindings) for child in arg_nodes]
-        if callable(callee):
-            if len(args) == 1:
-                return callee(args[0])
-            return callee(args)
-        helper_token = _public_token_from_helper_args(code, func_node, args)
-        if helper_token is not None:
-            return helper_token
-
-    return _node_text(code, node)
-
-
-def _object_to_python(code: bytes, node: Node, *, bindings: dict[str, Any] | None = None) -> Any:
-    """Backward-compatible wrapper around :func:`_node_to_python` for objects."""
-    result = _node_to_python(code, node, bindings)
-    return result if isinstance(result, dict) else {}
-
-
-def _collect_bindings(code: bytes, root: Node) -> dict[str, Any]:
-    """Collect simple top-level bindings to resolve identifiers during conversion."""
-    bindings: dict[str, Any] = {}
-
-    for statement in root.named_children:
-        if statement.type not in {"lexical_declaration", "variable_declaration"}:
-            continue
-
-        for declarator in statement.named_children:
-            if declarator.type != "variable_declarator":
-                continue
-
-            name_node = declarator.child_by_field_name("name")
-            value_node = declarator.child_by_field_name("value")
-
-            if name_node is None or value_node is None:
-                continue
-
-            if name_node.type not in {"identifier", "property_identifier"}:
-                continue
-
-            name = _node_text(code, name_node)
-            if not name:
-                continue
-
-            try:
-                value = _node_to_python(code, value_node, bindings)
-            except Exception as exc:  # pragma: no cover - defensive parsing fallback
-                LOG.debug("Failed to resolve binding '%s': %s", name, exc)
-            else:
-                bindings[name] = value
-
-    return bindings
-
-
 # ----------------------------- TranslationConfig -----------------------------
 
 
@@ -1310,7 +1733,6 @@ class LiveAssetsCatalog:
         self._api = api
         self._timeout = request_timeout
         self._asset_sema = asyncio.Semaphore(max(1, concurrency))
-        self._ts: _TS | None = None
         self._idx = AssetIndex()
         self._log = logger or logging.getLogger(__name__)
         self._last_index_url: str | None = None
@@ -1364,12 +1786,6 @@ class LiveAssetsCatalog:
     async def __aexit__(self, *exc: Any) -> None:
         """Exit the async context manager."""
         pass
-
-    def _ensure_ts(self) -> _TS:
-        """Return a tree-sitter parser, loading the optional ``[parsers]`` extra on demand."""
-        if self._ts is None:
-            self._ts = _TS()
-        return self._ts
 
     # ---------- INDEX ----------
 
@@ -1586,30 +2002,14 @@ class LiveAssetsCatalog:
         ast_limit = min(1000000, len(code))
         limited_code = code[:ast_limit]
 
-        # 3) Inline param-map candidates (optional tree-sitter oracle; pure path uses token maps)
+        # 3) Inline param-map candidates (brace-span scan; token maps used at resolve time)
         inline_candidates: list[tuple[int, int]] = []
 
-        if len(limited_code) > 0:
+        if limited_code:
             try:
-                tree = self._ensure_ts().parse(limited_code)
-                objects_checked = 0
-                max_param_objects = 10
-
-                for n in _walk(tree.root_node):
-                    if n.type == "object" and objects_checked < max_param_objects:
-                        objects_checked += 1
-                        approx_len = n.end_byte - n.start_byte
-                        if approx_len > 200:
-                            obj_start = n.start_byte
-                            obj_end = min(n.end_byte, len(limited_code))
-                            snippet = limited_code[obj_start:obj_end]
-                            if any(
-                                key in snippet
-                                for key in (b"group", b"pool", b"use", b"value", b"unit", b"status", b"componentType")
-                            ):
-                                inline_candidates.append((obj_start, obj_end))
+                inline_candidates = _find_inline_param_object_spans(limited_code)
             except Exception as param_e:
-                self._log.debug("Param candidates AST parsing failed: %s", param_e)
+                self._log.debug("Param candidates scan failed: %s", param_e)
 
         return AssetIndex(
             assets_by_basename=assets_by_basename,
@@ -2865,18 +3265,6 @@ class LiveAssetsCatalog:
         """
         return extract_root_object(code)
 
-    def _extract_root_object_from_js_treesitter(self, code: bytes) -> dict[str, Any] | None:
-        """Tree-sitter oracle for ParamMap / root-object parity tests."""
-        tree = self._ensure_ts().parse(code)
-        bindings = _collect_bindings(code, tree.root_node)
-        root = _find_export_root(code, tree.root_node)
-        if root is None:
-            return None
-        obj = _object_to_python(code, root, bindings=bindings)
-        if isinstance(obj, dict):
-            return obj
-        return None
-
     # ---------- Permissions helper ----------
 
     async def list_symbols_for_permissions(
@@ -3120,62 +3508,6 @@ class LiveAssetsCatalog:
 
         return best
 
-    def _parse_units_descriptor_table_from_index_treesitter(self, code: bytes) -> dict[str, dict[str, Any]]:
-        """Tree-sitter oracle for units-table parity tests."""
-        try:
-            tree = self._ensure_ts().parse(code)
-            bindings = _collect_bindings(code, tree.root_node)
-        except Exception as exc:
-            self._log.debug("Failed to parse units descriptor table from index: %s", exc)
-            return {}
-
-        best: dict[str, dict[str, Any]] = {}
-        best_score = self._units_descriptor_table_score(best)
-        largest_candidate = 0
-
-        for statement in tree.root_node.named_children:
-            if statement.type not in {"lexical_declaration", "variable_declaration"}:
-                continue
-
-            for declarator in statement.named_children:
-                if declarator.type != "variable_declarator":
-                    continue
-
-                value_node = declarator.child_by_field_name("value")
-                if value_node is None or value_node.type != "object":
-                    continue
-
-                candidate = _node_to_python(code, value_node, bindings)
-                if not isinstance(candidate, Mapping):
-                    continue
-
-                parsed: dict[str, dict[str, Any]] = {}
-                descriptor_keys = 0
-                for key_raw, value_raw in candidate.items():
-                    if not self._is_unit_descriptor_entry(value_raw):
-                        continue
-                    descriptor_keys += 1
-                    key = self._normalize_unit_key(key_raw)
-                    if key is None:
-                        continue
-                    parsed[key] = dict(value_raw)
-
-                largest_candidate = max(largest_candidate, descriptor_keys)
-                score = self._units_descriptor_table_score(parsed)
-                if score > best_score:
-                    best = parsed
-                    best_score = score
-
-        if not best and largest_candidate:
-            self._log.warning(
-                "Units descriptor table kept 0 of %d keys from the largest candidate object",
-                largest_candidate,
-            )
-        elif not best and len(code) >= 50_000:
-            self._log.warning("Units descriptor table parsed to 0 entries from a %d-byte index", len(code))
-
-        return best
-
     def _ensure_units_tables_loaded(self) -> dict[str, dict[str, Any]]:
         """Load (and cache) the units descriptor table and CustomUnit aliases from index."""
         cached = self._units_descriptor_table
@@ -3313,112 +3645,6 @@ class LiveAssetsCatalog:
         """
         return parse_i18n_module(code)
 
-    def _parse_i18n_from_js_treesitter(self, code: bytes) -> dict[str, Any]:
-        """Tree-sitter oracle for i18n parity tests."""
-        try:
-            tree = self._ensure_ts().parse(code)
-            root = tree.root_node
-            code_text = code.decode("utf-8", errors="replace")
-
-            bindings: dict[str, Any] = {}
-
-            for child in root.named_children:
-                if child.type != "lexical_declaration":
-                    continue
-                for declarator in child.named_children:
-                    if declarator.type != "variable_declarator":
-                        continue
-                    name_node = declarator.child_by_field_name("name")
-                    value_node = declarator.child_by_field_name("value")
-                    if name_node is None or value_node is None:
-                        continue
-                    name = _node_text(code, name_node).strip()
-                    if not name:
-                        continue
-                    bindings[name] = _node_to_python(code, value_node, bindings)
-
-            translations: Any | None = None
-            default_export_name: str | None = None
-
-            for child in root.named_children:
-                if child.type != "export_statement":
-                    continue
-                value_node = child.child_by_field_name("value")
-                if value_node is not None:
-                    translations = _node_to_python(code, value_node, bindings)
-                    if value_node.type == "identifier":
-                        ident = _node_text(code, value_node).strip()
-                        if ident:
-                            default_export_name = ident
-                    break
-
-            if translations is None:
-                match = re.search(
-                    r"export\s*\{[^}]*?([A-Za-z0-9_$]+)\s+as\s+default",
-                    code_text,
-                )
-                if match:
-                    default_name = match.group(1)
-                    default_export_name = default_name
-                    candidate = bindings.get(default_name)
-                    if candidate is not None:
-                        translations = candidate
-
-            if translations is None:
-                export_root = _find_export_root(code, root)
-                if export_root is not None:
-                    translations = _node_to_python(code, export_root, bindings)
-
-            if isinstance(translations, dict):
-                return translations
-
-            if isinstance(translations, str):
-                cleaned = translations.strip()
-                if not cleaned:
-                    return {}
-                key = default_export_name if default_export_name else "__default__"
-                return {key: cleaned}
-
-            if translations is not None:
-                self._log.warning("i18n export is not an object: %s", type(translations))
-            return {}
-        except Exception as e:
-            self._log.warning("Failed to parse i18n bundle: %s", e)
-            return {}
-
-    def _is_translations_array_bytes(self, array_node: Node, js_bytes: bytes) -> bool:
-        """Check if an array looks like a translations array (byte-safe).
-
-        Uses the same 70% threshold heuristic as the text-based variant.
-        """
-        valid_entries = 0
-        total_objects = 0
-
-        for child in array_node.children:
-            if child.type != "object":
-                continue
-            total_objects += 1
-            has_id = False
-            has_flag = False
-
-            for pair in child.children:
-                if pair.type != "pair":
-                    continue
-                key_node = pair.child_by_field_name("key")
-                if key_node is None:
-                    continue
-                key_text = _property_name(js_bytes, key_node)
-                if key_text == "id":
-                    has_id = True
-                elif key_text == "flag":
-                    has_flag = True
-
-            if has_id and has_flag:
-                valid_entries += 1
-
-        threshold = total_objects * 0.7
-        return total_objects > 0 and valid_entries >= threshold
-
     def _parse_language_config_from_js(self, js_bytes: bytes) -> TranslationConfig:
         """Parse TranslationConfig from index JS bytes (pure-Python path)."""
         parsed = find_language_config_object(js_bytes)
@@ -3434,164 +3660,3 @@ class LiveAssetsCatalog:
         if not cleaned:
             raise ValueError("Language config object missing required fields")
         return TranslationConfig(translations=cleaned, default_translation=default_translation)
-
-    def _parse_language_config_from_js_treesitter(self, js_bytes: bytes) -> TranslationConfig:
-        """Tree-sitter oracle for language-config parity tests."""
-        tree = self._ensure_ts().parse(js_bytes)
-        root = tree.root_node
-
-        def is_language_config_object(obj_node: Node) -> bool:
-            if obj_node.type != "object":
-                return False
-
-            has_translations = False
-            has_default_translation = False
-
-            for pair in obj_node.children:
-                if pair.type != "pair":
-                    continue
-                key_node = pair.child_by_field_name("key")
-                value_node = pair.child_by_field_name("value")
-                if key_node is None or value_node is None:
-                    continue
-
-                key_text = _property_name(js_bytes, key_node)
-
-                if key_text == "translations" and value_node.type == "array":
-                    if self._is_translations_array_bytes(value_node, js_bytes):
-                        has_translations = True
-                elif key_text == "defaultTranslation" and value_node.type == "string":
-                    has_default_translation = True
-
-            return has_translations and has_default_translation
-
-        def visit_node(node: Node) -> Node | None:
-            if node.type == "object" and is_language_config_object(node):
-                return node
-            for child in node.children:
-                found = visit_node(child)
-                if found is not None:
-                    return found
-            return None
-
-        obj_node = visit_node(root)
-        if obj_node is None:
-            raise ValueError("Language config object not found")
-
-        parsed = _node_to_python(js_bytes, obj_node)
-        if not isinstance(parsed, dict):
-            raise ValueError("Language config object missing required fields")
-        translations = parsed.get("translations")
-        default_translation = parsed.get("defaultTranslation")
-        if not isinstance(translations, list) or not isinstance(default_translation, str) or not default_translation:
-            raise ValueError("Language config object missing required fields")
-        cleaned = [item for item in translations if isinstance(item, dict)]
-        if not cleaned:
-            raise ValueError("Language config object missing required fields")
-        return TranslationConfig(translations=cleaned, default_translation=default_translation)
-
-    def _is_translations_array(self, array_node: Node, text: str) -> bool:
-        """Check if an array looks like a translations array.
-
-        Looks for array elements that are objects with 'id' and 'flag' properties,
-        which is the signature of language configuration entries.
-        """
-        return self._is_translations_array_bytes(array_node, text.encode("utf-8"))
-
-    def _extract_translations_array_bytes(self, obj_node: Node, js_bytes: bytes) -> list[dict[str, Any]] | None:
-        """Extract translations array from language configuration object (bytes version)."""
-        for pair in obj_node.children:
-            if pair.type == "pair":
-                key_node = pair.child_by_field_name("key")
-                if key_node and _property_name(js_bytes, key_node) == "translations":
-                    value_node = pair.child_by_field_name("value")
-                    if value_node and value_node.type == "array":
-                        return self._parse_translations_array_bytes(value_node, js_bytes)
-        return None
-
-    def _extract_default_translation_bytes(self, obj_node: Node, js_bytes: bytes) -> str | None:
-        """Extract defaultTranslation from language configuration object (bytes version)."""
-        for pair in obj_node.children:
-            if pair.type == "pair":
-                key_node = pair.child_by_field_name("key")
-                if key_node and _property_name(js_bytes, key_node) == "defaultTranslation":
-                    value_node = pair.child_by_field_name("value")
-                    if value_node and value_node.type == "string":
-                        value_bytes = js_bytes[value_node.start_byte : value_node.end_byte]
-                        value_text = value_bytes.decode("utf-8", errors="replace")
-                        return _string_value(value_text)
-        return None
-
-    def _parse_translations_array_bytes(self, array_node: Node, js_bytes: bytes) -> list[dict[str, Any]]:
-        """Parse the translations array into Python list of dicts (bytes version)."""
-        translations = []
-        for child in array_node.children:
-            if child.type == "object":
-                translation = self._parse_translation_object_bytes(child, js_bytes)
-                if translation:
-                    translations.append(translation)
-        return translations
-
-    def _parse_translation_object_bytes(self, obj_node: Node, js_bytes: bytes) -> dict[str, Any] | None:
-        """Parse a single translation object (bytes version)."""
-        translation = {}
-        for pair in obj_node.children:
-            if pair.type == "pair":
-                key_node = pair.child_by_field_name("key")
-                value_node = pair.child_by_field_name("value")
-                if key_node and value_node:
-                    key = _property_name(js_bytes, key_node)
-                    value = self._parse_js_value_bytes(value_node, js_bytes)
-                    translation[key] = value
-        return translation if translation else None
-
-    def _parse_js_value_bytes(self, node: Node, js_bytes: bytes) -> Any:
-        """Parse a JavaScript value node into Python equivalent (bytes version)."""
-        if node.type == "string":
-            val_bytes = js_bytes[node.start_byte : node.end_byte]
-            val_text = val_bytes.decode("utf-8", errors="replace")
-            return _string_value(val_text)
-        elif node.type == "number":
-            val_bytes = js_bytes[node.start_byte : node.end_byte]
-            val_text = val_bytes.decode("utf-8", errors="replace")
-            parsed = _parse_js_number(val_text)
-            return val_text if parsed is None else parsed
-        elif node.type == "true":
-            return True
-        elif node.type == "false":
-            return False
-        elif node.type == "null":
-            return None
-        elif node.type == "object":
-            obj = {}
-            for pair in node.children:
-                if pair.type == "pair":
-                    key_node = pair.child_by_field_name("key")
-                    value_node = pair.child_by_field_name("value")
-                    if key_node and value_node:
-                        key = _property_name(js_bytes, key_node)
-                        value = self._parse_js_value_bytes(value_node, js_bytes)
-                        obj[key] = value
-            return obj
-        elif node.type == "array":
-            arr = []
-            for child in node.children:
-                if child.type not in (",", "[", "]"):
-                    arr.append(self._parse_js_value_bytes(child, js_bytes))
-            return arr
-        else:
-            # Fallback to raw text
-            val_bytes = js_bytes[node.start_byte : node.end_byte]
-            return val_bytes.decode("utf-8", errors="replace")
-
-    def _extract_translations_array(self, obj_node: Node, text: str) -> list[dict[str, Any]] | None:
-        """Extract translations array from language configuration object."""
-        return self._extract_translations_array_bytes(obj_node, text.encode("utf-8"))
-
-    def _extract_default_translation(self, obj_node: Node, text: str) -> str | None:
-        """Extract defaultTranslation from language configuration object."""
-        return self._extract_default_translation_bytes(obj_node, text.encode("utf-8"))
-
-    def _parse_js_value(self, node: Node, text: str) -> Any:
-        """Parse a JavaScript value node into Python equivalent."""
-        return self._parse_js_value_bytes(node, text.encode("utf-8"))

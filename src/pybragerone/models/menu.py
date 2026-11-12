@@ -51,7 +51,7 @@ def js_public_member_name(value: str) -> str | None:
     still emits the inner name as a plain string, so catalog matching has to recover it.
 
     Args:
-        value: Raw leftover text from ``_node_to_python`` or a permission field.
+        value: Raw leftover text from the catalog JS parser or a permission field.
 
     Returns:
         The public name, or ``None`` when ``value`` is not that leftover shape.
