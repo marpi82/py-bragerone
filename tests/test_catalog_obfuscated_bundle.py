@@ -197,7 +197,7 @@ async def test_get_i18n_warns_when_fetched_asset_parses_empty(caplog: pytest.Log
 )
 def test_language_config_rejects_malformed_parsed_object(monkeypatch: pytest.MonkeyPatch, parsed: object) -> None:
     """Guards after a successful structural match must still reject a bad Python value."""
-    monkeypatch.setattr("pybragerone.models.catalog._node_to_python", lambda *_args, **_kwargs: parsed)
+    monkeypatch.setattr("pybragerone.models.catalog.find_language_config_object", lambda _code: parsed)
     with pytest.raises(ValueError, match="missing required fields"):
         _catalog()._parse_language_config_from_js(_LIVE_LANGUAGE_SHAPE.encode())
 

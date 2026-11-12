@@ -190,16 +190,9 @@ def test_is_unit_descriptor_entry_requires_known_keys() -> None:
     assert LiveAssetsCatalog._is_unit_descriptor_entry({"parse": "e=>e"}) is True
 
 
-def test_parse_units_table_returns_empty_on_tree_sitter_failure() -> None:
-    """Parse errors yield an empty table instead of raising."""
-    catalog = _catalog()
-
-    class _BoomParser:
-        def parse(self, _code: bytes) -> Any:
-            raise RuntimeError("boom")
-
-    catalog._ts = cast(Any, _BoomParser())
-    assert catalog._parse_units_descriptor_table_from_index(b"const x={};") == {}
+def test_parse_units_table_returns_empty_on_non_descriptor_object() -> None:
+    """Non-descriptor objects yield an empty table instead of raising."""
+    assert _catalog()._parse_units_descriptor_table_from_index(b"const x={};") == {}
 
 
 def test_parse_units_table_keeps_empty_when_keys_do_not_normalize(caplog: pytest.LogCaptureFixture) -> None:
