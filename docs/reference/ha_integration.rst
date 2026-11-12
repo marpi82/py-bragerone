@@ -265,11 +265,16 @@ parameters:
 - ``ParamResolver.route_visibility_diagnostics`` — static SPA route gates
   (installer denylist, ``isVisibleOnSideMenu``, ``displayDropdown`` leftovers).
 - ``ParamResolver.parameter_visibility_diagnostics`` — per-parameter status bits
-  (``INVISIBLE``, ``DEVICE_AVAILABLE``, ``ENABLED``). Composite SPA cards with ``value2+``
-  are not force-hidden; ``describe_symbol`` ``value_slots`` lists companion
-  channels only when the card unit is a measurement (primary ``u`` path /
-  units-table ``text``). Enum-only cards (e.g. ``HEAT_PUMP_STATE``) keep the
-  primary slot alone. Primary ``value`` keeps a stable ``unique_id``.
+  (``INVISIBLE``, ``DEVICE_AVAILABLE``, ``ENABLED``). ``ENABLED`` / status ``if``
+  rules may use ``storeGetter`` maps (e.g. ``modulesMap.{devid}.connectedAt`` on
+  ``COMMAND_MODULE_RESTART``); call ``set_runtime_context`` the same way as for
+  value resolve. Composite SPA cards with ``value2+`` are not force-hidden;
+  ``describe_symbol`` ``value_slots`` lists companion channels only when the card
+  unit is a measurement (primary ``u`` path / units-table ``text``). Enum-only
+  cards (e.g. ``HEAT_PUMP_STATE``) keep the primary slot alone. Primary ``value``
+  keeps a stable ``unique_id``. Panel titles overlay foreign i18n packs referenced
+  by dotted ``displayName`` keys (``dashboard.*``) so unresolved keys do not leak
+  into hierarchical paths.
 
 Static menu shells (e.g. ``MAINMENU_STREFY_CZASOWE`` / path ``timezones``) load
 parameter tokens from ``deviceMenu/static/<path>.ts`` chunks referenced in

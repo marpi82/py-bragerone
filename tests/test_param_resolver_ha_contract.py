@@ -349,6 +349,45 @@ async def test_visibility_diagnostics_cover_ha_hide_reasons() -> None:
     assert visible is False
     assert reason == "hidden:enabled"
 
+    # COMMAND_MODULE_RESTART: ENABLED via storeGetter modulesMap.{devid}.connectedAt (#484).
+    restart_desc = {
+        "mapping": {
+            "paths": {
+                "status": [
+                    {
+                        "condition": "ENABLED",
+                        "if": [
+                            {
+                                "expected": None,
+                                "operation": "notEqualTo",
+                                "value": {"storeGetter": "modulesMap.{devid}.connectedAt"},
+                            }
+                        ],
+                        "then": "!![]",
+                    },
+                    {"condition": "ENABLED", "else": "![]"},
+                ]
+            }
+        }
+    }
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=restart_desc, resolved=None)
+    assert visible is False
+    assert reason == "hidden:enabled"
+    resolver.set_runtime_context({"devid": "FTTCTBSLCE", "modulesMap": {"FTTCTBSLCE": {"connectedAt": None}}})
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=restart_desc, resolved=None)
+    assert visible is False
+    assert reason == "hidden:enabled"
+    resolver.set_runtime_context({"devid": "FTTCTBSLCE", "modulesMap": {"FTTCTBSLCE": {"connectedAt": 1794459623}}})
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=restart_desc, resolved=None)
+    assert visible is True
+    assert reason == "visible:default"
+    # SPA rule is ``notEqualTo null`` (same as JS ``0 != null``) — numeric 0 stays ENABLED.
+    resolver.set_runtime_context({"devid": "FTTCTBSLCE", "modulesMap": {"FTTCTBSLCE": {"connectedAt": 0}}})
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=restart_desc, resolved=None)
+    assert visible is True
+    assert reason == "visible:default"
+    resolver.set_runtime_context(None)
+
     # ``elseif`` status gates (same shape as raw.any branches).
     elseif_desc = {
         "mapping": {

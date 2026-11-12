@@ -20,6 +20,13 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- ``parameter_visibility_diagnostics``: evaluate ``storeGetter`` status ``if``
+  rules (e.g. ``COMMAND_MODULE_RESTART`` ``ENABLED`` via
+  ``modulesMap.{devid}.connectedAt``) with the same runtime context as value
+  resolve, so online modules are not false ``hidden:enabled`` (#484).
+- Panel titles: overlay foreign i18n packs referenced by dotted ``displayName``
+  keys (``dashboard.navbar.settings``) and stop leaking unresolved dotted keys
+  into hierarchical panel paths (#485).
 - ``parameter_visibility_diagnostics``: treat SPA ``status.ENABLED=false`` as
   hidden (``hidden:enabled``), including ``deviceTile`` SWITCH cards whose
   ``ENABLED`` rule lists fall through to ``else: ![]`` when the backing

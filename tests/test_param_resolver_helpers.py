@@ -867,25 +867,30 @@ def test_status_paths_for_visibility_prefers_paths_then_raw_then_branch() -> Non
     assert ParamResolver._status_paths_from_raw_status({"x": "nope"}) == []
 
 
+def _status_flag_resolver(*pairs: tuple[str, object]) -> ParamResolver:
+    store = ParamStore()
+    for key, value in pairs:
+        store.upsert(key, value)
+    return ParamResolver(store=store, assets=cast(AssetsProtocol, SimpleNamespace()))
+
+
 def test_status_condition_name_and_empty_flag() -> None:
     """Normalize status condition tokens; non-str / empty wanted yield empty / None."""
     assert ParamResolver._status_condition_name("ParameterStatus['INVISIBLE']") == "INVISIBLE"
     assert ParamResolver._status_condition_name("t.INVISIBLE") == "INVISIBLE"
     assert ParamResolver._status_condition_name(None) == ""
     assert ParamResolver._status_condition_name(3) == ""
-    assert ParamResolver._status_flag_value(status_paths=[], flag_condition="", flat_values={}) is None
+    resolver = _status_flag_resolver()
+    assert resolver._status_flag_value(status_paths=[], flag_condition="", flat_values={}) is None
 
 
 def test_status_flag_value_reads_bits_and_if_else_rules() -> None:
     """Read a status flag from a bit path or from if/then/else rule rows."""
+    resolver = _status_flag_resolver()
     bit_paths: list[dict[str, Any]] = [{"condition": "t.INVISIBLE", "group": "P5", "use": "s", "number": 0, "bit": 2}]
-    assert (
-        ParamResolver._status_flag_value(status_paths=bit_paths, flag_condition="t.INVISIBLE", flat_values={"P5.s0": 4}) is True
-    )
-    assert (
-        ParamResolver._status_flag_value(status_paths=bit_paths, flag_condition="t.INVISIBLE", flat_values={"P5.s0": "x"}) is None
-    )
-    assert ParamResolver._status_flag_value(status_paths=bit_paths, flag_condition="other", flat_values={"P5.s0": 4}) is None
+    assert resolver._status_flag_value(status_paths=bit_paths, flag_condition="t.INVISIBLE", flat_values={"P5.s0": 4}) is True
+    assert resolver._status_flag_value(status_paths=bit_paths, flag_condition="t.INVISIBLE", flat_values={"P5.s0": "x"}) is None
+    assert resolver._status_flag_value(status_paths=bit_paths, flag_condition="other", flat_values={"P5.s0": 4}) is None
 
     rule_paths: list[dict[str, Any]] = [
         {
@@ -901,12 +906,8 @@ def test_status_flag_value_reads_bits_and_if_else_rules() -> None:
             "else": "0",
         }
     ]
-    assert (
-        ParamResolver._status_flag_value(status_paths=rule_paths, flag_condition="t.AVAILABLE", flat_values={"P1.v0": 1}) is True
-    )
-    assert (
-        ParamResolver._status_flag_value(status_paths=rule_paths, flag_condition="t.AVAILABLE", flat_values={"P1.v0": 0}) is False
-    )
+    assert resolver._status_flag_value(status_paths=rule_paths, flag_condition="t.AVAILABLE", flat_values={"P1.v0": 1}) is True
+    assert resolver._status_flag_value(status_paths=rule_paths, flag_condition="t.AVAILABLE", flat_values={"P1.v0": 0}) is False
     assert ParamResolver._to_bool_value(True) is True
     assert ParamResolver._to_bool_value(0) is False
     assert ParamResolver._to_bool_value("!0") is True
@@ -1170,7 +1171,7 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
         == "Menu termostatów/Pompa CO"
     )
 
-    # Missed i18n lookups fall through to the raw display name / route name.
+    # Missed dotted i18n keys fall through to route name / path (no key leak — #485).
     assert (
         ParamResolver._route_title(
             SimpleNamespace(
@@ -1180,7 +1181,32 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
             ),
             routes_i18n={"modules": {"menu": {}}},
         )
-        == "routes.modules.menu.missing"
+        == "modules.menu.dhw"
+    )
+    assert (
+        ParamResolver._route_title(
+            SimpleNamespace(
+                name="modules.menu.timeZones.setup",
+                path="timezones/setup",
+                meta=SimpleNamespace(display_name="dashboard.navbar.settings"),
+            ),
+            routes_i18n={
+                "dashboard": {"navbar": {"settings": "Ustawienia"}},
+                "modules": {"menu": {"timeZones": {"setup": "Setup"}}},
+            },
+        )
+        == "Ustawienia"
+    )
+    assert (
+        ParamResolver._route_title(
+            SimpleNamespace(
+                name="modules.menu.timeZones.setup",
+                path="setup",
+                meta=SimpleNamespace(display_name="dashboard.navbar.settings"),
+            ),
+            routes_i18n={"modules": {"menu": {}}},
+        )
+        == "modules.menu.timeZones.setup"
     )
     assert (
         ParamResolver._route_title(
@@ -1217,6 +1243,36 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
         ]
     )
     assert ParamResolver._collect_menu_title_tokens(cast(MenuResult, junk_menu)) == {"MAINMENU_OK"}
+
+    dash_menu = SimpleNamespace(
+        routes=[
+            SimpleNamespace(
+                name="modules.menu.timeZones.setup",
+                meta=SimpleNamespace(display_name="dashboard.navbar.settings"),
+                children=[],
+            ),
+            SimpleNamespace(
+                name="modules.menu.dhw",
+                meta=SimpleNamespace(display_name="routes.modules.menu.dhw"),
+                children=[],
+            ),
+            SimpleNamespace(
+                name="MAINMENU_X",
+                meta=SimpleNamespace(display_name="menu.MAINMENU_X"),
+                children=[],
+            ),
+        ]
+    )
+    assert ParamResolver._collect_display_name_i18n_packs(cast(MenuResult, dash_menu)) == {"dashboard"}
+    non_str_menu = SimpleNamespace(
+        routes=[
+            SimpleNamespace(name="x", meta=SimpleNamespace(display_name=12), children=[]),
+            SimpleNamespace(name="y", meta=None, children=[]),
+            SimpleNamespace(name="z", meta=SimpleNamespace(display_name="  "), children=[]),
+            SimpleNamespace(name="w", meta=SimpleNamespace(display_name="nodots"), children=[]),
+        ]
+    )
+    assert ParamResolver._collect_display_name_i18n_packs(cast(MenuResult, non_str_menu)) == set()
 
     assert ParamResolver._string_namespace_title("MAINMENU_X", {"MAINMENU_X": "Title"}) == "Title"
     assert ParamResolver._string_namespace_title("MAINMENU_X", {"__default__": "Title"}) == "Title"

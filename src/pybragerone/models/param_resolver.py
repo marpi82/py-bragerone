@@ -735,7 +735,12 @@ class ParamResolver:
         if isinstance(dn, str) and dn.strip():
             # Prefer bare MAINMENU_* over leaking ``menu.MAINMENU_*`` when i18n missed.
             bare = cls._bare_menu_title_token(dn)
-            return bare if bare is not None else dn.strip()
+            if bare is not None:
+                return bare
+            # Unresolved dotted i18n keys (e.g. ``dashboard.navbar.settings``) must not
+            # leak into HA panel paths — fall through to route name / path (#485).
+            if "." not in dn.strip():
+                return dn.strip()
         route_name = getattr(route, "name", None)
         if isinstance(route_name, str) and route_name.strip():
             bare = cls._bare_menu_title_token(route_name)
@@ -785,6 +790,10 @@ class ParamResolver:
         - the ``menu`` namespace (a few ``MAINMENU_*`` / ``MENUSERWIS_*`` keys), and
         - dedicated string-default namespaces named like the token itself
           (``MAINMENU_MENU_TERMOSTATU`` → ``"Menu termostatów"``).
+
+        Also overlays foreign packs referenced by route ``displayName`` keys such as
+        ``dashboard.navbar.settings`` (time-zone setup leaf) so dotted lookups resolve
+        instead of leaking raw i18n keys into HA panel paths (#485).
         """
         routes_i18n = dict(await self._i18n.get_namespace("routes"))
         menu_i18n = await self._i18n.get_namespace("menu")
@@ -804,7 +813,37 @@ class ParamResolver:
             title = self._string_namespace_title(token, table)
             if title is not None:
                 routes_i18n[token] = title
+
+        for pack in sorted(self._collect_display_name_i18n_packs(menu)):
+            existing_pack = routes_i18n.get(pack)
+            if isinstance(existing_pack, Mapping) and existing_pack:
+                continue
+            table = await self._i18n.get_namespace(pack)
+            if isinstance(table, Mapping) and table:
+                routes_i18n[pack] = dict(table)
         return routes_i18n
+
+    @classmethod
+    def _collect_display_name_i18n_packs(cls, menu: MenuResult) -> set[str]:
+        """Collect root i18n pack names from dotted route ``displayName`` keys.
+
+        Skips ``routes.*`` / ``menu.*`` (already handled) and route-name style
+        ``modules.*`` / ``companies.*`` trees that live under the routes namespace.
+        """
+        packs: set[str] = set()
+        skip_roots = frozenset({"routes", "menu", "modules", "companies"})
+        for route, _ancestors in cls._iter_routes_with_ancestors(menu.routes):
+            meta = getattr(route, "meta", None)
+            dn = getattr(meta, "display_name", None) if meta is not None else None
+            if not isinstance(dn, str):
+                continue
+            token = dn.strip()
+            if not token or "." not in token:
+                continue
+            root = token.split(".", 1)[0].strip()
+            if root and root.casefold() not in skip_roots:
+                packs.add(root)
+        return packs
 
     @classmethod
     def _route_allowed_in_module_item(cls, route: Any) -> bool:
@@ -2726,21 +2765,34 @@ class ParamResolver:
             return ""
         return (cls._clean_symbolic_tag(condition) or condition).strip()
 
-    @classmethod
+    def _status_rule_matches(self, rule: dict[str, Any], flat_values: Mapping[str, Any]) -> bool:
+        """Evaluate one status ``if``/``elseif`` rule, including ``storeGetter`` maps (#484).
+
+        Address-selector lists stay on :meth:`_eval_status_rule`. Mapping
+        ``value: {storeGetter: ...}`` (e.g. ``COMMAND_MODULE_RESTART`` ENABLED)
+        uses the runtime-context evaluator — the flat-values matcher cannot see
+        ``modulesMap.{devid}.connectedAt`` and would falsely take ``else: ![]``.
+        """
+        value = rule.get("value")
+        if isinstance(value, Mapping):
+            return self._evaluator._eval_condition_any(rule)
+        return self._eval_status_rule(rule, flat_values)
+
     def _status_flag_value(
-        cls,
+        self,
         *,
         status_paths: list[dict[str, Any]],
         flag_condition: str,
         flat_values: Mapping[str, Any],
     ) -> bool | None:
+        """Resolve one SPA status flag (``INVISIBLE`` / ``ENABLED`` / …) from path rows."""
         explicit_else: bool | None = None
-        wanted = cls._status_condition_name(flag_condition).casefold()
+        wanted = self._status_condition_name(flag_condition).casefold()
         if not wanted:
             return None
 
         for status in status_paths:
-            condition = cls._status_condition_name(status.get("condition")).casefold()
+            condition = self._status_condition_name(status.get("condition")).casefold()
             if condition != wanted:
                 continue
 
@@ -2759,16 +2811,16 @@ class ParamResolver:
             ifs = status.get("if")
             if ifs is None:
                 ifs = status.get("elseif")
-            then_val = cls._to_bool_value(status.get("then"))
+            then_val = self._to_bool_value(status.get("then"))
             if (
                 isinstance(ifs, list)
                 and then_val is not None
-                and all(isinstance(rule, dict) and cls._eval_status_rule(rule, flat_values) for rule in ifs)
+                and all(isinstance(rule, dict) and self._status_rule_matches(rule, flat_values) for rule in ifs)
             ):
                 return then_val
 
             if "else" in status:
-                explicit_else = cls._to_bool_value(status.get("else"))
+                explicit_else = self._to_bool_value(status.get("else"))
 
         return explicit_else
 
@@ -2799,6 +2851,9 @@ class ParamResolver:
         - when the ``DEVICE_AVAILABLE`` flag resolves falsey, the parameter is hidden;
         - when the ``ENABLED`` flag resolves falsey, the parameter is hidden
           (home ``deviceTile`` SWITCH cards such as heat-pump start);
+        - ``ENABLED`` / status ``if`` rules may use ``storeGetter`` maps
+          (e.g. ``modulesMap.{devid}.connectedAt`` on ``COMMAND_MODULE_RESTART``);
+          those need :meth:`set_runtime_context` the same way value resolve does;
         - when a flag path is present but its backing value is missing, the flag
           is treated as unknown and does not hide the parameter — unless the
           status rule list supplies an explicit ``else`` that resolves falsey
