@@ -803,9 +803,9 @@ async def test_panel_title_i18n_overlays_dashboard_display_name_pack() -> None:
     assert "Strefy czasowe/Ustawienia" in groups
     assert groups["Strefy czasowe/Ustawienia"] == ["PARAM_219"]
 
-    # Existing nested pack must not be replaced; empty pack namespaces stay absent.
-    namespaces["routes"]["dashboard"] = {"navbar": {"settings": "Keep me"}}
-    namespaces["dashboard"] = {"navbar": {"settings": "Should not win"}}
+    # Existing leaf titles win; missing leaves are filled from the foreign pack.
+    namespaces["routes"]["dashboard"] = {"navbar": {"menu": "Keep menu"}}
+    namespaces["dashboard"] = {"navbar": {"menu": "Should not win", "settings": "Ustawienia filled"}}
     namespaces["empty_pack"] = {}
     menu_with_empty = MenuResult.model_validate(
         {
@@ -832,6 +832,9 @@ async def test_panel_title_i18n_overlays_dashboard_display_name_pack() -> None:
         }
     )
     title_i18n_keep = await resolver._panel_title_i18n(menu_with_empty)
-    assert title_i18n_keep["dashboard"]["navbar"]["settings"] == "Keep me"
+    assert title_i18n_keep["dashboard"]["navbar"]["menu"] == "Keep menu"
+    assert title_i18n_keep["dashboard"]["navbar"]["settings"] == "Ustawienia filled"
     assert "empty_pack" not in title_i18n_keep
     assert ParamResolver._collect_display_name_i18n_packs(menu_with_empty) == {"dashboard", "empty_pack"}
+    groups_filled = ParamResolver.build_panel_groups_from_menu(menu_with_empty, all_panels=True, routes_i18n=title_i18n_keep)
+    assert groups_filled.get("Ustawienia filled") == ["PARAM_219"]

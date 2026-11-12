@@ -454,6 +454,47 @@ async def test_visibility_diagnostics_cover_ha_hide_reasons() -> None:
     assert visible is True
     assert reason == "visible:default"
 
+    # Status flags nested under raw.any active branch (paths.status absent).
+    store.upsert("P2.v0", 1)
+    any_status_desc = {
+        "mapping": {
+            "raw": {
+                "any": [
+                    {
+                        "if": [
+                            {
+                                "expected": 1,
+                                "operation": "equalTo",
+                                "value": [{"group": "P2", "number": 0, "use": "v"}],
+                            }
+                        ],
+                        "then": {
+                            "status": {
+                                "INVISIBLE": [
+                                    {
+                                        "if": [
+                                            {
+                                                "expected": 1,
+                                                "operation": "equalTo",
+                                                "value": [{"group": "P2", "number": 0, "use": "v"}],
+                                            }
+                                        ],
+                                        "then": "!![]",
+                                    },
+                                    {"else": "![]"},
+                                ]
+                            }
+                        },
+                    },
+                    {"else": {"status": {}}},
+                ]
+            }
+        }
+    }
+    visible, reason = resolver.parameter_visibility_diagnostics(desc=any_status_desc, resolved=None)
+    assert visible is False
+    assert reason == "hidden:invisible"
+
 
 async def test_describe_symbol_omits_enum_only_composite_companions() -> None:
     """HEAT_PUMP_STATE cards keep primary status only — timer value2/value3 stay out."""

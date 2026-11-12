@@ -815,13 +815,33 @@ class ParamResolver:
                 routes_i18n[token] = title
 
         for pack in sorted(self._collect_display_name_i18n_packs(menu)):
-            existing_pack = routes_i18n.get(pack)
-            if isinstance(existing_pack, Mapping) and existing_pack:
-                continue
             table = await self._i18n.get_namespace(pack)
-            if isinstance(table, Mapping) and table:
+            if not (isinstance(table, Mapping) and table):
+                continue
+            existing_pack = routes_i18n.get(pack)
+            if isinstance(existing_pack, Mapping):
+                # Fill missing leaves from the foreign pack without overwriting
+                # titles already present under ``routes`` (#485 partial stub).
+                routes_i18n[pack] = self._deep_fill_missing_i18n(dict(existing_pack), table)
+            else:
                 routes_i18n[pack] = dict(table)
         return routes_i18n
+
+    @classmethod
+    def _deep_fill_missing_i18n(cls, base: dict[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
+        """Merge *overlay* into *base*, only filling absent / blank string leaves."""
+        out = dict(base)
+        for key, value in overlay.items():
+            existing = out.get(key)
+            if isinstance(value, Mapping):
+                nested_base = existing if isinstance(existing, dict) else {}
+                out[str(key)] = cls._deep_fill_missing_i18n(dict(nested_base), value)
+                continue
+            if isinstance(existing, str) and existing.strip():
+                continue
+            if isinstance(value, str) and value.strip():
+                out[str(key)] = value.strip()
+        return out
 
     @classmethod
     def _collect_display_name_i18n_packs(cls, menu: MenuResult) -> set[str]:

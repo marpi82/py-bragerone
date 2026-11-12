@@ -1274,6 +1274,62 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
     )
     assert ParamResolver._collect_display_name_i18n_packs(cast(MenuResult, non_str_menu)) == set()
 
+    filled = ParamResolver._deep_fill_missing_i18n(
+        {"navbar": {"menu": "Keep", "blank": "  "}},
+        {
+            "navbar": {"menu": "No", "blank": "Filled", "settings": "Settings"},
+            "extra": "X",
+            "ignored_non_str": 12,
+        },
+    )
+    assert filled["navbar"]["menu"] == "Keep"
+    assert filled["navbar"]["blank"] == "Filled"
+    assert filled["navbar"]["settings"] == "Settings"
+    assert filled["extra"] == "X"
+    assert "ignored_non_str" not in filled
+
+    # raw.any active branch can supply status paths when paths.status is empty.
+    any_mapping = {
+        "raw": {
+            "any": [
+                {
+                    "if": [
+                        {
+                            "expected": 1,
+                            "operation": "equalTo",
+                            "value": [{"group": "P2", "number": 0, "use": "v"}],
+                        }
+                    ],
+                    "then": {
+                        "status": {
+                            "INVISIBLE": [{"else": "!![]"}],
+                        }
+                    },
+                },
+                {"else": {"status": {}}},
+            ]
+        }
+    }
+    paths = ParamResolver._status_paths_for_visibility(any_mapping, {"P2.v0": 1})
+    assert paths and paths[0].get("condition") == "INVISIBLE"
+    empty_branch = {
+        "raw": {
+            "any": [
+                {
+                    "if": [
+                        {
+                            "expected": 1,
+                            "operation": "equalTo",
+                            "value": [{"group": "P2", "number": 0, "use": "v"}],
+                        }
+                    ],
+                    "then": {"status": {}},
+                }
+            ]
+        }
+    }
+    assert ParamResolver._status_paths_for_visibility(empty_branch, {"P2.v0": 1}) == []
+
     assert ParamResolver._string_namespace_title("MAINMENU_X", {"MAINMENU_X": "Title"}) == "Title"
     assert ParamResolver._string_namespace_title("MAINMENU_X", {"__default__": "Title"}) == "Title"
     assert ParamResolver._string_namespace_title("MAINMENU_X", {"other": "Title"}) == "Title"
