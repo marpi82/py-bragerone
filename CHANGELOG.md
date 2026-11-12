@@ -20,6 +20,11 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- Pure catalog parser: evaluate ``typeof`` and bitwise ``>>`` / ``<<`` /
+  ``>>>`` / ``&`` / ``|`` / ``^`` so SPA ``valueCallback`` arrows
+  (``typeof x==='number'?…filter(bit=>x>>bit&1)``) fully consume inside
+  ``basicParameterBuilder_P*({number:0x1,…})`` calls instead of truncating
+  and overwriting ``number`` with the string ``"number"`` (#495).
 - DATE_TIME: treat factory-default wire ``0001011200`` /
   ``2000-01-01 12:00`` as that wall-clock datetime (not ``None`` / empty), so
   HA can create ``datetime`` entities and clear by writing the same moment

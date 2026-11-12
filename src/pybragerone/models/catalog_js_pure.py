@@ -506,16 +506,16 @@ class _Parser:
             left = right if self._is_nullish(left) else left
 
     def _parse_logical_and(self) -> Any:
-        left = self._parse_equality()
+        left = self._parse_bitwise_or()
         while True:
             self._skip_ws_and_comments()
             if not self._match("&&"):
                 return left
-            right = self._parse_equality()
+            right = self._parse_bitwise_or()
             left = right if self._js_truthy(left) else left
 
     def _parse_equality(self) -> Any:
-        left = self._parse_additive()
+        left = self._parse_shift()
         while True:
             self._skip_ws_and_comments()
             op = None
@@ -526,9 +526,99 @@ class _Parser:
             if op is None:
                 return left
             self.i += len(op)
-            right = self._parse_additive()
+            right = self._parse_shift()
             equal = left == right or (self._is_nullish(left) and self._is_nullish(right))
             left = equal if op in {"===", "=="} else (not equal)
+
+    def _js_to_int32(self, value: Any) -> int | None:
+        """Coerce a value the way JS bitwise ops do (``ToInt32``-ish).
+
+        Booleans become ``0``/``1`` so equality results combine with ``&``/``|``/``^``
+        (``1===1&0`` → ``0``). Non-integral floats and non-numerics return ``None``.
+        """
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float) and value.is_integer():
+            return int(value)
+        return None
+
+    def _js_typeof(self, operand: Any) -> str:
+        """Return a JavaScript-like ``typeof`` string for an already-parsed operand."""
+        if operand is None or self._is_nullish(operand):
+            return "undefined"
+        if isinstance(operand, bool):
+            return "boolean"
+        if isinstance(operand, (int, float)) and not isinstance(operand, bool):
+            return "number"
+        if isinstance(operand, str):
+            return "string"
+        if isinstance(operand, (list, dict)):
+            return "object"
+        if callable(operand):
+            return "function"
+        return "undefined"
+
+    def _parse_bitwise_or(self) -> Any:
+        """Parse ``|`` (not ``||``) so SPA bitmasks inside arrows consume fully (#495)."""
+        left = self._parse_bitwise_xor()
+        while True:
+            self._skip_ws_and_comments()
+            if self.source.startswith("||", self.i):
+                return left
+            if not self._match("|"):
+                return left
+            right = self._parse_bitwise_xor()
+            left_i, right_i = self._js_to_int32(left), self._js_to_int32(right)
+            left = left_i | right_i if left_i is not None and right_i is not None else f"{left}|{right}"
+
+    def _parse_bitwise_xor(self) -> Any:
+        left = self._parse_bitwise_and()
+        while True:
+            self._skip_ws_and_comments()
+            if not self._match("^"):
+                return left
+            right = self._parse_bitwise_and()
+            left_i, right_i = self._js_to_int32(left), self._js_to_int32(right)
+            left = left_i ^ right_i if left_i is not None and right_i is not None else f"{left}^{right}"
+
+    def _parse_bitwise_and(self) -> Any:
+        """Parse ``&`` (not ``&&``) for SPA ``x>>bit&0x1`` filters inside arrows (#495)."""
+        left = self._parse_equality()
+        while True:
+            self._skip_ws_and_comments()
+            if self.source.startswith("&&", self.i):
+                return left
+            if not self._match("&"):
+                return left
+            right = self._parse_equality()
+            left_i, right_i = self._js_to_int32(left), self._js_to_int32(right)
+            left = left_i & right_i if left_i is not None and right_i is not None else f"{left}&{right}"
+
+    def _parse_shift(self) -> Any:
+        left = self._parse_additive()
+        while True:
+            self._skip_ws_and_comments()
+            op = None
+            for candidate in (">>>", "<<", ">>"):
+                if self.source.startswith(candidate, self.i):
+                    op = candidate
+                    break
+            if op is None:
+                return left
+            self.i += len(op)
+            right = self._parse_additive()
+            left_i, right_i = self._js_to_int32(left), self._js_to_int32(right)
+            if left_i is not None and right_i is not None:
+                if op == "<<":
+                    left = left_i << right_i
+                elif op == ">>":
+                    left = left_i >> right_i
+                else:
+                    left = (left_i % 0x100000000) >> right_i
+            else:
+                left = f"{left}{op}{right}"
 
     def _parse_additive(self) -> Any:
         left = self._parse_multiplicative()
@@ -578,6 +668,11 @@ class _Parser:
         if self._match_keyword("void"):
             _ = self._parse_unary()
             return None
+        if self._match_keyword("typeof"):
+            # SPA ``valueCallback`` arrows use ``typeof x==='number'?…`` (#495). Without
+            # this unary the arrow body stops at ``typeof`` and the rest of the object
+            # literal is misread as keys (overwriting ``number: 0x1`` with ``"number"``).
+            return self._js_typeof(self._parse_unary())
         if self._match("!"):
             # Match tree-sitter catalog semantics: unary leftovers stay as source text
             # (``!![]``, ``!0``), except we still parse the operand to advance the cursor.
