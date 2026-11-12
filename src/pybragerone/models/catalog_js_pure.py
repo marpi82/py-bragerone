@@ -956,9 +956,11 @@ def parse_i18n_module(code: bytes) -> dict[str, Any]:
         bindings = collect_bindings(source)
         translations: Any | None = None
         default_export_name: str | None = None
+        saw_export_default = False
 
         # ``export default <expr>``
         for match in _EXPORT_DEFAULT_RE.finditer(source):
+            saw_export_default = True
             parser = _Parser(source[match.end() :], bindings=bindings)
             translations = parser.parse_value()
             # Identify ``export default IDENT``.
@@ -971,13 +973,17 @@ def parse_i18n_module(code: bytes) -> dict[str, Any]:
         if translations is None:
             as_default = _EXPORT_AS_DEFAULT_RE.search(source)
             if as_default is not None:
+                saw_export_default = True
                 default_export_name = as_default.group(1)
                 translations = bindings.get(default_export_name)
 
-        if translations is None:
+        if translations is None and not saw_export_default:
             translations = _largest_object_literal(source, bindings)
 
         if isinstance(translations, dict):
+            # Reject garbage from malformed ``export default {[};`` style parses.
+            if saw_export_default and any("}" in str(k) or "{" in str(k) for k in translations):
+                return {}
             return translations
 
         if isinstance(translations, str):
