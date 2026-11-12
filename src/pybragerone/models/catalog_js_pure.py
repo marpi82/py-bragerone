@@ -30,6 +30,10 @@ _IDENT_RE = re.compile(r"[A-Za-z_$][\w$]*")
 _EXPORT_AS_DEFAULT_RE = re.compile(r"export\s*\{[^}]*?([A-Za-z0-9_$]+)\s+as\s+default")
 _EXPORT_DEFAULT_RE = re.compile(r"export\s+default\b")
 _TRAILING_PUBLIC_SUBSCRIPT_RE = re.compile(r"""\[['\"]([A-Z][A-Z0-9_]*)['\"]\]\s*$""")
+_OBFUSCATED_IDENTIFIER_RE = re.compile(r"_0x[0-9a-fA-F]*")
+_CATALOG_LIKE_TOKEN_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_HELPER_ACTIONS = frozenset({"READ", "WRITE", "STATUS"})
+_TEMPLATE_INTERPOLATION_RE = re.compile(r"\$\{([A-Za-z_$][\w$]*)\}")
 
 
 def collapse_public_token(expr: Any) -> Any:
@@ -125,10 +129,17 @@ def make_object_factory(params_src: str, body_src: str, bindings: dict[str, Any]
         return f"{params_src}=>{body_src.strip()}"
     specs = _parse_destructure_params(params_src)
     base = dict(bindings or {})
+    # Bare identifier params (``x=>…`` / ``(_0x…)=>…``) bind the whole call argument.
+    # Object-destructure params (``({id:e, number:n})=>…``) bind from a mapping argument.
+    destructured = "{" in params_src
 
     def _factory(arg: Any) -> Any:
-        arg_map = arg if isinstance(arg, Mapping) else {}
         local = dict(base)
+        if not destructured and len(specs) == 1:
+            _src_key, local_name, default = specs[0]
+            local[local_name] = default if arg is None and default is not None else arg
+            return _eval_factory_body(body_src, local)
+        arg_map = arg if isinstance(arg, Mapping) else {}
         for src_key, local_name, default in specs:
             if src_key in arg_map:
                 local[local_name] = arg_map[src_key]
@@ -268,11 +279,62 @@ def js_property_key(text: str) -> str:
     return str(number)
 
 
-def string_value(text: str) -> str:
-    """Strip surrounding quotes and decode JS escapes."""
-    if len(text) >= 2 and text[0] in "\"'`" and text[-1] == text[0]:
-        return decode_js_escapes(text[1:-1])
-    return decode_js_escapes(text)
+def string_value(text: str, *, bindings: Mapping[str, Any] | None = None) -> str:
+    """Strip surrounding quotes and decode JS escapes.
+
+    Template literals (backticks) optionally interpolate simple ``${ident}``
+    bindings the same way the tree-sitter catalog path does.
+    """
+    quote = text[0] if text else ""
+    body = decode_js_escapes(text[1:-1]) if len(text) >= 2 and quote in "\"'`" and text[-1] == quote else decode_js_escapes(text)
+    if quote == "`" and bindings:
+
+        def _replace(match: re.Match[str]) -> str:
+            name = match.group(1)
+            if name in bindings:
+                return str(bindings[name])
+            return match.group(0)
+
+        body = _TEMPLATE_INTERPOLATION_RE.sub(_replace, body)
+    return body
+
+
+def _public_token_from_helper_args(callee: str, args: list[Any]) -> str | None:
+    """Collapse obfuscated helper calls to a catalog token when args allow it."""
+    if _OBFUSCATED_IDENTIFIER_RE.fullmatch(callee) is None:
+        return None
+    if len(args) == 1:
+        token = args[0]
+        if isinstance(token, str) and _CATALOG_LIKE_TOKEN_RE.fullmatch(token) is not None:
+            return token
+        return None
+    if len(args) < 2:
+        return None
+    action = args[0]
+    token = args[-1]
+    if not isinstance(action, str) or action not in _HELPER_ACTIONS:
+        return None
+    if not isinstance(token, str) or _CATALOG_LIKE_TOKEN_RE.fullmatch(token) is None:
+        return None
+    return token
+
+
+def _array_map_method(receiver: list[Any]) -> Any:
+    """Return a callable implementing ``array['map'](callback)`` for menu write-lists."""
+
+    def _map(callback: Any) -> list[Any]:
+        if callable(callback) and not isinstance(callback, type):
+            try:
+                return [callback(item) for item in receiver]
+            except Exception:
+                LOG.debug("Pure array map callback failed; keeping receiver tokens", exc_info=True)
+        # Fall back to the literal token list so MenuResult still sees PARAM_* entries.
+        return list(receiver)
+
+    return _map
+
+
+_MAX_PARSE_DEPTH = 250
 
 
 class _Parser:
@@ -284,6 +346,7 @@ class _Parser:
         self.i = 0
         self.n = len(source)
         self.bindings = dict(bindings or {})
+        self._depth = 0
 
     def _peek(self) -> str:
         return self.source[self.i] if self.i < self.n else ""
@@ -329,12 +392,51 @@ class _Parser:
         self.i = end
         return True
 
+    def _skip_one_value_span(self) -> None:
+        """Advance past one value-shaped span without building a Python object."""
+        self._skip_ws_and_comments()
+        ch = self._peek()
+        # ``ch and`` guards against ``"" in "{[("`` (empty substring is True in Python).
+        if ch and ch in "{[(":
+            closer = {"{": "}", "[": "]", "(": ")"}[ch]
+            self._skip_balanced(ch, closer)
+            return
+        if ch and ch in "\"'`":
+            self._read_string()
+            return
+        if ch in "+-":
+            self._advance()
+            ch = self._peek()
+        if ch and (ch.isdigit() or ch == "." or self.source.startswith(("0x", "0X", "0o", "0O", "0b", "0B"), self.i)):
+            self._read_number()
+            return
+        if ch and (_IDENT_RE.match(ch) is not None or ch in "_$"):
+            self._read_identifier()
+            return
+        if ch:
+            self._advance()
+
     def parse_value(self) -> Any:
         """Parse one JS value expression (stops at top-level comma/semicolon/brace)."""
         self._skip_ws_and_comments()
         if self.i >= self.n:
             return None
-        return self._parse_conditional()
+        if self._depth >= _MAX_PARSE_DEPTH:
+            # Degrade pathologically nested payloads (see TestDeepNestingResilience).
+            LOG.warning("Pure JS value exceeded parse depth %d; degrading to None", _MAX_PARSE_DEPTH)
+            self._skip_one_value_span()
+            return None
+        self._depth += 1
+        try:
+            try:
+                return self._parse_conditional()
+            except RecursionError:
+                # Match tree-sitter catalog semantics: degrade nested subtrees instead of crashing.
+                LOG.warning("Pure JS value too deeply nested; degrading to None")
+                self._skip_one_value_span()
+                return None
+        finally:
+            self._depth -= 1
 
     def _parse_conditional(self) -> Any:
         value = self._parse_logical_or()
@@ -483,6 +585,12 @@ class _Parser:
                         LOG.debug("Pure factory call failed", exc_info=True)
                         value = f"<call:{call_start}>"
                     continue
+                # Obfuscated helpers: ``_0x2d2290('WRITE', 'PARAM_45')`` → ``PARAM_45``.
+                if isinstance(value, str):
+                    helper_token = _public_token_from_helper_args(value, args)
+                    if helper_token is not None:
+                        value = helper_token
+                        continue
                 # Leftover call text for unresolved callees.
                 if isinstance(value, str) and (_IDENT_RE.fullmatch(value) or value.startswith("_0x")):
                     value = f"{value}{self.source[call_start : self.i]}"
@@ -495,6 +603,11 @@ class _Parser:
                 self._match("]")
                 if isinstance(value, Mapping) and isinstance(index, str) and index in value:
                     value = value[index]
+                    continue
+                # Live menus: ``['PARAM_45',…]['map'](x => ({…}))`` — keep a map method so
+                # the following call evaluates (or falls back to the literal token list).
+                if isinstance(value, list) and index == "map":
+                    value = _array_map_method(value)
                     continue
                 # ``_0xabc['TOKEN']`` / ``ParameterCustomComponent['THREE_WAY_VALVE']``
                 # collapse to the public token, matching tree-sitter catalog semantics.
@@ -534,7 +647,7 @@ class _Parser:
             return None
 
         if ch in "\"'`":
-            return string_value(self._read_string())
+            return string_value(self._read_string(), bindings=self.bindings)
 
         if ch == "{":
             return self._parse_object()
@@ -919,30 +1032,38 @@ def _largest_object_literal(source: str, bindings: dict[str, Any]) -> Any | None
 
 def extract_root_export(code: bytes) -> Any | None:
     """Extract the root ``export default`` value (object or array) from a JS module."""
-    source = code.decode("utf-8", errors="replace")
-    bindings = collect_bindings(source)
-    value: Any | None = None
+    try:
+        source = code.decode("utf-8", errors="replace")
+        bindings = collect_bindings(source)
+        value: Any | None = None
 
-    for match in _EXPORT_DEFAULT_RE.finditer(source):
-        parser = _Parser(source[match.end() :], bindings=bindings)
-        value = parser.parse_value()
-        break
+        for match in _EXPORT_DEFAULT_RE.finditer(source):
+            parser = _Parser(source[match.end() :], bindings=bindings)
+            value = parser.parse_value()
+            break
 
-    if value is None:
-        as_default = _EXPORT_AS_DEFAULT_RE.search(source)
-        if as_default is not None:
-            value = bindings.get(as_default.group(1))
+        if value is None:
+            as_default = _EXPORT_AS_DEFAULT_RE.search(source)
+            if as_default is not None:
+                value = bindings.get(as_default.group(1))
 
-    if value is None:
-        value = _largest_object_literal(source, bindings)
+        if value is None:
+            value = _largest_object_literal(source, bindings)
 
-    return value
+        return value
+    except RecursionError:
+        LOG.warning("Pure JS export too deeply nested; degrading to None")
+        return None
 
 
 def extract_root_object(code: bytes) -> dict[str, Any] | None:
     """Extract the root exported object from a JS module (ParamMap / generic export)."""
-    value = extract_root_export(code)
-    return value if isinstance(value, dict) else None
+    try:
+        value = extract_root_export(code)
+        return value if isinstance(value, dict) else None
+    except RecursionError:
+        LOG.warning("Pure JS root object too deeply nested; degrading to None")
+        return None
 
 
 def parse_i18n_module(code: bytes) -> dict[str, Any]:

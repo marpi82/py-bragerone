@@ -2157,7 +2157,7 @@ class LiveAssetsCatalog:
             if asset is not None:
                 self._log.info("Loading menu asset: %s", asset.url)
                 code = await self._api.get_bytes(asset.url)
-                raw_routes = self._parse_menu_routes(code)
+                raw_routes = await asyncio.to_thread(self._parse_menu_routes, code)
                 asset_url = asset.url
 
         if not raw_routes and not devices:
@@ -2608,7 +2608,7 @@ class LiveAssetsCatalog:
             if isinstance(cached2, dict) and cached_sig2 == sig:
                 return cached2
 
-            parsed = self._parse_index_token_raw_maps(code)
+            parsed = await asyncio.to_thread(self._parse_index_token_raw_maps, code)
             self._index_token_raw_maps = parsed
             self._index_token_raw_maps_sig = sig
             return parsed
@@ -2917,7 +2917,7 @@ class LiveAssetsCatalog:
             return None
 
         try:
-            return self._parse_language_config_from_js(self._idx.index_bytes)
+            return await asyncio.to_thread(self._parse_language_config_from_js, self._idx.index_bytes)
         except Exception as e:
             self._log.warning("Failed to parse language config from index: %s", e)
             return None
@@ -2967,7 +2967,7 @@ class LiveAssetsCatalog:
                     return {}
 
                 code = await self._api.get_bytes(asset_ref.url)
-                translations = self._parse_i18n_from_js(code)
+                translations = await asyncio.to_thread(self._parse_i18n_from_js, code)
                 result = translations if isinstance(translations, dict) else {}
                 self._cache_i18n[cache_key] = result
 
@@ -3240,7 +3240,7 @@ class LiveAssetsCatalog:
             if not isinstance(cached_inner, dict):
                 if not self._idx.index_bytes:
                     await self._ensure_index_loaded()
-                cached_inner = self._ensure_units_tables_loaded()
+                cached_inner = await asyncio.to_thread(self._ensure_units_tables_loaded)
 
         return self._lookup_unit_descriptor_entry(cached_inner, key)
 
