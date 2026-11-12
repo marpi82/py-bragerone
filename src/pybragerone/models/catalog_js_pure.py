@@ -32,6 +32,7 @@ _EXPORT_DEFAULT_RE = re.compile(r"export\s+default\b")
 _TRAILING_PUBLIC_SUBSCRIPT_RE = re.compile(r"""\[['\"]([A-Z][A-Z0-9_]*)['\"]\]\s*$""")
 _OBFUSCATED_IDENTIFIER_RE = re.compile(r"_0x[0-9a-fA-F]*")
 _CATALOG_LIKE_TOKEN_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_HELPER_PARAM_TOKEN_RE = re.compile(r"^(?:PARAM|STATUS)_[A-Z0-9_]+$")
 _HELPER_ACTIONS = frozenset({"READ", "WRITE", "STATUS"})
 _TEMPLATE_INTERPOLATION_RE = re.compile(r"\$\{([A-Za-z_$][\w$]*)\}")
 
@@ -314,7 +315,8 @@ def _public_token_from_helper_args(callee: str, args: list[Any]) -> str | None:
     token = args[-1]
     if not isinstance(action, str) or action not in _HELPER_ACTIONS:
         return None
-    if not isinstance(token, str) or _CATALOG_LIKE_TOKEN_RE.fullmatch(token) is None:
+    # Match tree-sitter: two-arg helpers only collapse PARAM_*/STATUS_* (not DISPLAY_*).
+    if not isinstance(token, str) or _HELPER_PARAM_TOKEN_RE.fullmatch(token) is None:
         return None
     return token
 
@@ -464,6 +466,20 @@ class _Parser:
             return False
         return bool(value != 0 and value != "")
 
+    def _is_unevaluable_leftover(self, value: Any) -> bool:
+        """Return whether *value* is unevaluated source text for ``||`` / ``&&``.
+
+        Matches tree-sitter: unary bang leftovers (``![]``, ``!1``) and similar
+        must not short-circuit as truthy strings (``![] && [path]`` must not invent
+        a value path).
+        """
+        if not isinstance(value, str):
+            return False
+        stripped = value.strip()
+        if not stripped:
+            return False
+        return stripped.startswith("!")
+
     def _eval_optional_subscript(self, value: Any, index: Any) -> Any:
         """Evaluate ``receiver?.['index']`` like the tree-sitter catalog path (#329)."""
         if isinstance(value, Mapping) and isinstance(index, str):
@@ -494,7 +510,10 @@ class _Parser:
             if not self._match("||"):
                 return left
             right = self._parse_nullish()
-            left = left if self._js_truthy(left) else right
+            if self._is_unevaluable_leftover(left):  # noqa: SIM108
+                left = f"{left}||{right}"
+            else:
+                left = left if self._js_truthy(left) else right
 
     def _parse_nullish(self) -> Any:
         left = self._parse_logical_and()
@@ -512,7 +531,10 @@ class _Parser:
             if not self._match("&&"):
                 return left
             right = self._parse_bitwise_or()
-            left = right if self._js_truthy(left) else left
+            if self._is_unevaluable_leftover(left):  # noqa: SIM108
+                left = f"{left}&&{right}"
+            else:
+                left = right if self._js_truthy(left) else left
 
     def _parse_equality(self) -> Any:
         left = self._parse_shift()
@@ -656,9 +678,10 @@ class _Parser:
                 if op == "*":
                     left = left * right
                 elif op == "/":
-                    left = left / right
+                    # Keep source text on divide-by-zero (oracle returns ``"1/0"``).
+                    left = f"{left}/{right}" if right == 0 else left / right
                 else:
-                    left = left % right
+                    left = f"{left}%{right}" if right == 0 else left % right
             else:
                 left = f"{left}{op}{right}"
 
@@ -811,7 +834,13 @@ class _Parser:
                     return _Parser(self.source[brace_start:], bindings=self.bindings)._parse_object()
                 # Fall through: reset and parse as grouped expression.
                 self.i = paren_start + 1
+            # Comma operator: ``(0, _0xabc)`` → last expression (SPA helper IIFEs).
             value = self.parse_value()
+            while True:
+                self._skip_ws_and_comments()
+                if not self._match(","):
+                    break
+                value = self.parse_value()
             self._match(")")
             return value
 

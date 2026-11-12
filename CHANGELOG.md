@@ -7,6 +7,12 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Changed
+
+- Catalog asset parsing is pure-Python by default (``catalog_js_pure``);
+  ``tree-sitter`` / ``tree-sitter-javascript`` moved to the optional
+  ``[parsers]`` extra for CI/oracle parity (#489 / #355).
+
 ### Added
 
 - SPA home ``deviceTile`` discovery: ``AssetIndex.tile_map`` plus
@@ -25,6 +31,10 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   (``typeof x==='number'?…filter(bit=>x>>bit&1)``) fully consume inside
   ``basicParameterBuilder_P*({number:0x1,…})`` calls instead of truncating
   and overwriting ``number`` with the string ``"number"`` (#495).
+- Pure catalog path: optional-chain ``_0x?.['minValue']||[{…}]`` fills
+  ParamMap min/max paths; ``array['map']`` menu write-lists and template
+  ``${ident}`` factories match the former tree-sitter behavior (#329 / #492 /
+  #493).
 - DATE_TIME: treat factory-default wire ``0001011200`` /
   ``2000-01-01 12:00`` as that wall-clock datetime (not ``None`` / empty), so
   HA can create ``datetime`` entities and clear by writing the same moment

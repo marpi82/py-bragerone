@@ -2063,7 +2063,7 @@ class LiveAssetsCatalog:
             except Exception as exc:
                 self._log.warning("Extended menu fetch failed (%s): %s", asset.url, exc)
                 continue
-            routes, priority = self._parse_menu_export(code)
+            routes, priority = await asyncio.to_thread(self._parse_menu_export, code)
             if routes:
                 layers.append((routes, priority))
                 self._log.info(
@@ -2419,7 +2419,7 @@ class LiveAssetsCatalog:
             try:
                 async with self._asset_sema:
                     code = await self._api.get_bytes(a.url)
-                pm = self._parse_param_map_from_js(code, tok, origin=f"asset:{a.url}")
+                pm = await asyncio.to_thread(self._parse_param_map_from_js, code, tok, f"asset:{a.url}")
                 if pm:
                     return tok, pm, None
                 self._log.debug("PARAM MAP not found in asset (export not object?): %s", a.url)
@@ -2470,7 +2470,7 @@ class LiveAssetsCatalog:
             token_raw_maps = await self._get_index_token_raw_maps(self._idx.index_bytes)
             chunk_token_maps: list[tuple[int, dict[str, dict[str, Any]]]] = []
             chunk_root_objects: list[tuple[int, dict[str, Any]]] = []
-            full_root_obj = self._extract_root_object_from_js(self._idx.index_bytes)
+            full_root_obj = await asyncio.to_thread(self._extract_root_object_from_js, self._idx.index_bytes)
             standard_token_name_re = re.compile(r"^[A-Z][A-Z0-9_]+$")
 
             for idx, (start, end) in enumerate(self._idx.inline_param_candidates):
@@ -2478,13 +2478,13 @@ class LiveAssetsCatalog:
                     continue
                 chunk = self._idx.index_bytes[start:end]
                 try:
-                    parsed_chunk = self._parse_index_token_raw_maps(chunk)
+                    parsed_chunk = await asyncio.to_thread(self._parse_index_token_raw_maps, chunk)
                 except Exception:
                     parsed_chunk = {}
                 if parsed_chunk:
                     chunk_token_maps.append((idx, parsed_chunk))
 
-                root_obj = self._extract_root_object_from_js(chunk)
+                root_obj = await asyncio.to_thread(self._extract_root_object_from_js, chunk)
                 if isinstance(root_obj, dict):
                     chunk_root_objects.append((idx, root_obj))
 

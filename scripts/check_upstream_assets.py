@@ -1,8 +1,9 @@
 """Probe BragerOne public catalog (no login) and parse the live index when it changes.
 
 Fetches unauthenticated ``GET /v1/system/version`` and the web-app homepage to
-read the current ``index-*.js`` filename. Heavy tree-sitter parsing runs only
-when that fingerprint is new or ``--always-parse`` is set.
+read the current ``index-*.js`` filename. Heavy catalog parsing (pure-Python
+value extractor; optional tree-sitter oracle in tests) runs only when that
+fingerprint is new or ``--always-parse`` is set.
 """
 
 from __future__ import annotations
@@ -191,7 +192,7 @@ async def probe_upstream(
 
 
 async def _parse_live_catalog(api: _PublicCatalogClient, probe: UpstreamProbe, *, sample_limit: int) -> UpstreamProbe:
-    """Download and tree-sitter-parse the live index (and a few PARAM_* assets)."""
+    """Download and parse the live index (and a few PARAM_* assets)."""
     catalog = LiveAssetsCatalog(api)  # type: ignore[arg-type]
     await catalog.refresh_index(probe.index_url, allow_recover=False)
     language = await catalog.list_language_config()
