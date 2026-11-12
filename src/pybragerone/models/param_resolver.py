@@ -2566,9 +2566,10 @@ class ParamResolver:
             return bool(int(value))
         if isinstance(value, str):
             norm = value.strip().casefold()
-            if norm in {"!0", "true", "1"}:
+            # Minified SPA leftovers: ``!![]`` / ``!0`` truthy, ``![]`` / ``!1`` falsey.
+            if norm in {"!0", "!![]", "true", "1"}:
                 return True
-            if norm in {"!1", "false", "0"}:
+            if norm in {"!1", "![]", "false", "0"}:
                 return False
         return None
 
@@ -2754,7 +2755,10 @@ class ParamResolver:
                     return bool((raw >> bit) & 1)
                 return None
 
+            # Match ``raw.any`` branch keys: ``if`` and ``elseif`` are both gates.
             ifs = status.get("if")
+            if ifs is None:
+                ifs = status.get("elseif")
             then_val = cls._to_bool_value(status.get("then"))
             if (
                 isinstance(ifs, list)
@@ -2788,12 +2792,17 @@ class ParamResolver:
     ) -> tuple[bool, str]:
         """Return visibility using the same status semantics as the official app.
 
-        Mirrors SPA ``isParameterVisible`` status checks in ``index-*.js``:
+        Mirrors SPA ``isParameterVisible`` / control-enable status checks in
+        ``index-*.js``:
 
         - when the ``INVISIBLE`` flag resolves truthy, the parameter is hidden;
         - when the ``DEVICE_AVAILABLE`` flag resolves falsey, the parameter is hidden;
+        - when the ``ENABLED`` flag resolves falsey, the parameter is hidden
+          (home ``deviceTile`` SWITCH cards such as heat-pump start);
         - when a flag path is present but its backing value is missing, the flag
-          is treated as unknown and does not hide the parameter.
+          is treated as unknown and does not hide the parameter — unless the
+          status rule list supplies an explicit ``else`` that resolves falsey
+          (common ``ENABLED`` pattern).
 
         Condition tokens are normalized (``ParameterStatus['INVISIBLE']``,
         ``[t.INVISIBLE]``, ``INVISIBLE``) before comparison.
@@ -2803,8 +2812,8 @@ class ParamResolver:
           gate. Callers (HA bootstrap) drop ``no_display_value`` separately.
         - Composite SPA cards (``value2``/``value3``/…) are **not** force-hidden;
           companions are exposed via ``describe_symbol`` ``value_slots`` and
-          inherit the same ``INVISIBLE`` / ``DEVICE_AVAILABLE`` checks as the
-          primary.
+          inherit the same ``INVISIBLE`` / ``DEVICE_AVAILABLE`` / ``ENABLED``
+          checks as the primary.
         """
         values = flat_values if flat_values is not None else self._store.flatten()
 
@@ -2829,6 +2838,10 @@ class ParamResolver:
         )
         if device_available is False:
             return False, "hidden:device-unavailable"
+
+        enabled = self._status_flag_value(status_paths=status_paths, flag_condition="ENABLED", flat_values=values)
+        if enabled is False:
+            return False, "hidden:enabled"
 
         return True, "visible:default"
 

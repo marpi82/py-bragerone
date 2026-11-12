@@ -200,7 +200,7 @@ That is distinct from multi-word composition inside a single ``value`` list
 address extraction prefers ``raw.value`` so a ``v`` timer under ``value2``
 cannot displace an ``s`` status under ``value``. Visibility no longer returns
 ``hidden:composite-component`` for ``value2+``; composites use the same
-``INVISIBLE`` / ``DEVICE_AVAILABLE`` checks as other parameters.
+``INVISIBLE`` / ``DEVICE_AVAILABLE`` / ``ENABLED`` checks as other parameters.
 
 Multi-register (multi-word) values
 -----------------------------------

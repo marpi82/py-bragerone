@@ -911,6 +911,8 @@ def test_status_flag_value_reads_bits_and_if_else_rules() -> None:
     assert ParamResolver._to_bool_value(0) is False
     assert ParamResolver._to_bool_value("!0") is True
     assert ParamResolver._to_bool_value("!1") is False
+    assert ParamResolver._to_bool_value("!![]") is True
+    assert ParamResolver._to_bool_value("![]") is False
     assert ParamResolver._to_bool_value("maybe") is None
 
 
