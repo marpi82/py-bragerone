@@ -14,6 +14,7 @@ from pybragerone.models.catalog_js_pure import (
     _public_token_from_helper_args,
     extract_root_export,
     extract_root_object,
+    make_object_factory,
     string_value,
 )
 
@@ -147,3 +148,60 @@ def test_pure_optional_chain_nullish_and_missing_key() -> None:
     assert _Parser("obj?.").parse_value() is None
     assert _Parser("1?.['x']").parse_value() is None
     assert _Parser("plainIdent?.['x']").parse_value() is None
+
+
+def test_typeof_and_bitwise_ops_consume_spa_arrows() -> None:
+    """``typeof`` / ``>>`` / ``&`` keep factory call args intact (#495)."""
+    assert _Parser("typeof 1").parse_value() == "number"
+    assert _Parser("typeof true").parse_value() == "boolean"
+    assert _Parser("typeof null").parse_value() == "undefined"
+    assert _Parser("typeof 'x'").parse_value() == "string"
+    assert _Parser("typeof []").parse_value() == "object"
+    assert _Parser("typeof {}").parse_value() == "object"
+    assert _Parser("typeof undefined").parse_value() == "undefined"
+    assert _Parser("typeof _0xabc").parse_value() == "undefined"
+    assert _Parser("typeof fn", bindings={"fn": lambda: None}).parse_value() == "function"
+    assert _Parser("typeof T", bindings={"T": int}).parse_value() == "function"
+    # Non-callable objects fall through to undefined (SPA only needs cursor advance).
+    assert _Parser("typeof x", bindings={"x": object()}).parse_value() == "undefined"
+    assert _Parser("5>>1").parse_value() == 2
+    assert _Parser("5<<1").parse_value() == 10
+    assert _Parser("5&1").parse_value() == 1
+    assert _Parser("5|2").parse_value() == 7
+    assert _Parser("5^1").parse_value() == 4
+    assert _Parser("8>>>1").parse_value() == 4
+    # Non-int operands keep source-like leftovers (still advance the cursor).
+    assert _Parser("'a'>>1").parse_value() == "a>>1"
+    assert _Parser("'a'<<1").parse_value() == "a<<1"
+    assert _Parser("'a'>>>1").parse_value() == "a>>>1"
+    assert _Parser("'a'&1").parse_value() == "a&1"
+    assert _Parser("'a'|1").parse_value() == "a|1"
+    assert _Parser("'a'^1").parse_value() == "a^1"
+    # Logical ops must not be eaten by bitwise parsers.
+    assert _Parser("0||7").parse_value() == 7
+    assert _Parser("0&&7").parse_value() == 0
+
+
+def test_factory_call_valuecallback_typeof_does_not_clobber_number() -> None:
+    """Live index shape: ``valueCallback`` typeof/ternary/bit-filter must not rewrite ``number`` (#495)."""
+    params = "{id:_0x408650,number:_0x9ae4b2,name:_0x29396b,valueCallback:valueCallback=void 0x0}"
+    body = (
+        "{const o={'id':_0x408650,'name':_0x29396b,"
+        "'value':[{'group':'P100','number':_0x9ae4b2,'use':'v'}],"
+        "'valueCallback':valueCallback};return o;}"
+    )
+    factory = make_object_factory(params, body, {})
+    call = (
+        "basicParameterBuilder_P100({'id':0x126d571b0af6,'number':0x1,"
+        "'name':'parameters.INFOSCREEN_KOTLY_W_UZYCIU',"
+        "'valueCallback':_0x499c0b=>typeof _0x499c0b==='number'"
+        "?[0x0,0x1,0x2,0x3]['filter'](_0x3d459d=>_0x499c0b>>_0x3d459d&0x1)['length']"
+        ":_0x499c0b})"
+    )
+    out = _Parser(call, bindings={"basicParameterBuilder_P100": factory}).parse_value()
+    assert isinstance(out, dict)
+    assert out["value"] == [{"group": "P100", "number": 1, "use": "v"}]
+    assert set(out) >= {"id", "name", "value"}
+    # Argument object must not grow operator-character junk keys from a truncated arrow.
+    assert "&" not in out
+    assert ">" not in out
