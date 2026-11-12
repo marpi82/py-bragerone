@@ -23,6 +23,12 @@ import tree_sitter_javascript
 from tree_sitter import Language, Node, Parser, Tree
 
 from .api.modules import DeviceMenuRef
+from .catalog_js_pure import (
+    find_language_config_object,
+    iter_top_level_object_assignments,
+    parse_i18n_module,
+    parse_js_number,
+)
 from .menu import MenuResult, js_public_member_name
 from .menu_manager import MenuManager, RawMenuData
 
@@ -3085,6 +3091,56 @@ class LiveAssetsCatalog:
         return out
 
     def _parse_units_descriptor_table_from_index(self, code: bytes) -> dict[str, dict[str, Any]]:
+        """Parse the units descriptor table using the pure-Python JS value extractor."""
+        try:
+            candidates = iter_top_level_object_assignments(code)
+        except Exception as exc:
+            self._log.debug("Failed to parse units descriptor table from index: %s", exc)
+            return {}
+
+        aliases = self._parse_custom_unit_codes_from_index(code)
+        best: dict[str, dict[str, Any]] = {}
+        best_score = self._units_descriptor_table_score(best)
+        largest_candidate = 0
+
+        for candidate in candidates:
+            parsed: dict[str, dict[str, Any]] = {}
+            descriptor_keys = 0
+            for key_raw, value_raw in candidate.items():
+                if not self._is_unit_descriptor_entry(value_raw):
+                    continue
+                descriptor_keys += 1
+                coerced: Any = key_raw
+                if isinstance(key_raw, str):
+                    hex_num = parse_js_number(key_raw) if key_raw.lower().startswith("0x") else None
+                    if hex_num is not None:
+                        coerced = hex_num
+                key = self._normalize_unit_key(coerced)
+                if key is None:
+                    continue
+                if not key.isdigit() and key in aliases:
+                    key = aliases[key]
+                parsed[key] = dict(value_raw) if isinstance(value_raw, Mapping) else {"value": value_raw}
+
+            largest_candidate = max(largest_candidate, descriptor_keys)
+            score = self._units_descriptor_table_score(parsed)
+            if score > best_score:
+                best = parsed
+                best_score = score
+
+        if not best:
+            if largest_candidate:
+                self._log.warning(
+                    "Units descriptor table kept 0 of %d keys from the largest candidate object",
+                    largest_candidate,
+                )
+            elif len(code) >= 50_000:
+                self._log.warning("Units descriptor table parsed to 0 entries from a %d-byte index", len(code))
+
+        return best
+
+    def _parse_units_descriptor_table_from_index_treesitter(self, code: bytes) -> dict[str, dict[str, Any]]:
+        """Tree-sitter oracle for units-table parity tests."""
         try:
             tree = self._ts.parse(code)
             bindings = _collect_bindings(code, tree.root_node)
@@ -3129,14 +3185,13 @@ class LiveAssetsCatalog:
                     best = parsed
                     best_score = score
 
-        if not best:
-            if largest_candidate:
-                self._log.warning(
-                    "Units descriptor table kept 0 of %d keys from the largest candidate object",
-                    largest_candidate,
-                )
-            elif len(code) >= 50_000:
-                self._log.warning("Units descriptor table parsed to 0 entries from a %d-byte index", len(code))
+        if not best and largest_candidate:
+            self._log.warning(
+                "Units descriptor table kept 0 of %d keys from the largest candidate object",
+                largest_candidate,
+            )
+        elif not best and len(code) >= 50_000:
+            self._log.warning("Units descriptor table parsed to 0 entries from a %d-byte index", len(code))
 
         return best
 
@@ -3270,17 +3325,15 @@ class LiveAssetsCatalog:
         return None
 
     def _parse_i18n_from_js(self, code: bytes) -> dict[str, Any]:
-        """Parse i18n translations from a JavaScript module.
+        """Parse i18n translations from a JavaScript module (pure-Python path).
 
         Expected format:
         export default { "key1": "value1", "key2": "value2", ... }
-
-        Args:
-            code: JavaScript source code bytes.
-
-        Returns:
-            Dictionary of translations.
         """
+        return parse_i18n_module(code)
+
+    def _parse_i18n_from_js_treesitter(self, code: bytes) -> dict[str, Any]:
+        """Tree-sitter oracle for i18n parity tests."""
         try:
             tree = self._ts.parse(code)
             root = tree.root_node
@@ -3288,7 +3341,6 @@ class LiveAssetsCatalog:
 
             bindings: dict[str, Any] = {}
 
-            # Collect constant bindings so we can resolve identifier references
             for child in root.named_children:
                 if child.type != "lexical_declaration":
                     continue
@@ -3305,12 +3357,8 @@ class LiveAssetsCatalog:
                     bindings[name] = _node_to_python(code, value_node, bindings)
 
             translations: Any | None = None
-            # When the default export is a single string (common for MAINMENU_* title
-            # namespaces), remember the exported binding name so callers can look the
-            # title up as ``namespace[token]``.
             default_export_name: str | None = None
 
-            # Prefer explicit `export default <expr>` if present.
             for child in root.named_children:
                 if child.type != "export_statement":
                     continue
@@ -3343,9 +3391,6 @@ class LiveAssetsCatalog:
             if isinstance(translations, dict):
                 return translations
 
-            # Upstream ships some language packs as a string default export, e.g.
-            # ``const MAINMENU_MENU_TERMOSTATU='Menu\x20termostatów';export{… as default}``.
-            # Wrap those as a one-key object so ``get_i18n`` stays dict-typed.
             if isinstance(translations, str):
                 cleaned = translations.strip()
                 if not cleaned:
@@ -3394,12 +3439,23 @@ class LiveAssetsCatalog:
         return total_objects > 0 and valid_entries >= threshold
 
     def _parse_language_config_from_js(self, js_bytes: bytes) -> TranslationConfig:
-        """Parse TranslationConfig from index JS bytes.
+        """Parse TranslationConfig from index JS bytes (pure-Python path)."""
+        parsed = find_language_config_object(js_bytes)
+        if parsed is None:
+            raise ValueError("Language config object not found")
+        if not isinstance(parsed, dict):
+            raise ValueError("Language config object missing required fields")
+        translations = parsed.get("translations")
+        default_translation = parsed.get("defaultTranslation")
+        if not isinstance(translations, list) or not isinstance(default_translation, str) or not default_translation:
+            raise ValueError("Language config object missing required fields")
+        cleaned = [item for item in translations if isinstance(item, dict)]
+        if not cleaned:
+            raise ValueError("Language config object missing required fields")
+        return TranslationConfig(translations=cleaned, default_translation=default_translation)
 
-        This is intentionally structural: it searches for an object literal containing:
-        - `translations`: array of objects with `id` and `flag` keys
-        - `defaultTranslation`: string
-        """
+    def _parse_language_config_from_js_treesitter(self, js_bytes: bytes) -> TranslationConfig:
+        """Tree-sitter oracle for language-config parity tests."""
         tree = self._ts.parse(js_bytes)
         root = tree.root_node
 

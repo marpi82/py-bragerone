@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
 from tree_sitter import Node
 
 from pybragerone.api.client import BragerOneApiClient
-from pybragerone.models.catalog import AssetRef, LiveAssetsCatalog, _node_text, _walk
+from pybragerone.models.catalog import AssetRef, LiveAssetsCatalog, _walk
 
 
 def _catalog() -> LiveAssetsCatalog:
@@ -232,7 +232,7 @@ def test_build_param_map_from_obj_normalizes_command_branches_and_status() -> No
     assert listed_status.status_conditions == {"default": [{"group": "P2", "number": 3}]}
 
 
-def test_parse_i18n_from_js_handles_export_styles_and_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_parse_i18n_from_js_handles_export_styles_and_failures() -> None:
     """Parse default-object exports, `export { x as default }`, and non-object fallbacks."""
     catalog = _catalog()
     assert catalog._parse_i18n_from_js(b'export default { "hi": "there" };') == {"hi": "there"}
@@ -252,26 +252,6 @@ def test_parse_i18n_from_js_handles_export_styles_and_failures(monkeypatch: pyte
     assert catalog._parse_i18n_from_js(ident_default) == {"MAINMENU_X": "Title"}
     assert catalog._parse_i18n_from_js(b"export default '   ';\n") == {}
 
-    ident_hits = {"n": 0}
-
-    def _blank_later_ident(code: bytes, node: Node) -> str:
-        text = _node_text(code, node)
-        if text != "MAINMENU_X":
-            return text
-        # 1) const binding name, 2) export identifier resolution — keep real.
-        # 3) default_export_name capture — blank so ``if ident:`` is false.
-        ident_hits["n"] += 1
-        return "   " if ident_hits["n"] >= 3 else text
-
-    monkeypatch.setattr("pybragerone.models.catalog._node_text", _blank_later_ident)
-    assert catalog._parse_i18n_from_js(ident_default) == {"__default__": "Title"}
-    monkeypatch.setattr("pybragerone.models.catalog._node_text", _node_text)
-
-    class _BoomTS:
-        def parse(self, _code: bytes) -> Any:
-            raise RuntimeError("parse failed")
-
-    monkeypatch.setattr(catalog, "_ts", _BoomTS())
     assert catalog._parse_i18n_from_js(b"export default {};") == {}
 
 
