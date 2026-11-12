@@ -16,6 +16,8 @@ from pybragerone.models.catalog import (
     _largest_object_literal,
     _parse_destructure_params,
     _Parser,
+    _scan_top_level_declarations,
+    _split_top_level_declarators,
     collapse_public_token,
     collect_bindings,
     find_language_config_object,
@@ -249,3 +251,100 @@ def test_inline_spans_unclosed_and_index_scan_failure(monkeypatch: pytest.Monkey
     catalog = LiveAssetsCatalog(cast(BragerOneApiClient, AsyncMock(spec=BragerOneApiClient)))
     assets = catalog._build_asset_index_from_index_js("https://ex/index.js", b"//")
     assert assets.inline_param_candidates == []
+
+
+def test_object_shorthand_and_number_exponent_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shorthand without binding, non-str shorthand key, and ``1e2`` without sign."""
+    assert _Parser("{foo}")._parse_object() == {"foo": "foo"}
+    assert _Parser("1e2").parse_value() == 100.0
+    assert _Parser("1e-1").parse_value() == 0.1
+
+    real_key = catalog_mod._Parser._parse_object_key
+
+    def non_str_key(self: _Parser) -> Any:
+        self._skip_ws_and_comments()
+        if self._peek() == "7":
+            self._advance()
+            return 7
+        return real_key(self)
+
+    monkeypatch.setattr(catalog_mod._Parser, "_parse_object_key", non_str_key)
+    assert _Parser("{7}")._parse_object() == {}
+
+
+def test_scan_and_split_edge_branches() -> None:
+    """Unclosed quote at EOF skips the string loop; trailing comma yields empty tail."""
+    assert _scan_top_level_declarations('"') == []
+    assert _split_top_level_declarators("a=1,") == ["a=1"]
+    assert collect_bindings("const a=1, b=2,;") == {"a": 1, "b": 2}
+
+
+def test_i18n_null_default_and_non_dict_assignment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``export default null`` skips the non-object warning; non-dict ``={…}`` scans are ignored."""
+    assert parse_i18n_module(b"export default null") == {}
+
+    real_parse = catalog_mod._Parser.parse_value
+
+    def non_dict_assign(self: _Parser) -> Any:
+        if self.source.lstrip().startswith("{"):
+            return 42
+        return real_parse(self)
+
+    monkeypatch.setattr(catalog_mod._Parser, "parse_value", non_dict_assign)
+    assert iter_top_level_object_assignments(b"name={a:1}") == []
+
+
+def test_menu_export_none_and_index_token_map_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Menu export degrades when root export is None; index-token lookup covers hit/miss/errors."""
+    catalog = LiveAssetsCatalog(cast(BragerOneApiClient, AsyncMock(spec=BragerOneApiClient)))
+    monkeypatch.setattr(catalog_mod, "extract_root_export", lambda _code: None)
+    assert catalog._parse_menu_export(b"export default {priority:1}") == ([], 0)
+
+    js = b"const maps={PARAM_OK:{group:'P1',number:1,use:'v'}};"
+    built = catalog._parse_param_map_from_index_token(js, "PARAM_OK", "test")
+    assert built is not None
+    assert catalog._parse_param_map_from_index_token(js, "PARAM_MISSING", "test") is None
+
+    real_maps = catalog_mod.LiveAssetsCatalog._parse_index_token_raw_maps
+    monkeypatch.setattr(
+        catalog_mod.LiveAssetsCatalog,
+        "_parse_index_token_raw_maps",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("maps boom")),
+    )
+    assert catalog._parse_param_map_from_index_token(js, "PARAM_OK", "test") is None
+    monkeypatch.setattr(catalog_mod.LiveAssetsCatalog, "_parse_index_token_raw_maps", real_maps)
+
+    monkeypatch.setattr(
+        catalog_mod,
+        "iter_top_level_object_assignments",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("assign boom")),
+    )
+    monkeypatch.setattr(
+        catalog_mod,
+        "extract_root_object",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("root boom")),
+    )
+    assert catalog._parse_index_token_raw_maps(b"const x={PARAM_X:{group:'P1',number:1}};") == {}
+
+
+def test_units_table_int_keys_and_named_alias_remap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-str descriptor keys normalize; named CustomUnit aliases remap non-digit keys."""
+    catalog = LiveAssetsCatalog(cast(BragerOneApiClient, AsyncMock(spec=BragerOneApiClient)))
+    monkeypatch.setattr(
+        catalog_mod,
+        "iter_top_level_object_assignments",
+        lambda _code: [
+            {
+                9: {"text": "units.9"},
+                "BOILER_STATE": {"text": "units.9998"},
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        catalog_mod.LiveAssetsCatalog,
+        "_parse_custom_unit_codes_from_index",
+        lambda _self, _code: {"BOILER_STATE": "9998"},
+    )
+    table = catalog._parse_units_descriptor_table_from_index(b"// unused when patched")
+    assert table["9"]["text"] == "units.9"
+    assert table["9998"]["text"] == "units.9998"

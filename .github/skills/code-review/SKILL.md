@@ -48,7 +48,7 @@ Simulate concrete register and payload values; do not stop at "looks plausible".
 - [ ] **Dependencies**: `mapping.inputs` / refresh tracking includes object-valued `value` and `command` slots, not only lists; computed cards stay on the dependency-driven refresh path.
 - [ ] **Catalog merge/priority**: overlapping routes merge parameter sections (do not replace wholesale); layers apply in ascending priority; standalone device menus must not `break` collection of later devices; device refs prefer REST construction over stale JS shortcuts.
 - [ ] **Hot-path cost**: avoid full `ParamStore.flatten()` on every ordinary resolve; snapshot only for `raw.any` (or read referenced addresses).
-- [ ] **Tree-sitter / regex**: null-check nodes before `.text`/children; watch ReDoS in new patterns; heavy sync parse work stays off the event loop (`asyncio.to_thread`).
+- [ ] **Catalog parse / regex**: watch ReDoS in new patterns; heavy sync parse work stays off the event loop (`asyncio.to_thread`).
 
 ## 7. Tests
 
