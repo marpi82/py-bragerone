@@ -265,7 +265,7 @@ parameters:
 - ``ParamResolver.route_visibility_diagnostics`` — static SPA route gates
   (installer denylist, ``isVisibleOnSideMenu``, ``displayDropdown`` leftovers).
 - ``ParamResolver.parameter_visibility_diagnostics`` — per-parameter status bits
-  (``INVISIBLE``, ``DEVICE_AVAILABLE``). Composite SPA cards with ``value2+``
+  (``INVISIBLE``, ``DEVICE_AVAILABLE``, ``ENABLED``). Composite SPA cards with ``value2+``
   are not force-hidden; ``describe_symbol`` ``value_slots`` lists companion
   channels only when the card unit is a measurement (primary ``u`` path /
   units-table ``text``). Enum-only cards (e.g. ``HEAT_PUMP_STATE``) keep the
