@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from pybragerone.models.catalog import LiveAssetsCatalog
-from pybragerone.models.catalog_js_pure import (
+from pybragerone.models.catalog import (
+    LiveAssetsCatalog,
     _array_map_method,
     _Parser,
     _public_token_from_helper_args,
@@ -36,12 +36,12 @@ def test_public_token_from_helper_args_shapes() -> None:
     assert _public_token_from_helper_args("_0xabc", []) is None
     assert _public_token_from_helper_args("_0xabc", ["NOPE", "PARAM_1"]) is None
     assert _public_token_from_helper_args("_0xabc", ["WRITE", 12]) is None
-    # Two-arg helpers must not collapse DISPLAY_* (oracle keeps call text).
+    # Two-arg helpers must not collapse DISPLAY_*.
     assert _public_token_from_helper_args("_0xabc", ["WRITE", "DISPLAY_PARAMETER_LEVEL_1"]) is None
 
 
 def test_bang_leftover_and_does_not_invent_value_path() -> None:
-    """``![] && [path]`` stays unevaluable leftover (matches tree-sitter oracle)."""
+    """``![] && [path]`` stays unevaluable leftover."""
     value = _Parser("![] && [{group:'P6', number:1, use:'v'}]").parse_value()
     assert isinstance(value, str)
     assert value.startswith("![]")
@@ -126,13 +126,13 @@ def test_extract_root_recursion_guards_are_reachable(monkeypatch: pytest.MonkeyP
     def _boom(_code: bytes) -> Any:
         raise RecursionError
 
-    monkeypatch.setattr("pybragerone.models.catalog_js_pure.collect_bindings", _boom)
+    monkeypatch.setattr("pybragerone.models.catalog.collect_bindings", _boom)
     assert extract_root_export(b"export default {}") is None
 
     def _boom_export(_code: bytes) -> Any:
         raise RecursionError
 
-    monkeypatch.setattr("pybragerone.models.catalog_js_pure.extract_root_export", _boom_export)
+    monkeypatch.setattr("pybragerone.models.catalog.extract_root_export", _boom_export)
     assert extract_root_object(b"export default {}") is None
 
 

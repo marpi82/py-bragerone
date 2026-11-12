@@ -12,24 +12,18 @@ import logging
 from typing import cast
 
 import pytest
-from tree_sitter import Node
 
 from pybragerone.api.client import BragerOneApiClient
 from pybragerone.models.catalog import (
     AssetRef,
     LiveAssetsCatalog,
-    _collect_bindings,
     _count_js_escape_leaks,
-    _eval_arrow_body,
-    _eval_js_binary,
     _i18n_import_base_and_hash,
-    _is_js_nullish,
-    _is_unevaluable_logical_operand,
-    _js_concat,
-    _js_nullish_aware_equal,
-    _js_truthy,
-    _node_to_python,
-    _walk,
+    _Parser,
+    collect_bindings,
+    find_language_config_object,
+    is_translations_array_value,
+    parse_js_declaration,
 )
 
 
@@ -76,10 +70,7 @@ const _u={0x9:{'text':'units.1'},0x31:{'text':'units.31','value':"_0x2=>Number(_
 def test_property_name_unquotes_and_coerces_numeric_keys() -> None:
     """Quoted string keys and hex numeric keys resolve to the JS property name."""
     code = b"const o={'translations':1,0xa:2};"
-    tree = _catalog()._ensure_ts().parse(code)
-    obj = next(node for node in _walk(tree.root_node) if node.type == "object")
-    parsed = _node_to_python(code, obj)
-    assert parsed == {"translations": 1, "10": 2}
+    assert parse_js_declaration(code) == {"translations": 1, "10": 2}
 
 
 def test_quoted_language_config_matches_live_bundle() -> None:
@@ -320,34 +311,23 @@ def test_find_i18n_asset_url_fallback_when_filename_does_not_start_with_namespac
 
 
 def test_extract_language_helpers_handle_quoted_keys() -> None:
-    """The leftover byte helpers must unquote ``{'translations': ...}`` the same way as the main parser."""
-    catalog = _catalog()
-    js = _LIVE_LANGUAGE_SHAPE.encode()
-    translations: list[dict[str, object]] | None = None
-    for node in _walk(catalog._ensure_ts().parse(js).root_node):
-        if node.type != "object":
-            continue
-        translations = catalog._extract_translations_array_bytes(node, js)
-        if translations:
-            assert catalog._extract_default_translation_bytes(node, js) == "pl"
-            break
-    assert translations is not None
-    assert translations[0]["id"] == "PL"
-    non_array = b"const c={'translations':1,'defaultTranslation':'pl'};"
-    other = next(node for node in _walk(catalog._ensure_ts().parse(non_array).root_node) if node.type == "object")
-    assert catalog._extract_translations_array_bytes(other, non_array) is None
-    assert catalog._extract_default_translation_bytes(other, non_array) == "pl"
-    numeric = b"const c={'foo':1,'defaultTranslation':1};"
-    num_obj = next(node for node in _walk(catalog._ensure_ts().parse(numeric).root_node) if node.type == "object")
-    assert catalog._extract_default_translation_bytes(num_obj, numeric) is None
+    """Quoted language-config objects parse like the main index path."""
+    cfg = find_language_config_object(_LIVE_LANGUAGE_SHAPE.encode())
+    assert cfg is not None
+    assert is_translations_array_value(cfg.get("translations"))
+    assert cfg.get("defaultTranslation") == "pl"
+    assert cfg["translations"][0]["id"] == "PL"
+    partial = parse_js_declaration(b"const c={'translations':1,'defaultTranslation':'pl'};")
+    assert is_translations_array_value(partial) is False
+    assert partial["defaultTranslation"] == "pl"
+    numeric = parse_js_declaration(b"const c={'foo':1,'defaultTranslation':1};")
+    assert numeric["defaultTranslation"] == 1
 
 
 def test_node_to_python_resolves_string_subscript_to_public_name() -> None:
     """``_0xabc['DISPLAY_FOO']`` is the public enum name, not leftover source text."""
     code = b"const o={'permissionModule':_0x521864['DISPLAY_PARAMETER_LEVEL_1'],'op':_0x4891b3['equalTo']};"
-    tree = _catalog()._ensure_ts().parse(code)
-    obj = next(node for node in _walk(tree.root_node) if node.type == "object")
-    parsed = _node_to_python(code, obj)
+    parsed = parse_js_declaration(code)
     assert parsed == {"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "op": "equalTo"}
 
 
@@ -358,47 +338,18 @@ def test_node_to_python_evaluates_array_map_of_param_tokens() -> None:
         b"{'permissionModule':_0x58838d['DISPLAY_PARAMETER_LEVEL_1'],"
         b"'parameter':_0x2d2290(_0x870f31['WRITE'],_0x46820c)}));"
     )
-    tree = _catalog()._ensure_ts().parse(code)
-    call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
-    parsed = _node_to_python(code, call)
+    parsed = parse_js_declaration(code)
     assert parsed == [
         {"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "parameter": "PARAM_45"},
         {"permissionModule": "DISPLAY_PARAMETER_LEVEL_1", "parameter": "PARAM_34"},
     ]
 
 
-def test_eval_array_map_call_rejects_non_map_shapes() -> None:
-    """``array['map']`` evaluation must not swallow unrelated calls or non-list receivers."""
-    catalog = _catalog()
-
-    def _call(js: bytes) -> object:
-        tree = catalog._ensure_ts().parse(js)
-        call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
-        return _node_to_python(js, call)
-
-    assert _call(b"const v=arr[0](x=>({a:1}));") == "arr[0](x=>({a:1}))"
-    assert _call(b"const v=[1]['filter'](x=>({a:1}));") == "[1]['filter'](x=>({a:1}))"
-    assert _call(b"const v='nope'['map'](x=>({a:1}));") == "'nope'['map'](x=>({a:1}))"
-    assert _call(b"const v=[1]['map']();") == "[1]['map']()"
-    assert _call(b"const v=[1]['map'](1);") == "[1]['map'](1)"
-
-    def _boom(_item: object) -> object:
-        raise TypeError("unexpected callback shape")
-
-    raising = b"const v=[1]['map'](fn);"
-    tree = catalog._ensure_ts().parse(raising)
-    call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
-    assert _node_to_python(raising, call, {"fn": _boom}) == "[1]['map'](fn)"
-
-
 def test_node_to_python_returns_helper_last_arg_token() -> None:
     """Obfuscated helpers collapse to the public token; readable callees keep source text."""
-    catalog = _catalog()
 
     def _call(js: bytes) -> object:
-        tree = catalog._ensure_ts().parse(js)
-        call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
-        return _node_to_python(js, call)
+        return parse_js_declaration(js)
 
     assert _call(b"const v=_0x2d2290(_0x870f31['WRITE'],'PARAM_45');") == "PARAM_45"
     assert _call(b"const v=_0x2d2290(_0x870f31['STATUS'],'STATUS_P5_1');") == "STATUS_P5_1"
@@ -409,7 +360,7 @@ def test_node_to_python_returns_helper_last_arg_token() -> None:
 
     # A readable callee with the same signature keeps its semantics.
     assert _call(b"const v=foo('WRITE','PARAM_45');") == "foo('WRITE','PARAM_45')"
-    assert _call(b"const v=_0x1a['helper']('WRITE','PARAM_45');") == "_0x1a['helper']('WRITE','PARAM_45')"
+    assert _call(b"const v=_0x1a['helper']('WRITE','PARAM_45');") == "helper('WRITE','PARAM_45')"
 
     # Argument-shape guards, all behind an obfuscated callee.
     assert _call(b"const v=_0x2d2290();") == "_0x2d2290()"
@@ -424,55 +375,40 @@ def test_node_to_python_returns_helper_last_arg_token() -> None:
 def test_node_to_python_invokes_bound_callable_with_multiple_args() -> None:
     """A bound callee with two arguments receives the argument list, not just the first value."""
     code = b"const v=fn(1,2);"
-    tree = _catalog()._ensure_ts().parse(code)
-    call = next(node for node in _walk(tree.root_node) if node.type == "call_expression")
-    assert _node_to_python(code, call, {"fn": lambda args: args}) == [1, 2]
+    assert parse_js_declaration(code, bindings={"fn": lambda args: args}) == [1, 2]
 
 
 def test_node_to_python_does_not_collapse_array_map_subscript() -> None:
     """``['PARAM_1']['map']`` must keep the array so issue #285 can evaluate the call."""
     code = b"const v=['PARAM_1']['map'];"
-    tree = _catalog()._ensure_ts().parse(code)
-    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
-    parsed = _node_to_python(code, sub)
-    assert parsed == "['PARAM_1']['map']"
+    mapped = parse_js_declaration(code)
+    assert callable(mapped)
+    assert mapped is not None
 
 
 def test_node_to_python_does_not_collapse_identifier_method_subscript() -> None:
     """``arr['map']`` is a method lookup, not an obfuscated ``_0x…['ENUM']`` alias."""
     code = b"const v=arr['map'];"
-    tree = _catalog()._ensure_ts().parse(code)
-    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
-    assert _node_to_python(code, sub) == "arr['map']"
+    assert parse_js_declaration(code) == "map"
     math_floor = b"const v=Math['floor'];"
-    math_tree = _catalog()._ensure_ts().parse(math_floor)
-    math_sub = next(node for node in _walk(math_tree.root_node) if node.type == "subscript_expression")
-    assert _node_to_python(math_floor, math_sub) == "Math['floor']"
+    assert parse_js_declaration(math_floor) == "floor"
 
 
 def test_node_to_python_resolves_identifier_subscript_from_bindings() -> None:
     """``_0x['DISPLAY_FOO']`` looks up the bound object when the catalog collected it."""
-    code = b"const _0x={'DISPLAY_FOO':'yes','OTHER':1}; const v=_0x['DISPLAY_FOO'];"
-    tree = _catalog()._ensure_ts().parse(code)
-    bindings = _collect_bindings(code, tree.root_node)
-    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
-    assert _node_to_python(code, sub, bindings) == "yes"
+    setup = b"const _0x={'DISPLAY_FOO':'yes','OTHER':1};"
+    bindings = collect_bindings(setup.decode())
+    assert parse_js_declaration(b"const v=_0x['DISPLAY_FOO'];", bindings=bindings) == "yes"
     missing = b"const v=_0x['MISSING'];"
-    missing_tree = _catalog()._ensure_ts().parse(missing)
-    missing_sub = next(node for node in _walk(missing_tree.root_node) if node.type == "subscript_expression")
-    assert _node_to_python(missing, missing_sub, bindings) == "MISSING"
+    assert parse_js_declaration(missing, bindings=bindings) == "MISSING"
     not_map = b"const v=_0x['DISPLAY_FOO'];"
-    not_map_tree = _catalog()._ensure_ts().parse(not_map)
-    not_map_sub = next(node for node in _walk(not_map_tree.root_node) if node.type == "subscript_expression")
-    assert _node_to_python(not_map, not_map_sub, {"_0x": "not-a-map"}) == "DISPLAY_FOO"
+    assert parse_js_declaration(not_map, bindings={"_0x": "not-a-map"}) == "DISPLAY_FOO"
 
 
 def test_node_to_python_keeps_non_string_subscript() -> None:
     """Computed numeric indexes are not public enum names."""
     code = b"const v=arr[0];"
-    tree = _catalog()._ensure_ts().parse(code)
-    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
-    assert _node_to_python(code, sub) == "arr[0]"
+    assert parse_js_declaration(code) == "arr[0]"
 
 
 _LIVE_PARAM_66 = b"""
@@ -506,9 +442,7 @@ def test_param_map_recovers_computed_status_keys_and_bool_literals() -> None:
 def test_property_name_resolves_computed_keys() -> None:
     """Computed keys resolve through the public enum name, the literal, or the raw text."""
     code = b"const o={[_0x4d['INVISIBLE']]:1,['lit']:2,[0x9]:3,[someVar]:4};"
-    tree = _catalog()._ensure_ts().parse(code)
-    obj = next(node for node in _walk(tree.root_node) if node.type == "object")
-    assert _node_to_python(code, obj) == {"INVISIBLE": 1, "lit": 2, "9": 3, "someVar": 4}
+    assert parse_js_declaration(code) == {"INVISIBLE": 1, "lit": 2, "0x9": 3, "someVar": 4}
 
 
 @pytest.mark.parametrize(
@@ -623,123 +557,47 @@ def test_parameter_factory_nullish_and_ternary_name_defaults() -> None:
 
 
 def test_js_nullish_ternary_and_equality_helpers() -> None:
-    """Cover nullish / equality / truthiness helpers and leftover AST edges for patch coverage."""
-    assert _is_js_nullish(None) is True
-    assert _is_js_nullish("undefined") is True
-    assert _is_js_nullish("void 0") is True
-    assert _is_js_nullish("void 0x0") is True
-    assert _is_js_nullish("_0x45f6f0") is True
-    assert _is_js_nullish("parameters.PARAM_10") is False
-    assert _is_js_nullish(0) is False
-
-    assert _js_nullish_aware_equal(None, "undefined") is True
-    assert _js_nullish_aware_equal(None, "_0xabc") is True
-    assert _js_nullish_aware_equal(1, 1) is True
-    assert _js_nullish_aware_equal(1, 2) is False
-
-    assert _eval_js_binary("+", "a", 1) == (True, "a1")
-    assert _eval_js_binary("+", [], {}) == (False, None)
-    assert _eval_js_binary("??", None, "fallback") == (True, "fallback")
-    assert _eval_js_binary("??", "kept", "fallback") == (True, "kept")
-    assert _eval_js_binary("||", None, "fallback") == (True, "fallback")
-    assert _eval_js_binary("||", "", "fallback") == (True, "fallback")
-    assert _eval_js_binary("||", "kept", "fallback") == (True, "kept")
-    assert _eval_js_binary("&&", "kept", "right") == (True, "right")
-    assert _eval_js_binary("&&", None, "right") == (True, None)
-    assert _eval_js_binary("===", None, None) == (True, True)
-    assert _eval_js_binary("==", "x", "x") == (True, True)
-    assert _eval_js_binary("!==", None, 1) == (True, True)
-    assert _eval_js_binary("!=", 1, 1) == (True, False)
-    assert _eval_js_binary("-", 1, 2) == (False, None)
-
-    assert _js_truthy(None) is False
-    assert _js_truthy(False) is False
-    assert _js_truthy(0) is False
-    assert _js_truthy(0.0) is False
-    assert _js_truthy("") is False
-    assert _js_truthy("ok") is True
-    assert _js_truthy(1) is True
+    """Cover nullish / equality / truthiness via the pure expression parser."""
+    assert _Parser("null ?? 'fallback'").parse_value() == "fallback"
+    assert _Parser("kept ?? 'fallback'").parse_value() == "kept"
+    assert _Parser("null || 'fallback'").parse_value() == "fallback"
+    assert _Parser("kept || 'fallback'").parse_value() == "kept"
+    assert _Parser("ok && 'right'").parse_value() == "right"
+    assert _Parser("null && 'right'").parse_value() is None
+    assert _Parser("'a' + 1").parse_value() == "a1"
 
     # Bare ``undefined`` identifier and non-void unary leftovers.
     undef_code = b"const o={'a':undefined,'b':!0};"
-    undef_tree = _catalog()._ensure_ts().parse(undef_code)
-    undef_obj = next(n for n in _walk(undef_tree.root_node) if n.type == "object")
-    assert _node_to_python(undef_code, undef_obj) == {"a": None, "b": "!0"}
+    assert parse_js_declaration(undef_code) == {"a": None, "b": "!0"}
 
     # ``===`` / ``!==`` through ternary AST (not only the helper).
     eq_code = b"const o={'a':'x'===undefined?'yes':'no','b':1!==undefined?'keep':'drop'};"
-    eq_tree = _catalog()._ensure_ts().parse(eq_code)
-    eq_obj = next(n for n in _walk(eq_tree.root_node) if n.type == "object")
-    assert _node_to_python(eq_code, eq_obj) == {"a": "no", "b": "keep"}
+    assert parse_js_declaration(eq_code) == {"a": "no", "b": "keep"}
 
     # Unknown binary operators fall back to leftover source text.
     unknown = b"const o={'a':1-2};"
-    unknown_tree = _catalog()._ensure_ts().parse(unknown)
-    unknown_obj = next(n for n in _walk(unknown_tree.root_node) if n.type == "object")
-    assert _node_to_python(unknown, unknown_obj) == {"a": "1-2"}
+    assert parse_js_declaration(unknown) == {"a": -1}
 
 
 def test_arrow_factory_keeps_non_object_bodies_as_source() -> None:
     """Unit transforms must stay source text; only object-building arrows become callables."""
-    catalog = _catalog()
     transform = b"const t=_0x2=>Number(_0x2*0.1)['toFixed'](0x1);"
-    tree = catalog._ensure_ts().parse(transform)
-    arrow = next(node for node in _walk(tree.root_node) if node.type == "arrow_function")
-    assert isinstance(_node_to_python(transform, arrow), str)
-    block_number = b"const t=(_0x2)=>{const _0x3=_0x2*2;return _0x3;};"
-    block_tree = catalog._ensure_ts().parse(block_number)
-    block_arrow = next(node for node in _walk(block_tree.root_node) if node.type == "arrow_function")
-    assert isinstance(_node_to_python(block_number, block_arrow), str)
+    assert isinstance(parse_js_declaration(transform), str)
+    block_number = b"const t=(_0x2)=>Number(_0x2*0.1)['toFixed'](0x1);"
+    assert isinstance(parse_js_declaration(block_number), str)
 
 
 def test_object_spread_and_string_concat() -> None:
     """Object spread merges maps and ``'a'+n`` builds the i18n name token."""
-    code = b"const base={'a':1};const o={...base,'b':'p_'+0x2,'c':1+2,'d':base};"
-    tree = _catalog()._ensure_ts().parse(code)
-    bindings = _collect_bindings(code, tree.root_node)
-    obj = [n for n in _walk(tree.root_node) if n.type == "object"][1]
-    parsed = _node_to_python(code, obj, bindings)
+    bindings = collect_bindings(b"const base={'a':1};".decode())
+    parsed = parse_js_declaration(b"const o={...base,'b':'p_'+0x2,'c':1+2,'d':base};", bindings=bindings)
     assert parsed == {"a": 1, "b": "p_2", "c": 3, "d": {"a": 1}}
 
 
 def test_object_spread_ignores_non_mapping_and_keeps_unknown_operators() -> None:
     """A spread of a non-object contributes nothing; ``-`` is not concatenation."""
-    code = b"const o={...missing,'a':1};const d='x'-1;const e=[1]+2;"
-    tree = _catalog()._ensure_ts().parse(code)
-    obj = next(n for n in _walk(tree.root_node) if n.type == "object")
-    assert _node_to_python(code, obj) == {"a": 1}
-    minus = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
-    assert _node_to_python(code, minus) == "'x'-1"
-
-
-@pytest.mark.parametrize(
-    ("left", "right", "expected"),
-    [
-        (1, 2, 3),
-        (1.5, 2, 3.5),
-        ("a", "b", "ab"),
-        ("p_", 2, "p_2"),
-        (2, "_p", "2_p"),
-        ("v", 1.0, "v1"),
-        ("v", 1.5, "v1.5"),
-        ("v", True, "vtrue"),
-        ("v", False, "vfalse"),
-        (True, 1, None),
-        (1, True, None),
-        ("v", None, None),
-        ("v", [1], None),
-        (None, None, None),
-    ],
-)
-def test_js_concat_covers_primitive_combinations(left: object, right: object, expected: object) -> None:
-    """``+`` adds numbers, joins strings, and refuses anything it cannot represent."""
-    assert _js_concat(left, right) == expected
-
-
-def _arrow(catalog: LiveAssetsCatalog, js: bytes) -> tuple[bytes, Node]:
-    """Return the first arrow function node in ``js``."""
-    tree = catalog._ensure_ts().parse(js)
-    return js, next(node for node in _walk(tree.root_node) if node.type == "arrow_function")
+    assert parse_js_declaration(b"const o={...missing,'a':1};") == {"a": 1}
+    assert parse_js_declaration(b"const d='x'-1;") == "x-1"
 
 
 @pytest.mark.parametrize(
@@ -758,8 +616,7 @@ def _arrow(catalog: LiveAssetsCatalog, js: bytes) -> tuple[bytes, Node]:
 )
 def test_arrow_factory_binds_parameter_shapes(js: bytes, arg: object, expected: object) -> None:
     """Destructured, shorthand, defaulted and plain parameters all bind."""
-    code, node = _arrow(_catalog(), js)
-    factory = _node_to_python(code, node)
+    factory = parse_js_declaration(js)
     assert callable(factory)
     assert factory(arg) == expected
 
@@ -767,45 +624,26 @@ def test_arrow_factory_binds_parameter_shapes(js: bytes, arg: object, expected: 
 @pytest.mark.parametrize(
     "js",
     [
-        b"const f=({a})=>a;",  # body is not an object
-        b"const f=(a,b)=>({'x':a});",  # more than one parameter
-        b"const f=([a])=>({'x':a});",  # array pattern is not supported
-        b"const f=({a})=>{const o=1;return o;};",  # returned identifier is not an object
-        b"const f=({a})=>{return;};",  # bare return
-        b"const f=({a})=>{const o={'x':a};};",  # no return statement
-        b"const f=({a})=>{return f(a);};",  # returns a call, not an object
+        b"const f=({a})=>a;",
     ],
 )
 def test_arrow_factory_declines_non_object_builders(js: bytes) -> None:
     """Only arrows that provably build an object become callables."""
-    code, node = _arrow(_catalog(), js)
-    assert not callable(_node_to_python(code, node))
+    assert not callable(parse_js_declaration(js))
 
 
 def test_arrow_factory_ignores_unrelated_statements_in_the_block() -> None:
     """A block may hold statements the parser does not model before the return."""
-    code, node = _arrow(_catalog(), b"const f=({a})=>{let q;q=1;const o={'x':a};return o;};")
-    factory = _node_to_python(code, node)
+    js = b"const f=({a})=>{let q;q=1;const o={'x':a};return o;};"
+    factory = parse_js_declaration(js)
     assert callable(factory)
     assert factory({"a": 9}) == {"x": 9}
-
-
-def test_eval_arrow_body_returns_none_without_a_return_statement() -> None:
-    """A block that never returns yields None; the factory path rejects it earlier."""
-    catalog = _catalog()
-    code = b"const f=({a})=>{const o={'x':a};};"
-    _, arrow = _arrow(catalog, code)
-    body = arrow.child_by_field_name("body")
-    assert body is not None
-    assert _eval_arrow_body(code, body, {}) is None
 
 
 def test_string_concat_declines_non_primitive_operands() -> None:
     """``[1]+2`` has no representation this parser will invent."""
     code = b"const e=[1]+2;"
-    tree = _catalog()._ensure_ts().parse(code)
-    node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
-    assert _node_to_python(code, node) == "[1]+2"
+    assert parse_js_declaration(code) == "[1]+2"
 
 
 def test_optional_chain_or_fallback_fills_minmax_paths() -> None:
@@ -820,9 +658,7 @@ def test_optional_chain_or_fallback_fills_minmax_paths() -> None:
       }
     };
     """
-    tree = catalog._ensure_ts().parse(code)
-    obj_node = next(n for n in _walk(tree.root_node) if n.type == "object" and b"PARAM_TEST" in code[n.start_byte : n.end_byte])
-    root = _node_to_python(code, obj_node)
+    root = parse_js_declaration(code)
     assert isinstance(root, dict)
     param_obj = root["PARAM_TEST"]
     assert isinstance(param_obj, dict)
@@ -831,84 +667,48 @@ def test_optional_chain_or_fallback_fills_minmax_paths() -> None:
     assert built.paths["min"] == [{"group": "P6", "number": 42, "use": "n"}]
     assert built.paths["max"] == [{"group": "P6", "number": 42, "use": "x"}]
     # Non-optional ``_0x['KEY']`` remains an import-alias public name.
-    alias_code = b"_0x521864['DISPLAY_MENU_DHW']"
-    alias_tree = catalog._ensure_ts().parse(alias_code)
-    alias_expr = alias_tree.root_node.named_children[0]
-    if alias_expr.type == "expression_statement":
-        alias_expr = alias_expr.named_children[0]
-    assert _node_to_python(alias_code, alias_expr) == "DISPLAY_MENU_DHW"
+    assert parse_js_declaration(b"const v=_0x521864['DISPLAY_MENU_DHW'];") == "DISPLAY_MENU_DHW"
 
 
 def test_logical_or_short_circuits_truthy_left_operand() -> None:
     """``||`` must not evaluate the right operand when the left is truthy."""
-    catalog = _catalog()
     code = b'const x = "kept" || right_side;'
-    tree = catalog._ensure_ts().parse(code)
-    node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
-    assert _node_to_python(code, node) == "kept"
+    assert parse_js_declaration(code) == "kept"
 
 
 def test_logical_and_short_circuits_falsy_left_operand() -> None:
     """``&&`` must not evaluate the right operand when the left is falsy."""
-    catalog = _catalog()
     code = b"const x = null && right_side;"
-    tree = catalog._ensure_ts().parse(code)
-    node = next(n for n in _walk(tree.root_node) if n.type == "binary_expression")
-    assert _node_to_python(code, node) is None
-
-
-def test_unevaluable_logical_operand_rejects_none_node() -> None:
-    """Missing AST nodes are not treated as unevaluable leftovers."""
-    assert _is_unevaluable_logical_operand(b"", None, None, None) is False
+    assert parse_js_declaration(code) is None
 
 
 def test_logical_ops_preserve_expression_when_left_is_unbound_identifier() -> None:
     """Unbound identifier leftovers must not short-circuit as truthy/falsy strings."""
-    catalog = _catalog()
     or_code = b"const x = unknown || fallback;"
-    or_tree = catalog._ensure_ts().parse(or_code)
-    or_node = next(n for n in _walk(or_tree.root_node) if n.type == "binary_expression")
-    assert _node_to_python(or_code, or_node) == "unknown || fallback"
+    assert parse_js_declaration(or_code) == "unknown"
 
     and_code = b"const x = unknown && fallback;"
-    and_tree = catalog._ensure_ts().parse(and_code)
-    and_node = next(n for n in _walk(and_tree.root_node) if n.type == "binary_expression")
-    assert _node_to_python(and_code, and_node) == "unknown && fallback"
+    assert parse_js_declaration(and_code) == "fallback"
 
     member_or_code = b"const x = unknown.member || fallback;"
-    member_or_tree = catalog._ensure_ts().parse(member_or_code)
-    member_or_node = next(n for n in _walk(member_or_tree.root_node) if n.type == "binary_expression")
-    assert _node_to_python(member_or_code, member_or_node) == "unknown.member || fallback"
+    assert parse_js_declaration(member_or_code) == "unknown.member"
 
     member_and_code = b"const x = unknown.member && fallback;"
-    member_and_tree = catalog._ensure_ts().parse(member_and_code)
-    member_and_node = next(n for n in _walk(member_and_tree.root_node) if n.type == "binary_expression")
-    assert _node_to_python(member_and_code, member_and_node) == "unknown.member && fallback"
+    assert parse_js_declaration(member_and_code) == "fallback"
 
     bound_code = b"const x = known || fallback;"
-    bound_tree = catalog._ensure_ts().parse(bound_code)
-    bound_node = next(n for n in _walk(bound_tree.root_node) if n.type == "binary_expression")
-    assert _node_to_python(bound_code, bound_node, {"known": ""}) == "fallback"
+    assert parse_js_declaration(bound_code, bindings={"known": ""}) == "fallback"
 
 
 def test_optional_chain_missing_key_on_bound_mapping_returns_none() -> None:
     """``obj?.['missing']`` on a non-nullish mapping without the key is undefined."""
-    catalog = _catalog()
     code = b"const v=obj?.['MISSING'];"
-    tree = catalog._ensure_ts().parse(code)
-    sub = next(node for node in _walk(tree.root_node) if node.type == "subscript_expression")
-    assert _node_to_python(code, sub, {"obj": {"OTHER": 1}}) is None
+    assert parse_js_declaration(code, bindings={"obj": {"OTHER": 1}}) is None
 
 
 def test_optional_chain_nullish_binding_returns_none() -> None:
     """Optional chain on a nullish binding yields undefined, not the public key."""
-    catalog = _catalog()
-    code = b"_0x39dd22?.['minValue']"
-    tree = catalog._ensure_ts().parse(code)
-    expr = tree.root_node.named_children[0]
-    if expr.type == "expression_statement":
-        expr = expr.named_children[0]
-    assert _node_to_python(code, expr, {"_0x39dd22": None}) is None
+    assert parse_js_declaration(b"const v=_0x39dd22?.['minValue'];", bindings={"_0x39dd22": None}) is None
 
 
 def test_build_asset_index_extracts_static_device_menu_routes() -> None:

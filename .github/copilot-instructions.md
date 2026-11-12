@@ -79,9 +79,9 @@ Channels:
 
 Example: Status bit handling reads mask from `P5.s40`, extracts single bit → binary entity.
 
-### 4. Asset Catalog & tree-sitter
+### 4. Asset Catalog (pure JS parser)
 
-`LiveAssetsCatalog` (`src/pybragerone/models/catalog.py`) parses live JavaScript assets from BragerOne web app using **tree-sitter** to extract:
+`LiveAssetsCatalog` (`src/pybragerone/models/catalog.py`) parses live JavaScript assets from the BragerOne web app using a **pure-Python** value extractor to extract:
 - Menu routes and parameter mappings
 - i18n translations (labels/units/enums)
 - Permission schemas
@@ -242,8 +242,6 @@ except Exception:
 
 - **BragerOne API** (`io.brager.pl`): REST + Socket.IO endpoints
 - **Asset catalog**: Fetched from web app at runtime for i18n/metadata
-- **tree-sitter**: Parses JavaScript assets (bundled language grammar via `tree-sitter-javascript`)
-
 ## Common Gotchas
 
 1. **Missing prime**: Always call `api.get_parameters()` after WS subscribe—never assume initial state from WS.

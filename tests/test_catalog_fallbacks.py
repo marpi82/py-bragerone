@@ -6,10 +6,15 @@ from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
-from tree_sitter import Node
 
 from pybragerone.api.client import BragerOneApiClient
-from pybragerone.models.catalog import AssetRef, LiveAssetsCatalog, _walk
+from pybragerone.models.catalog import (
+    AssetRef,
+    LiveAssetsCatalog,
+    find_language_config_object,
+    is_translations_array_value,
+    parse_js_declaration,
+)
 
 
 def _catalog() -> LiveAssetsCatalog:
@@ -17,28 +22,6 @@ def _catalog() -> LiveAssetsCatalog:
     catalog = LiveAssetsCatalog(api)
     catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/dummy.js", base="dummy", hash="x")]
     return catalog
-
-
-def _first_node(root: Node, node_type: str) -> Node:
-    for node in _walk(root):
-        if node.type == node_type:
-            return node
-    raise AssertionError(f"missing {node_type} node")
-
-
-def _largest_node(root: Node, node_type: str) -> Node:
-    best: Node | None = None
-    best_sz = -1
-    for node in _walk(root):
-        if node.type != node_type:
-            continue
-        size = node.end_byte - node.start_byte
-        if size > best_sz:
-            best = node
-            best_sz = size
-    if best is None:
-        raise AssertionError(f"missing {node_type} node")
-    return best
 
 
 def test_attach_parameters_tokens_normalizes_calls_dicts_and_children() -> None:
@@ -267,13 +250,9 @@ def test_parse_js_value_and_translations_array_heuristics() -> None:
       defaultTranslation: "pl"
     };
     """
-    tree = catalog._ensure_ts().parse(source.encode())
-    array = _first_node(tree.root_node, "array")
-    obj = _largest_node(tree.root_node, "object")
-    assert catalog._is_translations_array(array, source) is True
-    assert catalog._is_translations_array_bytes(array, source.encode()) is True
-
-    parsed = catalog._parse_js_value(obj, source)
+    parsed = parse_js_declaration(source.encode())
+    assert isinstance(parsed, dict)
+    assert is_translations_array_value(parsed.get("translations")) is True
     assert parsed["defaultTranslation"] == "pl"
     first = parsed["translations"][0]
     assert first["id"] == "pl"
@@ -285,32 +264,19 @@ def test_parse_js_value_and_translations_array_heuristics() -> None:
     assert first["extra"] == {"ok": True}
     assert first["raw"] == "ident"
 
-    parsed_bytes = catalog._parse_js_value_bytes(obj, source.encode())
-    assert parsed_bytes == parsed
-    assert catalog._extract_default_translation(obj, source) == "pl"
-    assert catalog._extract_default_translation_bytes(obj, source.encode()) == "pl"
-    assert catalog._extract_translations_array(obj, source) is not None
-    assert catalog._extract_translations_array(obj, source) == catalog._extract_translations_array_bytes(obj, source.encode())
-
     quoted = "const cfg={'translations':[{'id':'pl','flag':'PL'}],'defaultTranslation':'pl'};"
-    quoted_tree = catalog._ensure_ts().parse(quoted.encode())
-    quoted_obj = _largest_node(quoted_tree.root_node, "object")
-    quoted_parsed = catalog._parse_js_value(quoted_obj, quoted)
-    assert quoted_parsed == catalog._parse_js_value_bytes(quoted_obj, quoted.encode())
+    quoted_parsed = parse_js_declaration(quoted.encode())
     assert quoted_parsed["translations"][0]["id"] == "pl"
-    assert catalog._extract_default_translation(quoted_obj, quoted) == "pl"
 
-    weak = "const xs = [{id: 'pl', flag: 'PL'}, {foo: 1}, {bar: 2}];"
-    weak_array = _first_node(catalog._ensure_ts().parse(weak.encode()).root_node, "array")
-    assert catalog._is_translations_array(weak_array, weak) is False
-    assert catalog._is_translations_array_bytes(weak_array, weak.encode()) is False
-    empty = "const xs = [];"
-    empty_array = _first_node(catalog._ensure_ts().parse(empty.encode()).root_node, "array")
-    assert catalog._is_translations_array(empty_array, empty) is False
+    weak = parse_js_declaration(b"const xs = [{id: 'pl', flag: 'PL'}, {foo: 1}, {bar: 2}];")
+    assert is_translations_array_value(weak) is False
+    empty = parse_js_declaration(b"const xs = [];")
+    assert is_translations_array_value(empty) is False
 
     cfg = catalog._parse_language_config_from_js(source.encode())
     assert cfg.default_translation == "pl"
     assert cfg.translations[0]["id"] == "pl"
+    assert find_language_config_object(quoted.encode()) is not None
     with pytest.raises(ValueError, match="not found"):
         catalog._parse_language_config_from_js(b"export default { foo: 1 };")
 

@@ -28,7 +28,7 @@ Pre-commit hooks exist; **pre-push** runs pytest with an **80% project** floor p
 
 ## Architecture in one paragraph
 
-REST **primes** the state (snapshots); WebSocket delivers **deltas only** and never replays state — after every reconnect you must re-subscribe and re-prime. `BragerOneApiClient` (`src/pybragerone/api/client.py`, httpx, token auto-refresh, ETag cache) and `RealtimeManager` (`src/pybragerone/api/ws.py`, python-socketio `/ws` namespace) feed `BragerOneGateway` (`src/pybragerone/gateway.py`), which publishes `ParamUpdate` events on the `EventBus` (`src/pybragerone/models/events.py`) into `ParamStore` (`src/pybragerone/models/param.py`). `LiveAssetsCatalog` (`src/pybragerone/models/catalog.py` + `catalog_js_pure.py`) parses live JS web-app assets with a **pure-Python** JS value extractor (menus/i18n/units/ParamMaps) at config time — not hot runtime. Optional ``[parsers]`` extra installs tree-sitter only as a CI/oracle backend.
+REST **primes** the state (snapshots); WebSocket delivers **deltas only** and never replays state — after every reconnect you must re-subscribe and re-prime. `BragerOneApiClient` (`src/pybragerone/api/client.py`, httpx, token auto-refresh, ETag cache) and `RealtimeManager` (`src/pybragerone/api/ws.py`, python-socketio `/ws` namespace) feed `BragerOneGateway` (`src/pybragerone/gateway.py`), which publishes `ParamUpdate` events on the `EventBus` (`src/pybragerone/models/events.py`) into `ParamStore` (`src/pybragerone/models/param.py`). `LiveAssetsCatalog` (`src/pybragerone/models/catalog.py`) parses live JS web-app assets with a **pure-Python** JS value extractor (menus/i18n/units/ParamMaps) at config time — not hot runtime.
 
 Parameter addressing: `P<n>.<chan><idx>` (channels: `v` value, `s` status bitmask, `u` unit/enum, `n`/`x` min/max, `t` type).
 
@@ -56,7 +56,7 @@ Before implementing a bugfix or feature (protocol/SPA parity, catalog/unit codec
 - pytest with `asyncio_mode = "auto"`; mock HTTP with **pytest-httpx** (`httpx_mock`).
 - Live-API tests must be marked `@pytest.mark.needs_internet`.
 - Hypothesis for property-based tests; fuzz harness lives in `fuzz/` (atheris).
-- Parser resilience (pure catalog + tree-sitter oracle parity) is heavily tested in `tests/test_catalog_*.py` / `tests/test_catalog_pure_parity.py` — keep it that way; upstream JS assets change without notice. Optional captured dumps live in `tests/assets/{index,params,menus,i18n}/` (`*.js` gitignored) and are parsed by `tests/test_catalog_captured_assets.py` (skipped when empty). Scheduled watch: `.github/workflows/upstream-assets.yml` (unauthenticated `/system/version` + `index-*.js` fingerprint; when it parses, also requires language config, units descriptor table, and `units` i18n — not a `ci.yml` gate).
+- Parser resilience (pure catalog regressions) is heavily tested in `tests/test_catalog_*.py` / `tests/test_catalog_pure_parity.py` — keep it that way; upstream JS assets change without notice. Optional captured dumps live in `tests/assets/{index,params,menus,i18n}/` (`*.js` gitignored) and are parsed by `tests/test_catalog_captured_assets.py` (skipped when empty). Scheduled watch: `.github/workflows/upstream-assets.yml` (unauthenticated `/system/version` + `index-*.js` fingerprint; when it parses, also requires language config, units descriptor table, and `units` i18n — not a `ci.yml` gate).
 
 ## Pre-commit quality gate
 

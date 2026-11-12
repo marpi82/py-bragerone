@@ -213,7 +213,7 @@ def test_normalize_date_time_unit_key_variants() -> None:
 
 
 def test_unit_meta_looks_like_date_time_variants() -> None:
-    """Detect DATE_TIME parse meta including callable tree-sitter materializations."""
+    """Detect DATE_TIME parse meta including callable factory materializations."""
     assert unit_meta_looks_like_date_time("not-a-dict") is False
     assert unit_meta_looks_like_date_time({}) is False
     assert unit_meta_looks_like_date_time({"parse": 123}) is False

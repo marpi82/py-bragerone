@@ -1,4 +1,4 @@
-"""Atheris harness for the tree-sitter-based live-asset catalog parsers.
+"""Atheris harness for the pure-Python live-asset catalog parsers.
 
 Feeds arbitrary bytes into the JavaScript asset parsing paths (index,
 menu routes, embedded parameter maps) that normally process the vendor's
@@ -30,8 +30,8 @@ def _catalog() -> LiveAssetsCatalog:
     return LiveAssetsCatalog(cast(BragerOneApiClient, None))
 
 
-# Reused across iterations: constructing a catalog rebuilds the tree-sitter
-# parser, which would dominate the hot path. The fuzzed methods only read
+# Reused across iterations: a fresh LiveAssetsCatalog per input would add
+# overhead. The fuzzed methods only read
 # input bytes; the index-builder overwrites its state on every call.
 _CATALOG = _catalog()
 
