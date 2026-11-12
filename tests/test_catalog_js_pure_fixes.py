@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
+from pybragerone.models.catalog import LiveAssetsCatalog
 from pybragerone.models.catalog_js_pure import (
     _array_map_method,
     _Parser,
@@ -105,3 +107,43 @@ def test_extract_root_recursion_guards_are_reachable(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("pybragerone.models.catalog_js_pure.extract_root_export", _boom_export)
     assert extract_root_object(b"export default {}") is None
+
+
+def test_pure_optional_chain_or_fallback_fills_minmax_paths() -> None:
+    """Production pure path: ``_0x?.['minValue']||[{…}]`` must become paths.min/max (#329)."""
+    code = b"""
+    export default {
+      PARAM_TEST: {
+        value: [{group: 'P6', number: 1, use: 'v'}],
+        minValue: _0x39dd22?.['minValue']||[{group: 'P6', number: 42, use: 'n'}],
+        maxValue: _0x39dd22?.['maxValue']||[{group: 'P6', number: 42, use: 'x'}],
+      }
+    };
+    """
+    root = extract_root_export(code)
+    assert isinstance(root, dict)
+    param_obj = root["PARAM_TEST"]
+    assert isinstance(param_obj, dict)
+    assert param_obj["minValue"] == [{"group": "P6", "number": 42, "use": "n"}]
+    assert param_obj["maxValue"] == [{"group": "P6", "number": 42, "use": "x"}]
+
+    catalog = LiveAssetsCatalog(AsyncMock())
+    built = catalog._build_param_map_from_obj(param_obj, "PARAM_TEST", "test")
+    assert built is not None
+    assert built.paths["min"] == [{"group": "P6", "number": 42, "use": "n"}]
+    assert built.paths["max"] == [{"group": "P6", "number": 42, "use": "x"}]
+
+
+def test_pure_optional_chain_nullish_and_missing_key() -> None:
+    """``obj?.['missing']`` / unbound ``_0x?.['key']`` are undefined on the pure path."""
+    assert _Parser("_0x39dd22?.['minValue']").parse_value() is None
+    assert _Parser("obj?.['MISSING']", bindings={"obj": {"OTHER": 1}}).parse_value() is None
+    assert _Parser("obj?.['present']", bindings={"obj": {"present": 7}}).parse_value() == 7
+    assert _Parser("obj?.present", bindings={"obj": {"present": 7}}).parse_value() == 7
+    assert _Parser("obj?.missing", bindings={"obj": {"present": 7}}).parse_value() is None
+    assert _Parser("_0xabc?.foo").parse_value() is None
+    assert _Parser("plainIdent?.foo").parse_value() is None
+    assert _Parser("1?.foo").parse_value() is None
+    assert _Parser("obj?.").parse_value() is None
+    assert _Parser("1?.['x']").parse_value() is None
+    assert _Parser("plainIdent?.['x']").parse_value() is None

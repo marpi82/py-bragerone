@@ -441,14 +441,15 @@ class _Parser:
     def _parse_conditional(self) -> Any:
         value = self._parse_logical_or()
         self._skip_ws_and_comments()
-        if self._peek() != "?":
+        # ``?.`` is optional chaining (handled in postfix), not a ternary.
+        if self._peek() != "?" or self.source.startswith("?.", self.i):
             return value
         self._advance()
         consequence = self._parse_conditional()
         if not self._match(":"):
             return value
         alternative = self._parse_conditional()
-        return consequence if value else alternative
+        return consequence if self._js_truthy(value) else alternative
 
     def _is_nullish(self, value: Any) -> bool:
         if value is None:
@@ -457,6 +458,35 @@ class _Parser:
             return True
         return bool(isinstance(value, str) and value.startswith("_0x"))
 
+    def _js_truthy(self, value: Any) -> bool:
+        """Approximate JavaScript truthiness (nullish ``_0x…`` leftovers are falsy)."""
+        if self._is_nullish(value) or value is False:
+            return False
+        return bool(value != 0 and value != "")
+
+    def _eval_optional_subscript(self, value: Any, index: Any) -> Any:
+        """Evaluate ``receiver?.['index']`` like the tree-sitter catalog path (#329)."""
+        if isinstance(value, Mapping) and isinstance(index, str):
+            return value.get(index)
+        # Unbound / nullish obfuscated receivers are undefined (SPA ``||`` fallback).
+        if self._is_nullish(value):
+            return None
+        if isinstance(value, str) and (_IDENT_RE.fullmatch(value) is not None or value.startswith("_0x")):
+            return None
+        return None
+
+    def _eval_optional_member(self, value: Any, name: str) -> Any:
+        """Evaluate ``receiver?.name`` optional member access."""
+        if not name:
+            return None
+        if isinstance(value, Mapping):
+            return value.get(name)
+        if self._is_nullish(value):
+            return None
+        if isinstance(value, str) and (_IDENT_RE.fullmatch(value) is not None or value.startswith("_0x")):
+            return None
+        return None
+
     def _parse_logical_or(self) -> Any:
         left = self._parse_nullish()
         while True:
@@ -464,7 +494,7 @@ class _Parser:
             if not self._match("||"):
                 return left
             right = self._parse_nullish()
-            left = left if left else right
+            left = left if self._js_truthy(left) else right
 
     def _parse_nullish(self) -> Any:
         left = self._parse_logical_and()
@@ -482,7 +512,7 @@ class _Parser:
             if not self._match("&&"):
                 return left
             right = self._parse_equality()
-            left = left if not left else right
+            left = right if self._js_truthy(left) else left
 
     def _parse_equality(self) -> Any:
         left = self._parse_additive()
@@ -596,6 +626,19 @@ class _Parser:
                     value = f"{value}{self.source[call_start : self.i]}"
                 else:
                     value = self.source[call_start : self.i]
+                continue
+            # Optional chaining: ``_0x?.['minValue']`` / ``obj?.prop`` (issue #329).
+            if self.source.startswith("?.", self.i):
+                self.i += 2
+                self._skip_ws_and_comments()
+                if self._peek() == "[":
+                    self._advance()
+                    index = self.parse_value()
+                    self._match("]")
+                    value = self._eval_optional_subscript(value, index)
+                    continue
+                name = self._read_identifier()
+                value = self._eval_optional_member(value, name)
                 continue
             if self._peek() == "[":
                 self._advance()
