@@ -20,6 +20,10 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- DATE_TIME: treat factory-default wire ``0001011200`` /
+  ``2000-01-01 12:00`` as that wall-clock datetime (not ``None`` / empty), so
+  HA can create ``datetime`` entities and clear by writing the same moment
+  (#487).
 - ``parameter_visibility_diagnostics``: evaluate ``storeGetter`` status ``if``
   rules (e.g. ``COMMAND_MODULE_RESTART`` ``ENABLED`` via
   ``modulesMap.{devid}.connectedAt``) with the same runtime context as value
@@ -38,12 +42,11 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   status flag ``elseif`` gates are evaluated like ``if`` (#482).
 - DATE_TIME: zero-pad JSON numbers *and* short digit strings that drop leading
   year zeros; map ``yy`` with Luxon's ``twoDigitCutoffYear`` (60) instead of
-  Python ``%y``; treat wall-clock ``2000-01-01 12:00`` as unset in every
-  representation; reject timezone-aware datetimes instead of stripping
+  Python ``%y``; reject timezone-aware datetimes instead of stripping
   ``tzinfo``; keep parse-only unit meta out of ``ResolvedValue.unit``; CLI
   write prep detects parse-only DATE_TIME meta and applies chronological
   min/max after encode (numeric wire order is wrong across Luxon's century
-  window) (#479).
+  window) (#479). Factory-default wall-clock read semantics: see #487.
 
 ## [2026.11.1rc1] - 2026-11-10
 

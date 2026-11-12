@@ -90,11 +90,11 @@ def test_json_number_zero_pads_leading_year_digits() -> None:
     assert parse_server_date_time("503111430") == datetime(2005, 3, 11, 14, 30)
     assert format_server_date_time("503111430") == "0503111430"
     assert format_server_date_time("1011200") == DATE_TIME_UNSET_RAW
-    # Unset sentinel ``0001011200`` as a JSON number.
-    assert parse_server_date_time(1011200) is None
-    assert format_display_date_time(1011200) is None
+    # Factory-default wire ``0001011200`` as a JSON number (leading zeros dropped).
+    assert parse_server_date_time(1011200) == DATE_TIME_UNSET_DT
+    assert format_display_date_time(1011200) == "2000/01/01 12:00"
     assert format_server_date_time(1011200) == DATE_TIME_UNSET_RAW
-    assert parse_server_date_time(1011200.0) is None
+    assert parse_server_date_time(1011200.0) == DATE_TIME_UNSET_DT
     assert format_server_date_time(1011200.0) == DATE_TIME_UNSET_RAW
     # Too many digits / non-integral float stay invalid.
     assert parse_server_date_time(12345678901) is None
@@ -131,18 +131,18 @@ def test_luxon_two_digit_year_cutoff() -> None:
     assert format_server_date_time(datetime(1899, 3, 11, 14, 30)) is None
 
 
-def test_unset_wall_clock_datetime_and_display() -> None:
-    """``2000-01-01 12:00`` is the unset sentinel in every representation."""
+def test_factory_default_wall_clock_is_a_real_datetime() -> None:
+    """``2000-01-01 12:00`` / ``0001011200`` parses as that wall clock (HA date-as-date)."""
     assert datetime(2000, 1, 1, 12, 0) == DATE_TIME_UNSET_DT
-    assert parse_server_date_time(DATE_TIME_UNSET_DT) is None
-    assert parse_server_date_time(datetime(2000, 1, 1, 12, 0, 45)) is None
-    assert parse_server_date_time("2000/01/01 12:00") is None
-    assert format_display_date_time(DATE_TIME_UNSET_DT) is None
-    assert format_display_date_time("2000/01/01 12:00") is None
+    assert parse_server_date_time(DATE_TIME_UNSET_DT) == DATE_TIME_UNSET_DT
+    assert parse_server_date_time(datetime(2000, 1, 1, 12, 0, 45)) == DATE_TIME_UNSET_DT
+    assert parse_server_date_time("2000/01/01 12:00") == DATE_TIME_UNSET_DT
+    assert format_display_date_time(DATE_TIME_UNSET_DT) == "2000/01/01 12:00"
+    assert format_display_date_time("2000/01/01 12:00") == "2000/01/01 12:00"
     assert format_server_date_time(DATE_TIME_UNSET_DT) == DATE_TIME_UNSET_RAW
     assert format_server_date_time(datetime(2000, 1, 1, 12, 0, 45)) == DATE_TIME_UNSET_RAW
     assert format_server_date_time("2000/01/01 12:00") == DATE_TIME_UNSET_RAW
-    # Nearby wall clocks stay real values (year ``00`` is otherwise valid).
+    # Nearby wall clocks stay distinct (year ``00`` is otherwise valid).
     assert parse_server_date_time("0001011201") == datetime(2000, 1, 1, 12, 1)
     assert format_server_date_time(datetime(2000, 1, 1, 12, 1)) == "0001011201"
     assert parse_server_date_time("0003111430") == datetime(2000, 3, 11, 14, 30)
@@ -171,10 +171,10 @@ def test_calendar_edge_cases() -> None:
     assert parse_server_date_time("2503111460") is None
 
 
-def test_unset_and_invalid_are_empty() -> None:
-    """Unset sentinel and garbage wire values yield ``None``."""
-    assert parse_server_date_time(DATE_TIME_UNSET_RAW) is None
-    assert format_display_date_time(DATE_TIME_UNSET_RAW) is None
+def test_factory_default_wire_and_invalid_inputs() -> None:
+    """Factory-default wire is a real datetime; garbage stays ``None``."""
+    assert parse_server_date_time(DATE_TIME_UNSET_RAW) == DATE_TIME_UNSET_DT
+    assert format_display_date_time(DATE_TIME_UNSET_RAW) == "2000/01/01 12:00"
     assert parse_server_date_time("24H0H0H0?2") is None
     assert parse_server_date_time("1") is None
     assert parse_server_date_time(None) is None
@@ -240,7 +240,7 @@ def test_is_date_time_unit_keys() -> None:
 def test_apply_unit_display_value_date_time() -> None:
     """Resolver display helper uses the DATE_TIME codec before numeric transforms."""
     assert ParamResolver._apply_unit_display_value("2501011200", unit_code="DATE_TIME") == "2025/01/01 12:00"
-    assert ParamResolver._apply_unit_display_value(DATE_TIME_UNSET_RAW, unit_code=9999) is None
+    assert ParamResolver._apply_unit_display_value(DATE_TIME_UNSET_RAW, unit_code=9999) == "2000/01/01 12:00"
     parse_only = {"parse": "e=>DateTime.fromFormat(e,serverDateFormat)"}
     assert ParamResolver._apply_unit_display_value("2503111430", unit_meta=parse_only) == "2025/03/11 14:30"
     assert ParamResolver._unit_options_map(parse_only) is None
