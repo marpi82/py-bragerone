@@ -228,10 +228,7 @@ def format_server_date_time(value: Any) -> str | None:
             return None
         truncated = value.replace(second=0, microsecond=0)
         return _format_wire(truncated)
-    parsed = parse_server_date_time(value)
-    if parsed is None:
-        return None
-    return _format_wire(parsed)
+    return None
 
 
 def format_display_date_time(value: Any) -> str | None:
