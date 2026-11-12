@@ -12,6 +12,11 @@ Wire and display values are **naive local wall-clock** at minute resolution.
 Callers (e.g. Home Assistant) must convert aware datetimes to the controller's
 local wall time before encode; aware inputs are rejected rather than silently
 dropping ``tzinfo``. Seconds/microseconds are truncated on encode.
+
+The controller factory default ``0001011200`` / ``2000-01-01 12:00`` is a normal
+wall-clock value (not ``None``): Home Assistant has no datetime clear action, so
+showing and writing that moment is how integrations represent “unset”. Encoding
+that wall clock still yields the reserved wire form.
 """
 
 from __future__ import annotations
@@ -31,7 +36,7 @@ DATE_TIME_UNIT_CODE: Final = "9999"
 DATE_TIME_UNIT_NAME: Final = "DATE_TIME"
 DATE_TIME_UNIT_KEYS: Final = frozenset({DATE_TIME_UNIT_CODE, DATE_TIME_UNIT_NAME, "0x270f", "0X270F"})
 
-# Common "unset" sentinel observed on controllers (2000-01-01 12:00).
+# Controller factory-default / clear wire form (still a real wall-clock on read).
 DATE_TIME_UNSET_RAW: Final = "0001011200"
 DATE_TIME_UNSET_DT: Final = datetime(2000, 1, 1, 12, 0)
 
@@ -148,21 +153,19 @@ def _format_wire(dt: datetime) -> str | None:
 
 
 def _as_naive_minute(dt: datetime) -> datetime | None:
-    """Return minute-resolution naive datetime, or ``None`` if aware / unset sentinel."""
+    """Return minute-resolution naive datetime, or ``None`` if timezone-aware."""
     if dt.tzinfo is not None:
         return None
-    truncated = dt.replace(second=0, microsecond=0)
-    if truncated == DATE_TIME_UNSET_DT:
-        return None
-    return truncated
+    return dt.replace(second=0, microsecond=0)
 
 
 def parse_server_date_time(raw: Any) -> datetime | None:
     """Parse a Brager wire value into a naive wall-clock ``datetime``.
 
     Returns:
-        Parsed naive datetime, or ``None`` for missing / unset sentinel / invalid /
-        timezone-aware input (callers must convert to local wall time first).
+        Parsed naive datetime (including factory-default ``2000-01-01 12:00``), or
+        ``None`` for missing / invalid / timezone-aware input (callers must convert
+        to local wall time first).
     """
     if raw is None or isinstance(raw, bool):
         return None
@@ -179,7 +182,7 @@ def parse_server_date_time(raw: Any) -> datetime | None:
             if text_norm is None:
                 return None
             text = text_norm
-    if not text or text == DATE_TIME_UNSET_RAW:
+    if not text:
         return None
     if text.isdigit():
         parsed = _parse_wire_digits(text)
@@ -202,34 +205,28 @@ def format_server_date_time(value: Any) -> str | None:
         text = value.strip()
         if not text:
             return None
-        if text == DATE_TIME_UNSET_RAW:
-            return DATE_TIME_UNSET_RAW
         if text.isdigit():
             digits = _digits_wire_text(text)
             if digits is None:
                 return None
-            if digits == DATE_TIME_UNSET_RAW:
-                return DATE_TIME_UNSET_RAW
-            # Already wire-shaped (after pad); validate by round-trip.
+            # Already wire-shaped (after pad); validate by round-trip
+            # (includes factory-default ``0001011200`` → same wire).
             return digits if parse_server_date_time(digits) is not None else None
-        # SPA display form (including unset wall-clock).
+        # SPA display form (``2000/01/01 12:00`` encodes to ``0001011200``).
         try:
             as_display = datetime.strptime(text, DISPLAY_DATE_TIME_FORMAT).replace(second=0, microsecond=0)
         except ValueError:
             return None
-        if as_display == DATE_TIME_UNSET_DT:
-            return DATE_TIME_UNSET_RAW
         return _format_wire(as_display)
     if isinstance(value, int | float):
         digits = _digits_wire_text(value)
-        if digits == DATE_TIME_UNSET_RAW:
-            return DATE_TIME_UNSET_RAW
+        if digits is None:
+            return None
+        return digits if parse_server_date_time(digits) is not None else None
     if isinstance(value, datetime):
         if value.tzinfo is not None:
             return None
         truncated = value.replace(second=0, microsecond=0)
-        if truncated == DATE_TIME_UNSET_DT:
-            return DATE_TIME_UNSET_RAW
         return _format_wire(truncated)
     parsed = parse_server_date_time(value)
     if parsed is None:
@@ -238,7 +235,7 @@ def format_server_date_time(value: Any) -> str | None:
 
 
 def format_display_date_time(value: Any) -> str | None:
-    """Format a wire / datetime value as SPA ``yyyy/MM/dd HH:mm`` (or ``None`` if unset)."""
+    """Format a wire / datetime value as SPA ``yyyy/MM/dd HH:mm`` (or ``None`` if invalid)."""
     parsed = parse_server_date_time(value)
     if parsed is None:
         return None

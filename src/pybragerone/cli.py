@@ -316,7 +316,8 @@ async def _prepare_symbol_write_value(
         encoded = format_server_date_time(requested_value)
         if encoded is None:
             return False, requested_value, f"invalid DATE_TIME value: {requested_value!r}"
-        # Unset sentinel is always allowed so callers can clear the register.
+        # Factory-default wire is always allowed so callers can clear the register
+        # even when chronological min/max exclude year 2000.
         # Prefer chronological compare: wire ``yyMMddHHmm`` as a number is not
         # ordered across Luxon's century window (e.g. 1965 wire ``65…`` > 2025 ``25…``).
         if encoded != DATE_TIME_UNSET_RAW:
