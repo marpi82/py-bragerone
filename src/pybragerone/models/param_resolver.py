@@ -752,6 +752,23 @@ class ParamResolver:
             return token
         return None
 
+    @staticmethod
+    def _menu_pack_flat_key(raw: str) -> str | None:
+        """Return the flat ``menu``-namespace key for ``menu.FOO`` display names.
+
+        ``_panel_title_i18n`` overlays the ``menu`` pack as flat keys on the routes
+        map (e.g. ``USTAWIENIA_TERMOSTATU``). REST deviceMenu leaves use that shape
+        with opaque UUID ``route.name`` values (#505); looking up only
+        ``MAINMENU_*``-shaped tokens left those titles unresolved.
+        """
+        token = raw.strip()
+        if not token.casefold().startswith("menu."):
+            return None
+        rest = token[5:].strip()
+        if not rest or "." in rest:
+            return None
+        return rest
+
     @classmethod
     def _route_title(cls, route: Any, *, routes_i18n: Mapping[str, Any] | None = None) -> str:
         meta = getattr(route, "meta", None)
@@ -763,7 +780,12 @@ class ParamResolver:
                 return translated
             bare = cls._bare_menu_title_token(raw)
             if bare is not None and bare != raw:
-                return cls._lookup_dotted_path(i18n, bare)
+                translated = cls._lookup_dotted_path(i18n, bare)
+                if translated is not None:
+                    return translated
+            menu_key = cls._menu_pack_flat_key(raw)
+            if menu_key is not None:
+                return cls._lookup_dotted_path(i18n, menu_key)
             return None
 
         if isinstance(dn, str) and dn.strip() and isinstance(routes_i18n, Mapping):
@@ -774,9 +796,9 @@ class ParamResolver:
                 if translated is not None:
                     return translated
             else:
-                # Bare tokens / ``menu.MAINMENU_*`` resolve via the flat overlay
-                # built by :meth:`_panel_title_i18n` (string-default namespaces
-                # and the ``menu`` pack), not via ``routes.*`` paths.
+                # Bare tokens / ``menu.*`` resolve via the flat overlay built by
+                # :meth:`_panel_title_i18n` (string-default namespaces and the
+                # ``menu`` pack), not via ``routes.*`` paths.
                 translated = _translate_candidate(dn_norm, routes_i18n)
                 if translated is not None:
                     return translated
@@ -800,6 +822,16 @@ class ParamResolver:
             # digit segments (``Pompa c.o.``, ``v1.2``) are kept as-is.
             if not _DOTTED_I18N_KEY_RE.fullmatch(dn_norm):
                 return dn_norm
+            # Opaque UUID ``route.name`` values are worse than the i18n key leaf
+            # (``menu.USTAWIENIA_TERMOSTATU`` / ``parameters.TERMOSTAT_ZAWORU_3``) (#505).
+            route_name = getattr(route, "name", None)
+            name_s = route_name.strip() if isinstance(route_name, str) else ""
+            if name_s and _ROUTE_UUID_NAME_RE.fullmatch(name_s) is not None:
+                menu_key = cls._menu_pack_flat_key(dn_norm)
+                if menu_key:
+                    return menu_key
+                # Dotted-key regex guarantees a non-empty final segment.
+                return dn_norm.rsplit(".", 1)[-1].strip() or dn_norm
         route_name = getattr(route, "name", None)
         if isinstance(route_name, str) and route_name.strip():
             bare = cls._bare_menu_title_token(route_name)
