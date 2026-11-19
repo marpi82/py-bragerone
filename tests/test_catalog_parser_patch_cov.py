@@ -78,6 +78,8 @@ def test_parser_comment_keyword_ternary_unary_edges() -> None:
     assert _Parser("1 ? 2").parse_value() == 1
     assert _Parser("-5").parse_value() == -5
     assert _Parser("+4").parse_value() == 4
+    # Exotic Unicode/ASCII whitespace must not stall the skipper.
+    assert _Parser("\f\v\u00a03").parse_value() == 3
     assert _Parser("+'txt'").parse_value() == "+txt"
 
 
@@ -169,6 +171,7 @@ def test_collect_bindings_and_largest_object_ignore_failures(monkeypatch: pytest
 
     monkeypatch.setattr(catalog_mod._Parser, "parse_value", boom_parse)
     bindings = collect_bindings("const x = RAISE; const y = 2;")
+    assert "x" not in bindings
     assert bindings.get("y") == 2
 
     real_object = catalog_mod._Parser._parse_object
@@ -374,7 +377,7 @@ def test_lazy_bindings_and_overlay_edges(monkeypatch: pytest.MonkeyPatch) -> Non
     with pytest.raises(KeyError):
         lazy2._materialize("loop")
 
-    # Failed binding parse stores None.
+    # Failed binding parse omits the key (eager collect_bindings parity).
     real_parse = catalog_mod._Parser.parse_value
 
     def boom_parse(self: _Parser) -> Any:
@@ -384,8 +387,16 @@ def test_lazy_bindings_and_overlay_edges(monkeypatch: pytest.MonkeyPatch) -> Non
         return real_parse(self)
 
     monkeypatch.setattr(catalog_mod._Parser, "parse_value", boom_parse)
-    lazy3 = catalog_mod._LazyBindings([("bad", "BOOM_BIND")])
-    assert lazy3["bad"] is None
+    lazy3 = catalog_mod._LazyBindings([("bad", "BOOM_BIND"), ("ok", "1")])
+    with pytest.raises(KeyError):
+        _ = lazy3["bad"]
+    # Second lookup hits the ``_failed`` fast-path.
+    with pytest.raises(KeyError):
+        _ = lazy3["bad"]
+    assert "bad" not in lazy3
+    assert lazy3["ok"] == 1
+    # Identifier lookup must fall through to leftover text, not None.
+    assert _Parser("bad", bindings=lazy3).parse_value() == "bad"
 
     overlay = catalog_mod._BindingsOverlay({"parent": 1})
     assert "parent" in overlay
@@ -579,6 +590,19 @@ def test_units_fallback_empty_assignment_scan(monkeypatch: pytest.MonkeyPatch) -
     assert catalog._parse_units_descriptor_table_from_index(js) == {}
 
 
+def test_units_table_outer_context_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Outer units parse failures return ``{}`` instead of raising."""
+    catalog = LiveAssetsCatalog(cast(BragerOneApiClient, AsyncMock(spec=BragerOneApiClient)))
+
+    def boom_ctx(self: LiveAssetsCatalog, _code: bytes) -> Any:
+        _ = self
+        msg = "ctx boom"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(LiveAssetsCatalog, "_module_context_for", boom_ctx)
+    assert catalog._parse_units_descriptor_table_from_index(b"const units={};") == {}
+
+
 def test_assignment_scan_skips_and_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
     """Assignment filters skip huge non-PARAM objects and swallow binding failures."""
     huge = "x" * 120_000
@@ -704,3 +728,50 @@ async def test_looks_like_param_map_paths_branch(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(catalog, "_parse_index_token_raw_maps", lambda _code: {"PARAM_PATHS": raw})
     mapped = await catalog.get_param_mapping(["PARAM_PATHS"])
     assert "PARAM_PATHS" in mapped
+
+
+@pytest.mark.asyncio
+async def test_looks_like_param_map_raw_mapping_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``_looks_like_param_map`` accepts raw Mapping hints and nested token objects."""
+    catalog = LiveAssetsCatalog(cast(BragerOneApiClient, AsyncMock(spec=BragerOneApiClient)))
+    catalog._idx.index_bytes = b"export default {};"
+    catalog._idx.inline_param_candidates = []
+    catalog._idx.assets_by_basename["dummy"] = [catalog_mod.AssetRef(url="https://example.com/d.js", base="dummy", hash="x")]
+
+    def _pm(*, key: str, raw: dict[str, Any]) -> Any:
+        built = catalog._build_param_map_from_obj({"value": [{"group": "P1", "number": 1, "use": "v"}]}, key, origin="test")
+        assert built is not None
+        built.group = None
+        built.units = None
+        built.paths = {name: [] for name in ("value", "unit", "status", "command", "min", "max")}
+        built.raw = raw
+        return built
+
+    pm_group = _pm(key="PARAM_RAW_GROUP", raw={"group": "P1"})
+    pm_nested = _pm(key="PARAM_NEST", raw={"PARAM_NEST": {"group": "P1"}})
+    pm_non_map = _pm(key="PARAM_NONMAP", raw={"group": "P1"})
+    pm_non_map.raw = "not-a-mapping"  # False branch of ``isinstance(raw, Mapping)``
+
+    def _build(obj: Any, tok: str, origin: str = "inline") -> Any:
+        _ = obj, origin
+        if tok == "PARAM_RAW_GROUP":
+            return pm_group
+        if tok == "PARAM_NEST":
+            return pm_nested
+        if tok == "PARAM_NONMAP":
+            return pm_non_map
+        return None
+
+    monkeypatch.setattr(catalog, "_build_param_map_from_obj", _build)
+    monkeypatch.setattr(
+        catalog,
+        "_parse_index_token_raw_maps",
+        lambda _code: {
+            "PARAM_RAW_GROUP": {"group": "P1"},
+            "PARAM_NEST": {"PARAM_NEST": {"group": "P1"}},
+            "PARAM_NONMAP": {"x": 1},
+        },
+    )
+    mapped = await catalog.get_param_mapping(["PARAM_RAW_GROUP", "PARAM_NEST", "PARAM_NONMAP"])
+    assert "PARAM_RAW_GROUP" in mapped and "PARAM_NEST" in mapped
+    assert "PARAM_NONMAP" not in mapped

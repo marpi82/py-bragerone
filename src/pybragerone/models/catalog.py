@@ -469,12 +469,13 @@ class _Parser:
 
     def _skip_ws_and_comments(self) -> None:
         # Minified bundles almost never have whitespace; cheap early-out.
+        # Use ``str.isspace`` so ``\f`` / ``\v`` / NBSP do not stall the tokenizer.
         i = self.i
         n = self.n
         source = self.source
         while i < n:
             ch = source[i]
-            if ch == " " or ch == "\n" or ch == "\t" or ch == "\r":
+            if ch.isspace():
                 i += 1
                 continue
             if ch == "/" and i + 1 < n:
@@ -1298,7 +1299,7 @@ def _binding_value_sources(source: str) -> list[tuple[str, str]]:
 class _LazyBindings(MutableMapping[str, Any]):
     """Materialize top-level bindings on demand instead of evaluating the whole module."""
 
-    __slots__ = ("_cache", "_src")
+    __slots__ = ("_cache", "_failed", "_src")
 
     def __init__(self, items: list[tuple[str, str]]) -> None:
         """Build a lazy map from ``(name, value_src)`` pairs (last declarator wins)."""
@@ -1306,8 +1307,12 @@ class _LazyBindings(MutableMapping[str, Any]):
         for name, value_src in items:
             self._src[name] = value_src
         self._cache: dict[str, Any] = {}
+        # Parse failures are omitted (parity with eager ``collect_bindings``), not stored as None.
+        self._failed: set[str] = set()
 
     def __getitem__(self, key: str) -> Any:
+        if key in self._failed:
+            raise KeyError(key)
         if key in self._cache:
             cached = self._cache[key]
             if cached is _IN_PROGRESS:
@@ -1318,10 +1323,12 @@ class _LazyBindings(MutableMapping[str, Any]):
         return self._materialize(key)
 
     def __setitem__(self, key: str, value: Any) -> None:
+        self._failed.discard(key)
         self._cache[key] = value
 
     def __delitem__(self, key: str) -> None:
         self._cache.pop(key, None)
+        self._failed.discard(key)
         del self._src[key]
 
     def __iter__(self) -> Iterator[str]:
@@ -1331,7 +1338,14 @@ class _LazyBindings(MutableMapping[str, Any]):
         return len(self._src)
 
     def __contains__(self, key: object) -> bool:
-        return isinstance(key, str) and key in self._src
+        """Return whether *key* materializes successfully (failed parses are absent)."""
+        if not isinstance(key, str) or key not in self._src or key in self._failed:
+            return False
+        try:
+            self[key]
+        except KeyError:
+            return False
+        return True
 
     def _materialize(self, name: str) -> Any:
         cached = self._cache.get(name, _IN_PROGRESS)
@@ -1345,13 +1359,21 @@ class _LazyBindings(MutableMapping[str, Any]):
             value = _Parser(value_src, bindings=self).parse_value()
         except Exception:
             LOG.debug("Pure binding parse failed for %s", name, exc_info=True)
-            value = None
+            self._cache.pop(name, None)
+            self._failed.add(name)
+            raise KeyError(name) from None
         self._cache[name] = value
         return value
 
     def materialize_all(self) -> dict[str, Any]:
         """Force every binding (API compatibility for ``collect_bindings``)."""
-        return {name: self[name] for name in self._src}
+        out: dict[str, Any] = {}
+        for name in self._src:
+            try:
+                out[name] = self[name]
+            except KeyError:
+                continue
+        return out
 
 
 @dataclass(slots=True)
@@ -1534,10 +1556,12 @@ def _parse_index_token_raw_maps_ctx(ctx: _ModuleParseContext) -> dict[str, dict[
     # (``routes$2``, vite maps, …) just to reach BasicParameters.
     narrow = _LazyBindings(_token_map_binding_items(ctx.source))
     for name in ("BasicParameters",):
-        if name not in narrow:
-            continue
+        # Avoid ``name in narrow`` here: ``__contains__`` materializes and would
+        # swallow parse failures before this try/except can log them.
         try:
             value = narrow[name]
+        except KeyError:
+            continue
         except Exception:
             LOG.debug("Pure token-map binding failed for %s", name, exc_info=True)
             continue
