@@ -3917,34 +3917,48 @@ class LiveAssetsCatalog:
             return {}
 
         aliases = self._parse_custom_unit_codes_from_index(code)
-        best: dict[str, dict[str, Any]] = {}
-        best_score = self._units_descriptor_table_score(best)
-        largest_candidate = 0
 
-        for candidate in candidates:
-            parsed: dict[str, dict[str, Any]] = {}
-            descriptor_keys = 0
-            for key_raw, value_raw in candidate.items():
-                if not self._is_unit_descriptor_entry(value_raw):
-                    continue
-                descriptor_keys += 1
-                coerced: Any = key_raw
-                if isinstance(key_raw, str):
-                    hex_num = parse_js_number(key_raw) if key_raw.lower().startswith("0x") else None
-                    if hex_num is not None:
-                        coerced = hex_num
-                key = self._normalize_unit_key(coerced)
-                if key is None:
-                    continue
-                if not key.isdigit() and key in aliases:
-                    key = aliases[key]
-                parsed[key] = dict(value_raw) if isinstance(value_raw, Mapping) else {"value": value_raw}
+        def _score_candidates(
+            objs: Sequence[Mapping[str, Any]],
+        ) -> tuple[dict[str, dict[str, Any]], tuple[int, int, int], int]:
+            local_best: dict[str, dict[str, Any]] = {}
+            local_score = self._units_descriptor_table_score(local_best)
+            local_largest = 0
+            for candidate in objs:
+                parsed: dict[str, dict[str, Any]] = {}
+                descriptor_keys = 0
+                for key_raw, value_raw in candidate.items():
+                    if not self._is_unit_descriptor_entry(value_raw):
+                        continue
+                    descriptor_keys += 1
+                    coerced: Any = key_raw
+                    if isinstance(key_raw, str):
+                        hex_num = parse_js_number(key_raw) if key_raw.lower().startswith("0x") else None
+                        if hex_num is not None:
+                            coerced = hex_num
+                    key = self._normalize_unit_key(coerced)
+                    if key is None:
+                        continue
+                    if not key.isdigit() and key in aliases:
+                        key = aliases[key]
+                    parsed[key] = dict(value_raw) if isinstance(value_raw, Mapping) else {"value": value_raw}
 
-            largest_candidate = max(largest_candidate, descriptor_keys)
-            score = self._units_descriptor_table_score(parsed)
-            if score > best_score:
-                best = parsed
-                best_score = score
+                local_largest = max(local_largest, descriptor_keys)
+                score = self._units_descriptor_table_score(parsed)
+                if score > local_score:
+                    local_best = parsed
+                    local_score = score
+            return local_best, local_score, local_largest
+
+        best, _best_score, largest_candidate = _score_candidates(candidates)
+
+        if not best:
+            # Option-rich decoys (e.g. ``routes$2``) must not skip bare ``name={…}``
+            # units tables that only the assignment / paramish scan can see.
+            fallback = _iter_top_level_object_assignments_ctx(ctx)
+            if fallback:
+                best, _best_score, largest_fallback = _score_candidates(fallback)
+                largest_candidate = max(largest_candidate, largest_fallback)
 
         if not best:
             if largest_candidate:

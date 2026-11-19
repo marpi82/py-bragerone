@@ -553,6 +553,22 @@ def test_units_selective_binding_and_fallback(monkeypatch: pytest.MonkeyPatch) -
     assert isinstance(table2, dict)
 
 
+def test_units_decoy_option_rich_const_still_finds_paramish_table() -> None:
+    """Option-rich decoy consts must not block bare ``name={…}`` units tables.
+
+    Counterexample: ``const decoy={options,options,…}`` satisfies the selective
+    filter while the real table is only ``unitsTable={0:{text:'units.0',options:{…}},…}``
+    (no ``const``/``let``/``var``). Pre-fix returned ``{}``; SPA bootstrap needs the table.
+    """
+    catalog = LiveAssetsCatalog(cast(BragerOneApiClient, AsyncMock(spec=BragerOneApiClient)))
+    decoy = "options," * 15 + "x:1"
+    unit_entries = ",".join(f"{i}:{{text:'units.{i}',options:{{a:1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,i:9,j:10}}}}" for i in range(3))
+    js = f"const decoy={{{decoy}}};unitsTable={{{unit_entries}}};".encode()
+    table = catalog._parse_units_descriptor_table_from_index(js)
+    assert table.get("0", {}).get("text") == "units.0"
+    assert "1" in table and "2" in table
+
+
 def test_assignment_scan_skips_and_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
     """Assignment filters skip huge non-PARAM objects and swallow binding failures."""
     huge = "x" * 120_000
@@ -571,6 +587,17 @@ def test_assignment_scan_skips_and_exceptions(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(catalog_mod._LazyBindings, "__getitem__", boom)
     objs2 = iter_top_level_object_assignments(b"const bad={PARAM_Y:{group:'P1'}}; const ok={PARAM_Z:{group:'P2'}};")
     assert any("PARAM_Z" in obj for obj in objs2)
+
+    # Paramish ``= {…}`` scan: successful non-dict parse must be skipped (False branch).
+    real_parse = catalog_mod._Parser.parse_value
+
+    def non_dict_parse(self: _Parser) -> Any:
+        if "options" in self.source[self.i : self.i + 40]:
+            return ["options"]
+        return real_parse(self)
+
+    monkeypatch.setattr(catalog_mod._Parser, "parse_value", non_dict_parse)
+    assert iter_top_level_object_assignments(b"name={options:1}") == []
 
 
 def test_parse_menu_export_depth_limit() -> None:
