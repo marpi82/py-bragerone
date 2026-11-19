@@ -143,6 +143,9 @@ class _FactoryBodyPlan:
 _FACTORY_BODY_PLANS: dict[str, _FactoryBodyPlan] = {}
 
 
+_FACTORY_STMT_KW_RE = re.compile(r"\b(?:return|const)\b")
+
+
 def _factory_body_plan(body_src: str) -> _FactoryBodyPlan:
     """Return a cached structural plan for *body_src*."""
     cached = _FACTORY_BODY_PLANS.get(body_src)
@@ -151,7 +154,8 @@ def _factory_body_plan(body_src: str) -> _FactoryBodyPlan:
     stripped = body_src.strip()
     if stripped.startswith("(") and stripped.endswith(")"):
         stripped = stripped[1:-1].strip()
-    if stripped.startswith("{") and "return" not in stripped and "const" not in stripped:
+    # Use word boundaries: keys like ``returning`` / ``constx`` must stay object exprs.
+    if stripped.startswith("{") and _FACTORY_STMT_KW_RE.search(stripped) is None:
         plan = _FactoryBodyPlan(kind="expr", expr_src=stripped, declarators=(), return_src=None)
     else:
         inner = stripped[1:-1] if stripped.startswith("{") and stripped.endswith("}") else stripped
@@ -203,7 +207,11 @@ def _eval_factory_body(body_src: str, local_bindings: dict[str, Any]) -> Any:
 
 
 class _BindingsOverlay(dict[str, Any]):
-    """Local binding layer that reads through to a parent mapping without copying it."""
+    """Local binding layer that reads through to a parent mapping without copying it.
+
+    ``dict.get`` does not invoke :meth:`__missing__`, so :meth:`get` is overridden to
+    honor parent keys the same way ``[]`` / ``in`` do.
+    """
 
     __slots__ = ("_parent",)
 
@@ -220,6 +228,15 @@ class _BindingsOverlay(dict[str, Any]):
 
     def __contains__(self, key: object) -> bool:
         return dict.__contains__(self, key) or key in self._parent
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Return local or parent value for *key*, else *default*."""
+        if dict.__contains__(self, key):
+            return dict.__getitem__(self, key)
+        parent = self._parent
+        if key in parent:
+            return parent[key]
+        return default
 
 
 def make_object_factory(params_src: str, body_src: str, bindings: Mapping[str, Any] | None) -> Any:

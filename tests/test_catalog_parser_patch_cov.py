@@ -401,6 +401,12 @@ def test_lazy_bindings_and_overlay_edges(monkeypatch: pytest.MonkeyPatch) -> Non
     overlay = catalog_mod._BindingsOverlay({"parent": 1})
     assert "parent" in overlay
     assert overlay["parent"] == 1
+    # ``dict.get`` must not bypass parent lookup (``__missing__`` is not used by get).
+    assert overlay.get("parent") == 1
+    overlay["local"] = 7
+    assert overlay.get("local") == 7  # local dict hit (not ``__missing__``)
+    assert overlay.get("missing") is None
+    assert overlay.get("missing", "fallback") == "fallback"
     with pytest.raises(KeyError):
         _ = overlay["missing"]
 
@@ -409,6 +415,10 @@ def test_lazy_bindings_and_overlay_edges(monkeypatch: pytest.MonkeyPatch) -> Non
     assert catalog_mod._body_builds_object_factory("{ notAFactory }") is False
     assert catalog_mod._body_builds_object_factory("x + 1") is False
     assert _eval_factory_body("({a:1})", {}) == {"a": 1}
+    # Keys containing ``return`` / ``const`` as substrings are still object exprs.
+    assert _eval_factory_body("({returning:1})", {}) == {"returning": 1}
+    assert _eval_factory_body("({constx:1})", {}) == {"constx": 1}
+    assert _eval_factory_body("({returnValue:1})", {}) == {"returnValue": 1}
     assert _eval_factory_body("{ const o = {a:1}; return o; }", {}) == {"a": 1}
     assert _eval_factory_body("{ const o = {a:1}; return {b: 2}; }", {}) == {"b": 2}
     assert _eval_factory_body("{ const o = {a:1}; }", {}) is None
@@ -495,6 +505,41 @@ def test_module_context_and_token_map_helpers(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(catalog_mod, "_iter_top_level_object_assignments_ctx", lambda _ctx: [])
     bare = b"({translations:[{id:'en',flag:'gb'}],defaultTranslation:'en'})"
     assert find_language_config_object(bare) is not None
+
+
+@pytest.mark.asyncio
+async def test_token_maps_and_i18n_lock_double_check_hits() -> None:
+    """Cover in-lock cache hits when another waiter filled maps/i18n first."""
+    catalog = LiveAssetsCatalog(cast(BragerOneApiClient, AsyncMock(spec=BragerOneApiClient)))
+    code = b"const BasicParameters={'PARAM_1':{group:'P1',number:1}};"
+    sig = catalog._index_signature(code)
+    warmed = {"PARAM_1": {"group": "P1", "number": 1}}
+
+    class _FillTokenMapsLock:
+        async def __aenter__(self) -> _FillTokenMapsLock:
+            catalog._index_token_raw_maps = warmed
+            catalog._index_token_raw_maps_sig = sig
+            return self
+
+        async def __aexit__(self, *_exc: object) -> None:
+            return None
+
+    catalog._index_token_raw_maps = None
+    catalog._index_token_raw_maps_sig = None
+    catalog._index_token_raw_maps_lock = cast(Any, _FillTokenMapsLock())
+    assert await catalog._get_index_token_raw_maps(code) is warmed
+
+    class _FillI18nLock:
+        async def __aenter__(self) -> _FillI18nLock:
+            catalog._cache_i18n[("en", "parameters")] = {"OK": "yes"}
+            return self
+
+        async def __aexit__(self, *_exc: object) -> None:
+            return None
+
+    catalog._cache_i18n.clear()
+    catalog._i18n_lock = cast(Any, _FillI18nLock())
+    assert await catalog.get_i18n("en", "parameters") == {"OK": "yes"}
 
 
 @pytest.mark.asyncio

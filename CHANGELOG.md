@@ -14,6 +14,13 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   former tree-sitter timings while staying wheel-pure / musl-aarch64 friendly
   (#506).
 
+### Fixed
+
+- Units-table selective pass falls back when option-rich decoy consts would
+  hide a bare `name={…}` units table (#506).
+- Factory body plans treat `return` / `const` as keywords (not substrings), and
+  binding overlays honor `.get()` for parent keys (#506).
+
 ## [2026.11.2rc1] - 2026-11-12
 
 ### Changed
