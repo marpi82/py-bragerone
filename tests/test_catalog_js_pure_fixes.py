@@ -277,6 +277,44 @@ def test_factory_math_floor_number_becomes_address_selector() -> None:
     assert ParamResolver._is_address_selector_list(out["unit"]) is True
 
 
+def test_factory_body_object_destructure_binds_number() -> None:
+    """Bare-arg factories with ``const {number:n}=arg`` must bind locals (#497)."""
+    from pybragerone.models.param_resolver import ParamResolver
+
+    # Live ``basicParameterBuilder_TEST`` shape: whole-arg param + body destructure.
+    params = "_0xarg"
+    body = (
+        "{const {id:_id,number:_n,name:_name}=_0xarg;"
+        "const o={'id':_id,'name':_name??('parameters.PARAM_TEST_MODE_'+_n),"
+        "'any':[{'if':[{'expected':null,'operation':'equalTo',"
+        "'value':[{'group':'P5','number':_n,'use':'s'}]}],'then':null}],"
+        "'status':{'INVISIBLE':[{'if':[{'expected':1,'operation':'equalTo',"
+        "'value':[{'group':'P5','number':_n,'use':'s','bit':0}]}],'then':'![]'},"
+        "{'else':'!![]'}]};"
+        "return o;}"
+    )
+    factory = make_object_factory(params, body, {})
+    out = factory({"id": 1, "number": 10, "name": "parameters.PARAM_TEST_MODE_10"})
+    assert isinstance(out, dict)
+    assert out["name"] == "parameters.PARAM_TEST_MODE_10"
+    assert out["any"][0]["if"][0]["value"] == [{"group": "P5", "number": 10, "use": "s"}]
+    inv = out["status"]["INVISIBLE"][0]["if"][0]["value"]
+    assert inv == [{"group": "P5", "number": 10, "use": "s", "bit": 0}]
+    assert ParamResolver._is_address_selector_list(inv) is True
+    # Missing keys bind as None (no leftover minified idents).
+    sparse = factory({"id": 2})
+    assert isinstance(sparse, dict)
+    assert sparse["any"][0]["if"][0]["value"][0]["number"] is None
+    # Defaults in the destructure pattern apply when the key is absent.
+    with_default = make_object_factory(
+        "_arg",
+        "{const {number:_n=7}=_arg; return {'value':[{'group':'P1','number':_n,'use':'v'}]};}",
+        {},
+    )
+    assert with_default({})["value"][0]["number"] == 7
+    assert with_default({"number": 3})["value"][0]["number"] == 3
+
+
 def test_narrow_token_maps_resolve_module_floor_consts() -> None:
     """Narrow BasicParameters bindings fall through to module lazy consts (#497)."""
     from pybragerone.models import catalog as catalog_mod

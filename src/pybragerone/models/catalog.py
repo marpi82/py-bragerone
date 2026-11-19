@@ -137,7 +137,8 @@ class _FactoryBodyPlan:
 
     kind: str  # "expr" | "block"
     expr_src: str
-    declarators: tuple[tuple[str, str], ...]
+    # ``("simple", name, value_src)`` or ``("object", "{id:n,…}", value_src)`` in source order.
+    declarators: tuple[tuple[str, str, str], ...]
     return_src: str | None
 
 
@@ -145,6 +146,7 @@ _FACTORY_BODY_PLANS: dict[str, _FactoryBodyPlan] = {}
 
 
 _FACTORY_STMT_KW_RE = re.compile(r"\b(?:return|const)\b")
+_FACTORY_OBJECT_DECL_RE = re.compile(r"^(\{[\s\S]*\})\s*=\s*(.+)$")
 
 
 def _factory_body_plan(body_src: str) -> _FactoryBodyPlan:
@@ -160,15 +162,19 @@ def _factory_body_plan(body_src: str) -> _FactoryBodyPlan:
         plan = _FactoryBodyPlan(kind="expr", expr_src=stripped, declarators=(), return_src=None)
     else:
         inner = stripped[1:-1] if stripped.startswith("{") and stripped.endswith("}") else stripped
-        declarators: list[tuple[str, str]] = []
+        declarators: list[tuple[str, str, str]] = []
         for _kind, start, end in _scan_top_level_declarations(inner):
             decl = inner[start:end]
             body = re.sub(r"^(?:const|let|var)\s+", "", decl.strip().rstrip(";"), count=1)
             for declarator in _split_top_level_declarators(body):
                 match = re.match(r"^([A-Za-z_$][\w$]*)\s*=\s*", declarator)
-                if match is None:
+                if match is not None:
+                    declarators.append(("simple", match.group(1), declarator[match.end() :]))
                     continue
-                declarators.append((match.group(1), declarator[match.end() :]))
+                # SPA TEST builders: ``const {id:a,number:n}=arg;`` (#497).
+                obj_match = _FACTORY_OBJECT_DECL_RE.match(declarator.strip())
+                if obj_match is not None:
+                    declarators.append(("object", obj_match.group(1), obj_match.group(2)))
         ret = re.search(r"\breturn\b", inner)
         return_src = inner[ret.end() :] if ret is not None else None
         plan = _FactoryBodyPlan(
@@ -183,6 +189,22 @@ def _factory_body_plan(body_src: str) -> _FactoryBodyPlan:
     return plan
 
 
+def _apply_factory_object_destructure(
+    block_bindings: dict[str, Any],
+    pattern_src: str,
+    value: Any,
+) -> None:
+    """Bind locals from ``const {id: a, number: n} = value`` into *block_bindings*."""
+    arg_map = value if isinstance(value, Mapping) else {}
+    for src_key, local_name, default in _parse_destructure_params(pattern_src):
+        if src_key in arg_map:
+            block_bindings[local_name] = arg_map[src_key]
+        elif default is not None:
+            block_bindings[local_name] = default
+        else:
+            block_bindings[local_name] = None
+
+
 def _eval_factory_body(body_src: str, local_bindings: dict[str, Any]) -> Any:
     """Evaluate a factory arrow body to an object using the pure parser."""
     plan = _factory_body_plan(body_src)
@@ -192,12 +214,16 @@ def _eval_factory_body(body_src: str, local_bindings: dict[str, Any]) -> Any:
     # Statement block: ``{ const x = {...}; return x; }``
     # Preserve parent lookups (lazy bindings / overlays) while allowing local const writes.
     block_bindings: dict[str, Any] = _BindingsOverlay(local_bindings)
-    for name, value_src in plan.declarators:
+    for kind, left, value_src in plan.declarators:
         try:
-            block_bindings[name] = _Parser(value_src, bindings=block_bindings).parse_value()
+            value = _Parser(value_src, bindings=block_bindings).parse_value()
         except Exception:
-            LOG.debug("Pure factory body binding failed for %s", name, exc_info=True)
+            LOG.debug("Pure factory body binding failed for %s", left, exc_info=True)
             continue
+        if kind == "object":
+            _apply_factory_object_destructure(block_bindings, left, value)
+        else:
+            block_bindings[left] = value
     if plan.return_src is None:
         return None
     # Common SPA shape: ``const o = {…}; return o;`` — avoid re-parsing the identifier.
