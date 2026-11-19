@@ -370,6 +370,30 @@ def test_static_extends_falls_back_to_assets_by_basename() -> None:
 
 
 @pytest.mark.asyncio
+async def test_static_extends_miss_warns_like_numeric(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Unknown ``static:*`` refs are skipped with the same warning path (#514)."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": 0,
+            "extends": ["static:missing-chunk"],
+            "standalone": False,
+            "deviceMenu": [_route("ok")],
+        }
+    )
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.assets_by_basename["dummy"] = [AssetRef(url="https://example.com/d.js", base="dummy", hash="x")]
+
+    with caplog.at_level("WARNING"):
+        menu = await catalog.get_module_menu(device_menu=0)
+    assert [r.path for r in menu.routes] == ["ok"]
+    assert "static:missing-chunk" in caplog.text
+    mock_api.get_bytes.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_static_extends_loads_versions_chunk() -> None:
     """``extends: ['static:versions']`` resolves via ``static_route_map`` (#514)."""
     mock_api = AsyncMock()
