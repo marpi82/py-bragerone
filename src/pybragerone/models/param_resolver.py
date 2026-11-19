@@ -278,13 +278,27 @@ class ComputedValueEvaluator:
 
         return re.sub(r"\{([^}]+)\}", repl, template)
 
-    def _read_store_getter(self, getter: str) -> Any:
-        resolved = self._render_store_getter(getter, self._context)
+    def _effective_context(
+        self,
+        *,
+        devid: str | None = None,
+        context: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Build a per-call storeGetter context without mutating shared state (#511)."""
+        effective = dict(context) if context is not None else dict(self._context)
+        scoped = _normalize_devid(devid)
+        if scoped is not None:
+            effective["devid"] = scoped
+        return effective
+
+    def _read_store_getter(self, getter: str, *, context: Mapping[str, Any] | None = None) -> Any:
+        active = dict(context) if context is not None else self._context
+        resolved = self._render_store_getter(getter, active)
         parts = [part for part in resolved.split(".") if part]
         if not parts:
             return None
 
-        current: Any = self._context
+        current: Any = active
         for part in parts:
             if isinstance(current, Mapping):
                 if part in current:
@@ -430,7 +444,13 @@ class ComputedValueEvaluator:
             s = s.split(".")[-1]
         return s
 
-    def _eval_condition_any(self, cond: dict[str, Any], *, devid: str | None = None) -> bool:
+    def _eval_condition_any(
+        self,
+        cond: dict[str, Any],
+        *,
+        devid: str | None = None,
+        context: Mapping[str, Any] | None = None,
+    ) -> bool:
         expected = cond.get("expected")
         op = self._operation_name(cond.get("operation"))
         values = cond.get("value")
@@ -440,7 +460,10 @@ class ComputedValueEvaluator:
         if isinstance(values, Mapping):
             getter = values.get("storeGetter")
             if isinstance(getter, str) and getter.strip():
-                actual = self._read_store_getter(getter)
+                actual = self._read_store_getter(
+                    getter,
+                    context=self._effective_context(devid=devid, context=context),
+                )
                 return self._compare_condition(op=op, actual=actual, expected=expected)
             return False
 
@@ -592,6 +615,7 @@ class ParamResolver:
         self._lang = None if lang is None else str(lang).strip().lower()
         self._i18n = i18n or I18nResolver(self._assets, lang=self._lang)  # type: ignore[arg-type]
         self._evaluator = ComputedValueEvaluator(store)
+        self._warned_multi_module_overlay = False
 
         self._cache_mapping: dict[str, ParamMap | None] = {}
         self._cache_menu: dict[MenuCacheKey, MenuResult] = {}
@@ -1464,6 +1488,59 @@ class ParamResolver:
                 out[path_key] = set(tokens)
         return out
 
+    def _flat_values_for_store_overlay(
+        self,
+        *,
+        flat_values: Mapping[str, Any] | None,
+        use_store_flat_values: bool,
+        devid: str | None,
+        empty_means_unprimed: bool,
+    ) -> Mapping[str, Any] | None:
+        """Resolve the store overlay for panel/visibility helpers (#511).
+
+        Explicit ``flat_values`` always wins. When the store holds multiple scoped
+        modules and neither ``flat_values`` nor ``devid`` is provided, refuse the
+        merged last-write-wins ``flatten()`` view (log + safe empty/unprimed).
+        """
+        if flat_values is not None:
+            return flat_values
+        if not use_store_flat_values:
+            return None
+        scoped = self._normalize_resolve_devid(devid)
+        if scoped is not None:
+            flattened = self._store.flatten_for_devid(scoped)
+            if empty_means_unprimed:
+                return flattened if flattened else None
+            return flattened
+        if self._store.has_multiple_scoped_modules():
+            # Visibility runs once per symbol; warn once per resolver to avoid log floods.
+            log = LOG.debug if self._warned_multi_module_overlay else LOG.warning
+            self._warned_multi_module_overlay = True
+            log(
+                "Multi-module ParamStore overlay requested without flat_values/devid; "
+                "refusing merged flatten() (pass flatten_for_devid or devid=) (#511)"
+            )
+            return None if empty_means_unprimed else {}
+        flattened = self._store.flatten()
+        if empty_means_unprimed:
+            return flattened if flattened else None
+        return flattened
+
+    def _flat_values_for_visibility(
+        self,
+        *,
+        flat_values: Mapping[str, Any] | None,
+        devid: str | None,
+    ) -> Mapping[str, Any]:
+        """Store snapshot for parameter visibility; never merge multi-module LWW (#511)."""
+        overlay = self._flat_values_for_store_overlay(
+            flat_values=flat_values,
+            use_store_flat_values=True,
+            devid=devid,
+            empty_means_unprimed=False,
+        )
+        return overlay if overlay is not None else {}
+
     async def build_panel_groups(
         self,
         *,
@@ -1474,20 +1551,24 @@ class ParamResolver:
         flat_values: Mapping[str, Any] | None = None,
         use_store_flat_values: bool = True,
         devices: Sequence[DeviceMenuRef] | None = None,
+        devid: str | None = None,
     ) -> dict[str, list[str]]:
-        """Build panel groups from module menu for selected permissions."""
+        """Build panel groups from module menu for selected permissions.
+
+        Pass ``devid`` (or an explicit ``flat_values`` snapshot) in multi-module
+        setups so ``displayDropdown`` gates do not read merged LWW addresses (#511).
+        """
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions, devices=devices)
         routes_i18n = await self._panel_title_i18n(menu)
         static_route_symbols = await self._static_route_symbols_for_menu(menu)
-        if flat_values is not None:
-            values: Mapping[str, Any] | None = flat_values
-        elif not use_store_flat_values:
-            values = None
-        else:
-            # Empty implicit store ≡ unprimed (``None``), so displayDropdown stays
-            # ``visible:dropdown-unprimed``. Callers pass ``{}`` explicitly for missing-key hide.
-            flattened = self._store.flatten()
-            values = flattened if flattened else None
+        # Empty implicit store ≡ unprimed (``None``), so displayDropdown stays
+        # ``visible:dropdown-unprimed``. Callers pass ``{}`` explicitly for missing-key hide.
+        values = self._flat_values_for_store_overlay(
+            flat_values=flat_values,
+            use_store_flat_values=use_store_flat_values,
+            devid=devid,
+            empty_means_unprimed=True,
+        )
         return self.build_panel_groups_from_menu(
             menu,
             all_panels=all_panels,
@@ -1507,18 +1588,21 @@ class ParamResolver:
         flat_values: Mapping[str, Any] | None = None,
         use_store_flat_values: bool = True,
         devices: Sequence[DeviceMenuRef] | None = None,
+        devid: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Return route diagnostics for panel inclusion filtering."""
+        """Return route diagnostics for panel inclusion filtering.
+
+        See :meth:`build_panel_groups` for multi-module ``devid`` / ``flat_values`` rules (#511).
+        """
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions, devices=devices)
         routes_i18n = await self._panel_title_i18n(menu)
         static_route_symbols = await self._static_route_symbols_for_menu(menu)
-        if flat_values is not None:
-            values: Mapping[str, Any] | None = flat_values
-        elif not use_store_flat_values:
-            values = None
-        else:
-            flattened = self._store.flatten()
-            values = flattened if flattened else None
+        values = self._flat_values_for_store_overlay(
+            flat_values=flat_values,
+            use_store_flat_values=use_store_flat_values,
+            devid=devid,
+            empty_means_unprimed=True,
+        )
         return self.panel_route_diagnostics_from_menu(
             menu,
             all_panels=all_panels,
@@ -2822,20 +2906,28 @@ class ParamResolver:
             return ""
         return (cls._clean_symbolic_tag(condition) or condition).strip()
 
-    def _status_rule_matches(self, rule: dict[str, Any], flat_values: Mapping[str, Any]) -> bool:
+    def _status_rule_matches(
+        self,
+        rule: dict[str, Any],
+        flat_values: Mapping[str, Any],
+        *,
+        devid: str | None = None,
+    ) -> bool:
         """Evaluate one status ``if``/``elseif`` rule, including ``storeGetter`` maps (#484).
 
         Address-selector lists stay on :meth:`_eval_status_rule`. Mapping
         ``value: {storeGetter: ...}`` (e.g. ``COMMAND_MODULE_RESTART`` ENABLED)
         uses the runtime-context evaluator — the flat-values matcher cannot see
         ``modulesMap.{devid}.connectedAt`` and would falsely take ``else: ![]``.
+        Pass ``devid`` so ``modulesMap.{devid}.…`` templates resolve per module
+        without mutating the shared runtime context (#511).
         A bare address-selector object (not wrapped in a list) is normalised to a
         one-element list for the same flat-values matcher.
         """
         value = rule.get("value")
         if isinstance(value, Mapping):
             if "storeGetter" in value:
-                return self._evaluator._eval_condition_any(rule)
+                return self._evaluator._eval_condition_any(rule, devid=devid)
             return self._eval_status_rule({**rule, "value": [value]}, flat_values)
         return self._eval_status_rule(rule, flat_values)
 
@@ -2845,6 +2937,7 @@ class ParamResolver:
         status_paths: list[dict[str, Any]],
         flag_condition: str,
         flat_values: Mapping[str, Any],
+        devid: str | None = None,
     ) -> bool | None:
         """Resolve one SPA status flag (``INVISIBLE`` / ``ENABLED`` / …) from path rows."""
         explicit_else: bool | None = None
@@ -2876,7 +2969,7 @@ class ParamResolver:
             if (
                 isinstance(ifs, list)
                 and then_val is not None
-                and all(isinstance(rule, dict) and self._status_rule_matches(rule, flat_values) for rule in ifs)
+                and all(isinstance(rule, dict) and self._status_rule_matches(rule, flat_values, devid=devid) for rule in ifs)
             ):
                 return then_val
 
@@ -2891,9 +2984,15 @@ class ParamResolver:
         desc: Mapping[str, Any],
         resolved: Any,
         flat_values: Mapping[str, Any] | None = None,
+        devid: str | None = None,
     ) -> bool:
         """Return bool visibility based on app-like status semantics."""
-        visible, _ = self.parameter_visibility_diagnostics(desc=desc, resolved=resolved, flat_values=flat_values)
+        visible, _ = self.parameter_visibility_diagnostics(
+            desc=desc,
+            resolved=resolved,
+            flat_values=flat_values,
+            devid=devid,
+        )
         return visible
 
     def parameter_visibility_diagnostics(
@@ -2902,6 +3001,7 @@ class ParamResolver:
         desc: Mapping[str, Any],
         resolved: Any,
         flat_values: Mapping[str, Any] | None = None,
+        devid: str | None = None,
     ) -> tuple[bool, str]:
         """Return visibility using the same status semantics as the official app.
 
@@ -2914,7 +3014,9 @@ class ParamResolver:
           (home ``deviceTile`` SWITCH cards such as heat-pump start);
         - ``ENABLED`` / status ``if`` rules may use ``storeGetter`` maps
           (e.g. ``modulesMap.{devid}.connectedAt`` on ``COMMAND_MODULE_RESTART``);
-          those need :meth:`set_runtime_context` the same way value resolve does.
+          those need :meth:`set_runtime_context` the same way value resolve does,
+          or pass ``devid=`` so ``modulesMap.{devid}.…`` is substituted per call
+          without mutating shared context (#511).
           StoreGetter reads of ``connectedAt`` map numeric ``0`` (``Module`` DTO
           offline coerce) to ``None`` so SPA ``notEqualTo null`` matches offline;
         - when a flag path is present but its backing value is missing, the flag
@@ -2932,8 +3034,12 @@ class ParamResolver:
           companions are exposed via ``describe_symbol`` ``value_slots`` and
           inherit the same ``INVISIBLE`` / ``DEVICE_AVAILABLE`` / ``ENABLED``
           checks as the primary.
+        - When ``flat_values`` is omitted in a multi-module store, pass ``devid``
+          (or an explicit snapshot). Otherwise the helper refuses the merged
+          ``flatten()`` view and uses an empty map (#511).
         """
-        values = flat_values if flat_values is not None else self._store.flatten()
+        scoped_devid = self._normalize_resolve_devid(devid)
+        values = self._flat_values_for_visibility(flat_values=flat_values, devid=scoped_devid)
 
         mapping = desc.get("mapping")
         if not isinstance(mapping, Mapping):
@@ -2945,7 +3051,12 @@ class ParamResolver:
 
         # SPA stores ParameterStatus.INVISIBLE as ``'invisible'``; catalog/paths keep
         # the public member ``INVISIBLE``. Match either spelling after cleanup.
-        invisible = self._status_flag_value(status_paths=status_paths, flag_condition="INVISIBLE", flat_values=values)
+        invisible = self._status_flag_value(
+            status_paths=status_paths,
+            flag_condition="INVISIBLE",
+            flat_values=values,
+            devid=scoped_devid,
+        )
         if invisible is True:
             return False, "hidden:invisible"
 
@@ -2953,11 +3064,17 @@ class ParamResolver:
             status_paths=status_paths,
             flag_condition="DEVICE_AVAILABLE",
             flat_values=values,
+            devid=scoped_devid,
         )
         if device_available is False:
             return False, "hidden:device-unavailable"
 
-        enabled = self._status_flag_value(status_paths=status_paths, flag_condition="ENABLED", flat_values=values)
+        enabled = self._status_flag_value(
+            status_paths=status_paths,
+            flag_condition="ENABLED",
+            flat_values=values,
+            devid=scoped_devid,
+        )
         if enabled is False:
             return False, "hidden:enabled"
 

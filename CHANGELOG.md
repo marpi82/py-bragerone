@@ -14,6 +14,14 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   reads (plus computed STATUS evaluation) per module so multi-controller setups
   with overlapping addresses no longer mix values; empty / whitespace ``devid``
   is treated as unscoped (#502).
+- Multi-module follow-up (#511): ``parameter_visibility_diagnostics`` /
+  ``build_panel_groups`` / ``panel_route_diagnostics`` accept ``devid``;
+  ``storeGetter`` templates inject ``devid`` per call without mutating shared
+  runtime context; when the store has multiple scoped modules and callers omit
+  both ``flat_values`` and ``devid``, refuse merged ``flatten()`` (warn +
+  empty/unprimed overlay; the warning is logged once per resolver, then DEBUG).
+  ``ParamStore.scoped_devids()`` / ``has_multiple_scoped_modules()`` expose the
+  scoped-module set.
 
 ## [2026.11.2rc2] - 2026-11-19
 

@@ -268,9 +268,11 @@ parameters:
   (``INVISIBLE``, ``DEVICE_AVAILABLE``, ``ENABLED``). ``ENABLED`` / status ``if``
   rules may use ``storeGetter`` maps (e.g. ``modulesMap.{devid}.connectedAt`` on
   ``COMMAND_MODULE_RESTART``); call ``set_runtime_context`` the same way as for
-  value resolve. StoreGetter reads of ``connectedAt`` map numeric ``0`` to
-  ``None`` so ``Module`` DTO offline coerce matches SPA ``null`` (offline →
-  ``hidden:enabled``). Composite SPA cards with ``value2+`` are not force-hidden;
+  value resolve, and/or pass ``devid=`` so ``modulesMap.{devid}.…`` is substituted
+  per call without mutating shared context (#511). StoreGetter reads of
+  ``connectedAt`` map numeric ``0`` to ``None`` so ``Module`` DTO offline coerce
+  matches SPA ``null`` (offline → ``hidden:enabled``). Composite SPA cards with
+  ``value2+`` are not force-hidden;
   ``describe_symbol`` ``value_slots`` lists companion channels only when the card
   unit is a measurement (primary ``u`` path / units-table ``text``). Enum-only
   cards (e.g. ``HEAT_PUMP_STATE``) keep the primary slot alone. Primary ``value``
@@ -318,14 +320,20 @@ grouping and does **not** apply SPA ``displayDropdown`` gates; pass
 ``use_store_flat_values=False`` to skip primed-store overlays and treat dropdown
 state as unprimed (structural route discovery). When ``flat_values`` is passed
 explicitly it always takes precedence over both the store and that switch.
-``ParamStore.flatten_for_devid(devid)`` supplies module-scoped snapshots for
-multi-module setups; always forward ``ParamUpdate.devid`` on ``upsert``/``upsert_async``.
+Pass ``devid=`` (or ``flat_values=store.flatten_for_devid(...)``) for multi-module
+installs; if the store has more than one scoped module and neither is provided,
+the helpers refuse merged ``flatten()`` and treat the overlay as unprimed / empty
+(#511; logged as a warning once per resolver, then at debug level). Empty /
+whitespace ``devid`` counts as unscoped. ``ParamStore.flatten_for_devid(devid)`` / ``scoped_devids()`` supply
+module-scoped snapshots; always forward ``ParamUpdate.devid`` on
+``upsert``/``upsert_async``.
 When resolving live values, pass the same module id into
 ``ParamResolver.resolve_value(symbol, devid=…)`` / ``get_value`` /
 ``describe_symbol`` / ``compose_mapping_register_value(..., devid=…)`` so
 overlapping addresses and computed STATUS rules do not bleed across controllers
 (#502). Omitting ``devid`` (or passing an empty / whitespace-only string) keeps the
-legacy merged last-write-wins behavior.
+legacy merged last-write-wins behavior for resolve/describe (not for multi-module
+panel overlays — see #511).
 
 .. code-block:: python
 
