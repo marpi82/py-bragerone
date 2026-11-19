@@ -615,6 +615,7 @@ class ParamResolver:
         self._lang = None if lang is None else str(lang).strip().lower()
         self._i18n = i18n or I18nResolver(self._assets, lang=self._lang)  # type: ignore[arg-type]
         self._evaluator = ComputedValueEvaluator(store)
+        self._warned_multi_module_overlay = False
 
         self._cache_mapping: dict[str, ParamMap | None] = {}
         self._cache_menu: dict[MenuCacheKey, MenuResult] = {}
@@ -1512,7 +1513,10 @@ class ParamResolver:
                 return flattened if flattened else None
             return flattened
         if self._store.has_multiple_scoped_modules():
-            LOG.warning(
+            # Visibility runs once per symbol; warn once per resolver to avoid log floods.
+            log = LOG.debug if self._warned_multi_module_overlay else LOG.warning
+            self._warned_multi_module_overlay = True
+            log(
                 "Multi-module ParamStore overlay requested without flat_values/devid; "
                 "refusing merged flatten() (pass flatten_for_devid or devid=) (#511)"
             )

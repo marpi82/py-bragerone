@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from collections.abc import Iterable
 from typing import Any, cast
 
@@ -205,6 +206,26 @@ async def test_describe_scopes_family_by_devid() -> None:
     assert value_lww == 35
     _label_a, _unit_a, value_a = await resolver.describe("P4", 14, devid="MODULE_A")
     assert value_a == 0
+
+
+async def test_describe_with_symbol_falls_back_to_mapping_units_scoped() -> None:
+    """describe(param_symbol=...) uses mapping units only when the family has no unit (scoped)."""
+    store = ParamStore()
+    store.upsert("P4.v14", 7, devid="MODULE_A")
+    no_units = _direct_map("NO_UNITS", group="P4", number=14)
+    with_units = dataclasses.replace(_direct_map("WITH_UNITS", group="P4", number=14), units="UNIT_X")
+    resolver = _resolver(store, {"NO_UNITS": no_units, "WITH_UNITS": with_units})
+
+    _label, unit_none, value = await resolver.describe("P4", 14, param_symbol="NO_UNITS", devid="MODULE_A")
+    assert unit_none is None
+    assert value == 7
+
+    async def _resolve_unit(code: object) -> str | None:
+        return f"unit:{code}" if code == "UNIT_X" else None
+
+    object.__setattr__(resolver, "resolve_unit", _resolve_unit)
+    _label, unit_x, _value = await resolver.describe("P4", 14, param_symbol="WITH_UNITS", devid="MODULE_A")
+    assert unit_x == "unit:UNIT_X"
 
 
 async def test_resolve_value_string_display_token_path_scoped() -> None:

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Iterable
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from pybragerone.models import ParamResolver, ParamStore
 from pybragerone.models.catalog import ParamMap
@@ -239,3 +243,156 @@ def test_visibility_without_devid_refuses_multi_module_flatten() -> None:
         visible_m1, reason_m1 = resolver.parameter_visibility_diagnostics(desc=desc, resolved=1, devid="M1")
         assert visible_m1 is False
         assert reason_m1 == "hidden:invisible"
+
+
+def _panel_resolver(store: ParamStore) -> ParamResolver:
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _EmptyAssets()), lang="en")
+    resolver._panel_title_i18n = AsyncMock(return_value={})  # type: ignore[method-assign]
+    resolver._static_route_symbols_for_menu = AsyncMock(return_value={})  # type: ignore[method-assign]
+    return resolver
+
+
+def _panel_symbols(groups: dict[str, list[str]]) -> set[str]:
+    return {sym for syms in groups.values() for sym in syms}
+
+
+async def test_panel_groups_whitespace_devid_is_unscoped_and_refused_multi_module() -> None:
+    """Empty / whitespace devid normalizes to unscoped, so multi-module refusal still applies."""
+    store = ParamStore()
+    store.upsert("P6.v219", 1, devid="M1")
+    store.upsert("P6.v219", 0, devid="M2")
+    resolver = _panel_resolver(store)
+
+    for blank in ("", "   "):
+        groups = await resolver.build_panel_groups(device_menu=0, all_panels=True, web_ui_only=True, devid=blank)
+        # Unprimed overlay (not merged LWW M2=0) keeps the dropdown route discoverable.
+        assert "PARAM_DROP" in _panel_symbols(groups)
+
+    # Surrounding whitespace is stripped to a real module id.
+    groups_m2 = await resolver.build_panel_groups(device_menu=0, all_panels=True, web_ui_only=True, devid="  M2  ")
+    assert "PARAM_DROP" not in _panel_symbols(groups_m2)
+
+
+async def test_panel_groups_single_scoped_module_still_uses_flatten() -> None:
+    """One scoped module (HA single-controller) keeps the implicit store overlay."""
+    store = ParamStore()
+    store.upsert("P6.v219", 0, devid="M1")
+    resolver = _panel_resolver(store)
+
+    groups = await resolver.build_panel_groups(device_menu=0, all_panels=True, web_ui_only=True)
+    assert "PARAM_DROP" not in _panel_symbols(groups)
+    diag = await resolver.panel_route_diagnostics(device_menu=0, all_panels=True, web_ui_only=True)
+    assert any(not row.get("accepted") for row in diag)
+
+
+async def test_panel_groups_legacy_unscoped_store_still_uses_flatten() -> None:
+    """Legacy upserts without devid keep the merged flatten() overlay."""
+    store = ParamStore()
+    store.upsert("P6.v219", 0)
+    resolver = _panel_resolver(store)
+
+    groups = await resolver.build_panel_groups(device_menu=0, all_panels=True, web_ui_only=True)
+    assert "PARAM_DROP" not in _panel_symbols(groups)
+
+
+async def test_panel_groups_use_store_flat_values_false_stays_unprimed() -> None:
+    """use_store_flat_values=False yields unprimed overlay even with devid / scoped data."""
+    store = ParamStore()
+    store.upsert("P6.v219", 0, devid="M1")
+    store.upsert("P6.v219", 0, devid="M2")
+    resolver = _panel_resolver(store)
+
+    for devid in (None, "M1"):
+        groups = await resolver.build_panel_groups(
+            device_menu=0,
+            all_panels=True,
+            web_ui_only=True,
+            use_store_flat_values=False,
+            devid=devid,
+        )
+        assert "PARAM_DROP" in _panel_symbols(groups)
+
+
+async def test_panel_groups_explicit_flat_values_win_in_multi_module() -> None:
+    """Explicit flat_values take precedence over devid and the multi-module refusal."""
+    store = ParamStore()
+    store.upsert("P6.v219", 1, devid="M1")
+    store.upsert("P6.v219", 1, devid="M2")
+    resolver = _panel_resolver(store)
+
+    hidden = await resolver.build_panel_groups(
+        device_menu=0,
+        all_panels=True,
+        web_ui_only=True,
+        flat_values={"P6.v219": 0},
+        devid="M1",
+    )
+    assert "PARAM_DROP" not in _panel_symbols(hidden)
+
+
+async def test_panel_groups_devid_without_bucket_is_unprimed() -> None:
+    """A devid with no scoped data is unprimed (not an empty-map hide)."""
+    store = ParamStore()
+    store.upsert("P6.v219", 0, devid="M1")
+    resolver = _panel_resolver(store)
+
+    groups = await resolver.build_panel_groups(device_menu=0, all_panels=True, web_ui_only=True, devid="UNKNOWN")
+    assert "PARAM_DROP" in _panel_symbols(groups)
+
+
+def test_multi_module_refusal_warns_once(caplog: pytest.LogCaptureFixture) -> None:
+    """Per-symbol visibility must not flood WARNING logs after the first refusal."""
+    store = ParamStore()
+    store.upsert("P5.s0", 1, devid="M1")
+    store.upsert("P5.s0", 0, devid="M2")
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _EmptyAssets()), lang="en")
+    desc: dict[str, Any] = {"mapping": {}}
+
+    with caplog.at_level(logging.DEBUG, logger="pybragerone.models.param_resolver"):
+        for _ in range(3):
+            resolver.parameter_visibility_diagnostics(desc=desc, resolved=1)
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING and "#511" in r.getMessage()]
+    debugs = [r for r in caplog.records if r.levelno == logging.DEBUG and "#511" in r.getMessage()]
+    assert len(warnings) == 1
+    assert len(debugs) == 2
+
+
+def test_visibility_whitespace_devid_matches_unscoped_storegetter_context() -> None:
+    """Blank devid does not override a legacy context ``devid`` for storeGetter templates."""
+    store = ParamStore()
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _EmptyAssets()), lang="en")
+    resolver.set_runtime_context(
+        {
+            "devid": "M1",
+            "modulesMap": {"M1": {"connectedAt": 5}, "M2": {"connectedAt": None}},
+        }
+    )
+    desc = _restart_desc()
+
+    for blank in (None, "", "  "):
+        visible, _ = resolver.parameter_visibility_diagnostics(desc=desc, resolved=1, devid=blank)
+        assert visible is True
+    # Explicit devid overrides the legacy context value for that call only.
+    visible_m2, _ = resolver.parameter_visibility_diagnostics(desc=desc, resolved=1, devid="M2")
+    assert visible_m2 is False
+    assert resolver._evaluator._context["devid"] == "M1"
+    assert resolver.is_parameter_visible_like_app(desc=desc, resolved=1, devid="M2") is False
+
+
+async def test_storegetter_concurrent_modules_stay_independent() -> None:
+    """Interleaved per-module visibility passes never see each other's devid."""
+    store = ParamStore()
+    resolver = ParamResolver(store=store, assets=cast(AssetsProtocol, _EmptyAssets()), lang="en")
+    resolver.set_runtime_context(
+        {"modulesMap": {"M1": {"connectedAt": 1}, "M2": {"connectedAt": None}}},
+    )
+    desc = _restart_desc()
+
+    async def _one(devid: str) -> bool:
+        await asyncio.sleep(0)
+        visible, _ = resolver.parameter_visibility_diagnostics(desc=desc, resolved=1, devid=devid)
+        await asyncio.sleep(0)
+        return visible
+
+    results = await asyncio.gather(*(_one(d) for d in ("M1", "M2", "M1", "M2")))
+    assert results == [True, False, True, False]

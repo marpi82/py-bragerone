@@ -323,7 +323,8 @@ explicitly it always takes precedence over both the store and that switch.
 Pass ``devid=`` (or ``flat_values=store.flatten_for_devid(...)``) for multi-module
 installs; if the store has more than one scoped module and neither is provided,
 the helpers refuse merged ``flatten()`` and treat the overlay as unprimed / empty
-(#511). ``ParamStore.flatten_for_devid(devid)`` / ``scoped_devids()`` supply
+(#511; logged as a warning once per resolver, then at debug level). Empty /
+whitespace ``devid`` counts as unscoped. ``ParamStore.flatten_for_devid(devid)`` / ``scoped_devids()`` supply
 module-scoped snapshots; always forward ``ParamUpdate.devid`` on
 ``upsert``/``upsert_async``.
 When resolving live values, pass the same module id into
