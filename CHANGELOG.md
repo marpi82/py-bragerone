@@ -7,6 +7,15 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Fixed
+
+- Resolve SPA REST menu ``extends`` refs of the form ``static:path`` /
+  ``static/path`` through ``AssetIndex.static_route_map`` (e.g.
+  ``static:versions`` on the default ``0/0/0.0.0`` menu). Previously only
+  numeric ``N:variant`` refs were accepted, so the versions layer was skipped
+  with ``Extended menu ref 'static:versions' not found in index`` (#514 /
+  follow-up to #505).
+
 ## [2026.11.2rc3] - 2026-11-19
 
 ### Fixed

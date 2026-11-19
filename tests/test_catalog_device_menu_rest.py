@@ -9,7 +9,12 @@ import pytest
 
 from pybragerone.api.client import ApiError
 from pybragerone.models.api.modules import DeviceMenuRef
-from pybragerone.models.catalog import AssetRef, LiveAssetsCatalog, _parse_extends_ref
+from pybragerone.models.catalog import (
+    AssetRef,
+    LiveAssetsCatalog,
+    _parse_extends_ref,
+    _parse_static_extends_ref,
+)
 from pybragerone.models.menu import MenuResult
 
 
@@ -26,6 +31,13 @@ def test_parse_extends_ref() -> None:
     assert _parse_extends_ref("153:1211") == (153, "1211")
     assert _parse_extends_ref("153/1211") == (153, "1211")
     assert _parse_extends_ref("bad") is None
+    assert _parse_extends_ref("static:versions") is None
+    assert _parse_static_extends_ref("static:versions") == "versions"
+    assert _parse_static_extends_ref("static/versions") == "versions"
+    assert _parse_static_extends_ref("STATIC:versions") == "versions"
+    assert _parse_static_extends_ref("153:1211") is None
+    assert _parse_static_extends_ref("static:") is None
+    assert _parse_static_extends_ref("not-static") is None
 
 
 @pytest.mark.asyncio
@@ -322,18 +334,79 @@ def test_menu_variant_map_populated_from_index() -> None:
     catalog = LiveAssetsCatalog(AsyncMock())
     index_code = b"""
     {"../config/router/deviceMenu/153/0.ts":()=>d(()=>import("./0-AaaAaaAa.js"),__vite__mapDeps([0])),
-     "../config/router/deviceMenu/153/1211.ts":()=>d(()=>import("./1211-BbBbBbBb.js"),__vite__mapDeps([1]))}
+     "../config/router/deviceMenu/153/1211.ts":()=>d(()=>import("./1211-BbBbBbBb.js"),__vite__mapDeps([1])),
+     "deviceMenu/static/versions.ts', import('./versions-CcCcCcCc.js')}
     """
     idx = catalog._build_asset_index_from_index_js("https://one.brager.pl/assets/index-x.js", index_code)
     assert idx.menu_map[153] == "0-AaaAaaAa"
     assert idx.menu_variant_map[(153, "0")] == "0-AaaAaaAa"
     assert idx.menu_variant_map[(153, "1211")] == "1211-BbBbBbBb"
+    assert idx.static_route_map.get("versions") == "versions"
     catalog._idx = idx
+    catalog._idx.assets_by_basename["versions"] = [
+        AssetRef(url="https://one.brager.pl/assets/versions-CcCcCcCc.js", base="versions", hash="CcCcCcCc")
+    ]
     resolved = catalog.resolve_extended_menu_asset("153:1211")
     assert resolved is not None
     assert resolved.hash == "BbBbBbBb"
+    static_resolved = catalog.resolve_extended_menu_asset("static:versions")
+    assert static_resolved is not None
+    assert static_resolved.hash == "CcCcCcCc"
     assert catalog.resolve_extended_menu_asset("999:nope") is None
+    assert catalog.resolve_extended_menu_asset("static:missing") is None
     assert catalog.resolve_extended_menu_asset("not-a-ref") is None
+
+
+def test_static_extends_falls_back_to_assets_by_basename() -> None:
+    """When ``static_route_map`` misses, basename presence still resolves (#514)."""
+    catalog = LiveAssetsCatalog(AsyncMock())
+    catalog._idx.static_route_map = {}
+    catalog._idx.assets_by_basename["versions"] = [
+        AssetRef(url="https://one.brager.pl/assets/versions-DdDdDdDd.js", base="versions", hash="DdDdDdDd")
+    ]
+    resolved = catalog.resolve_extended_menu_asset("static:versions")
+    assert resolved is not None
+    assert resolved.hash == "DdDdDdDd"
+
+
+@pytest.mark.asyncio
+async def test_static_extends_loads_versions_chunk() -> None:
+    """``extends: ['static:versions']`` resolves via ``static_route_map`` (#514)."""
+    mock_api = AsyncMock()
+    mock_api.get_devices_menu = AsyncMock(
+        return_value={
+            "priority": 100,
+            "extends": ["static:versions"],
+            "standalone": True,
+            "deviceMenu": [_route("devices")],
+        }
+    )
+    chunk_js = b"""
+    export default {
+      priority: 10,
+      deviceMenu: [{
+        path: "versions",
+        name: "modules.menu.versions",
+        meta: { displayName: "menu.VERSIONS", displayDropdown: true }
+      }]
+    };
+    """
+    mock_api.get_bytes = AsyncMock(return_value=chunk_js)
+
+    catalog = LiveAssetsCatalog(mock_api)
+    catalog._idx.static_route_map["versions"] = "versions"
+    catalog._idx.assets_by_basename["versions"] = [
+        AssetRef(url="https://one.brager.pl/assets/versions-Bb4I5KIl.js", base="versions", hash="Bb4I5KIl")
+    ]
+
+    menu = await catalog.get_module_menu(
+        device_menu=0,
+        devices=[DeviceMenuRef(manuf_code=67, dev_code=7, fw="2.06")],
+    )
+    paths = {r.path for r in menu.routes}
+    assert "devices" in paths
+    assert "versions" in paths
+    mock_api.get_bytes.assert_awaited_once_with("https://one.brager.pl/assets/versions-Bb4I5KIl.js")
 
 
 def test_menu_variant_map_cleared_when_device_menu_regex_raises(monkeypatch: pytest.MonkeyPatch) -> None:

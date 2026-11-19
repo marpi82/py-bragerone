@@ -2072,6 +2072,8 @@ def _i18n_import_base_and_hash(namespace: str, stem: str) -> tuple[str, str]:
 
 
 _EXTENDS_REF_RE = re.compile(r"^(\d+)[:/]([A-Za-z0-9_.-]+)$")
+# SPA default menu ``extends: ["static:versions"]`` → ``deviceMenu/static/versions.ts``.
+_STATIC_EXTENDS_REF_RE = re.compile(r"^static[:/]([A-Za-z0-9_-]+)$", re.IGNORECASE)
 
 
 def _parse_extends_ref(ref: str) -> tuple[int, str] | None:
@@ -2080,6 +2082,14 @@ def _parse_extends_ref(ref: str) -> tuple[int, str] | None:
     if match is None:
         return None
     return int(match.group(1)), str(match.group(2))
+
+
+def _parse_static_extends_ref(ref: str) -> str | None:
+    """Parse SPA ``extends`` tokens such as ``static:versions`` or ``static/versions``."""
+    match = _STATIC_EXTENDS_REF_RE.match(str(ref).strip())
+    if match is None:
+        return None
+    return str(match.group(1))
 
 
 @dataclass(slots=True)
@@ -2804,15 +2814,30 @@ class LiveAssetsCatalog:
         return None
 
     def resolve_extended_menu_asset(self, ref: str) -> AssetRef | None:
-        """Resolve an SPA ``extends`` ref (``N:variant`` / ``N/variant``) to a Vite chunk."""
+        """Resolve an SPA ``extends`` ref to a Vite chunk.
+
+        Supports numeric ``N:variant`` / ``N/variant`` (``menu_variant_map``) and
+        ``static:path`` / ``static/path`` keys from ``deviceMenu/static/<path>.ts``
+        (``static_route_map``, e.g. ``static:versions`` from the default REST menu)
+        (#514 / #505).
+        """
         parsed = _parse_extends_ref(ref)
-        if parsed is None:
+        if parsed is not None:
+            menu_id, variant = parsed
+            stem = self._idx.menu_variant_map.get((menu_id, variant))
+            if stem is None:
+                return None
+            return self._idx.find_asset_for_full_name(stem)
+
+        static_key = _parse_static_extends_ref(ref)
+        if static_key is None:
             return None
-        menu_id, variant = parsed
-        stem = self._idx.menu_variant_map.get((menu_id, variant))
-        if stem is None:
+        asset_base = self._idx.static_route_map.get(static_key)
+        if asset_base is None and static_key in self._idx.assets_by_basename:
+            asset_base = static_key
+        if asset_base is None:
             return None
-        return self._idx.find_asset_for_full_name(stem)
+        return self._idx.find_asset_for_basename(asset_base)
 
     async def _fetch_devices_menu_payload(
         self,
