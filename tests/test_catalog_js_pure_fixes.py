@@ -241,3 +241,75 @@ def test_factory_call_valuecallback_typeof_does_not_clobber_number() -> None:
     # Argument object must not grow operator-character junk keys from a truncated arrow.
     assert "&" not in out
     assert ">" not in out
+
+
+def test_math_floor_folds_numeric_register_indexes() -> None:
+    """``Math['floor']`` / ``Math.floor`` with numeric args become ints (#497)."""
+    assert _Parser("Math['floor'](0x63/0x7)").parse_value() == 14
+    assert _Parser("Math.floor(0x63/0x7)").parse_value() == 14
+    assert _Parser("0x9+Math['floor'](0x3f/0x7)").parse_value() == 18
+    assert _Parser("floor(9.9)", bindings={"floor": "floor"}).parse_value() == 9
+    # Unbound numerators stay leftovers (no invented register indexes).
+    assert _Parser("Math['floor'](_0xabc/0x7)").parse_value() == "floor(_0xabc/0x7)"
+    assert _Parser("0x9+Math['floor'](_0xabc/0x7)").parse_value() == "9floor(_0xabc/0x7)"
+    # Bound module consts fold through floor then additive ``+``.
+    assert _Parser("0x9+Math['floor'](_0xabc/0x7)", bindings={"_0xabc": 0x3F}).parse_value() == 18
+    # Non-floor / wrong arity must not fold.
+    assert _Parser("ceil(1.2)", bindings={"ceil": "ceil"}).parse_value() == "ceil(1.2)"
+    assert _Parser("Math['floor'](1,2)").parse_value() == "floor(1,2)"
+    assert _Parser("Math['floor'](true)").parse_value() == "floor(true)"
+
+
+def test_factory_math_floor_number_becomes_address_selector() -> None:
+    """Factory path ``number`` from ``base+Math.floor(idx/7)`` stays an int (#497)."""
+    from pybragerone.models.param_resolver import ParamResolver
+
+    params = "{id:_id,number:_n,name:_name}"
+    body = "{const o={'id':_id,'name':_name,'unit':[{'group':'P13','number':_n,'use':'u'}]};return o;}"
+    factory = make_object_factory(params, body, {})
+    call = "basicParameterBuilder_P15({'id':1,'number':0x9+Math['floor'](_0xidx/0x7),'name':'parameters.PARAM_P15_0'})"
+    out = _Parser(
+        call,
+        bindings={"basicParameterBuilder_P15": factory, "_0xidx": 0x3F},
+    ).parse_value()
+    assert isinstance(out, dict)
+    assert out["unit"] == [{"group": "P13", "number": 18, "use": "u"}]
+    assert ParamResolver._is_address_selector_list(out["unit"]) is True
+
+
+def test_narrow_token_maps_resolve_module_floor_consts() -> None:
+    """Narrow BasicParameters bindings fall through to module lazy consts (#497)."""
+    from pybragerone.models import catalog as catalog_mod
+
+    code = b"""
+    const _0xidx = 0x3f;
+    const _0xbare = 0x15;
+    const basicParameterBuilder_P15 = ({id:_id,number:_n,name:_name}) => {
+      const o = {'id':_id,'name':_name,
+        'unit':[{'group':'P13','number':_n,'use':'u'}],
+        'value':[{'group':'P15','number':_0xbare,'use':'v'}]};
+      return o;
+    };
+    const BasicParameters = {
+      PARAM_P15_0: basicParameterBuilder_P15({
+        'id':1,
+        'number':0x9+Math['floor'](_0xidx/0x7),
+        'name':'parameters.PARAM_P15_0'
+      })
+    };
+    """
+    maps = LiveAssetsCatalog(AsyncMock())._parse_index_token_raw_maps(code)
+    assert "PARAM_P15_0" in maps
+    unit = maps["PARAM_P15_0"]["unit"]
+    value = maps["PARAM_P15_0"]["value"]
+    assert unit == [{"group": "P13", "number": 18, "use": "u"}]
+    assert value == [{"group": "P15", "number": 21, "use": "v"}]
+    # Parent keys must not inflate narrow iteration / len.
+    ctx = catalog_mod._ModuleParseContext.from_bytes(code)
+    narrow = catalog_mod._LazyBindings(
+        catalog_mod._token_map_binding_items(ctx.source),
+        parent=ctx.lazy,
+    )
+    assert "_0xidx" in narrow
+    assert "_0xidx" not in list(narrow)
+    assert len(narrow) == len(catalog_mod._token_map_binding_items(ctx.source))

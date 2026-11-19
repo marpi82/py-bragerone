@@ -16,6 +16,9 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- ParamMap path ``number`` folds ``Math.floor`` / ``Math['floor']`` on numeric
+  args and resolves module ``_0x…`` consts through narrow BasicParameters
+  bindings so register selectors stay ints for address-selector resolve (#497).
 - Units-table selective pass falls back when option-rich decoy consts would
   hide a bare `name={…}` units table (#506).
 - Factory body plans treat `return` / `const` as keywords (not substrings), and
