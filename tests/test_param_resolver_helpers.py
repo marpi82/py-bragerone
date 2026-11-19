@@ -1368,6 +1368,37 @@ def test_lookup_route_title_and_unit_label_fallbacks() -> None:
     assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="   ")) is False
     assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="other.menu.item")) is False
     assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name="modules.menu.boiler")) is True
+    # REST deviceMenu UUID leaves with parameters (#505); shells stay excluded.
+    uuid_leaf = "e290236b-5d37-441c-803c-52d1a55cb441"
+    uuid_shell = "9b44cdba-0faa-4533-b9b0-a713b6576877"
+    assert (
+        ParamResolver._route_allowed_in_module_item(
+            SimpleNamespace(
+                name=uuid_leaf,
+                meta=SimpleNamespace(
+                    parameters=SimpleNamespace(
+                        read=[SimpleNamespace(token="PARAM_P17_6")],
+                        write=[],
+                        status=[SimpleNamespace(token="PARAM_100"), SimpleNamespace(token="STATUS_P5_30")],
+                        special=[],
+                    )
+                ),
+                parameters=None,
+            )
+        )
+        is True
+    )
+    assert (
+        ParamResolver._route_allowed_in_module_item(
+            SimpleNamespace(
+                name=uuid_shell,
+                meta=SimpleNamespace(parameters=SimpleNamespace(read=[], write=[], status=[], special=[])),
+                parameters=None,
+            )
+        )
+        is False
+    )
+    assert ParamResolver._route_allowed_in_module_item(SimpleNamespace(name=uuid_leaf, meta=None, parameters=None)) is False
 
     assert ParamResolver._to_float_literal("") is None
     assert ParamResolver._to_float_literal(".5") == 0.5

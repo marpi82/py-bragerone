@@ -7,6 +7,15 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Fixed
+
+- Treat SPA REST ``deviceMenu`` routes with opaque UUID ``name`` values as
+  all-panels module-item candidates when they declare parameter tokens. The
+  default ``0/0/0.0.0`` menu names additional-device thermostat leaves this way
+  (``devices/thermostats/valve/*/config``); rejecting them dropped room
+  thermostat status symbols such as ``PARAM_100`` / ``STATUS_P5_30`` from HA
+  bootstrap even though the menu fetch and permission filter succeeded (#505).
+
 ## [2026.11.2rc3] - 2026-11-19
 
 ### Fixed
