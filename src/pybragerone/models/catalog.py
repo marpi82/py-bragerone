@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
 import time
 from collections.abc import Iterable, Iterator, Mapping, MutableMapping, Sequence
@@ -136,7 +137,8 @@ class _FactoryBodyPlan:
 
     kind: str  # "expr" | "block"
     expr_src: str
-    declarators: tuple[tuple[str, str], ...]
+    # ``("simple", name, value_src)`` or ``("object", "{id:n,…}", value_src)`` in source order.
+    declarators: tuple[tuple[str, str, str], ...]
     return_src: str | None
 
 
@@ -144,6 +146,7 @@ _FACTORY_BODY_PLANS: dict[str, _FactoryBodyPlan] = {}
 
 
 _FACTORY_STMT_KW_RE = re.compile(r"\b(?:return|const)\b")
+_FACTORY_OBJECT_DECL_RE = re.compile(r"^(\{[\s\S]*\})\s*=\s*([\s\S]+)$")
 
 
 def _factory_body_plan(body_src: str) -> _FactoryBodyPlan:
@@ -159,15 +162,19 @@ def _factory_body_plan(body_src: str) -> _FactoryBodyPlan:
         plan = _FactoryBodyPlan(kind="expr", expr_src=stripped, declarators=(), return_src=None)
     else:
         inner = stripped[1:-1] if stripped.startswith("{") and stripped.endswith("}") else stripped
-        declarators: list[tuple[str, str]] = []
+        declarators: list[tuple[str, str, str]] = []
         for _kind, start, end in _scan_top_level_declarations(inner):
             decl = inner[start:end]
             body = re.sub(r"^(?:const|let|var)\s+", "", decl.strip().rstrip(";"), count=1)
             for declarator in _split_top_level_declarators(body):
                 match = re.match(r"^([A-Za-z_$][\w$]*)\s*=\s*", declarator)
-                if match is None:
+                if match is not None:
+                    declarators.append(("simple", match.group(1), declarator[match.end() :]))
                     continue
-                declarators.append((match.group(1), declarator[match.end() :]))
+                # SPA TEST builders: ``const {id:a,number:n}=arg;`` (#497).
+                obj_match = _FACTORY_OBJECT_DECL_RE.match(declarator.strip())
+                if obj_match is not None:
+                    declarators.append(("object", obj_match.group(1), obj_match.group(2)))
         ret = re.search(r"\breturn\b", inner)
         return_src = inner[ret.end() :] if ret is not None else None
         plan = _FactoryBodyPlan(
@@ -182,6 +189,22 @@ def _factory_body_plan(body_src: str) -> _FactoryBodyPlan:
     return plan
 
 
+def _apply_factory_object_destructure(
+    block_bindings: dict[str, Any],
+    pattern_src: str,
+    value: Any,
+) -> None:
+    """Bind locals from ``const {id: a, number: n} = value`` into *block_bindings*."""
+    arg_map = value if isinstance(value, Mapping) else {}
+    for src_key, local_name, default in _parse_destructure_params(pattern_src):
+        if src_key in arg_map:
+            block_bindings[local_name] = arg_map[src_key]
+        elif default is not None:
+            block_bindings[local_name] = default
+        else:
+            block_bindings[local_name] = None
+
+
 def _eval_factory_body(body_src: str, local_bindings: dict[str, Any]) -> Any:
     """Evaluate a factory arrow body to an object using the pure parser."""
     plan = _factory_body_plan(body_src)
@@ -191,12 +214,20 @@ def _eval_factory_body(body_src: str, local_bindings: dict[str, Any]) -> Any:
     # Statement block: ``{ const x = {...}; return x; }``
     # Preserve parent lookups (lazy bindings / overlays) while allowing local const writes.
     block_bindings: dict[str, Any] = _BindingsOverlay(local_bindings)
-    for name, value_src in plan.declarators:
+    for kind, left, value_src in plan.declarators:
         try:
-            block_bindings[name] = _Parser(value_src, bindings=block_bindings).parse_value()
+            value = _Parser(value_src, bindings=block_bindings).parse_value()
         except Exception:
-            LOG.debug("Pure factory body binding failed for %s", name, exc_info=True)
+            LOG.debug("Pure factory body binding failed for %s", left, exc_info=True)
+            # Object patterns must still bind locals (default/None) so path ``number``
+            # does not fall back to the minified ident string (#497).
+            if kind == "object":
+                _apply_factory_object_destructure(block_bindings, left, None)
             continue
+        if kind == "object":
+            _apply_factory_object_destructure(block_bindings, left, value)
+        else:
+            block_bindings[left] = value
     if plan.return_src is None:
         return None
     # Common SPA shape: ``const o = {…}; return o;`` — avoid re-parsing the identifier.
@@ -434,6 +465,22 @@ def _public_token_from_helper_args(callee: str, args: list[Any]) -> str | None:
     if not isinstance(token, str) or _HELPER_PARAM_TOKEN_RE.fullmatch(token) is None:
         return None
     return token
+
+
+def _try_fold_math_floor(callee: Any, args: list[Any]) -> int | None:
+    """Fold ``Math.floor`` / ``floor`` with one numeric arg to an int (#497).
+
+    Pure parsing collapses ``Math['floor']`` to the identifier ``floor`` before the
+    call; ``Math.floor`` stays as ``Math.floor``. Unbound ``_0x…`` numerators stay
+    as call leftovers so additive ``+`` does not invent register indexes.
+    """
+    # Callee may be a leftover list/dict from a prior postfix step — never hash it.
+    if not isinstance(callee, str) or callee not in {"floor", "Math.floor"} or len(args) != 1:
+        return None
+    arg = args[0]
+    if isinstance(arg, bool) or not isinstance(arg, (int, float)) or not math.isfinite(arg):
+        return None
+    return math.floor(arg)
 
 
 def _array_map_method(receiver: list[Any]) -> Any:
@@ -881,6 +928,11 @@ class _Parser:
                     if helper_token is not None:
                         value = helper_token
                         continue
+                # Register indexes: ``0x9+Math['floor'](_0x/0x7)`` (#497).
+                folded = _try_fold_math_floor(value, args)
+                if folded is not None:
+                    value = folded
+                    continue
                 # Leftover call text for unresolved callees.
                 if isinstance(value, str) and (_IDENT_RE.fullmatch(value) or value.startswith("_0x")):
                     value = f"{value}{self.source[call_start : self.i]}"
@@ -1318,16 +1370,23 @@ def _binding_value_sources(source: str) -> list[tuple[str, str]]:
 class _LazyBindings(MutableMapping[str, Any]):
     """Materialize top-level bindings on demand instead of evaluating the whole module."""
 
-    __slots__ = ("_cache", "_failed", "_src")
+    __slots__ = ("_cache", "_failed", "_parent", "_src")
 
-    def __init__(self, items: list[tuple[str, str]]) -> None:
-        """Build a lazy map from ``(name, value_src)`` pairs (last declarator wins)."""
+    def __init__(self, items: list[tuple[str, str]], *, parent: Mapping[str, Any] | None = None) -> None:
+        """Build a lazy map from ``(name, value_src)`` pairs (last declarator wins).
+
+        Optional *parent* supplies on-demand fallthrough for keys missing from this
+        map (used so narrow BasicParameters bindings can resolve module ``_0x…``
+        consts without materializing every top-level declarator — #497).
+        Iteration and ``len`` stay local-only so parent tables are never scanned.
+        """
         self._src: dict[str, str] = {}
         for name, value_src in items:
             self._src[name] = value_src
         self._cache: dict[str, Any] = {}
         # Parse failures are omitted (parity with eager ``collect_bindings``), not stored as None.
         self._failed: set[str] = set()
+        self._parent = parent
 
     def __getitem__(self, key: str) -> Any:
         if key in self._failed:
@@ -1338,6 +1397,9 @@ class _LazyBindings(MutableMapping[str, Any]):
                 raise KeyError(key)
             return cached
         if key not in self._src:
+            parent = self._parent
+            if parent is not None and key in parent:
+                return parent[key]
             raise KeyError(key)
         return self._materialize(key)
 
@@ -1369,7 +1431,8 @@ class _LazyBindings(MutableMapping[str, Any]):
         if key in self._cache:
             return self._cache[key] is not _IN_PROGRESS
         if key not in self._src:
-            return False
+            parent = self._parent
+            return parent is not None and key in parent
         try:
             self[key]
         except KeyError:
@@ -1587,8 +1650,9 @@ def _parse_index_token_raw_maps_ctx(ctx: _ModuleParseContext) -> dict[str, dict[
         return cached
     out: dict[str, dict[str, Any]] = {}
     # Prefer a narrow binding set so we never split huge unrelated declarators
-    # (``routes$2``, vite maps, …) just to reach BasicParameters.
-    narrow = _LazyBindings(_token_map_binding_items(ctx.source))
+    # (``routes$2``, vite maps, …) just to reach BasicParameters. Fall through to
+    # the module lazy map so path ``number`` exprs can resolve ``_0x…`` consts (#497).
+    narrow = _LazyBindings(_token_map_binding_items(ctx.source), parent=ctx.lazy)
     for name in ("BasicParameters",):
         # Avoid ``name in narrow`` here: ``__contains__`` materializes and would
         # swallow parse failures before this try/except can log them.

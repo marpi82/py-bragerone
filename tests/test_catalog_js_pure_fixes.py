@@ -241,3 +241,149 @@ def test_factory_call_valuecallback_typeof_does_not_clobber_number() -> None:
     # Argument object must not grow operator-character junk keys from a truncated arrow.
     assert "&" not in out
     assert ">" not in out
+
+
+def test_math_floor_folds_numeric_register_indexes() -> None:
+    """``Math['floor']`` / ``Math.floor`` with numeric args become ints (#497)."""
+    assert _Parser("Math['floor'](0x63/0x7)").parse_value() == 14
+    assert _Parser("Math.floor(0x63/0x7)").parse_value() == 14
+    assert _Parser("0x9+Math['floor'](0x3f/0x7)").parse_value() == 18
+    assert _Parser("floor(9.9)", bindings={"floor": "floor"}).parse_value() == 9
+    # Unbound numerators stay leftovers (no invented register indexes).
+    assert _Parser("Math['floor'](_0xabc/0x7)").parse_value() == "floor(_0xabc/0x7)"
+    assert _Parser("0x9+Math['floor'](_0xabc/0x7)").parse_value() == "9floor(_0xabc/0x7)"
+    # Bound module consts fold through floor then additive ``+``.
+    assert _Parser("0x9+Math['floor'](_0xabc/0x7)", bindings={"_0xabc": 0x3F}).parse_value() == 18
+    # Non-floor / wrong arity must not fold.
+    assert _Parser("ceil(1.2)", bindings={"ceil": "ceil"}).parse_value() == "ceil(1.2)"
+    assert _Parser("Math['floor'](1,2)").parse_value() == "floor(1,2)"
+    assert _Parser("Math['floor'](true)").parse_value() == "floor(true)"
+    # Non-string callees must not raise when membership-testing floor names.
+    assert _Parser("[1](2)").parse_value() == "(2)"
+    assert _Parser("({a:1})(2)").parse_value() == "(2)"
+    # Non-finite floats stay leftovers (``math.floor`` would OverflowError).
+    assert _Parser("Math['floor'](1e999)").parse_value() == "floor(1e999)"
+    assert _Parser("Math.floor(1e999)").parse_value() == "(1e999)"
+
+
+def test_factory_math_floor_number_becomes_address_selector() -> None:
+    """Factory path ``number`` from ``base+Math.floor(idx/7)`` stays an int (#497)."""
+    from pybragerone.models.param_resolver import ParamResolver
+
+    params = "{id:_id,number:_n,name:_name}"
+    body = "{const o={'id':_id,'name':_name,'unit':[{'group':'P13','number':_n,'use':'u'}]};return o;}"
+    factory = make_object_factory(params, body, {})
+    call = "basicParameterBuilder_P15({'id':1,'number':0x9+Math['floor'](_0xidx/0x7),'name':'parameters.PARAM_P15_0'})"
+    out = _Parser(
+        call,
+        bindings={"basicParameterBuilder_P15": factory, "_0xidx": 0x3F},
+    ).parse_value()
+    assert isinstance(out, dict)
+    assert out["unit"] == [{"group": "P13", "number": 18, "use": "u"}]
+    assert ParamResolver._is_address_selector_list(out["unit"]) is True
+
+
+def test_factory_body_object_destructure_binds_number() -> None:
+    """Bare-arg factories with ``const {number:n}=arg`` must bind locals (#497)."""
+    from pybragerone.models.param_resolver import ParamResolver
+
+    # Live ``basicParameterBuilder_TEST`` shape: whole-arg param + body destructure.
+    params = "_0xarg"
+    body = (
+        "{const {id:_id,number:_n,name:_name}=_0xarg;"
+        "const o={'id':_id,'name':_name??('parameters.PARAM_TEST_MODE_'+_n),"
+        "'any':[{'if':[{'expected':null,'operation':'equalTo',"
+        "'value':[{'group':'P5','number':_n,'use':'s'}]}],'then':null}],"
+        "'status':{'INVISIBLE':[{'if':[{'expected':1,'operation':'equalTo',"
+        "'value':[{'group':'P5','number':_n,'use':'s','bit':0}]}],'then':'![]'},"
+        "{'else':'!![]'}]};"
+        "return o;}"
+    )
+    factory = make_object_factory(params, body, {})
+    out = factory({"id": 1, "number": 10, "name": "parameters.PARAM_TEST_MODE_10"})
+    assert isinstance(out, dict)
+    assert out["name"] == "parameters.PARAM_TEST_MODE_10"
+    assert out["any"][0]["if"][0]["value"] == [{"group": "P5", "number": 10, "use": "s"}]
+    inv = out["status"]["INVISIBLE"][0]["if"][0]["value"]
+    assert inv == [{"group": "P5", "number": 10, "use": "s", "bit": 0}]
+    assert ParamResolver._is_address_selector_list(inv) is True
+    # Missing keys bind as None (no leftover minified idents).
+    sparse = factory({"id": 2})
+    assert isinstance(sparse, dict)
+    assert sparse["any"][0]["if"][0]["value"][0]["number"] is None
+    # Defaults in the destructure pattern apply when the key is absent.
+    with_default = make_object_factory(
+        "_arg",
+        "{const {number:_n=7}=_arg; return {'value':[{'group':'P1','number':_n,'use':'v'}]};}",
+        {},
+    )
+    assert with_default({})["value"][0]["number"] == 7
+    assert with_default({"number": 3})["value"][0]["number"] == 3
+    # Multi-line object RHS must still plan+bind (DOTALL on value side).
+    multiline = make_object_factory(
+        "_arg",
+        "{const {number:_n}={\n'number':4\n}; return {'n':_n};}",
+        {},
+    )
+    assert multiline({})["n"] == 4
+
+
+def test_factory_body_object_destructure_parse_failure_binds_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Object-destructure RHS parse errors must not leave ``'_n'`` leftovers (#497)."""
+    from pybragerone.models import catalog as catalog_mod
+
+    real_parse = catalog_mod._Parser.parse_value
+
+    def boom_parse(self: Any) -> Any:
+        if self.source.strip().startswith("_boom"):
+            msg = "bind fail"
+            raise ValueError(msg)
+        return real_parse(self)
+
+    monkeypatch.setattr(catalog_mod._Parser, "parse_value", boom_parse)
+    failed = make_object_factory(
+        "_arg",
+        "{const {number:_n}=_boom; return {'n':_n};}",
+        {},
+    )
+    assert failed({})["n"] is None
+
+
+def test_narrow_token_maps_resolve_module_floor_consts() -> None:
+    """Narrow BasicParameters bindings fall through to module lazy consts (#497)."""
+    from pybragerone.models import catalog as catalog_mod
+
+    code = b"""
+    const _0xidx = 0x3f;
+    const _0xbare = 0x15;
+    const basicParameterBuilder_P15 = ({id:_id,number:_n,name:_name}) => {
+      const o = {'id':_id,'name':_name,
+        'unit':[{'group':'P13','number':_n,'use':'u'}],
+        'value':[{'group':'P15','number':_0xbare,'use':'v'}]};
+      return o;
+    };
+    const BasicParameters = {
+      PARAM_P15_0: basicParameterBuilder_P15({
+        'id':1,
+        'number':0x9+Math['floor'](_0xidx/0x7),
+        'name':'parameters.PARAM_P15_0'
+      })
+    };
+    """
+    maps = LiveAssetsCatalog(AsyncMock())._parse_index_token_raw_maps(code)
+    assert "PARAM_P15_0" in maps
+    unit = maps["PARAM_P15_0"]["unit"]
+    value = maps["PARAM_P15_0"]["value"]
+    assert unit == [{"group": "P13", "number": 18, "use": "u"}]
+    assert value == [{"group": "P15", "number": 21, "use": "v"}]
+    # Parent keys must not inflate narrow iteration / len.
+    ctx = catalog_mod._ModuleParseContext.from_bytes(code)
+    narrow = catalog_mod._LazyBindings(
+        catalog_mod._token_map_binding_items(ctx.source),
+        parent=ctx.lazy,
+    )
+    assert "_0xidx" in narrow
+    assert "_0xidx" not in list(narrow)
+    assert len(narrow) == len(catalog_mod._token_map_binding_items(ctx.source))
