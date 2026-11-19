@@ -151,6 +151,14 @@ class AssetsProtocol(Protocol):
         return set()
 
 
+def _normalize_devid(devid: str | None) -> str | None:
+    """Return a stripped non-empty devid, or ``None`` for unscoped (legacy merged) reads (#502)."""
+    if devid is None:
+        return None
+    text = str(devid).strip()
+    return text or None
+
+
 @dataclass
 class ResolvedValue:
     """Unified display value resolution for a symbolic parameter."""
@@ -354,7 +362,7 @@ class ComputedValueEvaluator:
             idx = int(rest[1:])
         except Exception:
             return None
-        fam = self._store.get_family(pool, idx, devid=devid)
+        fam = self._store.get_family(pool, idx, devid=_normalize_devid(devid))
         if fam is None:
             return None
         return fam.get(chan)
@@ -544,6 +552,7 @@ class ComputedValueEvaluator:
         """
         if not isinstance(mapping_raw, dict):
             return None
+        devid = _normalize_devid(devid)
         any_rules = mapping_raw.get("any")
         if isinstance(any_rules, list):
             return self._eval_any_rules(any_rules, devid=devid)
@@ -2051,6 +2060,7 @@ class ParamResolver:
         if entries is None or not cls._address_selectors_need_compose(entries):
             return None
 
+        scoped_devid = _normalize_devid(devid)
         total = 0.0
         found_any = False
         for selector in entries:
@@ -2061,7 +2071,7 @@ class ParamResolver:
             use = selector.get("use")
             if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
                 continue
-            fam = store.get_family(group, number, devid=devid)
+            fam = store.get_family(group, number, devid=scoped_devid)
             if fam is None:
                 continue
             raw_word = fam.get(use[0])
@@ -3008,10 +3018,7 @@ class ParamResolver:
     @staticmethod
     def _normalize_resolve_devid(devid: str | None) -> str | None:
         """Return a non-empty devid string, or ``None`` for unscoped (legacy) reads."""
-        if devid is None:
-            return None
-        text = str(devid).strip()
-        return text or None
+        return _normalize_devid(devid)
 
     def _flat_values_for_resolve(self, devid: str | None) -> Mapping[str, Any]:
         """Module-scoped flatten when ``devid`` is set; otherwise merged LWW snapshot."""

@@ -324,7 +324,8 @@ When resolving live values, pass the same module id into
 ``ParamResolver.resolve_value(symbol, devid=…)`` / ``get_value`` /
 ``describe_symbol`` / ``compose_mapping_register_value(..., devid=…)`` so
 overlapping addresses and computed STATUS rules do not bleed across controllers
-(#502). Omitting ``devid`` keeps the legacy merged last-write-wins behavior.
+(#502). Omitting ``devid`` (or passing an empty / whitespace-only string) keeps the
+legacy merged last-write-wins behavior.
 
 .. code-block:: python
 
