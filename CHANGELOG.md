@@ -7,6 +7,20 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Changed
+
+- Speed up the pure catalog JS parser (shared index parse context, lazy /
+  needle-first bindings, parser micro-opts) so HA bootstrap cases beat the
+  former tree-sitter timings while staying wheel-pure / musl-aarch64 friendly
+  (#506).
+
+### Fixed
+
+- Units-table selective pass falls back when option-rich decoy consts would
+  hide a bare `name={…}` units table (#506).
+- Factory body plans treat `return` / `const` as keywords (not substrings), and
+  binding overlays honor `.get()` for parent keys (#506).
+
 ## [2026.11.2rc1] - 2026-11-12
 
 ### Changed
