@@ -569,6 +569,16 @@ def test_units_decoy_option_rich_const_still_finds_paramish_table() -> None:
     assert "1" in table and "2" in table
 
 
+def test_units_fallback_empty_assignment_scan(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When selective candidates score empty and assignment scan is empty, return ``{}``."""
+    catalog = LiveAssetsCatalog(cast(BragerOneApiClient, AsyncMock(spec=BragerOneApiClient)))
+    # Option-rich decoy becomes a candidate but yields no unit descriptors → ``not best``.
+    decoy = "options," * 15 + "x:1"
+    js = f"const decoy={{{decoy}}};".encode()
+    monkeypatch.setattr(catalog_mod, "_iter_top_level_object_assignments_ctx", lambda _ctx: [])
+    assert catalog._parse_units_descriptor_table_from_index(js) == {}
+
+
 def test_assignment_scan_skips_and_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
     """Assignment filters skip huge non-PARAM objects and swallow binding failures."""
     huge = "x" * 120_000

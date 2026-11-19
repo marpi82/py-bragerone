@@ -3941,7 +3941,8 @@ class LiveAssetsCatalog:
                         continue
                     if not key.isdigit() and key in aliases:
                         key = aliases[key]
-                    parsed[key] = dict(value_raw) if isinstance(value_raw, Mapping) else {"value": value_raw}
+                    # ``_is_unit_descriptor_entry`` already requires a Mapping.
+                    parsed[key] = dict(value_raw)
 
                 local_largest = max(local_largest, descriptor_keys)
                 score = self._units_descriptor_table_score(parsed)
