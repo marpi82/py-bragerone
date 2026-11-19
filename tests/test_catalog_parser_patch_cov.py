@@ -361,11 +361,32 @@ def test_lazy_bindings_and_overlay_edges(monkeypatch: pytest.MonkeyPatch) -> Non
     assert lazy["a"] == 1
     # Already-materialized re-entry via ``_materialize``.
     assert lazy._materialize("a") == 1
+    # Overwrite an existing source key (``_src`` already has the name).
+    lazy["a"] = 42
+    assert lazy["a"] == 42
+    assert "a" in lazy
     lazy["c"] = 9
     assert lazy["c"] == 9
+    # MutableMapping contract: setitem-only keys must be visible to ``in`` / ``len``.
+    assert "c" in lazy
+    assert len(lazy) == 3
+    assert set(lazy) == {"a", "b", "c"}
+    # Cache-only placeholder without a live cache entry: ``in`` materializes → KeyError → False.
+    lazy._cache.pop("c")
+    assert "c" not in lazy
+    with pytest.raises(KeyError):
+        _ = lazy["c"]
+    # Evicted placeholders must not blow up ``materialize_all`` mid-iteration.
+    lazy["z"] = 5
+    lazy._cache.pop("z")
+    assert lazy.materialize_all() == {"a": 42, "b": 43}  # b = a + 1 with overwritten a
+    assert "z" not in lazy
+    lazy["c"] = 9  # restore for later assertions
     del lazy["a"]
     with pytest.raises(KeyError):
         _ = lazy["a"]
+    with pytest.raises(KeyError):
+        del lazy["missing"]
     with pytest.raises(KeyError):
         _ = lazy["missing"]
 

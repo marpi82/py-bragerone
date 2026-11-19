@@ -1294,6 +1294,8 @@ def _split_top_level_declarators(body: str) -> list[str]:
 
 
 _IN_PROGRESS = object()
+# Placeholder value_src for keys introduced only via ``__setitem__`` (no JS source).
+_LAZY_CACHE_ONLY_SRC = "<#lazy-cache-only#>"
 _TOKEN_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]+$")
 _DEFAULT_TRANSLATION_RE = re.compile(r"defaultTranslation")
 _PARAMISH_ASSIGN_RE = re.compile(r"=\s*\{")
@@ -1342,11 +1344,17 @@ class _LazyBindings(MutableMapping[str, Any]):
     def __setitem__(self, key: str, value: Any) -> None:
         self._failed.discard(key)
         self._cache[key] = value
+        # Explicit writes must be visible to ``in`` / ``len`` / iteration.
+        if key not in self._src:
+            self._src[key] = _LAZY_CACHE_ONLY_SRC
 
     def __delitem__(self, key: str) -> None:
+        existed = key in self._cache or key in self._src
         self._cache.pop(key, None)
         self._failed.discard(key)
-        del self._src[key]
+        self._src.pop(key, None)
+        if not existed:
+            raise KeyError(key)
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._src)
@@ -1355,8 +1363,12 @@ class _LazyBindings(MutableMapping[str, Any]):
         return len(self._src)
 
     def __contains__(self, key: object) -> bool:
-        """Return whether *key* materializes successfully (failed parses are absent)."""
-        if not isinstance(key, str) or key not in self._src or key in self._failed:
+        """Return whether *key* is present and materializes (failed parses are absent)."""
+        if not isinstance(key, str) or key in self._failed:
+            return False
+        if key in self._cache:
+            return self._cache[key] is not _IN_PROGRESS
+        if key not in self._src:
             return False
         try:
             self[key]
@@ -1370,8 +1382,12 @@ class _LazyBindings(MutableMapping[str, Any]):
             return cached
         if name in self._cache and cached is _IN_PROGRESS:
             raise KeyError(name)
-        self._cache[name] = _IN_PROGRESS
         value_src = self._src[name]
+        if value_src == _LAZY_CACHE_ONLY_SRC:
+            # ``__setitem__`` placeholder without a live cache entry — drop the zombie key.
+            self._src.pop(name, None)
+            raise KeyError(name)
+        self._cache[name] = _IN_PROGRESS
         try:
             value = _Parser(value_src, bindings=self).parse_value()
         except Exception:
@@ -1385,7 +1401,8 @@ class _LazyBindings(MutableMapping[str, Any]):
     def materialize_all(self) -> dict[str, Any]:
         """Force every binding (API compatibility for ``collect_bindings``)."""
         out: dict[str, Any] = {}
-        for name in self._src:
+        # Snapshot keys: failed / cache-only materialize may pop from ``_src``.
+        for name in list(self._src):
             try:
                 out[name] = self[name]
             except KeyError:
