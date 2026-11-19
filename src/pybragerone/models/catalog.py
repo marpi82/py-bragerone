@@ -146,7 +146,7 @@ _FACTORY_BODY_PLANS: dict[str, _FactoryBodyPlan] = {}
 
 
 _FACTORY_STMT_KW_RE = re.compile(r"\b(?:return|const)\b")
-_FACTORY_OBJECT_DECL_RE = re.compile(r"^(\{[\s\S]*\})\s*=\s*(.+)$")
+_FACTORY_OBJECT_DECL_RE = re.compile(r"^(\{[\s\S]*\})\s*=\s*([\s\S]+)$")
 
 
 def _factory_body_plan(body_src: str) -> _FactoryBodyPlan:
@@ -219,6 +219,10 @@ def _eval_factory_body(body_src: str, local_bindings: dict[str, Any]) -> Any:
             value = _Parser(value_src, bindings=block_bindings).parse_value()
         except Exception:
             LOG.debug("Pure factory body binding failed for %s", left, exc_info=True)
+            # Object patterns must still bind locals (default/None) so path ``number``
+            # does not fall back to the minified ident string (#497).
+            if kind == "object":
+                _apply_factory_object_destructure(block_bindings, left, None)
             continue
         if kind == "object":
             _apply_factory_object_destructure(block_bindings, left, value)
@@ -470,10 +474,11 @@ def _try_fold_math_floor(callee: Any, args: list[Any]) -> int | None:
     call; ``Math.floor`` stays as ``Math.floor``. Unbound ``_0x…`` numerators stay
     as call leftovers so additive ``+`` does not invent register indexes.
     """
-    if callee not in {"floor", "Math.floor"} or len(args) != 1:
+    # Callee may be a leftover list/dict from a prior postfix step — never hash it.
+    if not isinstance(callee, str) or callee not in {"floor", "Math.floor"} or len(args) != 1:
         return None
     arg = args[0]
-    if isinstance(arg, bool) or not isinstance(arg, (int, float)):
+    if isinstance(arg, bool) or not isinstance(arg, (int, float)) or not math.isfinite(arg):
         return None
     return math.floor(arg)
 

@@ -258,6 +258,12 @@ def test_math_floor_folds_numeric_register_indexes() -> None:
     assert _Parser("ceil(1.2)", bindings={"ceil": "ceil"}).parse_value() == "ceil(1.2)"
     assert _Parser("Math['floor'](1,2)").parse_value() == "floor(1,2)"
     assert _Parser("Math['floor'](true)").parse_value() == "floor(true)"
+    # Non-string callees must not raise when membership-testing floor names.
+    assert _Parser("[1](2)").parse_value() == "(2)"
+    assert _Parser("({a:1})(2)").parse_value() == "(2)"
+    # Non-finite floats stay leftovers (``math.floor`` would OverflowError).
+    assert _Parser("Math['floor'](1e999)").parse_value() == "floor(1e999)"
+    assert _Parser("Math.floor(1e999)").parse_value() == "(1e999)"
 
 
 def test_factory_math_floor_number_becomes_address_selector() -> None:
@@ -313,6 +319,36 @@ def test_factory_body_object_destructure_binds_number() -> None:
     )
     assert with_default({})["value"][0]["number"] == 7
     assert with_default({"number": 3})["value"][0]["number"] == 3
+    # Multi-line object RHS must still plan+bind (DOTALL on value side).
+    multiline = make_object_factory(
+        "_arg",
+        "{const {number:_n}={\n'number':4\n}; return {'n':_n};}",
+        {},
+    )
+    assert multiline({})["n"] == 4
+
+
+def test_factory_body_object_destructure_parse_failure_binds_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Object-destructure RHS parse errors must not leave ``'_n'`` leftovers (#497)."""
+    from pybragerone.models import catalog as catalog_mod
+
+    real_parse = catalog_mod._Parser.parse_value
+
+    def boom_parse(self: Any) -> Any:
+        if self.source.strip().startswith("_boom"):
+            msg = "bind fail"
+            raise ValueError(msg)
+        return real_parse(self)
+
+    monkeypatch.setattr(catalog_mod._Parser, "parse_value", boom_parse)
+    failed = make_object_factory(
+        "_arg",
+        "{const {number:_n}=_boom; return {'n':_n};}",
+        {},
+    )
+    assert failed({})["n"] is None
 
 
 def test_narrow_token_maps_resolve_module_floor_consts() -> None:
