@@ -207,6 +207,31 @@ async def test_describe_scopes_family_by_devid() -> None:
     assert value_a == 0
 
 
+async def test_resolve_value_string_display_token_path_scoped() -> None:
+    """Direct resolve keeps string display tokens after units i18n (#502 / patch cov)."""
+    store = ParamStore()
+    store.upsert("P4.v14", "WORK", devid="MODULE_A")
+    store.upsert("P4.v15", "IDLE", devid="MODULE_A")
+    mapping_work = _direct_map("BURNER_STATE", group="P4", number=14)
+    mapping_idle = _direct_map("BURNER_IDLE", group="P4", number=15)
+    resolver = _resolver(store, {"BURNER_STATE": mapping_work, "BURNER_IDLE": mapping_idle})
+
+    async def _token_label(label: str | None) -> str | None:
+        return f"label:{label}" if isinstance(label, str) else label
+
+    async def _token_non_str(label: str | None) -> str | None:
+        # Cover the False branch of ``isinstance(resolved_display, str)``.
+        return None if isinstance(label, str) else label
+
+    object.__setattr__(resolver, "_resolve_units_value_token", _token_label)
+    resolved = await resolver.resolve_value("BURNER_STATE", devid="MODULE_A")
+    assert resolved.value == "label:WORK"
+
+    object.__setattr__(resolver, "_resolve_units_value_token", _token_non_str)
+    unresolved = await resolver.resolve_value("BURNER_IDLE", devid="MODULE_A")
+    assert unresolved.value == "IDLE"
+
+
 def _any_branch_map(symbol: str) -> ParamMap:
     """``raw.any`` branch selection: guard on P31.s13 bit 2, then P32.v0 else P32.v221."""
     raw = {
