@@ -320,6 +320,11 @@ state as unprimed (structural route discovery). When ``flat_values`` is passed
 explicitly it always takes precedence over both the store and that switch.
 ``ParamStore.flatten_for_devid(devid)`` supplies module-scoped snapshots for
 multi-module setups; always forward ``ParamUpdate.devid`` on ``upsert``/``upsert_async``.
+When resolving live values, pass the same module id into
+``ParamResolver.resolve_value(symbol, devid=…)`` / ``get_value`` /
+``describe_symbol`` / ``compose_mapping_register_value(..., devid=…)`` so
+overlapping addresses and computed STATUS rules do not bleed across controllers
+(#502). Omitting ``devid`` keeps the legacy merged last-write-wins behavior.
 
 .. code-block:: python
 
