@@ -151,6 +151,14 @@ class AssetsProtocol(Protocol):
         return set()
 
 
+def _normalize_devid(devid: str | None) -> str | None:
+    """Return a stripped non-empty devid, or ``None`` for unscoped (legacy merged) reads (#502)."""
+    if devid is None:
+        return None
+    text = str(devid).strip()
+    return text or None
+
+
 @dataclass
 class ResolvedValue:
     """Unified display value resolution for a symbolic parameter."""
@@ -347,14 +355,14 @@ class ComputedValueEvaluator:
 
         return False
 
-    def _read_address_value(self, address: str) -> Any:
+    def _read_address_value(self, address: str, *, devid: str | None = None) -> Any:
         try:
             pool, rest = address.split(".", 1)
             chan = rest[0]
             idx = int(rest[1:])
         except Exception:
             return None
-        fam = self._store.get_family(pool, idx)
+        fam = self._store.get_family(pool, idx, devid=_normalize_devid(devid))
         if fam is None:
             return None
         return fam.get(chan)
@@ -422,7 +430,7 @@ class ComputedValueEvaluator:
             s = s.split(".")[-1]
         return s
 
-    def _eval_condition_any(self, cond: dict[str, Any]) -> bool:
+    def _eval_condition_any(self, cond: dict[str, Any], *, devid: str | None = None) -> bool:
         expected = cond.get("expected")
         op = self._operation_name(cond.get("operation"))
         values = cond.get("value")
@@ -448,7 +456,7 @@ class ComputedValueEvaluator:
             if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
                 continue
             addr = f"{group}.{use[0]}{number}"
-            raw_val = self._read_address_value(addr)
+            raw_val = self._read_address_value(addr, devid=devid)
             if raw_val is None:
                 # SPA pump-diode guard: ``equalTo: null`` / ``void 0`` matches an
                 # absent register before numeric masks run (then: null → undefined).
@@ -467,7 +475,7 @@ class ComputedValueEvaluator:
 
         return False
 
-    def _resolve_rule_payload(self, payload: Any) -> str | None:
+    def _resolve_rule_payload(self, payload: Any, *, devid: str | None = None) -> str | None:
         """Normalize a matched ``then``/``else`` payload to a display token.
 
         STATUS diodes yield string/int labels. Writable cards such as
@@ -479,12 +487,12 @@ class ComputedValueEvaluator:
         """
         if isinstance(payload, dict):
             if "value" in payload:
-                return self._resolve_rule_payload(payload.get("value"))
+                return self._resolve_rule_payload(payload.get("value"), devid=devid)
             group = payload.get("group")
             number = payload.get("number")
             use = payload.get("use")
             if isinstance(group, str) and isinstance(number, int) and isinstance(use, str) and use:
-                return self._serialize_register_value(self._read_address_value(f"{group}.{use[0]}{number}"))
+                return self._serialize_register_value(self._read_address_value(f"{group}.{use[0]}{number}", devid=devid))
             return self._normalize_computed_value(payload)
 
         if isinstance(payload, list):
@@ -496,14 +504,14 @@ class ComputedValueEvaluator:
                 use = entry.get("use")
                 if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
                     continue
-                resolved = self._serialize_register_value(self._read_address_value(f"{group}.{use[0]}{number}"))
+                resolved = self._serialize_register_value(self._read_address_value(f"{group}.{use[0]}{number}", devid=devid))
                 if resolved is not None:
                     return resolved
             return None
 
         return self._normalize_computed_value(payload)
 
-    def _eval_any_rules(self, any_rules: list[Any]) -> str | None:
+    def _eval_any_rules(self, any_rules: list[Any], *, devid: str | None = None) -> str | None:
         """Evaluate SPA ``if`` / ``elseif`` / ``else`` rule lists.
 
         Matches the STATUS / DEVICE_STATE card shape (e.g. pump diodes): walk
@@ -521,34 +529,43 @@ class ComputedValueEvaluator:
                 conds = rule.get("elseif")
             # Unmatched if/elseif may still carry an inline ``else`` (same shape
             # as ``_select_raw_any_branch``), so do not skip the rule early.
-            if isinstance(conds, list) and conds and all(isinstance(c, dict) and self._eval_condition_any(c) for c in conds):
+            if (
+                isinstance(conds, list)
+                and conds
+                and all(isinstance(c, dict) and self._eval_condition_any(c, devid=devid) for c in conds)
+            ):
                 then = rule.get("then")
                 if then is None and "then" in rule:
                     return None
-                return self._resolve_rule_payload(then)
+                return self._resolve_rule_payload(then, devid=devid)
             if else_value is None and "else" in rule:
                 else_value = rule.get("else")
         if else_value is None:
             return None
-        return self._resolve_rule_payload(else_value)
+        return self._resolve_rule_payload(else_value, devid=devid)
 
-    def evaluate(self, mapping_raw: Any) -> str | None:
-        """Evaluate computed value for mappings with a rule engine."""
+    def evaluate(self, mapping_raw: Any, *, devid: str | None = None) -> str | None:
+        """Evaluate computed value for mappings with a rule engine.
+
+        Pass ``devid`` so address reads stay scoped when multiple modules share
+        overlapping register addresses (#502).
+        """
         if not isinstance(mapping_raw, dict):
             return None
+        devid = _normalize_devid(devid)
         any_rules = mapping_raw.get("any")
         if isinstance(any_rules, list):
-            return self._eval_any_rules(any_rules)
+            return self._eval_any_rules(any_rules, devid=devid)
 
         value_rules = mapping_raw.get("value")
         if isinstance(value_rules, list):
-            return self._eval_any_rules(value_rules)
+            return self._eval_any_rules(value_rules, devid=devid)
 
         paths = mapping_raw.get("paths")
         if isinstance(paths, dict):
             value_rules = paths.get("value")
             if isinstance(value_rules, list):
-                return self._eval_any_rules(value_rules)
+                return self._eval_any_rules(value_rules, devid=devid)
 
         return None
 
@@ -1979,7 +1996,13 @@ class ParamResolver:
         return isinstance(paths, Mapping) and cls._is_status_rule_list(paths.get("value"))
 
     @classmethod
-    def compose_mapping_register_value(cls, store: ParamStore, mapping: Any) -> int | float | None:
+    def compose_mapping_register_value(
+        cls,
+        store: ParamStore,
+        mapping: Any,
+        *,
+        devid: str | None = None,
+    ) -> int | float | None:
         """Compose a multi-register (multi-word) parameter value from live register words.
 
         Some SPA parameters address more than one register as *address selectors*
@@ -2005,6 +2028,7 @@ class ParamResolver:
             mapping: A :class:`ParamMap`, or a plain dict with ``paths``/``raw``
                 (and, optionally, ``channels``) keys — the shape of the cached
                 entity descriptors Home Assistant persists in ``entry.data``.
+            devid: Optional module id so overlapping addresses stay scoped (#502).
 
         Returns:
             The composed value as ``int`` when the sum is a whole number,
@@ -2036,6 +2060,7 @@ class ParamResolver:
         if entries is None or not cls._address_selectors_need_compose(entries):
             return None
 
+        scoped_devid = _normalize_devid(devid)
         total = 0.0
         found_any = False
         for selector in entries:
@@ -2046,7 +2071,7 @@ class ParamResolver:
             use = selector.get("use")
             if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
                 continue
-            fam = store.get_family(group, number)
+            fam = store.get_family(group, number, devid=scoped_devid)
             if fam is None:
                 continue
             raw_word = fam.get(use[0])
@@ -2990,8 +3015,25 @@ class ParamResolver:
             return first
         return cls._mapping_primary_address(value_payload)
 
-    async def resolve_value(self, symbol: str) -> ResolvedValue:
-        """Resolve a symbol to a unified display value (direct or computed)."""
+    @staticmethod
+    def _normalize_resolve_devid(devid: str | None) -> str | None:
+        """Return a non-empty devid string, or ``None`` for unscoped (legacy) reads."""
+        return _normalize_devid(devid)
+
+    def _flat_values_for_resolve(self, devid: str | None) -> Mapping[str, Any]:
+        """Module-scoped flatten when ``devid`` is set; otherwise merged LWW snapshot."""
+        scoped = self._normalize_resolve_devid(devid)
+        if scoped is not None:
+            return self._store.flatten_for_devid(scoped)
+        return self._store.flatten()
+
+    async def resolve_value(self, symbol: str, *, devid: str | None = None) -> ResolvedValue:
+        """Resolve a symbol to a unified display value (direct or computed).
+
+        Pass ``devid`` in multi-module setups so register reads and computed STATUS
+        rules do not mix overlapping addresses across controllers (#502).
+        """
+        scoped_devid = self._normalize_resolve_devid(devid)
         mapping = await self.get_param_mapping(symbol)
         addr_tuple = self._mapping_canonical_address(symbol, mapping)
         # Flatten only when raw.any branch selection needs a store snapshot —
@@ -3004,11 +3046,11 @@ class ParamResolver:
             and isinstance(mapping.raw.get("any"), list)
             and mapping.raw.get("any")
         ):
-            flat_values = self._store.flatten()
+            flat_values = self._flat_values_for_resolve(scoped_devid)
             register_addr = self._any_branch_register_value_address(
                 mapping,
                 flat_values=flat_values,
-                condition_eval=self._evaluator._eval_condition_any,
+                condition_eval=lambda cond: self._evaluator._eval_condition_any(cond, devid=scoped_devid),
             )
 
         address_key: str | None = None
@@ -3019,7 +3061,7 @@ class ParamResolver:
         effective_addr = register_addr if register_addr is not None else addr_tuple
         if effective_addr is not None:
             address_key = self._addr_key(effective_addr[0], effective_addr[1], effective_addr[2])
-            fam = self._store.get_family(effective_addr[0], effective_addr[2])
+            fam = self._store.get_family(effective_addr[0], effective_addr[2], devid=scoped_devid)
             if fam is not None:
                 raw_unit_code = fam.unit_code
             if mapping is not None and mapping.units is not None:
@@ -3041,7 +3083,7 @@ class ParamResolver:
         # ``kind="computed"`` so CLI refresh watches guard + branch dependencies.
         if register_addr is not None:
             raw_val = None
-            fam = self._store.get_family(register_addr[0], register_addr[2])
+            fam = self._store.get_family(register_addr[0], register_addr[2], devid=scoped_devid)
             if fam is not None:
                 raw_val = fam.get(register_addr[1])
             # Match evaluator / visibility: bool, whitespace, and non-scalars are
@@ -3071,13 +3113,13 @@ class ParamResolver:
             )
 
         if mapping is not None and self._mapping_has_computed_rules(mapping):
-            computed_value = self._evaluator.evaluate(mapping.raw)
+            computed_value = self._evaluator.evaluate(mapping.raw, devid=scoped_devid)
             if computed_value is None and isinstance(mapping.paths, Mapping) and mapping.paths:
-                computed_value = self._evaluator.evaluate({"paths": mapping.paths})
+                computed_value = self._evaluator.evaluate({"paths": mapping.paths}, devid=scoped_devid)
 
             if computed_value is None and addr_tuple is not None and self._mapping_has_simple_direct_value_path(mapping):
                 raw_val = None
-                fam = self._store.get_family(addr_tuple[0], addr_tuple[2])
+                fam = self._store.get_family(addr_tuple[0], addr_tuple[2], devid=scoped_devid)
                 if fam is not None:
                     raw_val = fam.get(addr_tuple[1])
                 display_val = self._apply_unit_display_value(raw_val, unit_meta=unit_meta, unit_code=raw_unit_code)
@@ -3112,7 +3154,7 @@ class ParamResolver:
             )
 
         if mapping is not None:
-            composed = self.compose_mapping_register_value(self._store, mapping)
+            composed = self.compose_mapping_register_value(self._store, mapping, devid=scoped_devid)
             if composed is not None:
                 display_val = self._apply_unit_display_value(composed, unit_meta=unit_meta, unit_code=raw_unit_code)
                 if isinstance(display_val, str):
@@ -3132,7 +3174,7 @@ class ParamResolver:
 
         val = None
         if addr_tuple is not None:
-            fam = self._store.get_family(addr_tuple[0], addr_tuple[2])
+            fam = self._store.get_family(addr_tuple[0], addr_tuple[2], devid=scoped_devid)
             if fam is not None:
                 val = fam.get(addr_tuple[1])
 
@@ -3151,9 +3193,9 @@ class ParamResolver:
             unit=unit,
         )
 
-    async def get_value(self, symbol: str) -> Any:
+    async def get_value(self, symbol: str, *, devid: str | None = None) -> Any:
         """Convenience wrapper returning only the resolved display value."""
-        return (await self.resolve_value(symbol)).value
+        return (await self.resolve_value(symbol, devid=devid)).value
 
     async def describe(
         self,
@@ -3161,9 +3203,11 @@ class ParamResolver:
         idx: int,
         *,
         param_symbol: str | None = None,
+        devid: str | None = None,
     ) -> tuple[str | None, str | dict[str, str] | None, Any]:
         """Describe a parameter by its (pool, idx) address, optionally with known symbol."""
-        fam = self._store.get_family(pool, idx)
+        scoped_devid = self._normalize_resolve_devid(devid)
+        fam = self._store.get_family(pool, idx, devid=scoped_devid)
         if fam is None:
             return None, None, None
         label = await self.resolve_label(param_symbol) if param_symbol else None
@@ -3174,8 +3218,9 @@ class ParamResolver:
                 unit = await self.resolve_unit(mapping.units)
         return label, unit, fam.value
 
-    async def describe_symbol(self, symbol: str) -> dict[str, Any]:
+    async def describe_symbol(self, symbol: str, *, devid: str | None = None) -> dict[str, Any]:
         """Describe a parameter by its symbolic name (e.g. PARAM_0 / STATUS_P5_0)."""
+        scoped_devid = self._normalize_resolve_devid(devid)
         mapping = await self.get_param_mapping(symbol)
         mapping_name_key: str | None = None
         if mapping is not None and isinstance(mapping.raw, Mapping):
@@ -3207,7 +3252,7 @@ class ParamResolver:
             mapping_unit = await self.resolve_unit(mapping.units)
         if addr:
             pool, chan, idx = addr
-            fam = self._store.get_family(pool, idx)
+            fam = self._store.get_family(pool, idx, devid=scoped_devid)
             if fam:
                 unit = await self.resolve_unit(fam.unit_code)
                 value = fam.value
@@ -3249,9 +3294,9 @@ class ParamResolver:
                 "raw": mapping.raw,
             }
 
-            computed_value = self._evaluator.evaluate(mapping.raw)
+            computed_value = self._evaluator.evaluate(mapping.raw, devid=scoped_devid)
             if computed_value is None and isinstance(mapping.paths, dict) and mapping.paths:
-                computed_value = self._evaluator.evaluate({"paths": mapping.paths})
+                computed_value = self._evaluator.evaluate({"paths": mapping.paths}, devid=scoped_devid)
 
             if computed_value is not None:
                 raw_unit_code_for_labels: Any = unit_code
@@ -3330,11 +3375,17 @@ class ParamResolver:
             "value_slots": value_slots,
         }
 
-    async def describe_symbols(self, symbols: Iterable[str]) -> dict[str, dict[str, Any]]:
+    async def describe_symbols(
+        self,
+        symbols: Iterable[str],
+        *,
+        devid: str | None = None,
+    ) -> dict[str, dict[str, Any]]:
         """Describe multiple symbols with shared bulk-prefetched mapping cache.
 
         Args:
             symbols: Iterable of symbolic names.
+            devid: Optional module id forwarded to each :meth:`describe_symbol` (#502).
 
         Returns:
             Mapping from symbol to the same payload returned by :meth:`describe_symbol`.
@@ -3344,7 +3395,7 @@ class ParamResolver:
 
         out: dict[str, dict[str, Any]] = {}
         for sym in uniq_symbols:
-            out[sym] = await self.describe_symbol(sym)
+            out[sym] = await self.describe_symbol(sym, devid=devid)
         return out
 
     async def merge_assets_with_permissions(
@@ -3353,10 +3404,11 @@ class ParamResolver:
         device_menu: int = 0,
         *,
         devices: Sequence[DeviceMenuRef] | None = None,
+        devid: str | None = None,
     ) -> dict[str, dict[str, Any]]:
         """Merge menu-visible symbols with mappings and live values for a permission set."""
         symbols = await self._assets.list_symbols_for_permissions(device_menu, permissions, devices=devices)
-        return await self.describe_symbols(sorted(symbols))
+        return await self.describe_symbols(sorted(symbols), devid=devid)
 
     async def discover_status_bar_parameter_tokens(self) -> set[str]:
         """Return SPA footer status-bar parameter tokens from the asset catalog."""

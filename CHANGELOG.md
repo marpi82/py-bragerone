@@ -7,6 +7,14 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Fixed
+
+- ``ParamResolver.resolve_value`` / ``get_value`` / ``describe*`` /
+  ``compose_mapping_register_value`` accept optional ``devid`` and scope store
+  reads (plus computed STATUS evaluation) per module so multi-controller setups
+  with overlapping addresses no longer mix values; empty / whitespace ``devid``
+  is treated as unscoped (#502).
+
 ## [2026.11.2rc2] - 2026-11-19
 
 ### Changed
