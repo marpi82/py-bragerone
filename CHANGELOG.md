@@ -7,6 +7,13 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+### Changed
+
+- Speed up the pure catalog JS parser (shared index parse context, lazy /
+  needle-first bindings, parser micro-opts) so HA bootstrap cases beat the
+  former tree-sitter timings while staying wheel-pure / musl-aarch64 friendly
+  (#506).
+
 ## [2026.11.2rc1] - 2026-11-12
 
 ### Changed

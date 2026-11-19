@@ -15,7 +15,7 @@ import asyncio
 import logging
 import re
 import time
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -130,49 +130,110 @@ def _parse_destructure_params(params_src: str) -> list[tuple[str, str, Any]]:
     return specs
 
 
-def _eval_factory_body(body_src: str, local_bindings: dict[str, Any]) -> Any:
-    """Evaluate a factory arrow body to an object using the pure parser."""
+@dataclass(frozen=True, slots=True)
+class _FactoryBodyPlan:
+    """Cached layout of a factory statement/expression body (reused across calls)."""
+
+    kind: str  # "expr" | "block"
+    expr_src: str
+    declarators: tuple[tuple[str, str], ...]
+    return_src: str | None
+
+
+_FACTORY_BODY_PLANS: dict[str, _FactoryBodyPlan] = {}
+
+
+def _factory_body_plan(body_src: str) -> _FactoryBodyPlan:
+    """Return a cached structural plan for *body_src*."""
+    cached = _FACTORY_BODY_PLANS.get(body_src)
+    if cached is not None:
+        return cached
     stripped = body_src.strip()
     if stripped.startswith("(") and stripped.endswith(")"):
         stripped = stripped[1:-1].strip()
     if stripped.startswith("{") and "return" not in stripped and "const" not in stripped:
-        return _Parser(stripped, bindings=local_bindings).parse_value()
+        plan = _FactoryBodyPlan(kind="expr", expr_src=stripped, declarators=(), return_src=None)
+    else:
+        inner = stripped[1:-1] if stripped.startswith("{") and stripped.endswith("}") else stripped
+        declarators: list[tuple[str, str]] = []
+        for _kind, start, end in _scan_top_level_declarations(inner):
+            decl = inner[start:end]
+            body = re.sub(r"^(?:const|let|var)\s+", "", decl.strip().rstrip(";"), count=1)
+            for declarator in _split_top_level_declarators(body):
+                match = re.match(r"^([A-Za-z_$][\w$]*)\s*=\s*", declarator)
+                if match is None:
+                    continue
+                declarators.append((match.group(1), declarator[match.end() :]))
+        ret = re.search(r"\breturn\b", inner)
+        return_src = inner[ret.end() :] if ret is not None else None
+        plan = _FactoryBodyPlan(
+            kind="block",
+            expr_src="",
+            declarators=tuple(declarators),
+            return_src=return_src,
+        )
+    if len(_FACTORY_BODY_PLANS) > 512:
+        _FACTORY_BODY_PLANS.clear()
+    _FACTORY_BODY_PLANS[body_src] = plan
+    return plan
+
+
+def _eval_factory_body(body_src: str, local_bindings: dict[str, Any]) -> Any:
+    """Evaluate a factory arrow body to an object using the pure parser."""
+    plan = _factory_body_plan(body_src)
+    if plan.kind == "expr":
+        return _Parser(plan.expr_src, bindings=local_bindings).parse_value()
 
     # Statement block: ``{ const x = {...}; return x; }``
-    inner = stripped[1:-1] if stripped.startswith("{") and stripped.endswith("}") else stripped
-    block_bindings = dict(local_bindings)
-    for _kind, start, end in _scan_top_level_declarations(inner):
-        decl = inner[start:end]
-        body = re.sub(r"^(?:const|let|var)\s+", "", decl.strip().rstrip(";"), count=1)
-        for declarator in _split_top_level_declarators(body):
-            match = re.match(r"^([A-Za-z_$][\w$]*)\s*=\s*", declarator)
-            if match is None:
-                continue
-            name = match.group(1)
-            value_src = declarator[match.end() :]
-            try:
-                block_bindings[name] = _Parser(value_src, bindings=block_bindings).parse_value()
-            except Exception:
-                LOG.debug("Pure factory body binding failed for %s", name, exc_info=True)
-                continue
-    ret = re.search(r"\breturn\b", inner)
-    if ret is not None:
-        return _Parser(inner[ret.end() :], bindings=block_bindings).parse_value()
-    return None
+    # Preserve parent lookups (lazy bindings / overlays) while allowing local const writes.
+    block_bindings: dict[str, Any] = _BindingsOverlay(local_bindings)
+    for name, value_src in plan.declarators:
+        try:
+            block_bindings[name] = _Parser(value_src, bindings=block_bindings).parse_value()
+        except Exception:
+            LOG.debug("Pure factory body binding failed for %s", name, exc_info=True)
+            continue
+    if plan.return_src is None:
+        return None
+    # Common SPA shape: ``const o = {…}; return o;`` — avoid re-parsing the identifier.
+    ret_name = plan.return_src.strip().rstrip(";").strip()
+    if dict.__contains__(block_bindings, ret_name):
+        return dict.__getitem__(block_bindings, ret_name)
+    return _Parser(plan.return_src, bindings=block_bindings).parse_value()
 
 
-def make_object_factory(params_src: str, body_src: str, bindings: dict[str, Any] | None) -> Any:
+class _BindingsOverlay(dict[str, Any]):
+    """Local binding layer that reads through to a parent mapping without copying it."""
+
+    __slots__ = ("_parent",)
+
+    def __init__(self, parent: Mapping[str, Any]) -> None:
+        """Initialize an empty overlay in front of *parent*."""
+        super().__init__()
+        self._parent = parent
+
+    def __missing__(self, key: str) -> Any:
+        parent = self._parent
+        if key in parent:
+            return parent[key]
+        raise KeyError(key)
+
+    def __contains__(self, key: object) -> bool:
+        return dict.__contains__(self, key) or key in self._parent
+
+
+def make_object_factory(params_src: str, body_src: str, bindings: Mapping[str, Any] | None) -> Any:
     """Build a Python callable for ``({…}) => { const o={…}; return o; }`` factories."""
     if not _body_builds_object_factory(body_src):
         return f"{params_src}=>{body_src.strip()}"
     specs = _parse_destructure_params(params_src)
-    base = dict(bindings or {})
+    base: Mapping[str, Any] = bindings if bindings is not None else {}
     # Bare identifier params (``x=>…`` / ``(_0x…)=>…``) bind the whole call argument.
     # Object-destructure params (``({id:e, number:n})=>…``) bind from a mapping argument.
     destructured = "{" in params_src
 
     def _factory(arg: Any) -> Any:
-        local = dict(base)
+        local: dict[str, Any] = _BindingsOverlay(base)
         if not destructured and len(specs) == 1:
             _src_key, local_name, default = specs[0]
             local[local_name] = default if arg is None and default is not None else arg
@@ -379,12 +440,23 @@ _MAX_PARSE_DEPTH = 250
 class _Parser:
     """Recursive-descent parser over a single JS source string."""
 
-    def __init__(self, source: str, *, bindings: dict[str, Any] | None = None) -> None:
-        """Initialize parser state."""
+    def __init__(
+        self,
+        source: str,
+        *,
+        bindings: Mapping[str, Any] | None = None,
+        start: int = 0,
+        end: int | None = None,
+    ) -> None:
+        """Initialize parser state.
+
+        *bindings* is shared (not copied) so lazy binding maps and factory overlays
+        keep working. *start*/*end* bound the parse window without slicing the source.
+        """
         self.source = source
-        self.i = 0
-        self.n = len(source)
-        self.bindings = dict(bindings or {})
+        self.i = start
+        self.n = len(source) if end is None else end
+        self.bindings: Mapping[str, Any] = bindings if bindings is not None else {}
         self._depth = 0
 
     def _peek(self) -> str:
@@ -396,23 +468,28 @@ class _Parser:
         return self.source[start : self.i]
 
     def _skip_ws_and_comments(self) -> None:
-        while self.i < self.n:
-            ch = self.source[self.i]
-            if ch.isspace():
-                self.i += 1
+        # Minified bundles almost never have whitespace; cheap early-out.
+        i = self.i
+        n = self.n
+        source = self.source
+        while i < n:
+            ch = source[i]
+            if ch == " " or ch == "\n" or ch == "\t" or ch == "\r":
+                i += 1
                 continue
-            if ch == "/" and self.i + 1 < self.n:
-                nxt = self.source[self.i + 1]
+            if ch == "/" and i + 1 < n:
+                nxt = source[i + 1]
                 if nxt == "/":
-                    self.i += 2
-                    while self.i < self.n and self.source[self.i] not in "\r\n":
-                        self.i += 1
+                    i += 2
+                    while i < n and source[i] not in "\r\n":
+                        i += 1
                     continue
                 if nxt == "*":
-                    end = self.source.find("*/", self.i + 2)
-                    self.i = self.n if end < 0 else end + 2
+                    end = source.find("*/", i + 2)
+                    i = n if end < 0 else end + 2
                     continue
             break
+        self.i = i
 
     def _match(self, text: str) -> bool:
         self._skip_ws_and_comments()
@@ -468,6 +545,16 @@ class _Parser:
         self._depth += 1
         try:
             try:
+                # Hot path: catalog values are usually unary/postfix only (literals,
+                # objects, ``![]``, factory calls). Skip the binary-op ladder unless an
+                # operator actually follows.
+                start = self.i
+                value = self._parse_unary()
+                self._skip_ws_and_comments()
+                ch = self._peek()
+                if not ch or ch in ",;})]:" or (ch == "?" and self.source.startswith("?.", self.i)):
+                    return value
+                self.i = start
                 return self._parse_conditional()
             except RecursionError:
                 # Match catalog semantics: degrade nested subtrees instead of crashing.
@@ -1188,9 +1275,15 @@ def _split_top_level_declarators(body: str) -> list[str]:
     return parts
 
 
-def collect_bindings(source: str) -> dict[str, Any]:
-    """Collect ``const``/``let``/``var`` bindings from a module, left-to-right."""
-    bindings: dict[str, Any] = {}
+_IN_PROGRESS = object()
+_TOKEN_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]+$")
+_DEFAULT_TRANSLATION_RE = re.compile(r"defaultTranslation")
+_PARAMISH_ASSIGN_RE = re.compile(r"=\s*\{")
+
+
+def _binding_value_sources(source: str) -> list[tuple[str, str]]:
+    """Return ``(name, value_src)`` pairs for top-level ``const``/``let``/``var`` declarators."""
+    items: list[tuple[str, str]] = []
     for _kind, start, end in _scan_top_level_declarations(source):
         decl = source[start:end]
         body = re.sub(r"^(?:const|let|var)\s+", "", decl.strip().rstrip(";"), count=1)
@@ -1198,19 +1291,280 @@ def collect_bindings(source: str) -> dict[str, Any]:
             match = re.match(r"^([A-Za-z_$][\w$]*)\s*=\s*", declarator)
             if match is None:
                 continue
-            name = match.group(1)
-            value_src = declarator[match.end() :]
-            parser = _Parser(value_src, bindings=bindings)
-            try:
-                value = parser.parse_value()
-            except Exception:
-                LOG.debug("Pure binding parse failed for %s", name, exc_info=True)
+            items.append((match.group(1), declarator[match.end() :]))
+    return items
+
+
+class _LazyBindings(MutableMapping[str, Any]):
+    """Materialize top-level bindings on demand instead of evaluating the whole module."""
+
+    __slots__ = ("_cache", "_src")
+
+    def __init__(self, items: list[tuple[str, str]]) -> None:
+        """Build a lazy map from ``(name, value_src)`` pairs (last declarator wins)."""
+        self._src: dict[str, str] = {}
+        for name, value_src in items:
+            self._src[name] = value_src
+        self._cache: dict[str, Any] = {}
+
+    def __getitem__(self, key: str) -> Any:
+        if key in self._cache:
+            cached = self._cache[key]
+            if cached is _IN_PROGRESS:
+                raise KeyError(key)
+            return cached
+        if key not in self._src:
+            raise KeyError(key)
+        return self._materialize(key)
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self._cache[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        self._cache.pop(key, None)
+        del self._src[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._src)
+
+    def __len__(self) -> int:
+        return len(self._src)
+
+    def __contains__(self, key: object) -> bool:
+        return isinstance(key, str) and key in self._src
+
+    def _materialize(self, name: str) -> Any:
+        cached = self._cache.get(name, _IN_PROGRESS)
+        if name in self._cache and cached is not _IN_PROGRESS:
+            return cached
+        if name in self._cache and cached is _IN_PROGRESS:
+            raise KeyError(name)
+        self._cache[name] = _IN_PROGRESS
+        value_src = self._src[name]
+        try:
+            value = _Parser(value_src, bindings=self).parse_value()
+        except Exception:
+            LOG.debug("Pure binding parse failed for %s", name, exc_info=True)
+            value = None
+        self._cache[name] = value
+        return value
+
+    def materialize_all(self) -> dict[str, Any]:
+        """Force every binding (API compatibility for ``collect_bindings``)."""
+        return {name: self[name] for name in self._src}
+
+
+@dataclass(slots=True)
+class _ModuleParseContext:
+    """Shared decode/bindings state for one JS module (typically the index bundle)."""
+
+    source: str
+    code: bytes
+    _lazy: _LazyBindings | None = None
+    _object_spans: list[tuple[int, int]] | None = None
+    _root_object: Any = _IN_PROGRESS
+    _language_object: Any = _IN_PROGRESS
+    _assignment_objects: list[dict[str, Any]] | None = None
+    _token_raw_maps: dict[str, dict[str, Any]] | None = None
+
+    @classmethod
+    def from_bytes(cls, code: bytes) -> _ModuleParseContext:
+        """Decode *code* once; binding/object scans stay lazy until first use."""
+        source = code.decode("utf-8", errors="replace")
+        return cls(source=source, code=code)
+
+    @property
+    def lazy(self) -> _LazyBindings:
+        """Return (and cache) on-demand top-level bindings for this module."""
+        cached = self._lazy
+        if cached is not None:
+            return cached
+        built = _LazyBindings(_binding_value_sources(self.source))
+        self._lazy = built
+        return built
+
+    def object_spans(self) -> list[tuple[int, int]]:
+        """Return brace-matched object spans for needle-first lookups."""
+        cached = self._object_spans
+        if cached is not None:
+            return cached
+        spans = _iter_object_spans(self.source)
+        self._object_spans = spans
+        return spans
+
+
+def _iter_object_spans(source: str, *, limit: int | None = None) -> list[tuple[int, int]]:
+    """Return ``(start, end)`` spans for every brace-matched ``{…}`` in *source*.
+
+    When *limit* is set, stop after passing it once the brace stack is empty so
+    needle-first callers near the start of a large index avoid a full-file pass.
+    """
+    spans: list[tuple[int, int]] = []
+    stack: list[int] = []
+    i = 0
+    hard_n = len(source)
+    stop_after = hard_n if limit is None else min(hard_n, max(limit, 0))
+    while i < hard_n:
+        if limit is not None and i >= stop_after and not stack:
+            break
+        ch = source[i]
+        if ch in "\"'`":
+            quote = ch
+            i += 1
+            while i < hard_n:
+                if source[i] == "\\":
+                    i += 2
+                    continue
+                if source[i] == quote:
+                    i += 1
+                    break
+                i += 1
+            continue
+        if ch == "/" and i + 1 < hard_n:
+            nxt = source[i + 1]
+            if nxt == "/":
+                i += 2
+                while i < hard_n and source[i] not in "\r\n":
+                    i += 1
                 continue
-            bindings[name] = value
-    return bindings
+            if nxt == "*":
+                end = source.find("*/", i + 2)
+                i = hard_n if end < 0 else end + 2
+                continue
+        if ch == "{":
+            stack.append(i)
+            i += 1
+            continue
+        if ch == "}" and stack:
+            start = stack.pop()
+            spans.append((start, i + 1))
+            i += 1
+            continue
+        i += 1
+    return spans
 
 
-def _largest_object_literal(source: str, bindings: dict[str, Any]) -> Any | None:
+def _tightest_object_span(spans: Sequence[tuple[int, int]], pos: int) -> tuple[int, int] | None:
+    """Return the smallest object span that contains *pos*."""
+    best: tuple[int, int] | None = None
+    best_size = -1
+    for start, end in spans:
+        if start <= pos < end:
+            size = end - start
+            if best is None or size < best_size:
+                best = (start, end)
+                best_size = size
+    return best
+
+
+def _ingest_token_maps(out: dict[str, dict[str, Any]], candidate: Mapping[str, Any]) -> None:
+    """Copy TOKEN→object entries from *candidate* into *out*."""
+    for key_text, value in candidate.items():
+        if not isinstance(key_text, str) or not _TOKEN_NAME_RE.match(key_text):
+            continue
+        if isinstance(value, dict):
+            out[key_text] = value
+        elif isinstance(value, Mapping):
+            out[key_text] = dict(value)
+
+
+# Bindings may appear as ``var x=…, BasicParameters={…}`` (comma declarators) or as
+# bare ``},basicParameterBuilder_P6=…`` assignments inside factory clusters.
+_TOKEN_MAP_BINDING_RE = re.compile(
+    r"\b(?P<name>basicParameterBuilder_\w+|BasicParameters|IconsList|ParameterStatus|"
+    r"ModuleCommands|ParameterCustomComponent|InterpolationMode|CustomUnit|Permissions)\s*="
+)
+
+
+def _extract_binding_value_at(source: str, value_start: int) -> str:
+    """Return the RHS source for a binding that starts at *value_start* (top-level)."""
+    i = value_start
+    n = len(source)
+    depth_brace = depth_paren = depth_bracket = 0
+    while i < n:
+        ch = source[i]
+        if ch in "\"'`":
+            quote = ch
+            i += 1
+            while i < n:
+                if source[i] == "\\":
+                    i += 2
+                    continue
+                if source[i] == quote:
+                    i += 1
+                    break
+                i += 1
+            continue
+        if ch == "{":
+            depth_brace += 1
+        elif ch == "}":
+            depth_brace = max(0, depth_brace - 1)
+        elif ch == "(":
+            depth_paren += 1
+        elif ch == ")":
+            depth_paren = max(0, depth_paren - 1)
+        elif ch == "[":
+            depth_bracket += 1
+        elif ch == "]":
+            depth_bracket = max(0, depth_bracket - 1)
+        elif depth_brace == depth_paren == depth_bracket == 0 and ch in ";,":
+            # Comma terminates a declarator in ``var a=1, b={…}, c=2``.
+            return source[value_start:i]
+        i += 1
+    return source[value_start:]
+
+
+def _token_map_binding_items(source: str) -> list[tuple[str, str]]:
+    """Collect only bindings needed to evaluate BasicParameters (skip huge tables)."""
+    items: list[tuple[str, str]] = []
+    for match in _TOKEN_MAP_BINDING_RE.finditer(source):
+        name = match.group("name")
+        value_src = _extract_binding_value_at(source, match.end())
+        items.append((name, value_src))
+    return items
+
+
+def _parse_index_token_raw_maps_ctx(ctx: _ModuleParseContext) -> dict[str, dict[str, Any]]:
+    """Collect PARAM_*/STATUS_* maps from a shared module context (selective)."""
+    cached = ctx._token_raw_maps
+    if cached is not None:
+        return cached
+    out: dict[str, dict[str, Any]] = {}
+    # Prefer a narrow binding set so we never split huge unrelated declarators
+    # (``routes$2``, vite maps, …) just to reach BasicParameters.
+    narrow = _LazyBindings(_token_map_binding_items(ctx.source))
+    for name in ("BasicParameters",):
+        if name not in narrow:
+            continue
+        try:
+            value = narrow[name]
+        except Exception:
+            LOG.debug("Pure token-map binding failed for %s", name, exc_info=True)
+            continue
+        if isinstance(value, Mapping):
+            _ingest_token_maps(out, value)
+    if len(out) < 10:
+        # Fallback: broader assignment scan + export/root object.
+        for candidate in _iter_top_level_object_assignments_ctx(ctx):
+            _ingest_token_maps(out, candidate)
+        try:
+            root = extract_root_object(ctx.code)
+        except Exception:
+            root = None
+        if isinstance(root, Mapping):
+            if any(isinstance(k, str) and _TOKEN_NAME_RE.match(k) for k in root):
+                ctx._root_object = root
+            _ingest_token_maps(out, root)
+    ctx._token_raw_maps = out
+    return out
+
+
+def collect_bindings(source: str) -> dict[str, Any]:
+    """Collect ``const``/``let``/``var`` bindings from a module, left-to-right."""
+    return _LazyBindings(_binding_value_sources(source)).materialize_all()
+
+
+def _largest_object_literal(source: str, bindings: Mapping[str, Any]) -> Any | None:
     """Return the largest successfully parsed object literal in *source*."""
     best: Any | None = None
     best_size = -1
@@ -1220,17 +1574,18 @@ def _largest_object_literal(source: str, bindings: dict[str, Any]) -> Any | None
         if source[i] != "{":
             i += 1
             continue
-        parser = _Parser(source[i:], bindings=bindings)
+        parser = _Parser(source, bindings=bindings, start=i)
         try:
             value = parser._parse_object()
         except Exception:
             i += 1
             continue
-        consumed = parser.i
+        consumed = parser.i - i
         if isinstance(value, dict) and consumed > best_size:
             best = value
             best_size = consumed
-        i += 1
+        # Jump past this object so nested ``{`` are not re-parsed (outermost wins).
+        i = max(i + 1, parser.i)
     return best
 
 
@@ -1326,17 +1681,47 @@ def parse_i18n_module(code: bytes) -> dict[str, Any]:
         return {}
 
 
+def _is_language_config_obj(obj: Mapping[str, Any]) -> bool:
+    """Return whether *obj* looks like the SPA language config object."""
+    translations = obj.get("translations")
+    default = obj.get("defaultTranslation")
+    return is_translations_array_value(translations) and isinstance(default, str)
+
+
 def iter_top_level_object_assignments(code: bytes) -> list[dict[str, Any]]:
     """Parse object literals assigned in top-level variable declarations."""
-    source = code.decode("utf-8", errors="replace")
-    bindings = collect_bindings(source)
+    ctx = _ModuleParseContext.from_bytes(code)
+    return _iter_top_level_object_assignments_ctx(ctx)
+
+
+def _iter_top_level_object_assignments_ctx(ctx: _ModuleParseContext) -> list[dict[str, Any]]:
+    """Parse object-assignment candidates using a shared module context."""
+    cached = ctx._assignment_objects
+    if cached is not None:
+        return cached
     objects: list[dict[str, Any]] = []
-    for value in bindings.values():
+    lazy = ctx.lazy
+    # Only materialize bindings whose RHS is an object literal (skip huge factories/routes).
+    for name in list(lazy):
+        value_src = lazy._src[name].lstrip()
+        if not value_src.startswith("{"):
+            continue
+        if len(value_src) > 100_000 and "PARAM_" not in value_src[:1000] and value_src.count("options") < 40:
+            continue
+        try:
+            value = lazy[name]
+        except Exception:
+            LOG.debug("Pure object-assignment binding failed for %s", name, exc_info=True)
+            continue
         if isinstance(value, dict):
             objects.append(value)
     # Also scan assignment-like ``name={…}`` without keyword (obfuscated defines).
-    for match in re.finditer(r"=\s*\{", source):
-        parser = _Parser(source[match.start() + 1 :], bindings=bindings)
+    source = ctx.source
+    for match in _PARAMISH_ASSIGN_RE.finditer(source):
+        window = source[match.start() : match.start() + 160]
+        if not any(hint in window for hint in ("PARAM_", "STATUS_", "defaultTranslation", "translations", "options")):
+            continue
+        parser = _Parser(source, bindings=lazy, start=match.start() + 1)
         try:
             value = parser.parse_value()
         except Exception:
@@ -1344,6 +1729,7 @@ def iter_top_level_object_assignments(code: bytes) -> list[dict[str, Any]]:
             continue
         if isinstance(value, dict):
             objects.append(value)
+    ctx._assignment_objects = objects
     return objects
 
 
@@ -1358,19 +1744,40 @@ def is_translations_array_value(value: Any) -> bool:
     return valid >= len(objects) * 0.7
 
 
-def find_language_config_object(code: bytes) -> dict[str, Any] | None:
+def find_language_config_object(code: bytes, *, ctx: _ModuleParseContext | None = None) -> dict[str, Any] | None:
     """Find ``{translations: [...], defaultTranslation: '...'}`` in index JS."""
-    source = code.decode("utf-8", errors="replace")
-    bindings = collect_bindings(source)
+    context = ctx if ctx is not None else _ModuleParseContext.from_bytes(code)
+    return _find_language_config_object_ctx(context)
 
-    def _is_language_config(obj: Mapping[str, Any]) -> bool:
-        translations = obj.get("translations")
-        default = obj.get("defaultTranslation")
-        return is_translations_array_value(translations) and isinstance(default, str)
+
+def _find_language_config_object_ctx(ctx: _ModuleParseContext) -> dict[str, Any] | None:
+    """Needle-first language-config lookup with shared context fallbacks."""
+    cached = ctx._language_object
+    if cached is not _IN_PROGRESS:
+        return cached if isinstance(cached, dict) else None
+
+    source = ctx.source
+    # Fast path: parse only the object that contains ``defaultTranslation``.
+    # No bindings required for the static language-config shape. Span scan is
+    # limited to just past the needle so large indexes stay cheap.
+    for match in _DEFAULT_TRANSLATION_RE.finditer(source):
+        spans = _iter_object_spans(source, limit=match.end() + 64)
+        span = _tightest_object_span(spans, match.start())
+        if span is None:
+            continue
+        start, end = span
+        parser = _Parser(source, bindings=None, start=start, end=end)
+        try:
+            value = parser._parse_object()
+        except Exception:
+            LOG.debug("Pure language-config needle parse failed", exc_info=True)
+            continue
+        if isinstance(value, dict) and _is_language_config_obj(value):
+            ctx._language_object = value
+            return value
 
     # Prefer objects from bindings / assignments.
-    candidates = iter_top_level_object_assignments(code)
-    # Deep scan: walk nested dicts in candidates.
+    candidates = _iter_top_level_object_assignments_ctx(ctx)
     stack: list[Any] = list(candidates)
     seen: set[int] = set()
     while stack:
@@ -1379,7 +1786,8 @@ def find_language_config_object(code: bytes) -> dict[str, Any] | None:
             continue
         seen.add(id(cur))
         if isinstance(cur, dict):
-            if _is_language_config(cur):
+            if _is_language_config_obj(cur):
+                ctx._language_object = cur
                 return dict(cur)
             stack.extend(cur.values())
         elif isinstance(cur, list):
@@ -1393,17 +1801,17 @@ def find_language_config_object(code: bytes) -> dict[str, Any] | None:
         if source[i] != "{":
             i += 1
             continue
-        parser = _Parser(source[i:], bindings=bindings)
+        parser = _Parser(source, bindings=ctx.lazy, start=i)
         try:
             value = parser._parse_object()
         except Exception:
             i += 1
             continue
-        if isinstance(value, dict) and _is_language_config(value):
-            best = value
-            # Keep searching for no reason to prefer first; first structural hit matches TS DFS.
-            return best
-        i += 1
+        if isinstance(value, dict) and _is_language_config_obj(value):
+            ctx._language_object = value
+            return value
+        i = max(i + 1, parser.i)
+    ctx._language_object = best
     return best
 
 
@@ -1746,6 +2154,8 @@ class LiveAssetsCatalog:
         self._index_token_raw_maps: dict[str, dict[str, Any]] | None = None
         self._index_token_raw_maps_sig: tuple[int, bytes, bytes] | None = None
         self._index_token_raw_maps_lock = asyncio.Lock()
+        self._module_parse_ctx: _ModuleParseContext | None = None
+        self._module_parse_ctx_sig: tuple[int, bytes, bytes] | None = None
 
         # New menu management system
         self._menu_manager = MenuManager(self._log)
@@ -2870,7 +3280,29 @@ class LiveAssetsCatalog:
             token_raw_maps = await self._get_index_token_raw_maps(self._idx.index_bytes)
             chunk_token_maps: list[tuple[int, dict[str, dict[str, Any]]]] = []
             chunk_root_objects: list[tuple[int, dict[str, Any]]] = []
-            full_root_obj = await asyncio.to_thread(self._extract_root_object_from_js, self._idx.index_bytes)
+
+            # Prefer export-default root (same as extract_root_object); reuse context lazy bindings.
+            def _full_root() -> dict[str, Any] | None:
+                ctx = self._module_context_for(self._idx.index_bytes or b"")
+                if (
+                    ctx._root_object is not _IN_PROGRESS
+                    and isinstance(ctx._root_object, dict)
+                    # Only reuse a previously computed export/root object when it looks like a
+                    # token map (has PARAM_/STATUS_ keys). Largest-object fallbacks can be
+                    # factory bodies without those keys.
+                    and any(isinstance(k, str) and _TOKEN_NAME_RE.match(k) for k in ctx._root_object)
+                ):
+                    return ctx._root_object
+                try:
+                    root = extract_root_object(ctx.code)
+                except Exception:
+                    root = None
+                if isinstance(root, dict):
+                    ctx._root_object = root
+                    return root
+                return None
+
+            full_root_obj = await asyncio.to_thread(_full_root)
             standard_token_name_re = re.compile(r"^[A-Z][A-Z0-9_]+$")
 
             for idx, (start, end) in enumerate(self._idx.inline_param_candidates):
@@ -2994,6 +3426,19 @@ class LiveAssetsCatalog:
         tail = code[-64:] if len(code) > 64 else code
         return (len(code), head, tail)
 
+    def _module_context_for(self, code: bytes) -> _ModuleParseContext:
+        """Return a shared parse context for *code*, cached on the catalog instance."""
+        sig = self._index_signature(code)
+        cached = self._module_parse_ctx
+        if cached is not None and self._module_parse_ctx_sig == sig and cached.code is code:
+            return cached
+        if cached is not None and self._module_parse_ctx_sig == sig and cached.code == code:
+            return cached
+        ctx = _ModuleParseContext.from_bytes(code)
+        self._module_parse_ctx = ctx
+        self._module_parse_ctx_sig = sig
+        return ctx
+
     async def _get_index_token_raw_maps(self, code: bytes) -> dict[str, dict[str, Any]]:
         sig = self._index_signature(code)
 
@@ -3015,25 +3460,11 @@ class LiveAssetsCatalog:
 
     def _parse_index_token_raw_maps(self, code: bytes) -> dict[str, dict[str, Any]]:
         """Collect PARAM_*/STATUS_* object maps embedded in index JS (pure path)."""
-        out: dict[str, dict[str, Any]] = {}
-        token_name_re = re.compile(r"^[A-Z][A-Z0-9_]+$")
-
-        def _ingest(candidate: Mapping[str, Any]) -> None:
-            for key_text, value in candidate.items():
-                if not isinstance(key_text, str) or not token_name_re.match(key_text):
-                    continue
-                if isinstance(value, Mapping):
-                    out[key_text] = dict(value)
-
         try:
-            for candidate in iter_top_level_object_assignments(code):
-                _ingest(candidate)
-            root = extract_root_object(code)
-            if isinstance(root, Mapping):
-                _ingest(root)
+            ctx = self._module_context_for(code)
+            return _parse_index_token_raw_maps_ctx(ctx)
         except Exception:
-            return out
-        return out
+            return {}
 
     def _parse_param_map_from_index_token(self, code: bytes, key: str, origin: str) -> ParamMap | None:
         """Parse a single token mapping from index JS by key lookup (pure path)."""
@@ -3462,7 +3893,25 @@ class LiveAssetsCatalog:
     def _parse_units_descriptor_table_from_index(self, code: bytes) -> dict[str, dict[str, Any]]:
         """Parse the units descriptor table using the pure-Python JS value extractor."""
         try:
-            candidates = iter_top_level_object_assignments(code)
+            ctx = self._module_context_for(code)
+            # Prefer object bindings that look like the units table before a full scan.
+            candidates: list[dict[str, Any]] = []
+            for name in list(ctx.lazy):
+                value_src = ctx.lazy._src[name].lstrip()
+                if not value_src.startswith("{"):
+                    continue
+                if value_src.count("options") < 10 and "units." not in value_src[:4000]:
+                    continue
+                try:
+                    value = ctx.lazy[name]
+                except Exception:
+                    LOG.debug("Pure units binding failed for %s", name, exc_info=True)
+                    continue
+                if isinstance(value, dict):
+                    candidates.append(value)
+            if not candidates:
+                # Public helper (tests may monkeypatch this symbol).
+                candidates = iter_top_level_object_assignments(code)
         except Exception as exc:
             self._log.debug("Failed to parse units descriptor table from index: %s", exc)
             return {}
@@ -3517,8 +3966,9 @@ class LiveAssetsCatalog:
             self._units_descriptor_table = {}
             self._custom_unit_codes = {}
             return self._units_descriptor_table
-        self._units_descriptor_table = self._parse_units_descriptor_table_from_index(self._idx.index_bytes)
-        self._custom_unit_codes = self._parse_custom_unit_codes_from_index(self._idx.index_bytes)
+        index_bytes = self._idx.index_bytes
+        self._units_descriptor_table = self._parse_units_descriptor_table_from_index(index_bytes)
+        self._custom_unit_codes = self._parse_custom_unit_codes_from_index(index_bytes)
         return self._units_descriptor_table
 
     def canonical_unit_code(self, unit_code: Any) -> str | None:
@@ -3647,7 +4097,8 @@ class LiveAssetsCatalog:
 
     def _parse_language_config_from_js(self, js_bytes: bytes) -> TranslationConfig:
         """Parse TranslationConfig from index JS bytes (pure-Python path)."""
-        parsed = find_language_config_object(js_bytes)
+        # Public helper (tests may monkeypatch ``find_language_config_object``).
+        parsed = find_language_config_object(js_bytes, ctx=self._module_context_for(js_bytes))
         if parsed is None:
             raise ValueError("Language config object not found")
         if not isinstance(parsed, dict):
