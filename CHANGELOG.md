@@ -7,6 +7,72 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.11.2rc4] - 2026-11-20
+
+### Fixed
+
+- Treat SPA REST ``deviceMenu`` routes with opaque UUID ``name`` values as
+  all-panels module-item candidates when they declare parameter tokens. The
+  default ``0/0/0.0.0`` menu names additional-device thermostat leaves this way
+  (``devices/thermostats/valve/*/config``); rejecting them dropped room
+  thermostat status symbols such as ``PARAM_100`` / ``STATUS_P5_30`` from HA
+  bootstrap even though the menu fetch and permission filter succeeded.
+  Panel titles resolve ``menu.FOO`` via the flat ``menu``-pack overlay (and
+  fall back to the key leaf instead of the UUID when i18n is missing) (#505).
+- Resolve SPA REST menu ``extends`` refs of the form ``static:path`` /
+  ``static/path`` through ``AssetIndex.static_route_map`` (e.g.
+  ``static:versions`` on the default ``0/0/0.0.0`` menu). Previously only
+  numeric ``N:variant`` refs were accepted, so the versions layer was skipped
+  with ``Extended menu ref 'static:versions' not found in index`` (#514 /
+  follow-up to #505).
+
+## [2026.11.2rc3] - 2026-11-19
+
+### Fixed
+
+- ``ParamResolver.resolve_value`` / ``get_value`` / ``describe*`` /
+  ``compose_mapping_register_value`` accept optional ``devid`` and scope store
+  reads (plus computed STATUS evaluation) per module so multi-controller setups
+  with overlapping addresses no longer mix values; empty / whitespace ``devid``
+  is treated as unscoped (#502).
+- Multi-module follow-up (#511): ``parameter_visibility_diagnostics`` /
+  ``build_panel_groups`` / ``panel_route_diagnostics`` accept ``devid``;
+  ``storeGetter`` templates inject ``devid`` per call without mutating shared
+  runtime context; when the store has multiple scoped modules and callers omit
+  both ``flat_values`` and ``devid``, refuse merged ``flatten()`` (warn +
+  empty/unprimed overlay; the warning is logged once per resolver, then DEBUG).
+  ``ParamStore.scoped_devids()`` / ``has_multiple_scoped_modules()`` expose the
+  scoped-module set.
+
+## [2026.11.2rc2] - 2026-11-19
+
+### Changed
+
+- Speed up the pure catalog JS parser (shared index parse context, lazy /
+  needle-first bindings, parser micro-opts) so HA bootstrap cases beat the
+  former tree-sitter timings while staying wheel-pure / musl-aarch64 friendly
+  (#506).
+
+### Fixed
+
+- ParamMap path ``number`` folds ``Math.floor`` / ``Math['floor']`` on numeric
+  args, resolves module ``_0x…`` consts through narrow BasicParameters
+  bindings, and applies factory-body ``const {number:n}=arg`` destructuring so
+  register selectors stay ints for address-selector resolve (#497).
+- Units-table selective pass falls back when option-rich decoy consts would
+  hide a bare `name={…}` units table (#506).
+- Factory body plans treat `return` / `const` as keywords (not substrings), and
+  binding overlays honor `.get()` for parent keys (#506).
+
+## [2026.11.2rc1] - 2026-11-12
+
+### Changed
+
+- Fold the pure JavaScript catalog parser into ``catalog`` and drop
+  ``catalog_js_pure``, the optional ``[parsers]`` extra, and all
+  tree-sitter oracle code paths (#498 / Refs #489). Catalog parsing is
+  pure-Python only (no native wheels).
+
 ### Added
 
 - SPA home ``deviceTile`` discovery: ``AssetIndex.tile_map`` plus
@@ -20,6 +86,15 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- Pure catalog parser: evaluate ``typeof`` and bitwise ``>>`` / ``<<`` /
+  ``>>>`` / ``&`` / ``|`` / ``^`` so SPA ``valueCallback`` arrows
+  (``typeof x==='number'?…filter(bit=>x>>bit&1)``) fully consume inside
+  ``basicParameterBuilder_P*({number:0x1,…})`` calls instead of truncating
+  and overwriting ``number`` with the string ``"number"`` (#495).
+- Pure catalog path: optional-chain ``_0x?.['minValue']||[{…}]`` fills
+  ParamMap min/max paths; ``array['map']`` menu write-lists and template
+  ``${ident}`` factories match the former tree-sitter behavior (#329 / #492 /
+  #493).
 - DATE_TIME: treat factory-default wire ``0001011200`` /
   ``2000-01-01 12:00`` as that wall-clock datetime (not ``None`` / empty), so
   HA can create ``datetime`` entities and clear by writing the same moment
@@ -632,7 +707,12 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.11.1rc1...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc4...HEAD
+[2026.11.2rc4]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc3...2026.11.2rc4
+[2026.11.2rc3]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc2...2026.11.2rc3
+[2026.11.2rc2]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc1...2026.11.2rc2
+[2026.11.2rc1]: https://github.com/marpi82/py-bragerone/compare/2026.11.2a1...2026.11.2rc1
+[2026.11.2a1]: https://github.com/marpi82/py-bragerone/compare/2026.11.1rc1...2026.11.2a1
 [2026.11.1rc1]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc5...2026.11.1rc1
 [2026.10.2rc5]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc4...2026.10.2rc5
 [2026.10.2rc4]: https://github.com/marpi82/py-bragerone/compare/2026.10.2rc3...2026.10.2rc4

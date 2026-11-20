@@ -185,6 +185,15 @@ class ParamStore(BaseModel):
                 return {}
             return self._flatten_bucket(bucket)
 
+    def scoped_devids(self) -> frozenset[str]:
+        """Return module ids that currently own scoped family buckets (#511)."""
+        with self._lock:
+            return frozenset(self._devid_families.keys())
+
+    def has_multiple_scoped_modules(self) -> bool:
+        """True when more than one ``devid`` bucket is present (#511)."""
+        return len(self.scoped_devids()) > 1
+
     def flatten(self) -> dict[str, Any]:
         """Flattened view of all parameters as ``{ 'P4.v1': value, ... }``.
 

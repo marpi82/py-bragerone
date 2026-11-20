@@ -557,7 +557,7 @@ async def test_resolve_value_compose_miss_falls_through_to_direct(
     )
     resolver = _resolver(mapping, store)
 
-    def _compose_none(_cls: type[Any], _store: ParamStore, _mapping: Any) -> None:
+    def _compose_none(_cls: type[Any], /, _store: ParamStore, _mapping: Any, **_kwargs: Any) -> None:
         return None
 
     monkeypatch.setattr(ParamResolver, "compose_mapping_register_value", classmethod(_compose_none))
