@@ -34,7 +34,8 @@ During config flow, use asset-aware mode to discover entities.
       device_menu = int(first.deviceMenu)
       permissions = list(getattr(first, "permissions", []) or [])
       # Optional: pass Module.devices so catalog tries manuf/dev/fw REST menus
-      # before the SPA default 0/0/0.0.0 and honours extends Vite chunks (#438).
+      # before the SPA default 0/0/0.0.0 and honours extends Vite chunks
+      # (``N:variant`` and ``static:path`` / ``static_route_map``, #438 / #514).
       from pybragerone.models.api.modules import device_menu_refs_from_module
       devices = device_menu_refs_from_module(getattr(first, "devices", None))
       symbols = await resolver.merge_assets_with_permissions(

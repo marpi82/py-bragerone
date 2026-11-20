@@ -17,6 +17,12 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
   bootstrap even though the menu fetch and permission filter succeeded.
   Panel titles resolve ``menu.FOO`` via the flat ``menu``-pack overlay (and
   fall back to the key leaf instead of the UUID when i18n is missing) (#505).
+- Resolve SPA REST menu ``extends`` refs of the form ``static:path`` /
+  ``static/path`` through ``AssetIndex.static_route_map`` (e.g.
+  ``static:versions`` on the default ``0/0/0.0.0`` menu). Previously only
+  numeric ``N:variant`` refs were accepted, so the versions layer was skipped
+  with ``Extended menu ref 'static:versions' not found in index`` (#514 /
+  follow-up to #505).
 
 ## [2026.11.2rc3] - 2026-11-19
 
