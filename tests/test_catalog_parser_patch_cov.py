@@ -455,8 +455,13 @@ def test_module_context_and_token_map_helpers(monkeypatch: pytest.MonkeyPatch) -
     """Shared context, span helpers, and selective token-map paths."""
     code = b"{a:1}; const BasicParameters={'PARAM_1':{group:'P1',number:1}};"
     ctx = catalog_mod._ModuleParseContext.from_bytes(code)
-    assert ctx.lazy is ctx.lazy  # cached property
-    assert ctx.object_spans() is ctx.object_spans()
+    # Bind once each so identity checks are not identical-expression comparisons (CodeQL py/comparison-of-identical-expressions).
+    lazy_a = ctx.lazy
+    lazy_b = ctx.lazy
+    assert lazy_a is lazy_b  # cached_property
+    spans_a = ctx.object_spans()
+    spans_b = ctx.object_spans()
+    assert spans_a is spans_b
     spans = catalog_mod._iter_object_spans(ctx.source, limit=8)
     assert spans
     assert catalog_mod._tightest_object_span(ctx.object_spans(), ctx.source.find("{")) is not None
