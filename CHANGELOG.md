@@ -7,6 +7,8 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.11.2rc4] - 2026-11-20
+
 ### Fixed
 
 - Treat SPA REST ``deviceMenu`` routes with opaque UUID ``name`` values as
@@ -705,7 +707,8 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc3...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc4...HEAD
+[2026.11.2rc4]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc3...2026.11.2rc4
 [2026.11.2rc3]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc2...2026.11.2rc3
 [2026.11.2rc2]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc1...2026.11.2rc2
 [2026.11.2rc1]: https://github.com/marpi82/py-bragerone/compare/2026.11.2a1...2026.11.2rc1
