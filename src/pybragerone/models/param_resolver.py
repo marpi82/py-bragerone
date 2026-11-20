@@ -44,6 +44,12 @@ _UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
 # Bare menu-title i18n namespaces (``MAINMENU_*``, ``MENUSERWIS_*``, ``MENU_*``, …).
 # Require the known prefixes so abbreviations like ``DHW`` do not trigger asset fetches.
 _MENU_TITLE_TOKEN_RE = re.compile(r"^(?:MAINMENU|MENUSERWIS|MENUPALNIKA|MENU)_[A-Z0-9_]+$")
+# SPA REST ``deviceMenu`` routes (additional devices / thermostats) often use opaque
+# UUID ``name`` values instead of ``modules.menu.*`` / ``MAINMENU_*`` tokens (#505).
+_ROUTE_UUID_NAME_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 # Unresolved SPA i18n key paths (``dashboard.navbar.settings``). Literals with spaces
 # or digit-only segments (``Pompa c.o.``, ``v1.2``) must not match (#485).
 _DOTTED_I18N_KEY_RE = re.compile(r"^[A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)+$")
@@ -746,6 +752,23 @@ class ParamResolver:
             return token
         return None
 
+    @staticmethod
+    def _menu_pack_flat_key(raw: str) -> str | None:
+        """Return the flat ``menu``-namespace key for ``menu.FOO`` display names.
+
+        ``_panel_title_i18n`` overlays the ``menu`` pack as flat keys on the routes
+        map (e.g. ``USTAWIENIA_TERMOSTATU``). REST deviceMenu leaves use that shape
+        with opaque UUID ``route.name`` values (#505); looking up only
+        ``MAINMENU_*``-shaped tokens left those titles unresolved.
+        """
+        token = raw.strip()
+        if not token.casefold().startswith("menu."):
+            return None
+        rest = token[5:].strip()
+        if not rest or "." in rest:
+            return None
+        return rest
+
     @classmethod
     def _route_title(cls, route: Any, *, routes_i18n: Mapping[str, Any] | None = None) -> str:
         meta = getattr(route, "meta", None)
@@ -757,7 +780,12 @@ class ParamResolver:
                 return translated
             bare = cls._bare_menu_title_token(raw)
             if bare is not None and bare != raw:
-                return cls._lookup_dotted_path(i18n, bare)
+                translated = cls._lookup_dotted_path(i18n, bare)
+                if translated is not None:
+                    return translated
+            menu_key = cls._menu_pack_flat_key(raw)
+            if menu_key is not None:
+                return cls._lookup_dotted_path(i18n, menu_key)
             return None
 
         if isinstance(dn, str) and dn.strip() and isinstance(routes_i18n, Mapping):
@@ -768,9 +796,9 @@ class ParamResolver:
                 if translated is not None:
                     return translated
             else:
-                # Bare tokens / ``menu.MAINMENU_*`` resolve via the flat overlay
-                # built by :meth:`_panel_title_i18n` (string-default namespaces
-                # and the ``menu`` pack), not via ``routes.*`` paths.
+                # Bare tokens / ``menu.*`` resolve via the flat overlay built by
+                # :meth:`_panel_title_i18n` (string-default namespaces and the
+                # ``menu`` pack), not via ``routes.*`` paths.
                 translated = _translate_candidate(dn_norm, routes_i18n)
                 if translated is not None:
                     return translated
@@ -794,6 +822,16 @@ class ParamResolver:
             # digit segments (``Pompa c.o.``, ``v1.2``) are kept as-is.
             if not _DOTTED_I18N_KEY_RE.fullmatch(dn_norm):
                 return dn_norm
+            # Opaque UUID ``route.name`` values are worse than the i18n key leaf
+            # (``menu.USTAWIENIA_TERMOSTATU`` / ``parameters.TERMOSTAT_ZAWORU_3``) (#505).
+            route_name = getattr(route, "name", None)
+            name_s = route_name.strip() if isinstance(route_name, str) else ""
+            if name_s and _ROUTE_UUID_NAME_RE.fullmatch(name_s) is not None:
+                menu_key = cls._menu_pack_flat_key(dn_norm)
+                if menu_key:
+                    return menu_key
+                # Dotted-key regex guarantees a non-empty final segment.
+                return dn_norm.rsplit(".", 1)[-1].strip() or dn_norm
         route_name = getattr(route, "name", None)
         if isinstance(route_name, str) and route_name.strip():
             bare = cls._bare_menu_title_token(route_name)
@@ -928,6 +966,12 @@ class ParamResolver:
         ``MENUSERWIS_*``, ``MENU_*``, …) — those must be included or HA bootstrap
         drops whole settings panels (boiler, ignition, valves, …).
 
+        SPA REST ``deviceMenu`` trees (e.g. default ``0/0/0.0.0``) additionally
+        emit opaque UUID ``name`` values for additional-device leaves such as
+        ``devices/thermostats/valve/3/config``. Those leaves still carry
+        ``meta.parameters`` / ``ParametersView``; reject only UUID shells that
+        declare no parameter tokens (#505).
+
         ``routes.*`` names are navigation chrome, not module-item panels.
         """
         raw_name = getattr(route, "name", None)
@@ -941,11 +985,14 @@ class ParamResolver:
             return True
 
         name_cf = name.casefold()
-        if ".menu." not in name_cf:
-            return False
-        if name_cf.startswith("routes."):
-            return False
-        return name_cf.startswith("modules.menu.") or name_cf.startswith("companies.modules.menu.")
+        if ".menu." in name_cf:
+            if name_cf.startswith("routes."):
+                return False
+            return name_cf.startswith("modules.menu.") or name_cf.startswith("companies.modules.menu.")
+
+        if _ROUTE_UUID_NAME_RE.fullmatch(name) is not None:
+            return bool(cls._collect_route_symbols(route))
+        return False
 
     @classmethod
     def _route_name_is_excluded_installer_menu(cls, name: str) -> bool:
