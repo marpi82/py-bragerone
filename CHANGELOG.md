@@ -9,6 +9,14 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ### Fixed
 
+- Treat SPA REST ``deviceMenu`` routes with opaque UUID ``name`` values as
+  all-panels module-item candidates when they declare parameter tokens. The
+  default ``0/0/0.0.0`` menu names additional-device thermostat leaves this way
+  (``devices/thermostats/valve/*/config``); rejecting them dropped room
+  thermostat status symbols such as ``PARAM_100`` / ``STATUS_P5_30`` from HA
+  bootstrap even though the menu fetch and permission filter succeeded.
+  Panel titles resolve ``menu.FOO`` via the flat ``menu``-pack overlay (and
+  fall back to the key leaf instead of the UUID when i18n is missing) (#505).
 - Resolve SPA REST menu ``extends`` refs of the form ``static:path`` /
   ``static/path`` through ``AssetIndex.static_route_map`` (e.g.
   ``static:versions`` on the default ``0/0/0.0.0`` menu). Previously only

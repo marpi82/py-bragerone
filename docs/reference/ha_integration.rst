@@ -316,6 +316,11 @@ previous bootstrap version leaves stale descriptor caches unchanged. Upgrading
 ``build_panel_groups(..., web_ui_only=False)`` keeps permission/module-item based
 grouping and does **not** apply SPA ``displayDropdown`` gates; pass
 ``web_ui_only=True`` (and primed ``flat_values``) for everyday web-UI parity.
+Module-item classification accepts ``modules.menu.*`` /
+``companies.modules.menu.*`` names, bare ``MAINMENU_*`` / ``MENUSERWIS_*`` /
+``MENU_*`` title tokens, and opaque UUID ``name`` leaves that still declare
+``meta.parameters`` (SPA REST additional-device / thermostat config routes;
+``routes.*`` chrome stays excluded) (#505).
 
 ``build_panel_groups`` and ``panel_route_diagnostics`` accept
 ``use_store_flat_values=False`` to skip primed-store overlays and treat dropdown
