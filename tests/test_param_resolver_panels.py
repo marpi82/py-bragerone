@@ -135,6 +135,114 @@ def test_build_panel_groups_all_panels_includes_mainmenu_parameter_routes() -> N
     assert by_name["routes.modules.menu.modules"]["reason"] == "rejected:not-module-item"
 
 
+def test_build_panel_groups_all_panels_includes_uuid_device_thermostat_routes() -> None:
+    """REST deviceMenu UUID leaves with parameters become all-panels candidates (#505).
+
+    Default SPA menu ``manufacturers/0/devices/0/menu/0.0.0`` names thermostat
+    config routes with opaque UUIDs. Treating only ``modules.menu.*`` /
+    ``MAINMENU_*`` as module-item dropped ``PARAM_100`` / ``STATUS_P5_30``.
+    """
+    valve3_name = "e290236b-5d37-441c-803c-52d1a55cb441"
+    devices_shell = "9b44cdba-0faa-4533-b9b0-a713b6576877"
+    menu = MenuResult.model_validate(
+        {
+            "routes": [
+                {
+                    "path": "devices",
+                    "name": devices_shell,
+                    "meta": {
+                        "displayName": "module.devices",
+                        "displayDropdown": True,
+                        "permissionModule": "DISPLAY_PARAMETER_LEVEL_1",
+                    },
+                    "children": [
+                        {
+                            "path": "thermostats",
+                            "name": "99f16a36-926c-4b7d-bc74-d81de683309e",
+                            "meta": {
+                                "displayName": "routes.modules.menu.thermostats",
+                                "displayDropdown": True,
+                                "permissionModule": "DISPLAY_PARAMETER_LEVEL_1",
+                            },
+                            "children": [
+                                {
+                                    "path": "valve/3",
+                                    "name": "3432a9b5-ce4e-43f4-9bed-3164e45e5999",
+                                    "meta": {
+                                        "displayName": "parameters.TERMOSTAT_ZAWORU_3",
+                                        "displayDropdown": True,
+                                        "permissionModule": "DISPLAY_PARAMETER_LEVEL_1",
+                                    },
+                                    "children": [
+                                        {
+                                            "path": "config",
+                                            "name": valve3_name,
+                                            "component": "ParametersView",
+                                            "meta": {
+                                                "displayName": "menu.USTAWIENIA_TERMOSTATU",
+                                                "permissionModule": "DISPLAY_PARAMETER_LEVEL_1",
+                                                "parameters": {
+                                                    "read": [
+                                                        {
+                                                            "permissionModule": "DISPLAY_PARAMETER_LEVEL_1",
+                                                            "parameter": "PARAM_P17_6",
+                                                        }
+                                                    ],
+                                                    "status": [
+                                                        {
+                                                            "permissionModule": "DISPLAY_PARAMETER_LEVEL_1",
+                                                            "parameter": "PARAM_100",
+                                                        },
+                                                        {
+                                                            "permissionModule": "DISPLAY_PARAMETER_LEVEL_1",
+                                                            "parameter": "STATUS_P5_30",
+                                                        },
+                                                    ],
+                                                },
+                                            },
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "path": "boiler",
+                    "name": "MAINMENU_USTAWIENIA_KOTLA",
+                    "meta": {
+                        "displayName": "Boiler",
+                        "parameters": {"read": [{"parameter": "E(A.READ,'PARAM_0')"}]},
+                    },
+                },
+            ]
+        }
+    )
+
+    groups = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True)
+    assert "PARAM_0" in {symbol for symbols in groups.values() for symbol in symbols}
+    thermostat_symbols = {symbol for symbols in groups.values() for symbol in symbols}
+    assert {"PARAM_100", "STATUS_P5_30", "PARAM_P17_6"} <= thermostat_symbols
+    # Without i18n, prefer displayName key leaves over opaque UUID route names (#505).
+    assert any("USTAWIENIA_TERMOSTATU" in title for title in groups)
+    assert all(valve3_name not in title and devices_shell not in title for title in groups)
+
+    routes_i18n = {
+        "modules": {"menu": {"thermostats": "Thermostats"}},
+        "USTAWIENIA_TERMOSTATU": "Thermostat settings",
+        "parameters": {"TERMOSTAT_ZAWORU_3": "Valve 3 thermostat"},
+        "module": {"devices": "Additional devices"},
+    }
+    titled = ParamResolver.build_panel_groups_from_menu(menu, all_panels=True, routes_i18n=routes_i18n)
+    assert any(title == "Additional devices/Thermostats/Valve 3 thermostat/Thermostat settings" for title in titled)
+
+    diagnostics = ParamResolver.panel_route_diagnostics_from_menu(menu, all_panels=True)
+    by_name = {row["name"]: row for row in diagnostics}
+    assert by_name[valve3_name]["accepted"] is True
+    assert by_name[devices_shell]["reason"] == "rejected:not-module-item"
+    assert by_name[valve3_name]["title"] == "USTAWIENIA_TERMOSTATU"
+
+
 def test_build_panel_groups_web_ui_only_excludes_installer_and_hidden_side_menu() -> None:
     """web_ui_only keeps MENUSERWIS_* everyday panels; drops installer + hidden side menu."""
     menu = MenuResult.model_validate(

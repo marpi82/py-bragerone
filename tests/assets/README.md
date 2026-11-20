@@ -6,7 +6,7 @@ Drop minified files saved from the web app, then:
 uv run --group test pytest tests/test_catalog_captured_assets.py -q
 ```
 
-This is **tree-sitter parsing of local bytes**. No login, no Socket.IO, no
+This is **pure-Python catalog parsing of local bytes**. No login, no Socket.IO, no
 `get_module_menu()`, no permission filtering, no i18n label resolve.
 
 `*.js` under these directories is **gitignored**. Keep dumps on the machine that

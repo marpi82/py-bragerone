@@ -58,7 +58,7 @@ body:
         - WebSocket / realtime (`RealtimeManager`)
         - Gateway (`BragerOneGateway`)
         - EventBus / ParamStore
-        - LiveAssetsCatalog / tree-sitter parsers
+        - LiveAssetsCatalog / catalog JS parser
         - ParamResolver / menus / i18n
         - CLI
         - Docs

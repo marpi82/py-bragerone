@@ -1,0 +1,65 @@
+{
+  "asset": "tests/assets/index/index-1TABHy-0.js",
+  "asset_bytes": 1308198,
+  "loops": 5,
+  "sides": {
+    "main_tree_sitter": {
+      "means_ms": {
+        "language_config_from_index": 112.69,
+        "units_descriptor_table_from_index": 419.531,
+        "index_token_raw_maps": 503.504,
+        "index_bootstrap_bundle": 1057.166
+      },
+      "golden": {
+        "language_default": "pl",
+        "units_keys": 144,
+        "token_keys": 1297,
+        "param_keys": 1269,
+        "status_keys": 20,
+        "pool_like": [
+          "P10",
+          "P12",
+          "P4",
+          "P6"
+        ]
+      }
+    },
+    "release_2026_11_2": {
+      "means_ms": {
+        "language_config_from_index": 4040.747,
+        "units_descriptor_table_from_index": 2442.624,
+        "index_token_raw_maps": 6159.969,
+        "index_bootstrap_bundle": 12898.998
+      },
+      "golden": {
+        "language_default": "pl",
+        "units_keys": 144,
+        "token_keys": 1297,
+        "param_keys": 1269,
+        "status_keys": 20,
+        "pool_like": [
+          "P10",
+          "P12",
+          "P4",
+          "P6"
+        ]
+      }
+    },
+    "catalog_perf": {
+      "means_ms": {
+        "language_config_from_index": 20.735,
+        "units_descriptor_table_from_index": 253.346,
+        "index_token_raw_maps": 461.98,
+        "index_bootstrap_bundle": 769.522
+      },
+      "golden": {
+        "language_default": "pl",
+        "units_keys": 144,
+        "token_keys": 1293,
+        "param_keys": 1269,
+        "status_keys": 20,
+        "pool_like": []
+      }
+    }
+  }
+}

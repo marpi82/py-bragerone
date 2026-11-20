@@ -1,0 +1,52 @@
+{
+  "baseline": "origin/release/2026.11.2 @ afe935d",
+  "tree_sitter_ref": "origin/main @ /tmp/py-bragerone-main",
+  "asset": "tests/assets/index/index-1TABHy-0.js",
+  "accuracy": {
+    "language_default": "pl",
+    "units_keys": 144,
+    "param_tokens": 1269,
+    "status_tokens": 20,
+    "param_status_match_vs_release": true,
+    "intentional_token_map_delta": {
+      "dropped_non_param_pool_keys": [
+        "P4",
+        "P6",
+        "P10",
+        "P12"
+      ],
+      "reason": "Selective BasicParameters materialization no longer ingests pool/unit shorthand tables (keys u0..) that matched TOKEN_NAME_RE on the eager release path."
+    }
+  },
+  "speed": {
+    "language_config_from_index": {
+      "pure_mean_ms": 21.962,
+      "ts_mean_ms": 118.606,
+      "speedup": 5.401,
+      "pure_faster": true
+    },
+    "units_descriptor_table_from_index": {
+      "pure_mean_ms": 248.422,
+      "ts_mean_ms": 462.201,
+      "speedup": 1.861,
+      "pure_faster": true
+    },
+    "index_token_raw_maps": {
+      "pure_mean_ms": 482.156,
+      "ts_mean_ms": 570.776,
+      "speedup": 1.184,
+      "pure_faster": true
+    },
+    "index_bootstrap_bundle": {
+      "pure_mean_ms": 743.114,
+      "ts_mean_ms": 1120.705,
+      "speedup": 1.508,
+      "pure_faster": true
+    }
+  },
+  "acceptance": {
+    "pure_faster_all_bootstrap_cases": true,
+    "patch_cov": "100%",
+    "captured_assets": "passed"
+  }
+}

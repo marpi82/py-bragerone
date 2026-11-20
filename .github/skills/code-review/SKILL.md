@@ -48,13 +48,13 @@ Simulate concrete register and payload values; do not stop at "looks plausible".
 - [ ] **Dependencies**: `mapping.inputs` / refresh tracking includes object-valued `value` and `command` slots, not only lists; computed cards stay on the dependency-driven refresh path.
 - [ ] **Catalog merge/priority**: overlapping routes merge parameter sections (do not replace wholesale); layers apply in ascending priority; standalone device menus must not `break` collection of later devices; device refs prefer REST construction over stale JS shortcuts.
 - [ ] **Hot-path cost**: avoid full `ParamStore.flatten()` on every ordinary resolve; snapshot only for `raw.any` (or read referenced addresses).
-- [ ] **Tree-sitter / regex**: null-check nodes before `.text`/children; watch ReDoS in new patterns; heavy sync parse work stays off the event loop (`asyncio.to_thread`).
+- [ ] **Catalog parse / regex**: watch ReDoS in new patterns; heavy sync parse work stays off the event loop (`asyncio.to_thread`).
 
 ## 7. Tests
 
 - [ ] New behavior covered; HTTP mocked with pytest-httpx; suite passes offline.
 - [ ] Live-API tests marked `@pytest.mark.needs_internet`.
-- [ ] Parser changes (catalog/tree-sitter) include malformed-input fixtures.
+- [ ] Parser changes (catalog pure JS parser) include malformed-input fixtures.
 - [ ] Resolver/catalog fixes include **regression fixtures with concrete register/payload values** (counterexamples).
 - [ ] Project coverage floor (80%) and **100% patch** (`uv run --group dev --group test poe patch-cov`, branch coverage + codecov excludes; CLI omitted) are not weakened.
 
