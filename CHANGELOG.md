@@ -7,6 +7,37 @@ and this project uses [Calendar Versioning](https://calver.org/) (`YYYY.M.PATCH`
 
 ## [Unreleased]
 
+## [2026.11.2] - 2026-11-21
+
+Pure-Python catalog train from ``2026.11.2rc4`` promoted to stable (drop
+tree-sitter, catalog perf + leftover folds, multi-module ``devid`` scoping,
+UUID ``deviceMenu`` / ``static:`` menu extends).
+
+### Changed
+
+- Catalog parsing is pure-Python only: fold ``catalog_js_pure`` into
+  ``catalog``, drop the optional ``[parsers]`` extra and all tree-sitter
+  oracle paths (#498 / Refs #489). Parser micro-opts keep HA bootstrap cases
+  competitive without native wheels (#506).
+- SPA home ``deviceTile`` discovery and ``DATE_TIME`` (CustomUnit ``0x270f``)
+  wire codec land for HA datetime / dashboard-bound symbols (#477 / #478 /
+  #479).
+
+### Fixed
+
+- Multi-module store reads: optional ``devid`` on resolve/describe/compose /
+  panel/visibility helpers; ``storeGetter`` injects ``devid`` without mutating
+  shared context; refuse merged ``flatten()`` when scoped modules exist and
+  callers omit both ``flat_values`` and ``devid`` (#502 / #511).
+- ParamMap ``number``: ``Math.floor``, module register consts, factory-body
+  destructure; ``typeof`` / bitwise ops so ``valueCallback`` arrows do not
+  overwrite ``number`` with the string ``"number"`` (#495 / #497).
+- Opaque UUID ``deviceMenu`` leaves with parameters stay panel candidates;
+  ``static:path`` menu ``extends`` resolve via ``static_route_map`` (#505 /
+  #514).
+- Visibility / panel titles: ``storeGetter`` ENABLED, ``status.ENABLED``,
+  foreign i18n overlays, DATE_TIME factory-default wall-clock (#482–#487).
+
 ## [2026.11.2rc4] - 2026-11-20
 
 ### Fixed
@@ -707,7 +738,8 @@ scope documentation (#386 Phase A).
 
 See [GitHub Releases](https://github.com/marpi82/py-bragerone/releases) for older tags and artifacts.
 
-[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc4...HEAD
+[Unreleased]: https://github.com/marpi82/py-bragerone/compare/2026.11.2...HEAD
+[2026.11.2]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc4...2026.11.2
 [2026.11.2rc4]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc3...2026.11.2rc4
 [2026.11.2rc3]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc2...2026.11.2rc3
 [2026.11.2rc2]: https://github.com/marpi82/py-bragerone/compare/2026.11.2rc1...2026.11.2rc2
