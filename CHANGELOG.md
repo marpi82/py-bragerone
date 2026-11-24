@@ -106,6 +106,9 @@ UUID ``deviceMenu`` / ``static:`` menu extends).
 
 ### Added
 
+- Live compat smoke reports informational Catalog ParamMap quality
+  (described/mapped/resolved_ok/resolved_none over all index tokens) plus a
+  separate Device table for ``PYBO_MODULES`` hard-gate metrics (#518).
 - SPA home ``deviceTile`` discovery: ``AssetIndex.tile_map`` plus
   ``LiveAssetsCatalog.discover_device_tile_parameter_tokens`` /
   ``ParamResolver.discover_device_tile_parameter_tokens`` so dashboard-bound
