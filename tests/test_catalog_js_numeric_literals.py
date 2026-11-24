@@ -8,11 +8,10 @@ import pytest
 
 from pybragerone.api.client import BragerOneApiClient
 from pybragerone.models.catalog import (
-    _TS,
     LiveAssetsCatalog,
     _js_property_key,
-    _node_to_python,
     _parse_js_number,
+    parse_js_declaration,
 )
 
 
@@ -83,11 +82,7 @@ def test_js_property_key_matches_javascript_tostring(raw: str, expected: str) ->
 def test_node_to_python_resolves_hex_object_keys_and_values() -> None:
     """Obfuscated bundles index objects by hex literal; keys must land in decimal form."""
     js = b"const t={0x9:{'options':{0x0:'units.17.0'}},0xa:{'text':'units.10'},0x1f:0x2a};"
-    tree = _TS().parse(js)
-    value_node = tree.root_node.named_children[0].named_children[0].child_by_field_name("value")
-    assert value_node is not None
-
-    parsed = _node_to_python(js, value_node)
+    parsed = parse_js_declaration(js)
 
     assert set(parsed) == {"9", "10", "31"}
     assert parsed["9"] == {"options": {"0": "units.17.0"}}
@@ -98,11 +93,7 @@ def test_node_to_python_resolves_hex_object_keys_and_values() -> None:
 def test_node_to_python_parses_numeric_separators_in_values() -> None:
     """Separators are grouping only, so `1_0` is the number ten, not the text `1_0`."""
     js = b"const t={'a':1_0};"
-    tree = _TS().parse(js)
-    value_node = tree.root_node.named_children[0].named_children[0].child_by_field_name("value")
-    assert value_node is not None
-
-    assert _node_to_python(js, value_node) == {"a": 10}
+    assert parse_js_declaration(js) == {"a": 10}
 
 
 def test_units_descriptor_table_parses_hex_keyed_entries() -> None:
@@ -190,16 +181,9 @@ def test_is_unit_descriptor_entry_requires_known_keys() -> None:
     assert LiveAssetsCatalog._is_unit_descriptor_entry({"parse": "e=>e"}) is True
 
 
-def test_parse_units_table_returns_empty_on_tree_sitter_failure() -> None:
-    """Parse errors yield an empty table instead of raising."""
-    catalog = _catalog()
-
-    class _BoomParser:
-        def parse(self, _code: bytes) -> Any:
-            raise RuntimeError("boom")
-
-    catalog._ts = cast(Any, _BoomParser())
-    assert catalog._parse_units_descriptor_table_from_index(b"const x={};") == {}
+def test_parse_units_table_returns_empty_on_non_descriptor_object() -> None:
+    """Non-descriptor objects yield an empty table instead of raising."""
+    assert _catalog()._parse_units_descriptor_table_from_index(b"const x={};") == {}
 
 
 def test_parse_units_table_keeps_empty_when_keys_do_not_normalize(caplog: pytest.LogCaptureFixture) -> None:

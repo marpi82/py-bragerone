@@ -44,6 +44,12 @@ _UNIT66_SHIFT_TEN_RE = re.compile(r"\([^)]+-1\)\*10")
 # Bare menu-title i18n namespaces (``MAINMENU_*``, ``MENUSERWIS_*``, ``MENU_*``, …).
 # Require the known prefixes so abbreviations like ``DHW`` do not trigger asset fetches.
 _MENU_TITLE_TOKEN_RE = re.compile(r"^(?:MAINMENU|MENUSERWIS|MENUPALNIKA|MENU)_[A-Z0-9_]+$")
+# SPA REST ``deviceMenu`` routes (additional devices / thermostats) often use opaque
+# UUID ``name`` values instead of ``modules.menu.*`` / ``MAINMENU_*`` tokens (#505).
+_ROUTE_UUID_NAME_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 # Unresolved SPA i18n key paths (``dashboard.navbar.settings``). Literals with spaces
 # or digit-only segments (``Pompa c.o.``, ``v1.2``) must not match (#485).
 _DOTTED_I18N_KEY_RE = re.compile(r"^[A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)+$")
@@ -149,6 +155,14 @@ class AssetsProtocol(Protocol):
     ) -> set[str]:
         """Return SPA home-tile parameter tokens for the given module devices."""
         return set()
+
+
+def _normalize_devid(devid: str | None) -> str | None:
+    """Return a stripped non-empty devid, or ``None`` for unscoped (legacy merged) reads (#502)."""
+    if devid is None:
+        return None
+    text = str(devid).strip()
+    return text or None
 
 
 @dataclass
@@ -270,13 +284,27 @@ class ComputedValueEvaluator:
 
         return re.sub(r"\{([^}]+)\}", repl, template)
 
-    def _read_store_getter(self, getter: str) -> Any:
-        resolved = self._render_store_getter(getter, self._context)
+    def _effective_context(
+        self,
+        *,
+        devid: str | None = None,
+        context: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Build a per-call storeGetter context without mutating shared state (#511)."""
+        effective = dict(context) if context is not None else dict(self._context)
+        scoped = _normalize_devid(devid)
+        if scoped is not None:
+            effective["devid"] = scoped
+        return effective
+
+    def _read_store_getter(self, getter: str, *, context: Mapping[str, Any] | None = None) -> Any:
+        active = dict(context) if context is not None else self._context
+        resolved = self._render_store_getter(getter, active)
         parts = [part for part in resolved.split(".") if part]
         if not parts:
             return None
 
-        current: Any = self._context
+        current: Any = active
         for part in parts:
             if isinstance(current, Mapping):
                 if part in current:
@@ -347,14 +375,14 @@ class ComputedValueEvaluator:
 
         return False
 
-    def _read_address_value(self, address: str) -> Any:
+    def _read_address_value(self, address: str, *, devid: str | None = None) -> Any:
         try:
             pool, rest = address.split(".", 1)
             chan = rest[0]
             idx = int(rest[1:])
         except Exception:
             return None
-        fam = self._store.get_family(pool, idx)
+        fam = self._store.get_family(pool, idx, devid=_normalize_devid(devid))
         if fam is None:
             return None
         return fam.get(chan)
@@ -422,7 +450,13 @@ class ComputedValueEvaluator:
             s = s.split(".")[-1]
         return s
 
-    def _eval_condition_any(self, cond: dict[str, Any]) -> bool:
+    def _eval_condition_any(
+        self,
+        cond: dict[str, Any],
+        *,
+        devid: str | None = None,
+        context: Mapping[str, Any] | None = None,
+    ) -> bool:
         expected = cond.get("expected")
         op = self._operation_name(cond.get("operation"))
         values = cond.get("value")
@@ -432,7 +466,10 @@ class ComputedValueEvaluator:
         if isinstance(values, Mapping):
             getter = values.get("storeGetter")
             if isinstance(getter, str) and getter.strip():
-                actual = self._read_store_getter(getter)
+                actual = self._read_store_getter(
+                    getter,
+                    context=self._effective_context(devid=devid, context=context),
+                )
                 return self._compare_condition(op=op, actual=actual, expected=expected)
             return False
 
@@ -448,7 +485,7 @@ class ComputedValueEvaluator:
             if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
                 continue
             addr = f"{group}.{use[0]}{number}"
-            raw_val = self._read_address_value(addr)
+            raw_val = self._read_address_value(addr, devid=devid)
             if raw_val is None:
                 # SPA pump-diode guard: ``equalTo: null`` / ``void 0`` matches an
                 # absent register before numeric masks run (then: null → undefined).
@@ -467,7 +504,7 @@ class ComputedValueEvaluator:
 
         return False
 
-    def _resolve_rule_payload(self, payload: Any) -> str | None:
+    def _resolve_rule_payload(self, payload: Any, *, devid: str | None = None) -> str | None:
         """Normalize a matched ``then``/``else`` payload to a display token.
 
         STATUS diodes yield string/int labels. Writable cards such as
@@ -479,12 +516,12 @@ class ComputedValueEvaluator:
         """
         if isinstance(payload, dict):
             if "value" in payload:
-                return self._resolve_rule_payload(payload.get("value"))
+                return self._resolve_rule_payload(payload.get("value"), devid=devid)
             group = payload.get("group")
             number = payload.get("number")
             use = payload.get("use")
             if isinstance(group, str) and isinstance(number, int) and isinstance(use, str) and use:
-                return self._serialize_register_value(self._read_address_value(f"{group}.{use[0]}{number}"))
+                return self._serialize_register_value(self._read_address_value(f"{group}.{use[0]}{number}", devid=devid))
             return self._normalize_computed_value(payload)
 
         if isinstance(payload, list):
@@ -496,14 +533,14 @@ class ComputedValueEvaluator:
                 use = entry.get("use")
                 if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
                     continue
-                resolved = self._serialize_register_value(self._read_address_value(f"{group}.{use[0]}{number}"))
+                resolved = self._serialize_register_value(self._read_address_value(f"{group}.{use[0]}{number}", devid=devid))
                 if resolved is not None:
                     return resolved
             return None
 
         return self._normalize_computed_value(payload)
 
-    def _eval_any_rules(self, any_rules: list[Any]) -> str | None:
+    def _eval_any_rules(self, any_rules: list[Any], *, devid: str | None = None) -> str | None:
         """Evaluate SPA ``if`` / ``elseif`` / ``else`` rule lists.
 
         Matches the STATUS / DEVICE_STATE card shape (e.g. pump diodes): walk
@@ -521,34 +558,43 @@ class ComputedValueEvaluator:
                 conds = rule.get("elseif")
             # Unmatched if/elseif may still carry an inline ``else`` (same shape
             # as ``_select_raw_any_branch``), so do not skip the rule early.
-            if isinstance(conds, list) and conds and all(isinstance(c, dict) and self._eval_condition_any(c) for c in conds):
+            if (
+                isinstance(conds, list)
+                and conds
+                and all(isinstance(c, dict) and self._eval_condition_any(c, devid=devid) for c in conds)
+            ):
                 then = rule.get("then")
                 if then is None and "then" in rule:
                     return None
-                return self._resolve_rule_payload(then)
+                return self._resolve_rule_payload(then, devid=devid)
             if else_value is None and "else" in rule:
                 else_value = rule.get("else")
         if else_value is None:
             return None
-        return self._resolve_rule_payload(else_value)
+        return self._resolve_rule_payload(else_value, devid=devid)
 
-    def evaluate(self, mapping_raw: Any) -> str | None:
-        """Evaluate computed value for mappings with a rule engine."""
+    def evaluate(self, mapping_raw: Any, *, devid: str | None = None) -> str | None:
+        """Evaluate computed value for mappings with a rule engine.
+
+        Pass ``devid`` so address reads stay scoped when multiple modules share
+        overlapping register addresses (#502).
+        """
         if not isinstance(mapping_raw, dict):
             return None
+        devid = _normalize_devid(devid)
         any_rules = mapping_raw.get("any")
         if isinstance(any_rules, list):
-            return self._eval_any_rules(any_rules)
+            return self._eval_any_rules(any_rules, devid=devid)
 
         value_rules = mapping_raw.get("value")
         if isinstance(value_rules, list):
-            return self._eval_any_rules(value_rules)
+            return self._eval_any_rules(value_rules, devid=devid)
 
         paths = mapping_raw.get("paths")
         if isinstance(paths, dict):
             value_rules = paths.get("value")
             if isinstance(value_rules, list):
-                return self._eval_any_rules(value_rules)
+                return self._eval_any_rules(value_rules, devid=devid)
 
         return None
 
@@ -575,6 +621,7 @@ class ParamResolver:
         self._lang = None if lang is None else str(lang).strip().lower()
         self._i18n = i18n or I18nResolver(self._assets, lang=self._lang)  # type: ignore[arg-type]
         self._evaluator = ComputedValueEvaluator(store)
+        self._warned_multi_module_overlay = False
 
         self._cache_mapping: dict[str, ParamMap | None] = {}
         self._cache_menu: dict[MenuCacheKey, MenuResult] = {}
@@ -705,6 +752,23 @@ class ParamResolver:
             return token
         return None
 
+    @staticmethod
+    def _menu_pack_flat_key(raw: str) -> str | None:
+        """Return the flat ``menu``-namespace key for ``menu.FOO`` display names.
+
+        ``_panel_title_i18n`` overlays the ``menu`` pack as flat keys on the routes
+        map (e.g. ``USTAWIENIA_TERMOSTATU``). REST deviceMenu leaves use that shape
+        with opaque UUID ``route.name`` values (#505); looking up only
+        ``MAINMENU_*``-shaped tokens left those titles unresolved.
+        """
+        token = raw.strip()
+        if not token.casefold().startswith("menu."):
+            return None
+        rest = token[5:].strip()
+        if not rest or "." in rest:
+            return None
+        return rest
+
     @classmethod
     def _route_title(cls, route: Any, *, routes_i18n: Mapping[str, Any] | None = None) -> str:
         meta = getattr(route, "meta", None)
@@ -716,7 +780,12 @@ class ParamResolver:
                 return translated
             bare = cls._bare_menu_title_token(raw)
             if bare is not None and bare != raw:
-                return cls._lookup_dotted_path(i18n, bare)
+                translated = cls._lookup_dotted_path(i18n, bare)
+                if translated is not None:
+                    return translated
+            menu_key = cls._menu_pack_flat_key(raw)
+            if menu_key is not None:
+                return cls._lookup_dotted_path(i18n, menu_key)
             return None
 
         if isinstance(dn, str) and dn.strip() and isinstance(routes_i18n, Mapping):
@@ -727,9 +796,9 @@ class ParamResolver:
                 if translated is not None:
                     return translated
             else:
-                # Bare tokens / ``menu.MAINMENU_*`` resolve via the flat overlay
-                # built by :meth:`_panel_title_i18n` (string-default namespaces
-                # and the ``menu`` pack), not via ``routes.*`` paths.
+                # Bare tokens / ``menu.*`` resolve via the flat overlay built by
+                # :meth:`_panel_title_i18n` (string-default namespaces and the
+                # ``menu`` pack), not via ``routes.*`` paths.
                 translated = _translate_candidate(dn_norm, routes_i18n)
                 if translated is not None:
                     return translated
@@ -753,6 +822,16 @@ class ParamResolver:
             # digit segments (``Pompa c.o.``, ``v1.2``) are kept as-is.
             if not _DOTTED_I18N_KEY_RE.fullmatch(dn_norm):
                 return dn_norm
+            # Opaque UUID ``route.name`` values are worse than the i18n key leaf
+            # (``menu.USTAWIENIA_TERMOSTATU`` / ``parameters.TERMOSTAT_ZAWORU_3``) (#505).
+            route_name = getattr(route, "name", None)
+            name_s = route_name.strip() if isinstance(route_name, str) else ""
+            if name_s and _ROUTE_UUID_NAME_RE.fullmatch(name_s) is not None:
+                menu_key = cls._menu_pack_flat_key(dn_norm)
+                if menu_key:
+                    return menu_key
+                # Dotted-key regex guarantees a non-empty final segment.
+                return dn_norm.rsplit(".", 1)[-1].strip() or dn_norm
         route_name = getattr(route, "name", None)
         if isinstance(route_name, str) and route_name.strip():
             bare = cls._bare_menu_title_token(route_name)
@@ -887,6 +966,12 @@ class ParamResolver:
         ``MENUSERWIS_*``, ``MENU_*``, …) — those must be included or HA bootstrap
         drops whole settings panels (boiler, ignition, valves, …).
 
+        SPA REST ``deviceMenu`` trees (e.g. default ``0/0/0.0.0``) additionally
+        emit opaque UUID ``name`` values for additional-device leaves such as
+        ``devices/thermostats/valve/3/config``. Those leaves still carry
+        ``meta.parameters`` / ``ParametersView``; reject only UUID shells that
+        declare no parameter tokens (#505).
+
         ``routes.*`` names are navigation chrome, not module-item panels.
         """
         raw_name = getattr(route, "name", None)
@@ -900,11 +985,14 @@ class ParamResolver:
             return True
 
         name_cf = name.casefold()
-        if ".menu." not in name_cf:
-            return False
-        if name_cf.startswith("routes."):
-            return False
-        return name_cf.startswith("modules.menu.") or name_cf.startswith("companies.modules.menu.")
+        if ".menu." in name_cf:
+            if name_cf.startswith("routes."):
+                return False
+            return name_cf.startswith("modules.menu.") or name_cf.startswith("companies.modules.menu.")
+
+        if _ROUTE_UUID_NAME_RE.fullmatch(name) is not None:
+            return bool(cls._collect_route_symbols(route))
+        return False
 
     @classmethod
     def _route_name_is_excluded_installer_menu(cls, name: str) -> bool:
@@ -1447,6 +1535,59 @@ class ParamResolver:
                 out[path_key] = set(tokens)
         return out
 
+    def _flat_values_for_store_overlay(
+        self,
+        *,
+        flat_values: Mapping[str, Any] | None,
+        use_store_flat_values: bool,
+        devid: str | None,
+        empty_means_unprimed: bool,
+    ) -> Mapping[str, Any] | None:
+        """Resolve the store overlay for panel/visibility helpers (#511).
+
+        Explicit ``flat_values`` always wins. When the store holds multiple scoped
+        modules and neither ``flat_values`` nor ``devid`` is provided, refuse the
+        merged last-write-wins ``flatten()`` view (log + safe empty/unprimed).
+        """
+        if flat_values is not None:
+            return flat_values
+        if not use_store_flat_values:
+            return None
+        scoped = self._normalize_resolve_devid(devid)
+        if scoped is not None:
+            flattened = self._store.flatten_for_devid(scoped)
+            if empty_means_unprimed:
+                return flattened if flattened else None
+            return flattened
+        if self._store.has_multiple_scoped_modules():
+            # Visibility runs once per symbol; warn once per resolver to avoid log floods.
+            log = LOG.debug if self._warned_multi_module_overlay else LOG.warning
+            self._warned_multi_module_overlay = True
+            log(
+                "Multi-module ParamStore overlay requested without flat_values/devid; "
+                "refusing merged flatten() (pass flatten_for_devid or devid=) (#511)"
+            )
+            return None if empty_means_unprimed else {}
+        flattened = self._store.flatten()
+        if empty_means_unprimed:
+            return flattened if flattened else None
+        return flattened
+
+    def _flat_values_for_visibility(
+        self,
+        *,
+        flat_values: Mapping[str, Any] | None,
+        devid: str | None,
+    ) -> Mapping[str, Any]:
+        """Store snapshot for parameter visibility; never merge multi-module LWW (#511)."""
+        overlay = self._flat_values_for_store_overlay(
+            flat_values=flat_values,
+            use_store_flat_values=True,
+            devid=devid,
+            empty_means_unprimed=False,
+        )
+        return overlay if overlay is not None else {}
+
     async def build_panel_groups(
         self,
         *,
@@ -1457,20 +1598,24 @@ class ParamResolver:
         flat_values: Mapping[str, Any] | None = None,
         use_store_flat_values: bool = True,
         devices: Sequence[DeviceMenuRef] | None = None,
+        devid: str | None = None,
     ) -> dict[str, list[str]]:
-        """Build panel groups from module menu for selected permissions."""
+        """Build panel groups from module menu for selected permissions.
+
+        Pass ``devid`` (or an explicit ``flat_values`` snapshot) in multi-module
+        setups so ``displayDropdown`` gates do not read merged LWW addresses (#511).
+        """
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions, devices=devices)
         routes_i18n = await self._panel_title_i18n(menu)
         static_route_symbols = await self._static_route_symbols_for_menu(menu)
-        if flat_values is not None:
-            values: Mapping[str, Any] | None = flat_values
-        elif not use_store_flat_values:
-            values = None
-        else:
-            # Empty implicit store ≡ unprimed (``None``), so displayDropdown stays
-            # ``visible:dropdown-unprimed``. Callers pass ``{}`` explicitly for missing-key hide.
-            flattened = self._store.flatten()
-            values = flattened if flattened else None
+        # Empty implicit store ≡ unprimed (``None``), so displayDropdown stays
+        # ``visible:dropdown-unprimed``. Callers pass ``{}`` explicitly for missing-key hide.
+        values = self._flat_values_for_store_overlay(
+            flat_values=flat_values,
+            use_store_flat_values=use_store_flat_values,
+            devid=devid,
+            empty_means_unprimed=True,
+        )
         return self.build_panel_groups_from_menu(
             menu,
             all_panels=all_panels,
@@ -1490,18 +1635,21 @@ class ParamResolver:
         flat_values: Mapping[str, Any] | None = None,
         use_store_flat_values: bool = True,
         devices: Sequence[DeviceMenuRef] | None = None,
+        devid: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Return route diagnostics for panel inclusion filtering."""
+        """Return route diagnostics for panel inclusion filtering.
+
+        See :meth:`build_panel_groups` for multi-module ``devid`` / ``flat_values`` rules (#511).
+        """
         menu = await self.get_module_menu(device_menu=device_menu, permissions=permissions, devices=devices)
         routes_i18n = await self._panel_title_i18n(menu)
         static_route_symbols = await self._static_route_symbols_for_menu(menu)
-        if flat_values is not None:
-            values: Mapping[str, Any] | None = flat_values
-        elif not use_store_flat_values:
-            values = None
-        else:
-            flattened = self._store.flatten()
-            values = flattened if flattened else None
+        values = self._flat_values_for_store_overlay(
+            flat_values=flat_values,
+            use_store_flat_values=use_store_flat_values,
+            devid=devid,
+            empty_means_unprimed=True,
+        )
         return self.panel_route_diagnostics_from_menu(
             menu,
             all_panels=all_panels,
@@ -1979,7 +2127,13 @@ class ParamResolver:
         return isinstance(paths, Mapping) and cls._is_status_rule_list(paths.get("value"))
 
     @classmethod
-    def compose_mapping_register_value(cls, store: ParamStore, mapping: Any) -> int | float | None:
+    def compose_mapping_register_value(
+        cls,
+        store: ParamStore,
+        mapping: Any,
+        *,
+        devid: str | None = None,
+    ) -> int | float | None:
         """Compose a multi-register (multi-word) parameter value from live register words.
 
         Some SPA parameters address more than one register as *address selectors*
@@ -2005,6 +2159,7 @@ class ParamResolver:
             mapping: A :class:`ParamMap`, or a plain dict with ``paths``/``raw``
                 (and, optionally, ``channels``) keys — the shape of the cached
                 entity descriptors Home Assistant persists in ``entry.data``.
+            devid: Optional module id so overlapping addresses stay scoped (#502).
 
         Returns:
             The composed value as ``int`` when the sum is a whole number,
@@ -2036,6 +2191,7 @@ class ParamResolver:
         if entries is None or not cls._address_selectors_need_compose(entries):
             return None
 
+        scoped_devid = _normalize_devid(devid)
         total = 0.0
         found_any = False
         for selector in entries:
@@ -2046,7 +2202,7 @@ class ParamResolver:
             use = selector.get("use")
             if not isinstance(group, str) or not isinstance(number, int) or not isinstance(use, str) or not use:
                 continue
-            fam = store.get_family(group, number)
+            fam = store.get_family(group, number, devid=scoped_devid)
             if fam is None:
                 continue
             raw_word = fam.get(use[0])
@@ -2797,20 +2953,28 @@ class ParamResolver:
             return ""
         return (cls._clean_symbolic_tag(condition) or condition).strip()
 
-    def _status_rule_matches(self, rule: dict[str, Any], flat_values: Mapping[str, Any]) -> bool:
+    def _status_rule_matches(
+        self,
+        rule: dict[str, Any],
+        flat_values: Mapping[str, Any],
+        *,
+        devid: str | None = None,
+    ) -> bool:
         """Evaluate one status ``if``/``elseif`` rule, including ``storeGetter`` maps (#484).
 
         Address-selector lists stay on :meth:`_eval_status_rule`. Mapping
         ``value: {storeGetter: ...}`` (e.g. ``COMMAND_MODULE_RESTART`` ENABLED)
         uses the runtime-context evaluator — the flat-values matcher cannot see
         ``modulesMap.{devid}.connectedAt`` and would falsely take ``else: ![]``.
+        Pass ``devid`` so ``modulesMap.{devid}.…`` templates resolve per module
+        without mutating the shared runtime context (#511).
         A bare address-selector object (not wrapped in a list) is normalised to a
         one-element list for the same flat-values matcher.
         """
         value = rule.get("value")
         if isinstance(value, Mapping):
             if "storeGetter" in value:
-                return self._evaluator._eval_condition_any(rule)
+                return self._evaluator._eval_condition_any(rule, devid=devid)
             return self._eval_status_rule({**rule, "value": [value]}, flat_values)
         return self._eval_status_rule(rule, flat_values)
 
@@ -2820,6 +2984,7 @@ class ParamResolver:
         status_paths: list[dict[str, Any]],
         flag_condition: str,
         flat_values: Mapping[str, Any],
+        devid: str | None = None,
     ) -> bool | None:
         """Resolve one SPA status flag (``INVISIBLE`` / ``ENABLED`` / …) from path rows."""
         explicit_else: bool | None = None
@@ -2851,7 +3016,7 @@ class ParamResolver:
             if (
                 isinstance(ifs, list)
                 and then_val is not None
-                and all(isinstance(rule, dict) and self._status_rule_matches(rule, flat_values) for rule in ifs)
+                and all(isinstance(rule, dict) and self._status_rule_matches(rule, flat_values, devid=devid) for rule in ifs)
             ):
                 return then_val
 
@@ -2866,9 +3031,15 @@ class ParamResolver:
         desc: Mapping[str, Any],
         resolved: Any,
         flat_values: Mapping[str, Any] | None = None,
+        devid: str | None = None,
     ) -> bool:
         """Return bool visibility based on app-like status semantics."""
-        visible, _ = self.parameter_visibility_diagnostics(desc=desc, resolved=resolved, flat_values=flat_values)
+        visible, _ = self.parameter_visibility_diagnostics(
+            desc=desc,
+            resolved=resolved,
+            flat_values=flat_values,
+            devid=devid,
+        )
         return visible
 
     def parameter_visibility_diagnostics(
@@ -2877,6 +3048,7 @@ class ParamResolver:
         desc: Mapping[str, Any],
         resolved: Any,
         flat_values: Mapping[str, Any] | None = None,
+        devid: str | None = None,
     ) -> tuple[bool, str]:
         """Return visibility using the same status semantics as the official app.
 
@@ -2889,7 +3061,9 @@ class ParamResolver:
           (home ``deviceTile`` SWITCH cards such as heat-pump start);
         - ``ENABLED`` / status ``if`` rules may use ``storeGetter`` maps
           (e.g. ``modulesMap.{devid}.connectedAt`` on ``COMMAND_MODULE_RESTART``);
-          those need :meth:`set_runtime_context` the same way value resolve does.
+          those need :meth:`set_runtime_context` the same way value resolve does,
+          or pass ``devid=`` so ``modulesMap.{devid}.…`` is substituted per call
+          without mutating shared context (#511).
           StoreGetter reads of ``connectedAt`` map numeric ``0`` (``Module`` DTO
           offline coerce) to ``None`` so SPA ``notEqualTo null`` matches offline;
         - when a flag path is present but its backing value is missing, the flag
@@ -2907,8 +3081,12 @@ class ParamResolver:
           companions are exposed via ``describe_symbol`` ``value_slots`` and
           inherit the same ``INVISIBLE`` / ``DEVICE_AVAILABLE`` / ``ENABLED``
           checks as the primary.
+        - When ``flat_values`` is omitted in a multi-module store, pass ``devid``
+          (or an explicit snapshot). Otherwise the helper refuses the merged
+          ``flatten()`` view and uses an empty map (#511).
         """
-        values = flat_values if flat_values is not None else self._store.flatten()
+        scoped_devid = self._normalize_resolve_devid(devid)
+        values = self._flat_values_for_visibility(flat_values=flat_values, devid=scoped_devid)
 
         mapping = desc.get("mapping")
         if not isinstance(mapping, Mapping):
@@ -2920,7 +3098,12 @@ class ParamResolver:
 
         # SPA stores ParameterStatus.INVISIBLE as ``'invisible'``; catalog/paths keep
         # the public member ``INVISIBLE``. Match either spelling after cleanup.
-        invisible = self._status_flag_value(status_paths=status_paths, flag_condition="INVISIBLE", flat_values=values)
+        invisible = self._status_flag_value(
+            status_paths=status_paths,
+            flag_condition="INVISIBLE",
+            flat_values=values,
+            devid=scoped_devid,
+        )
         if invisible is True:
             return False, "hidden:invisible"
 
@@ -2928,11 +3111,17 @@ class ParamResolver:
             status_paths=status_paths,
             flag_condition="DEVICE_AVAILABLE",
             flat_values=values,
+            devid=scoped_devid,
         )
         if device_available is False:
             return False, "hidden:device-unavailable"
 
-        enabled = self._status_flag_value(status_paths=status_paths, flag_condition="ENABLED", flat_values=values)
+        enabled = self._status_flag_value(
+            status_paths=status_paths,
+            flag_condition="ENABLED",
+            flat_values=values,
+            devid=scoped_devid,
+        )
         if enabled is False:
             return False, "hidden:enabled"
 
@@ -2990,8 +3179,25 @@ class ParamResolver:
             return first
         return cls._mapping_primary_address(value_payload)
 
-    async def resolve_value(self, symbol: str) -> ResolvedValue:
-        """Resolve a symbol to a unified display value (direct or computed)."""
+    @staticmethod
+    def _normalize_resolve_devid(devid: str | None) -> str | None:
+        """Return a non-empty devid string, or ``None`` for unscoped (legacy) reads."""
+        return _normalize_devid(devid)
+
+    def _flat_values_for_resolve(self, devid: str | None) -> Mapping[str, Any]:
+        """Module-scoped flatten when ``devid`` is set; otherwise merged LWW snapshot."""
+        scoped = self._normalize_resolve_devid(devid)
+        if scoped is not None:
+            return self._store.flatten_for_devid(scoped)
+        return self._store.flatten()
+
+    async def resolve_value(self, symbol: str, *, devid: str | None = None) -> ResolvedValue:
+        """Resolve a symbol to a unified display value (direct or computed).
+
+        Pass ``devid`` in multi-module setups so register reads and computed STATUS
+        rules do not mix overlapping addresses across controllers (#502).
+        """
+        scoped_devid = self._normalize_resolve_devid(devid)
         mapping = await self.get_param_mapping(symbol)
         addr_tuple = self._mapping_canonical_address(symbol, mapping)
         # Flatten only when raw.any branch selection needs a store snapshot —
@@ -3004,11 +3210,11 @@ class ParamResolver:
             and isinstance(mapping.raw.get("any"), list)
             and mapping.raw.get("any")
         ):
-            flat_values = self._store.flatten()
+            flat_values = self._flat_values_for_resolve(scoped_devid)
             register_addr = self._any_branch_register_value_address(
                 mapping,
                 flat_values=flat_values,
-                condition_eval=self._evaluator._eval_condition_any,
+                condition_eval=lambda cond: self._evaluator._eval_condition_any(cond, devid=scoped_devid),
             )
 
         address_key: str | None = None
@@ -3019,7 +3225,7 @@ class ParamResolver:
         effective_addr = register_addr if register_addr is not None else addr_tuple
         if effective_addr is not None:
             address_key = self._addr_key(effective_addr[0], effective_addr[1], effective_addr[2])
-            fam = self._store.get_family(effective_addr[0], effective_addr[2])
+            fam = self._store.get_family(effective_addr[0], effective_addr[2], devid=scoped_devid)
             if fam is not None:
                 raw_unit_code = fam.unit_code
             if mapping is not None and mapping.units is not None:
@@ -3041,7 +3247,7 @@ class ParamResolver:
         # ``kind="computed"`` so CLI refresh watches guard + branch dependencies.
         if register_addr is not None:
             raw_val = None
-            fam = self._store.get_family(register_addr[0], register_addr[2])
+            fam = self._store.get_family(register_addr[0], register_addr[2], devid=scoped_devid)
             if fam is not None:
                 raw_val = fam.get(register_addr[1])
             # Match evaluator / visibility: bool, whitespace, and non-scalars are
@@ -3071,13 +3277,13 @@ class ParamResolver:
             )
 
         if mapping is not None and self._mapping_has_computed_rules(mapping):
-            computed_value = self._evaluator.evaluate(mapping.raw)
+            computed_value = self._evaluator.evaluate(mapping.raw, devid=scoped_devid)
             if computed_value is None and isinstance(mapping.paths, Mapping) and mapping.paths:
-                computed_value = self._evaluator.evaluate({"paths": mapping.paths})
+                computed_value = self._evaluator.evaluate({"paths": mapping.paths}, devid=scoped_devid)
 
             if computed_value is None and addr_tuple is not None and self._mapping_has_simple_direct_value_path(mapping):
                 raw_val = None
-                fam = self._store.get_family(addr_tuple[0], addr_tuple[2])
+                fam = self._store.get_family(addr_tuple[0], addr_tuple[2], devid=scoped_devid)
                 if fam is not None:
                     raw_val = fam.get(addr_tuple[1])
                 display_val = self._apply_unit_display_value(raw_val, unit_meta=unit_meta, unit_code=raw_unit_code)
@@ -3112,7 +3318,7 @@ class ParamResolver:
             )
 
         if mapping is not None:
-            composed = self.compose_mapping_register_value(self._store, mapping)
+            composed = self.compose_mapping_register_value(self._store, mapping, devid=scoped_devid)
             if composed is not None:
                 display_val = self._apply_unit_display_value(composed, unit_meta=unit_meta, unit_code=raw_unit_code)
                 if isinstance(display_val, str):
@@ -3132,7 +3338,7 @@ class ParamResolver:
 
         val = None
         if addr_tuple is not None:
-            fam = self._store.get_family(addr_tuple[0], addr_tuple[2])
+            fam = self._store.get_family(addr_tuple[0], addr_tuple[2], devid=scoped_devid)
             if fam is not None:
                 val = fam.get(addr_tuple[1])
 
@@ -3151,9 +3357,9 @@ class ParamResolver:
             unit=unit,
         )
 
-    async def get_value(self, symbol: str) -> Any:
+    async def get_value(self, symbol: str, *, devid: str | None = None) -> Any:
         """Convenience wrapper returning only the resolved display value."""
-        return (await self.resolve_value(symbol)).value
+        return (await self.resolve_value(symbol, devid=devid)).value
 
     async def describe(
         self,
@@ -3161,9 +3367,11 @@ class ParamResolver:
         idx: int,
         *,
         param_symbol: str | None = None,
+        devid: str | None = None,
     ) -> tuple[str | None, str | dict[str, str] | None, Any]:
         """Describe a parameter by its (pool, idx) address, optionally with known symbol."""
-        fam = self._store.get_family(pool, idx)
+        scoped_devid = self._normalize_resolve_devid(devid)
+        fam = self._store.get_family(pool, idx, devid=scoped_devid)
         if fam is None:
             return None, None, None
         label = await self.resolve_label(param_symbol) if param_symbol else None
@@ -3174,8 +3382,9 @@ class ParamResolver:
                 unit = await self.resolve_unit(mapping.units)
         return label, unit, fam.value
 
-    async def describe_symbol(self, symbol: str) -> dict[str, Any]:
+    async def describe_symbol(self, symbol: str, *, devid: str | None = None) -> dict[str, Any]:
         """Describe a parameter by its symbolic name (e.g. PARAM_0 / STATUS_P5_0)."""
+        scoped_devid = self._normalize_resolve_devid(devid)
         mapping = await self.get_param_mapping(symbol)
         mapping_name_key: str | None = None
         if mapping is not None and isinstance(mapping.raw, Mapping):
@@ -3207,7 +3416,7 @@ class ParamResolver:
             mapping_unit = await self.resolve_unit(mapping.units)
         if addr:
             pool, chan, idx = addr
-            fam = self._store.get_family(pool, idx)
+            fam = self._store.get_family(pool, idx, devid=scoped_devid)
             if fam:
                 unit = await self.resolve_unit(fam.unit_code)
                 value = fam.value
@@ -3249,9 +3458,9 @@ class ParamResolver:
                 "raw": mapping.raw,
             }
 
-            computed_value = self._evaluator.evaluate(mapping.raw)
+            computed_value = self._evaluator.evaluate(mapping.raw, devid=scoped_devid)
             if computed_value is None and isinstance(mapping.paths, dict) and mapping.paths:
-                computed_value = self._evaluator.evaluate({"paths": mapping.paths})
+                computed_value = self._evaluator.evaluate({"paths": mapping.paths}, devid=scoped_devid)
 
             if computed_value is not None:
                 raw_unit_code_for_labels: Any = unit_code
@@ -3330,11 +3539,17 @@ class ParamResolver:
             "value_slots": value_slots,
         }
 
-    async def describe_symbols(self, symbols: Iterable[str]) -> dict[str, dict[str, Any]]:
+    async def describe_symbols(
+        self,
+        symbols: Iterable[str],
+        *,
+        devid: str | None = None,
+    ) -> dict[str, dict[str, Any]]:
         """Describe multiple symbols with shared bulk-prefetched mapping cache.
 
         Args:
             symbols: Iterable of symbolic names.
+            devid: Optional module id forwarded to each :meth:`describe_symbol` (#502).
 
         Returns:
             Mapping from symbol to the same payload returned by :meth:`describe_symbol`.
@@ -3344,7 +3559,7 @@ class ParamResolver:
 
         out: dict[str, dict[str, Any]] = {}
         for sym in uniq_symbols:
-            out[sym] = await self.describe_symbol(sym)
+            out[sym] = await self.describe_symbol(sym, devid=devid)
         return out
 
     async def merge_assets_with_permissions(
@@ -3353,10 +3568,11 @@ class ParamResolver:
         device_menu: int = 0,
         *,
         devices: Sequence[DeviceMenuRef] | None = None,
+        devid: str | None = None,
     ) -> dict[str, dict[str, Any]]:
         """Merge menu-visible symbols with mappings and live values for a permission set."""
         symbols = await self._assets.list_symbols_for_permissions(device_menu, permissions, devices=devices)
-        return await self.describe_symbols(sorted(symbols))
+        return await self.describe_symbols(sorted(symbols), devid=devid)
 
     async def discover_status_bar_parameter_tokens(self) -> set[str]:
         """Return SPA footer status-bar parameter tokens from the asset catalog."""

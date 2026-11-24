@@ -1,6 +1,6 @@
 """Parse-only regression over captured BragerOne JS assets in ``tests/assets/``.
 
-These tests feed dumped ``*.js`` bytes into tree-sitter helpers. They do **not**
+These tests feed dumped ``*.js`` bytes into the pure catalog parser. They do **not**
 authenticate, fetch ``one.brager.pl``, resolve live menus, or attach permissions.
 Missing dumps skip; a helper that returns nothing fails so an upstream bundle
 shape change is visible.

@@ -1,0 +1,147 @@
+{
+  "asset": "tests/assets/index/index-1TABHy-0.js",
+  "asset_bytes": 1308198,
+  "pure": {
+    "language_config_from_index": {
+      "mean_ms": 21.961596375331283,
+      "median_ms": 21.98046399280429,
+      "stdev_ms": 0.07705086099035591,
+      "min_ms": 21.82465698570013,
+      "max_ms": 22.05216302536428,
+      "loops": 5.0
+    },
+    "units_descriptor_table_from_index": {
+      "mean_ms": 248.42238542623818,
+      "median_ms": 248.9566900767386,
+      "stdev_ms": 3.045819565119067,
+      "min_ms": 244.27649308927357,
+      "max_ms": 252.52916500903666,
+      "loops": 5.0
+    },
+    "index_token_raw_maps": {
+      "mean_ms": 482.15606077574193,
+      "median_ms": 481.04554507881403,
+      "stdev_ms": 11.06086451402394,
+      "min_ms": 466.0945029463619,
+      "max_ms": 499.2144010029733,
+      "loops": 5.0
+    },
+    "index_bootstrap_bundle": {
+      "mean_ms": 743.1142041925341,
+      "median_ms": 739.0079910401255,
+      "stdev_ms": 10.922509934058096,
+      "min_ms": 727.3033398669213,
+      "max_ms": 756.7001071292907,
+      "loops": 5.0
+    },
+    "golden": {
+      "language_default": "pl",
+      "units_keys": 144,
+      "token_keys": 1293,
+      "token_sample": [
+        "ACTION_TOGGLE_CASCADE_BOILER_1",
+        "ACTION_TOGGLE_CASCADE_BOILER_2",
+        "ACTION_TOGGLE_CASCADE_BOILER_3",
+        "ACTION_TOGGLE_CASCADE_BOILER_4",
+        "PARAM16_0"
+      ]
+    }
+  },
+  "tree_sitter": {
+    "language_config_from_index": {
+      "mean_ms": 118.60616873018444,
+      "median_ms": 119.4700498599559,
+      "stdev_ms": 1.8567425570558604,
+      "min_ms": 115.98927294835448,
+      "max_ms": 120.41244795545936,
+      "loops": 5.0
+    },
+    "units_descriptor_table_from_index": {
+      "mean_ms": 462.2005701530725,
+      "median_ms": 437.6983030233532,
+      "stdev_ms": 55.71258178949879,
+      "min_ms": 420.8685657940805,
+      "max_ms": 570.6955490168184,
+      "loops": 5.0
+    },
+    "index_token_raw_maps": {
+      "mean_ms": 570.7756076008081,
+      "median_ms": 530.4245939478278,
+      "stdev_ms": 73.23027587126163,
+      "min_ms": 526.0646680835634,
+      "max_ms": 715.5706910416484,
+      "loops": 5.0
+    },
+    "index_bootstrap_bundle": {
+      "mean_ms": 1120.7049882039428,
+      "median_ms": 1104.5325309969485,
+      "stdev_ms": 52.752804940325596,
+      "min_ms": 1061.2794971093535,
+      "max_ms": 1204.3513029348105,
+      "loops": 5.0
+    },
+    "golden": {
+      "language_default": "pl",
+      "units_keys": 144,
+      "token_keys": 1297,
+      "token_sample": [
+        "ACTION_TOGGLE_CASCADE_BOILER_1",
+        "ACTION_TOGGLE_CASCADE_BOILER_2",
+        "ACTION_TOGGLE_CASCADE_BOILER_3",
+        "ACTION_TOGGLE_CASCADE_BOILER_4",
+        "P10"
+      ]
+    }
+  },
+  "comparison": {
+    "language_config_from_index": {
+      "pure_mean_ms": 21.962,
+      "ts_mean_ms": 118.606,
+      "speedup": 5.401,
+      "pure_faster": true
+    },
+    "units_descriptor_table_from_index": {
+      "pure_mean_ms": 248.422,
+      "ts_mean_ms": 462.201,
+      "speedup": 1.861,
+      "pure_faster": true
+    },
+    "index_token_raw_maps": {
+      "pure_mean_ms": 482.156,
+      "ts_mean_ms": 570.776,
+      "speedup": 1.184,
+      "pure_faster": true
+    },
+    "index_bootstrap_bundle": {
+      "pure_mean_ms": 743.114,
+      "ts_mean_ms": 1120.705,
+      "speedup": 1.508,
+      "pure_faster": true
+    }
+  },
+  "golden_match": false,
+  "pure_golden": {
+    "language_default": "pl",
+    "units_keys": 144,
+    "token_keys": 1293,
+    "token_sample": [
+      "ACTION_TOGGLE_CASCADE_BOILER_1",
+      "ACTION_TOGGLE_CASCADE_BOILER_2",
+      "ACTION_TOGGLE_CASCADE_BOILER_3",
+      "ACTION_TOGGLE_CASCADE_BOILER_4",
+      "PARAM16_0"
+    ]
+  },
+  "ts_golden": {
+    "language_default": "pl",
+    "units_keys": 144,
+    "token_keys": 1297,
+    "token_sample": [
+      "ACTION_TOGGLE_CASCADE_BOILER_1",
+      "ACTION_TOGGLE_CASCADE_BOILER_2",
+      "ACTION_TOGGLE_CASCADE_BOILER_3",
+      "ACTION_TOGGLE_CASCADE_BOILER_4",
+      "P10"
+    ]
+  }
+}

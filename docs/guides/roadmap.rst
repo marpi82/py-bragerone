@@ -13,7 +13,7 @@ Planned
   changelog and release notes.
 - **Keep pace with upstream assets**: the live catalog parser depends on
   BragerOne's web-app bundles; ongoing work is resilience to upstream changes
-  (tree-sitter grammars, menu/i18n shapes).
+  (pure JS catalog parser, menu/i18n shapes).
 - **Home Assistant integration parity**: extend ``ha-bragerone`` coverage of
   the parameter catalog as new modules/panels are discovered.
 - **Release cadence**: CalVer stable releases as changes land; security fixes

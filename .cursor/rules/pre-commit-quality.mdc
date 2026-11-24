@@ -42,8 +42,7 @@ For every changed resolver/catalog/API branch, simulate concrete register / payl
 ## Pass D — Perf / lifecycle (P1–P2)
 
 - Do not `ParamStore.flatten()` the entire store on every ordinary resolve — snapshot only when `raw.any` (or equivalent) needs it, or read referenced addresses.
-- Offload blocking Tree-sitter / SSL / file work with `asyncio.to_thread()` (never block the loop).
-- Tree-sitter node access: null-check nodes before `.text` / child navigation.
+- Offload blocking SSL / file / heavy catalog parse work with `asyncio.to_thread()` (never block the loop).
 - Watch ReDoS risk in new parsing regexes.
 
 ## Pass E — Docs / changelog (P2)
