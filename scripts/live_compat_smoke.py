@@ -6,6 +6,10 @@ paths Home Assistant bootstrap depends on. Exit codes::
     0 — smoke passed (live ``value=None`` is allowed when ParamMap exists)
     1 — hard failure (auth/prime/menu/describe/resolve raised, incomplete coverage, or unmapped symbols)
 
+Also reports an informational **Catalog** section: describe/resolve over every
+ParamMap token discovered in the live SPA index (~full catalog). Catalog
+``value=None`` / partial ParamStore coverage never hard-fails the smoke.
+
 Structural catalog drift belongs to ``live_contract.py`` (informational). This
 script is the hard gate: when it passes after drift, the workflow may auto-reseed.
 """
@@ -16,6 +20,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -27,6 +32,8 @@ from pybragerone.models.api.modules import device_menu_refs_from_module
 from pybragerone.models.catalog import LiveAssetsCatalog
 from pybragerone.models.param import ParamStore
 from pybragerone.models.param_resolver import ParamResolver
+
+_SYMBOL_TOKEN_RE = re.compile(r"^(?:COMMAND_|URUCHOMIENIE_|PARAM_|STATUS_)[A-Z0-9_]+$")
 
 
 def parse_modules(raw: str | None) -> list[str]:
@@ -51,6 +58,37 @@ def prime_has_module_data(payload: Mapping[str, Any], devid: str) -> bool:
         if isinstance(module_data, Mapping) and module_data:
             return True
     return False
+
+
+def collect_param_map_tokens(catalog: LiveAssetsCatalog) -> list[str]:
+    """Return sorted ParamMap token names from the loaded SPA index (same set as live_contract)."""
+    assets = catalog._idx.assets_by_basename
+    inline_maps = catalog._parse_index_token_raw_maps(catalog._idx.index_bytes or b"")
+    tokens: set[str] = set()
+    for name in assets:
+        if _SYMBOL_TOKEN_RE.fullmatch(name):
+            tokens.add(name)
+    for name in inline_maps:
+        if _SYMBOL_TOKEN_RE.fullmatch(name):
+            tokens.add(name)
+    return sorted(tokens)
+
+
+def empty_catalog_section() -> dict[str, Any]:
+    """Return a zeroed informational catalog-quality payload."""
+    return {
+        "param_map_tokens": 0,
+        "symbols_requested": 0,
+        "described": 0,
+        "mapped": 0,
+        "resolved_ok": 0,
+        "resolved_none": 0,
+        "describe_errors": 0,
+        "resolve_errors": 0,
+        "describe_error": None,
+        "resolve_error": None,
+        "prime_devid": None,
+    }
 
 
 def evaluate_module_smoke(payload: Mapping[str, Any]) -> list[str]:
@@ -87,7 +125,10 @@ def evaluate_module_smoke(payload: Mapping[str, Any]) -> list[str]:
 
 
 def evaluate_smoke_report(report: Mapping[str, Any]) -> list[str]:
-    """Return hard-failure reasons for a full smoke report (empty when OK)."""
+    """Return hard-failure reasons for a full smoke report (empty when OK).
+
+    Catalog-quality metrics are informational and never contribute hard failures.
+    """
     modules = [module for module in (report.get("modules") or []) if isinstance(module, Mapping)]
     if not modules:
         explicit = report.get("errors")
@@ -129,6 +170,9 @@ async def smoke_module(
     resolver = ParamResolver(store=store, assets=catalog, lang=lang)
     perms = [str(p) for p in permissions]
     menu_devices = device_menu_refs_from_module(devices)
+    device_menu_refs = [ref.fingerprint() for ref in menu_devices]
+    # With Module.devices, catalog prefers device-specific REST then default 0/0/0.0.0 (#438).
+    menu_source = "rest_device_refs_then_default" if menu_devices else "legacy_js_or_default_rest"
 
     groups_all = await resolver.build_panel_groups(
         device_menu=device_menu,
@@ -206,6 +250,8 @@ async def smoke_module(
     return {
         "devid": devid,
         "device_menu": device_menu,
+        "device_menu_refs": device_menu_refs,
+        "menu_source": menu_source,
         "permissions_count": len(perms),
         "panel_group_count_all": len(groups_all),
         "panel_group_count_web_ui": len(groups_web),
@@ -222,6 +268,84 @@ async def smoke_module(
     }
 
 
+async def smoke_catalog_quality(
+    *,
+    client: BragerOneApiClient,
+    catalog: LiveAssetsCatalog,
+    devid: str,
+    lang: str,
+    max_resolve: int | None = None,
+) -> dict[str, Any]:
+    """Informational describe/resolve over all ParamMap tokens using *devid*'s prime.
+
+    Never raises for per-symbol ``value=None``; bulk describe/resolve exceptions are
+    recorded on the payload and do not imply a hard smoke failure by themselves.
+    """
+    await catalog._ensure_index_loaded()
+    tokens = collect_param_map_tokens(catalog)
+    symbols = tokens[:max_resolve] if max_resolve is not None and max_resolve >= 0 else tokens
+    payload = empty_catalog_section()
+    payload["param_map_tokens"] = len(tokens)
+    payload["symbols_requested"] = len(symbols)
+    payload["prime_devid"] = devid
+    if not symbols:
+        return payload
+
+    store = ParamStore()
+    prime = await client.modules_parameters_prime([devid], return_data=True)
+    if not isinstance(prime, tuple) or len(prime) != 2:
+        payload["resolve_error"] = f"{devid}: modules_parameters_prime returned unexpected payload shape"
+        payload["resolve_errors"] = 1
+        return payload
+    status, data = prime
+    if status not in (200, 204) or not isinstance(data, dict) or not prime_has_module_data(data, devid):
+        payload["resolve_error"] = f"{devid}: catalog quality prime failed: status={status}"
+        payload["resolve_errors"] = 1
+        return payload
+    store.ingest_prime_payload(data)
+    resolver = ParamResolver(store=store, assets=catalog, lang=lang)
+
+    descriptions: dict[str, dict[str, Any]] = {}
+    try:
+        descriptions = await resolver.describe_symbols(symbols)
+        payload["described"] = sum(1 for symbol in symbols if symbol in descriptions)
+        payload["mapped"] = sum(
+            1
+            for symbol in symbols
+            if isinstance(descriptions.get(symbol), Mapping) and descriptions[symbol].get("mapping") is not None
+        )
+    except Exception as exc:
+        payload["describe_error"] = f"{type(exc).__name__}: {exc}"
+        payload["describe_errors"] = 1
+
+    resolved_ok = 0
+    resolved_none = 0
+    resolve_errors = 0
+    resolve_error: str | None = None
+    try:
+        for symbol in symbols:
+            try:
+                value = await resolver.resolve_value(symbol)
+                if getattr(value, "value", value) is None:
+                    resolved_none += 1
+                else:
+                    resolved_ok += 1
+            except Exception as exc:
+                resolve_errors += 1
+                if resolve_error is None:
+                    resolve_error = f"{symbol}: {type(exc).__name__}: {exc}"
+    except Exception as exc:
+        # Defensive: outer loop should not raise; keep a bulk marker if it does.
+        resolve_error = f"{type(exc).__name__}: {exc}"
+        resolve_errors += 1
+
+    payload["resolved_ok"] = resolved_ok
+    payload["resolved_none"] = resolved_none
+    payload["resolve_errors"] = resolve_errors
+    payload["resolve_error"] = resolve_error
+    return payload
+
+
 async def run_compat_smoke(
     *,
     email: str,
@@ -232,10 +356,11 @@ async def run_compat_smoke(
     platform: str,
     max_resolve: int | None = None,
 ) -> dict[str, Any]:
-    """Authenticate and smoke every selected module."""
+    """Authenticate and smoke every selected module plus informational catalog quality."""
     server = server_for(platform)
     client = BragerOneApiClient(server=server, creds_provider=lambda: (email, password), validate_on_start=False)
     module_payloads: list[dict[str, Any]] = []
+    catalog_section = empty_catalog_section()
     try:
         await client.ensure_auth(email, password)
         catalog = LiveAssetsCatalog(client)
@@ -262,6 +387,15 @@ async def run_compat_smoke(
                 devices=list(getattr(mod, "devices", []) or []),
             )
             module_payloads.append(payload)
+
+        if module_payloads:
+            catalog_section = await smoke_catalog_quality(
+                client=client,
+                catalog=catalog,
+                devid=str(module_payloads[0]["devid"]),
+                lang=lang,
+                max_resolve=max_resolve,
+            )
     finally:
         await client.close()
 
@@ -273,6 +407,7 @@ async def run_compat_smoke(
         "panel_count": sum(int(m.get("panel_group_count_all") or 0) for m in module_payloads),
         "symbols_described": sum(int(m.get("symbols_described") or 0) for m in module_payloads),
         "symbols_resolved": sum(int(m.get("symbols_resolved") or 0) for m in module_payloads),
+        "catalog": catalog_section,
         "modules": module_payloads,
         "errors": [],
     }
@@ -287,6 +422,7 @@ def write_github_output(report: Mapping[str, Any]) -> None:
     github_output = os.environ.get("GITHUB_OUTPUT")
     if not github_output:
         return
+    catalog = report.get("catalog") if isinstance(report.get("catalog"), Mapping) else {}
     with Path(github_output).open("a", encoding="utf-8") as handle:
         handle.write(f"compat_ok={str(bool(report.get('compat_ok'))).lower()}\n")
         handle.write(f"module_count={int(report.get('module_count') or 0)}\n")
@@ -294,26 +430,90 @@ def write_github_output(report: Mapping[str, Any]) -> None:
         handle.write(f"symbols_described={int(report.get('symbols_described') or 0)}\n")
         handle.write(f"symbols_resolved={int(report.get('symbols_resolved') or 0)}\n")
         handle.write(f"error_count={len(report.get('errors') or [])}\n")
+        handle.write(f"catalog_param_map_tokens={int(catalog.get('param_map_tokens') or 0)}\n")
+        handle.write(f"catalog_described={int(catalog.get('described') or 0)}\n")
+        handle.write(f"catalog_mapped={int(catalog.get('mapped') or 0)}\n")
+        handle.write(f"catalog_resolved_ok={int(catalog.get('resolved_ok') or 0)}\n")
+        handle.write(f"catalog_resolved_none={int(catalog.get('resolved_none') or 0)}\n")
+        handle.write(f"catalog_describe_errors={int(catalog.get('describe_errors') or 0)}\n")
+        handle.write(f"catalog_resolve_errors={int(catalog.get('resolve_errors') or 0)}\n")
+        handle.write(f"catalog_prime_devid={catalog.get('prime_devid') or ''}\n")
+
+
+def _markdown_table(rows: Sequence[tuple[str, Any]]) -> list[str]:
+    """Return a two-column markdown table for *rows*."""
+    lines = ["| Field | Value |", "| --- | --- |"]
+    for key, value in rows:
+        lines.append(f"| {key} | {value} |")
+    return lines
 
 
 def write_step_summary(report: Mapping[str, Any]) -> None:
-    """Write a short markdown summary for the Actions UI."""
+    """Write a short markdown summary for the Actions UI (Catalog + Device tables)."""
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if not summary_path:
         return
+    catalog = report.get("catalog") if isinstance(report.get("catalog"), Mapping) else empty_catalog_section()
     lines = [
         "## Live compat smoke",
         "",
-        "| Field | Value |",
-        "| --- | --- |",
-        f"| compat_ok | {str(bool(report.get('compat_ok'))).lower()} |",
-        f"| modules | {int(report.get('module_count') or 0)} |",
-        f"| panels | {int(report.get('panel_count') or 0)} |",
-        f"| symbols described | {int(report.get('symbols_described') or 0)} |",
-        f"| symbols resolved | {int(report.get('symbols_resolved') or 0)} |",
-        f"| errors | {len(report.get('errors') or [])} |",
+        f"compat_ok: `{str(bool(report.get('compat_ok'))).lower()}`",
+        "",
+        "### Catalog (ParamMap quality, informational)",
+        "",
+        *_markdown_table(
+            [
+                ("param_map_tokens", int(catalog.get("param_map_tokens") or 0)),
+                ("described", int(catalog.get("described") or 0)),
+                ("mapped", int(catalog.get("mapped") or 0)),
+                ("resolved_ok", int(catalog.get("resolved_ok") or 0)),
+                ("resolved_none", int(catalog.get("resolved_none") or 0)),
+                ("describe_errors", int(catalog.get("describe_errors") or 0)),
+                ("resolve_errors", int(catalog.get("resolve_errors") or 0)),
+                ("prime_devid", catalog.get("prime_devid") or "n/a"),
+            ]
+        ),
+        "",
+        "### Device (PYBO_MODULES hard gate)",
+        "",
+        *_markdown_table(
+            [
+                ("modules", int(report.get("module_count") or 0)),
+                ("panels", int(report.get("panel_count") or 0)),
+                ("symbols described", int(report.get("symbols_described") or 0)),
+                ("symbols resolved", int(report.get("symbols_resolved") or 0)),
+                ("errors", len(report.get("errors") or [])),
+            ]
+        ),
         "",
     ]
+    modules = [m for m in (report.get("modules") or []) if isinstance(m, Mapping)]
+    if modules:
+        lines.append("#### Per module")
+        lines.append("")
+        lines.extend(
+            [
+                "| devid | panels | panel symbols | described | mapped | resolved | resolved_none | menu_source | refs |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+            ]
+        )
+        for module in modules:
+            refs = module.get("device_menu_refs") or []
+            refs_text = ", ".join(str(item) for item in refs) if isinstance(refs, list) and refs else "—"
+            lines.append(
+                "| {devid} | {panels} | {total} | {described} | {mapped} | {resolved} | {none} | {source} | `{refs}` |".format(
+                    devid=module.get("devid") or "?",
+                    panels=int(module.get("panel_group_count_all") or 0),
+                    total=int(module.get("symbols_total") or module.get("symbols_requested") or 0),
+                    described=int(module.get("symbols_described") or 0),
+                    mapped=int(module.get("symbols_mapped") or 0),
+                    resolved=int(module.get("symbols_resolved") or 0),
+                    none=int(module.get("symbols_resolved_none") or 0),
+                    source=module.get("menu_source") or "n/a",
+                    refs=refs_text,
+                )
+            )
+        lines.append("")
     errors = report.get("errors") or []
     if isinstance(errors, list) and errors:
         lines.append("### Errors")
@@ -338,7 +538,7 @@ def main(argv: list[str] | None = None) -> int:
         "--max-resolve",
         type=int,
         default=None,
-        help="Optional cap on symbols described/resolved per module (default: all panel symbols).",
+        help="Optional cap on symbols described/resolved per module and catalog (default: all).",
     )
     args = parser.parse_args(argv)
 
@@ -370,6 +570,7 @@ def main(argv: list[str] | None = None) -> int:
             "panel_count": 0,
             "symbols_described": 0,
             "symbols_resolved": 0,
+            "catalog": empty_catalog_section(),
             "modules": [],
             "errors": [f"{type(exc).__name__}: {exc}"],
         }
@@ -379,6 +580,8 @@ def main(argv: list[str] | None = None) -> int:
     report = dict(report)
     report["errors"] = failures
     report["compat_ok"] = not failures
+    if "catalog" not in report:
+        report["catalog"] = empty_catalog_section()
 
     print(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False))
     if args.write_json is not None:

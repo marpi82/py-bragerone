@@ -113,6 +113,15 @@ jobs:
           COMPAT_OK: ${{ steps.compat.outputs.compat_ok }}
           PANEL_COUNT: ${{ steps.compat.outputs.panel_count }}
           SYMBOLS_DESCRIBED: ${{ steps.compat.outputs.symbols_described }}
+          SYMBOLS_RESOLVED: ${{ steps.compat.outputs.symbols_resolved }}
+          CATALOG_TOKENS: ${{ steps.compat.outputs.catalog_param_map_tokens }}
+          CATALOG_DESCRIBED: ${{ steps.compat.outputs.catalog_described }}
+          CATALOG_MAPPED: ${{ steps.compat.outputs.catalog_mapped }}
+          CATALOG_RESOLVED_OK: ${{ steps.compat.outputs.catalog_resolved_ok }}
+          CATALOG_RESOLVED_NONE: ${{ steps.compat.outputs.catalog_resolved_none }}
+          CATALOG_DESCRIBE_ERRORS: ${{ steps.compat.outputs.catalog_describe_errors }}
+          CATALOG_RESOLVE_ERRORS: ${{ steps.compat.outputs.catalog_resolve_errors }}
+          CATALOG_PRIME_DEVID: ${{ steps.compat.outputs.catalog_prime_devid }}
           RESEED_REASON: ${{ steps.reseed.outputs.reseed_reason }}
           SEED_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_only || false }}
         run: |
@@ -132,13 +141,32 @@ jobs:
             echo "| catalog diffs | ${CATALOG_DIFF_COUNT:-0} |"
             echo "| config diffs | ${CONFIG_DIFF_COUNT:-0} |"
             echo "| compat_ok | ${COMPAT_OK:-n/a} |"
-            echo "| panels | ${PANEL_COUNT:-n/a} |"
-            echo "| symbols described | ${SYMBOLS_DESCRIBED:-n/a} |"
             echo "| reseed | ${RESEED_REASON:-none} |"
             echo "| seed_only | $SEED_ONLY |"
             if [ -n "${{ github.event.client_payload.fingerprint }}" ]; then
               echo "| upstream fingerprint | \`${{ github.event.client_payload.fingerprint }}\` |"
             fi
+            echo
+            echo "### Compat — Catalog (ParamMap quality, informational)"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| param_map_tokens | ${CATALOG_TOKENS:-n/a} |"
+            echo "| described | ${CATALOG_DESCRIBED:-n/a} |"
+            echo "| mapped | ${CATALOG_MAPPED:-n/a} |"
+            echo "| resolved_ok | ${CATALOG_RESOLVED_OK:-n/a} |"
+            echo "| resolved_none | ${CATALOG_RESOLVED_NONE:-n/a} |"
+            echo "| describe_errors | ${CATALOG_DESCRIBE_ERRORS:-n/a} |"
+            echo "| resolve_errors | ${CATALOG_RESOLVE_ERRORS:-n/a} |"
+            echo "| prime_devid | ${CATALOG_PRIME_DEVID:-n/a} |"
+            echo
+            echo "### Compat — Device (PYBO_MODULES hard gate)"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| panels | ${PANEL_COUNT:-n/a} |"
+            echo "| symbols described | ${SYMBOLS_DESCRIBED:-n/a} |"
+            echo "| symbols resolved | ${SYMBOLS_RESOLVED:-n/a} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload contract artifacts
@@ -179,6 +207,14 @@ jobs:
           PANEL_COUNT: ${{ steps.compat.outputs.panel_count }}
           SYMBOLS_DESCRIBED: ${{ steps.compat.outputs.symbols_described }}
           SYMBOLS_RESOLVED: ${{ steps.compat.outputs.symbols_resolved }}
+          CATALOG_TOKENS: ${{ steps.compat.outputs.catalog_param_map_tokens }}
+          CATALOG_DESCRIBED: ${{ steps.compat.outputs.catalog_described }}
+          CATALOG_MAPPED: ${{ steps.compat.outputs.catalog_mapped }}
+          CATALOG_RESOLVED_OK: ${{ steps.compat.outputs.catalog_resolved_ok }}
+          CATALOG_RESOLVED_NONE: ${{ steps.compat.outputs.catalog_resolved_none }}
+          CATALOG_DESCRIBE_ERRORS: ${{ steps.compat.outputs.catalog_describe_errors }}
+          CATALOG_RESOLVE_ERRORS: ${{ steps.compat.outputs.catalog_resolve_errors }}
+          CATALOG_PRIME_DEVID: ${{ steps.compat.outputs.catalog_prime_devid }}
           RESEED_REASON: ${{ steps.reseed.outputs.reseed_reason }}
           RESEED_OUTCOME: ${{ steps.reseed.outcome }}
           EVENT_NAME: ${{ github.event_name }}
@@ -256,9 +292,6 @@ jobs:
               `| path_kinds changes | ${process.env.PATH_KINDS_CHANGES || '0'} |`,
               `| catalog diffs | ${process.env.CATALOG_DIFF_COUNT || '0'} |`,
               `| config diffs | ${process.env.CONFIG_DIFF_COUNT || '0'} |`,
-              `| panels | ${process.env.PANEL_COUNT || 'n/a'} |`,
-              `| symbols described | ${process.env.SYMBOLS_DESCRIBED || 'n/a'} |`,
-              `| symbols resolved | ${process.env.SYMBOLS_RESOLVED || 'n/a'} |`,
               `| reseed | \`${reseedReason || 'none'}\` |`,
               `| seed_only | ${process.env.SEED_ONLY || 'n/a'} |`,
             ];
@@ -269,12 +302,40 @@ jobs:
               rows.push(`| upstream previous | \`${process.env.UPSTREAM_PREV}\` |`);
             }
 
+            const catalogRows = [
+              `| param_map_tokens | ${process.env.CATALOG_TOKENS || 'n/a'} |`,
+              `| described | ${process.env.CATALOG_DESCRIBED || 'n/a'} |`,
+              `| mapped | ${process.env.CATALOG_MAPPED || 'n/a'} |`,
+              `| resolved_ok | ${process.env.CATALOG_RESOLVED_OK || 'n/a'} |`,
+              `| resolved_none | ${process.env.CATALOG_RESOLVED_NONE || 'n/a'} |`,
+              `| describe_errors | ${process.env.CATALOG_DESCRIBE_ERRORS || 'n/a'} |`,
+              `| resolve_errors | ${process.env.CATALOG_RESOLVE_ERRORS || 'n/a'} |`,
+              `| prime_devid | ${process.env.CATALOG_PRIME_DEVID || 'n/a'} |`,
+            ];
+            const deviceRows = [
+              `| panels | ${process.env.PANEL_COUNT || 'n/a'} |`,
+              `| symbols described | ${process.env.SYMBOLS_DESCRIBED || 'n/a'} |`,
+              `| symbols resolved | ${process.env.SYMBOLS_RESOLVED || 'n/a'} |`,
+            ];
+
             let body = [
               statusLine,
               '',
               '| Field | Value |',
               '| --- | --- |',
               ...rows,
+              '',
+              '### Compat — Catalog (ParamMap quality, informational)',
+              '',
+              '| Field | Value |',
+              '| --- | --- |',
+              ...catalogRows,
+              '',
+              '### Compat — Device (PYBO_MODULES hard gate)',
+              '',
+              '| Field | Value |',
+              '| --- | --- |',
+              ...deviceRows,
               '',
               `Run: ${process.env.RUN_URL}`,
             ].join('\n');
