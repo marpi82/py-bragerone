@@ -111,14 +111,17 @@ jobs:
           CONFIG_DIFF_COUNT: ${{ steps.contract.outputs.config_diff_count }}
           PENDING_SEED: ${{ steps.contract.outputs.pending_seed }}
           COMPAT_OK: ${{ steps.compat.outputs.compat_ok }}
+          MODULE_COUNT: ${{ steps.compat.outputs.module_count }}
           PANEL_COUNT: ${{ steps.compat.outputs.panel_count }}
           SYMBOLS_DESCRIBED: ${{ steps.compat.outputs.symbols_described }}
           SYMBOLS_RESOLVED: ${{ steps.compat.outputs.symbols_resolved }}
+          ERROR_COUNT: ${{ steps.compat.outputs.error_count }}
           CATALOG_TOKENS: ${{ steps.compat.outputs.catalog_param_map_tokens }}
           CATALOG_DESCRIBED: ${{ steps.compat.outputs.catalog_described }}
           CATALOG_MAPPED: ${{ steps.compat.outputs.catalog_mapped }}
           CATALOG_RESOLVED_OK: ${{ steps.compat.outputs.catalog_resolved_ok }}
           CATALOG_RESOLVED_NONE: ${{ steps.compat.outputs.catalog_resolved_none }}
+          CATALOG_PRIME_ERRORS: ${{ steps.compat.outputs.catalog_prime_errors }}
           CATALOG_DESCRIBE_ERRORS: ${{ steps.compat.outputs.catalog_describe_errors }}
           CATALOG_RESOLVE_ERRORS: ${{ steps.compat.outputs.catalog_resolve_errors }}
           CATALOG_PRIME_DEVID: ${{ steps.compat.outputs.catalog_prime_devid }}
@@ -156,6 +159,7 @@ jobs:
             echo "| mapped | ${CATALOG_MAPPED:-n/a} |"
             echo "| resolved_ok | ${CATALOG_RESOLVED_OK:-n/a} |"
             echo "| resolved_none | ${CATALOG_RESOLVED_NONE:-n/a} |"
+            echo "| prime_errors | ${CATALOG_PRIME_ERRORS:-n/a} |"
             echo "| describe_errors | ${CATALOG_DESCRIBE_ERRORS:-n/a} |"
             echo "| resolve_errors | ${CATALOG_RESOLVE_ERRORS:-n/a} |"
             echo "| prime_devid | ${CATALOG_PRIME_DEVID:-n/a} |"
@@ -164,9 +168,11 @@ jobs:
             echo
             echo "| Field | Value |"
             echo "| --- | --- |"
+            echo "| modules | ${MODULE_COUNT:-n/a} |"
             echo "| panels | ${PANEL_COUNT:-n/a} |"
             echo "| symbols described | ${SYMBOLS_DESCRIBED:-n/a} |"
             echo "| symbols resolved | ${SYMBOLS_RESOLVED:-n/a} |"
+            echo "| errors | ${ERROR_COUNT:-n/a} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload contract artifacts
@@ -204,14 +210,17 @@ jobs:
           CONTRACT_OK: ${{ steps.contract.outcome }}
           COMPAT_OK: ${{ steps.compat.outcome == 'success' && (steps.compat.outputs.compat_ok || 'true') || steps.compat.outcome }}
           COMPAT_OUTCOME: ${{ steps.compat.outcome }}
+          MODULE_COUNT: ${{ steps.compat.outputs.module_count }}
           PANEL_COUNT: ${{ steps.compat.outputs.panel_count }}
           SYMBOLS_DESCRIBED: ${{ steps.compat.outputs.symbols_described }}
           SYMBOLS_RESOLVED: ${{ steps.compat.outputs.symbols_resolved }}
+          ERROR_COUNT: ${{ steps.compat.outputs.error_count }}
           CATALOG_TOKENS: ${{ steps.compat.outputs.catalog_param_map_tokens }}
           CATALOG_DESCRIBED: ${{ steps.compat.outputs.catalog_described }}
           CATALOG_MAPPED: ${{ steps.compat.outputs.catalog_mapped }}
           CATALOG_RESOLVED_OK: ${{ steps.compat.outputs.catalog_resolved_ok }}
           CATALOG_RESOLVED_NONE: ${{ steps.compat.outputs.catalog_resolved_none }}
+          CATALOG_PRIME_ERRORS: ${{ steps.compat.outputs.catalog_prime_errors }}
           CATALOG_DESCRIBE_ERRORS: ${{ steps.compat.outputs.catalog_describe_errors }}
           CATALOG_RESOLVE_ERRORS: ${{ steps.compat.outputs.catalog_resolve_errors }}
           CATALOG_PRIME_DEVID: ${{ steps.compat.outputs.catalog_prime_devid }}
@@ -308,14 +317,17 @@ jobs:
               `| mapped | ${process.env.CATALOG_MAPPED || 'n/a'} |`,
               `| resolved_ok | ${process.env.CATALOG_RESOLVED_OK || 'n/a'} |`,
               `| resolved_none | ${process.env.CATALOG_RESOLVED_NONE || 'n/a'} |`,
+              `| prime_errors | ${process.env.CATALOG_PRIME_ERRORS || 'n/a'} |`,
               `| describe_errors | ${process.env.CATALOG_DESCRIBE_ERRORS || 'n/a'} |`,
               `| resolve_errors | ${process.env.CATALOG_RESOLVE_ERRORS || 'n/a'} |`,
               `| prime_devid | ${process.env.CATALOG_PRIME_DEVID || 'n/a'} |`,
             ];
             const deviceRows = [
+              `| modules | ${process.env.MODULE_COUNT || 'n/a'} |`,
               `| panels | ${process.env.PANEL_COUNT || 'n/a'} |`,
               `| symbols described | ${process.env.SYMBOLS_DESCRIBED || 'n/a'} |`,
               `| symbols resolved | ${process.env.SYMBOLS_RESOLVED || 'n/a'} |`,
+              `| errors | ${process.env.ERROR_COUNT || 'n/a'} |`,
             ];
 
             let body = [

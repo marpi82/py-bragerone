@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from pybragerone import BragerOneApiClient
+from pybragerone.api.client import ApiError
 from pybragerone.api.server import Platform, server_for
 from pybragerone.models.api.modules import device_menu_refs_from_module
 from pybragerone.models.catalog import LiveAssetsCatalog
@@ -87,8 +88,10 @@ def empty_catalog_section() -> dict[str, Any]:
         "mapped": 0,
         "resolved_ok": 0,
         "resolved_none": 0,
+        "prime_errors": 0,
         "describe_errors": 0,
         "resolve_errors": 0,
+        "prime_error": None,
         "describe_error": None,
         "resolve_error": None,
         "prime_devid": None,
@@ -272,6 +275,13 @@ async def smoke_module(
     }
 
 
+def _record_catalog_prime_failure(payload: dict[str, Any], message: str) -> dict[str, Any]:
+    """Mark an informational catalog prime/setup failure (never a hard smoke gate)."""
+    payload["prime_error"] = message
+    payload["prime_errors"] = 1
+    return payload
+
+
 async def smoke_catalog_quality(
     *,
     client: BragerOneApiClient,
@@ -282,67 +292,79 @@ async def smoke_catalog_quality(
 ) -> dict[str, Any]:
     """Informational describe/resolve over all ParamMap tokens using *devid*'s prime.
 
-    Never raises for per-symbol ``value=None``; bulk describe/resolve exceptions are
-    recorded on the payload and do not imply a hard smoke failure by themselves.
+    Never raises into the hard gate: ``ApiError`` / prime failures, bulk describe
+    exceptions, and per-symbol resolve exceptions are recorded on the payload.
+    Live ``value=None`` is counted as ``resolved_none``, not an error.
     """
-    await catalog._ensure_index_loaded()
-    tokens = collect_param_map_tokens(catalog)
-    symbols = tokens[:max_resolve] if max_resolve is not None and max_resolve >= 0 else tokens
     payload = empty_catalog_section()
-    payload["param_map_tokens"] = len(tokens)
-    payload["symbols_requested"] = len(symbols)
     payload["prime_devid"] = devid
-    if not symbols:
-        return payload
-
-    store = ParamStore()
-    prime = await client.modules_parameters_prime([devid], return_data=True)
-    if not isinstance(prime, tuple) or len(prime) != 2:
-        payload["resolve_error"] = f"{devid}: modules_parameters_prime returned unexpected payload shape"
-        payload["resolve_errors"] = 1
-        return payload
-    status, data = prime
-    if status not in (200, 204) or not isinstance(data, dict) or not prime_has_module_data(data, devid):
-        payload["resolve_error"] = f"{devid}: catalog quality prime failed: status={status}"
-        payload["resolve_errors"] = 1
-        return payload
-    store.ingest_prime_payload(data)
-    resolver = ParamResolver(store=store, assets=catalog, lang=lang)
-
-    descriptions: dict[str, dict[str, Any]] = {}
     try:
-        descriptions = await resolver.describe_symbols(symbols)
-        payload["described"] = sum(1 for symbol in symbols if symbol in descriptions)
-        payload["mapped"] = sum(
-            1
-            for symbol in symbols
-            if isinstance(descriptions.get(symbol), Mapping) and descriptions[symbol].get("mapping") is not None
-        )
-    except Exception as exc:
-        payload["describe_error"] = f"{type(exc).__name__}: {exc}"
-        payload["describe_errors"] = 1
+        await catalog._ensure_index_loaded()
+        tokens = collect_param_map_tokens(catalog)
+        symbols = tokens[:max_resolve] if max_resolve is not None and max_resolve >= 0 else tokens
+        payload["param_map_tokens"] = len(tokens)
+        payload["symbols_requested"] = len(symbols)
+        if not symbols:
+            return payload
 
-    resolved_ok = 0
-    resolved_none = 0
-    resolve_errors = 0
-    resolve_error: str | None = None
-    for symbol in symbols:
+        store = ParamStore()
         try:
-            value = await resolver.resolve_value(symbol)
-            if getattr(value, "value", value) is None:
-                resolved_none += 1
-            else:
-                resolved_ok += 1
+            prime = await client.modules_parameters_prime([devid], return_data=True)
+        except ApiError as exc:
+            return _record_catalog_prime_failure(
+                payload,
+                f"{devid}: catalog quality prime ApiError HTTP {exc.status}: {exc.data!r}",
+            )
         except Exception as exc:
-            resolve_errors += 1
-            if resolve_error is None:
-                resolve_error = f"{symbol}: {type(exc).__name__}: {exc}"
+            return _record_catalog_prime_failure(payload, f"{devid}: catalog quality prime {type(exc).__name__}: {exc}")
+        if not isinstance(prime, tuple) or len(prime) != 2:
+            return _record_catalog_prime_failure(
+                payload,
+                f"{devid}: modules_parameters_prime returned unexpected payload shape",
+            )
+        status, data = prime
+        if status not in (200, 204) or not isinstance(data, dict) or not prime_has_module_data(data, devid):
+            return _record_catalog_prime_failure(payload, f"{devid}: catalog quality prime failed: status={status}")
+        store.ingest_prime_payload(data)
+        resolver = ParamResolver(store=store, assets=catalog, lang=lang)
 
-    payload["resolved_ok"] = resolved_ok
-    payload["resolved_none"] = resolved_none
-    payload["resolve_errors"] = resolve_errors
-    payload["resolve_error"] = resolve_error
-    return payload
+        descriptions: dict[str, dict[str, Any]] = {}
+        try:
+            descriptions = await resolver.describe_symbols(symbols)
+            payload["described"] = sum(1 for symbol in symbols if symbol in descriptions)
+            payload["mapped"] = sum(
+                1
+                for symbol in symbols
+                if isinstance(descriptions.get(symbol), Mapping) and descriptions[symbol].get("mapping") is not None
+            )
+        except Exception as exc:
+            payload["describe_error"] = f"{type(exc).__name__}: {exc}"
+            payload["describe_errors"] = 1
+
+        resolved_ok = 0
+        resolved_none = 0
+        resolve_errors = 0
+        resolve_error: str | None = None
+        for symbol in symbols:
+            try:
+                value = await resolver.resolve_value(symbol)
+                if getattr(value, "value", value) is None:
+                    resolved_none += 1
+                else:
+                    resolved_ok += 1
+            except Exception as exc:
+                resolve_errors += 1
+                if resolve_error is None:
+                    resolve_error = f"{symbol}: {type(exc).__name__}: {exc}"
+
+        payload["resolved_ok"] = resolved_ok
+        payload["resolved_none"] = resolved_none
+        payload["resolve_errors"] = resolve_errors
+        payload["resolve_error"] = resolve_error
+        return payload
+    except Exception as exc:
+        # Index load / token collect / unexpected setup must not hard-fail the smoke.
+        return _record_catalog_prime_failure(payload, f"{devid}: catalog quality setup {type(exc).__name__}: {exc}")
 
 
 async def run_compat_smoke(
@@ -388,13 +410,21 @@ async def run_compat_smoke(
             module_payloads.append(payload)
 
         if module_payloads:
-            catalog_section = await smoke_catalog_quality(
-                client=client,
-                catalog=catalog,
-                devid=str(module_payloads[0]["devid"]),
-                lang=lang,
-                max_resolve=max_resolve,
-            )
+            try:
+                catalog_section = await smoke_catalog_quality(
+                    client=client,
+                    catalog=catalog,
+                    devid=str(module_payloads[0]["devid"]),
+                    lang=lang,
+                    max_resolve=max_resolve,
+                )
+            except Exception as exc:
+                # Belt-and-braces: catalog quality must never wipe device smoke results.
+                catalog_section = _record_catalog_prime_failure(
+                    empty_catalog_section(),
+                    f"catalog quality escaped: {type(exc).__name__}: {exc}",
+                )
+                catalog_section["prime_devid"] = str(module_payloads[0]["devid"])
     finally:
         await client.close()
 
@@ -434,6 +464,7 @@ def write_github_output(report: Mapping[str, Any]) -> None:
         handle.write(f"catalog_mapped={int(catalog.get('mapped') or 0)}\n")
         handle.write(f"catalog_resolved_ok={int(catalog.get('resolved_ok') or 0)}\n")
         handle.write(f"catalog_resolved_none={int(catalog.get('resolved_none') or 0)}\n")
+        handle.write(f"catalog_prime_errors={int(catalog.get('prime_errors') or 0)}\n")
         handle.write(f"catalog_describe_errors={int(catalog.get('describe_errors') or 0)}\n")
         handle.write(f"catalog_resolve_errors={int(catalog.get('resolve_errors') or 0)}\n")
         handle.write(f"catalog_prime_devid={catalog.get('prime_devid') or ''}\n")
@@ -458,7 +489,7 @@ def write_step_summary(report: Mapping[str, Any]) -> None:
         "",
         f"compat_ok: `{str(bool(report.get('compat_ok'))).lower()}`",
         "",
-        "### Catalog (ParamMap quality, informational)",
+        "### Compat — Catalog (ParamMap quality, informational)",
         "",
         *_markdown_table(
             [
@@ -467,13 +498,14 @@ def write_step_summary(report: Mapping[str, Any]) -> None:
                 ("mapped", int(catalog.get("mapped") or 0)),
                 ("resolved_ok", int(catalog.get("resolved_ok") or 0)),
                 ("resolved_none", int(catalog.get("resolved_none") or 0)),
+                ("prime_errors", int(catalog.get("prime_errors") or 0)),
                 ("describe_errors", int(catalog.get("describe_errors") or 0)),
                 ("resolve_errors", int(catalog.get("resolve_errors") or 0)),
                 ("prime_devid", catalog.get("prime_devid") or "n/a"),
             ]
         ),
         "",
-        "### Device (PYBO_MODULES hard gate)",
+        "### Compat — Device (PYBO_MODULES hard gate)",
         "",
         *_markdown_table(
             [

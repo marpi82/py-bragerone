@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pybragerone.api.client import ApiError
 from pybragerone.models.param_resolver import ResolvedValue
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "live_compat_smoke.py"
@@ -695,9 +696,21 @@ async def test_smoke_catalog_quality_records_prime_and_resolve_failures(monkeypa
         lang="en",
     )
     assert bad_prime["param_map_tokens"] == 2
-    assert bad_prime["resolve_errors"] == 1
-    assert bad_prime["resolve_error"] is not None
-    assert "prime failed" in str(bad_prime["resolve_error"])
+    assert bad_prime["prime_errors"] == 1
+    assert bad_prime["resolve_errors"] == 0
+    assert bad_prime["prime_error"] is not None
+    assert "prime failed" in str(bad_prime["prime_error"])
+
+    client.modules_parameters_prime = AsyncMock(side_effect=ApiError(503, {"message": "unavailable"}))
+    api_err = await module.smoke_catalog_quality(
+        client=client,
+        catalog=_Catalog(),
+        devid="M1",
+        lang="en",
+    )
+    assert api_err["prime_errors"] == 1
+    assert api_err["resolve_errors"] == 0
+    assert "ApiError HTTP 503" in str(api_err["prime_error"])
 
     class _BoomDescribe(_FakeResolver):
         async def describe_symbols(self, symbols: Sequence[str]) -> dict[str, dict[str, Any]]:
@@ -788,6 +801,7 @@ def test_write_step_summary_emits_catalog_and_device_tables(
             "mapped": 9,
             "resolved_ok": 4,
             "resolved_none": 6,
+            "prime_errors": 0,
             "describe_errors": 0,
             "resolve_errors": 0,
             "prime_devid": "M1",
@@ -808,10 +822,13 @@ def test_write_step_summary_emits_catalog_and_device_tables(
     }
     module.write_step_summary(report)
     text = summary.read_text(encoding="utf-8")
-    assert "### Catalog (ParamMap quality, informational)" in text
+    assert "### Compat — Catalog (ParamMap quality, informational)" in text
     assert "| param_map_tokens | 10 |" in text
-    assert "### Device (PYBO_MODULES hard gate)" in text
+    assert "| prime_errors | 0 |" in text
+    assert "### Compat — Device (PYBO_MODULES hard gate)" in text
+    assert "| modules | 1 |" in text
     assert "| panels | 2 |" in text
+    assert "| errors | 0 |" in text
     assert "67/7/2.08" in text
 
 
@@ -837,6 +854,7 @@ def test_write_github_output_includes_catalog_fields(
                 "mapped": 10,
                 "resolved_ok": 5,
                 "resolved_none": 6,
+                "prime_errors": 0,
                 "describe_errors": 0,
                 "resolve_errors": 1,
                 "prime_devid": "M1",
@@ -846,4 +864,57 @@ def test_write_github_output_includes_catalog_fields(
     text = out.read_text(encoding="utf-8")
     assert "catalog_param_map_tokens=12" in text
     assert "catalog_resolved_none=6" in text
+    assert "catalog_prime_errors=0" in text
     assert "catalog_prime_devid=M1" in text
+
+
+async def test_run_compat_smoke_keeps_device_results_if_catalog_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Escaped catalog quality errors must not wipe module hard-gate results."""
+    module = _load()
+
+    class _Client:
+        async def ensure_auth(self, *args: Any, **kwargs: Any) -> None:
+            _ = args, kwargs
+
+        async def get_modules(self, object_id: int) -> list[SimpleNamespace]:
+            _ = object_id
+            return [SimpleNamespace(devid="M1", deviceMenu=1, permissions=["p"])]
+
+        async def close(self) -> None:
+            return None
+
+    async def _ok_smoke(**kwargs: Any) -> dict[str, Any]:
+        _ = kwargs
+        return {
+            "devid": "M1",
+            "panel_group_count_all": 2,
+            "panel_group_count_web_ui": 1,
+            "symbols_requested": 3,
+            "symbols_described": 3,
+            "symbols_mapped": 3,
+            "symbols_resolved": 3,
+        }
+
+    async def _boom_catalog(**kwargs: Any) -> dict[str, Any]:
+        _ = kwargs
+        raise RuntimeError("catalog escaped")
+
+    monkeypatch.setattr(module, "BragerOneApiClient", lambda **kwargs: _Client())
+    monkeypatch.setattr(module, "LiveAssetsCatalog", lambda client: object())
+    monkeypatch.setattr(module, "server_for", lambda platform: object())
+    monkeypatch.setattr(module, "smoke_module", _ok_smoke)
+    monkeypatch.setattr(module, "smoke_catalog_quality", _boom_catalog)
+
+    report = await module.run_compat_smoke(
+        email="a@b.c",
+        password="x",
+        object_id=1,
+        modules=["M1"],
+        lang="en",
+        platform="bragerone",
+    )
+    assert report["compat_ok"] is True
+    assert report["module_count"] == 1
+    assert report["symbols_described"] == 3
+    assert report["catalog"]["prime_errors"] == 1
+    assert "catalog escaped" in str(report["catalog"]["prime_error"])
