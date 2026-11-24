@@ -439,7 +439,7 @@ async def test_run_compat_smoke_success_path_closes_client(monkeypatch: pytest.M
             "symbols_mapped": 3,
             "symbols_resolved": 3,
             "device_menu_refs": ["67/7/2.08"],
-            "menu_source": "rest_device_refs_then_default",
+            "menu_source": "policy:device_refs_then_default_rest",
         }
 
     async def _catalog(**kwargs: Any) -> dict[str, Any]:
@@ -602,7 +602,8 @@ async def test_smoke_catalog_quality_counts_none_without_failing(monkeypatch: py
             )
 
     class _Catalog:
-        _idx = SimpleNamespace(assets_by_basename={"PARAM_1": [], "PARAM_2": []}, index_bytes=b"")
+        def __init__(self) -> None:
+            self._idx = SimpleNamespace(assets_by_basename={"PARAM_1": [], "PARAM_2": []}, index_bytes=b"")
 
         async def _ensure_index_loaded(self) -> None:
             return None
@@ -647,7 +648,123 @@ async def test_smoke_module_records_device_menu_refs(monkeypatch: pytest.MonkeyP
         devices=[{"manuf_code": 67, "dev_code": 7, "sw_ver_num": "2.08"}],
     )
     assert payload["device_menu_refs"] == ["67/7/2.08"]
-    assert payload["menu_source"] == "rest_device_refs_then_default"
+    assert payload["menu_source"] == "policy:device_refs_then_default_rest"
+
+
+async def test_smoke_module_menu_source_without_device_refs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without Module.devices, menu_source records the legacy/default policy label."""
+    module = _load()
+    monkeypatch.setattr(module, "ParamResolver", _FakeResolver)
+    client = AsyncMock()
+    client.modules_parameters_prime = AsyncMock(return_value=(200, {"M1": {"0": {"v1": {"value": 1}}}}))
+    payload = await module.smoke_module(
+        client=client,
+        catalog=object(),
+        devid="M1",
+        device_menu=0,
+        permissions=[],
+        lang="en",
+        max_resolve=None,
+        devices=None,
+    )
+    assert payload["device_menu_refs"] == []
+    assert payload["menu_source"] == "policy:legacy_js_or_default_rest"
+
+
+async def test_smoke_catalog_quality_records_prime_and_resolve_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Catalog quality soft-fails on bad prime / describe / per-symbol resolve."""
+    module = _load()
+
+    class _Catalog:
+        def __init__(self) -> None:
+            self._idx = SimpleNamespace(assets_by_basename={"PARAM_1": [], "PARAM_2": []}, index_bytes=b"")
+
+        async def _ensure_index_loaded(self) -> None:
+            return None
+
+        def _parse_index_token_raw_maps(self, raw: bytes) -> dict[str, object]:
+            _ = raw
+            return {}
+
+    client = AsyncMock()
+    client.modules_parameters_prime = AsyncMock(return_value=(500, None))
+    bad_prime = await module.smoke_catalog_quality(
+        client=client,
+        catalog=_Catalog(),
+        devid="M1",
+        lang="en",
+    )
+    assert bad_prime["param_map_tokens"] == 2
+    assert bad_prime["resolve_errors"] == 1
+    assert bad_prime["resolve_error"] is not None
+    assert "prime failed" in str(bad_prime["resolve_error"])
+
+    class _BoomDescribe(_FakeResolver):
+        async def describe_symbols(self, symbols: Sequence[str]) -> dict[str, dict[str, Any]]:
+            _ = symbols
+            raise RuntimeError("describe boom")
+
+        async def resolve_value(self, symbol: str) -> ResolvedValue:
+            if symbol == "PARAM_2":
+                raise RuntimeError("resolve boom")
+            return ResolvedValue(
+                symbol=symbol,
+                kind="direct",
+                address=None,
+                value=None,
+                value_label=None,
+                unit=None,
+            )
+
+    monkeypatch.setattr(module, "ParamResolver", _BoomDescribe)
+    client.modules_parameters_prime = AsyncMock(return_value=(200, {"M1": {"0": {"v1": {"value": 1}}}}))
+    payload = await module.smoke_catalog_quality(
+        client=client,
+        catalog=_Catalog(),
+        devid="M1",
+        lang="en",
+    )
+    assert payload["describe_errors"] == 1
+    assert payload["describe_error"] is not None
+    assert "describe boom" in str(payload["describe_error"])
+    assert payload["resolved_none"] == 1
+    assert payload["resolve_errors"] == 1
+    assert payload["resolve_error"] is not None
+    assert "PARAM_2" in str(payload["resolve_error"])
+
+
+async def test_smoke_catalog_quality_respects_max_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
+    """max_resolve caps catalog describe/resolve while param_map_tokens stays full."""
+    module = _load()
+
+    class _Catalog:
+        def __init__(self) -> None:
+            self._idx = SimpleNamespace(
+                assets_by_basename={"PARAM_1": [], "PARAM_2": [], "PARAM_3": []},
+                index_bytes=b"",
+            )
+
+        async def _ensure_index_loaded(self) -> None:
+            return None
+
+        def _parse_index_token_raw_maps(self, raw: bytes) -> dict[str, object]:
+            _ = raw
+            return {}
+
+    monkeypatch.setattr(module, "ParamResolver", _FakeResolver)
+    client = AsyncMock()
+    client.modules_parameters_prime = AsyncMock(return_value=(200, {"M1": {"0": {"v1": {"value": 1}}}}))
+    payload = await module.smoke_catalog_quality(
+        client=client,
+        catalog=_Catalog(),
+        devid="M1",
+        lang="en",
+        max_resolve=1,
+    )
+    assert payload["param_map_tokens"] == 3
+    assert payload["symbols_requested"] == 1
+    assert payload["described"] == 1
+    assert payload["resolved_ok"] == 1
 
 
 def test_write_step_summary_emits_catalog_and_device_tables(
@@ -684,7 +801,7 @@ def test_write_step_summary_emits_catalog_and_device_tables(
                 "symbols_mapped": 3,
                 "symbols_resolved": 3,
                 "symbols_resolved_none": 1,
-                "menu_source": "rest_device_refs_then_default",
+                "menu_source": "policy:device_refs_then_default_rest",
                 "device_menu_refs": ["67/7/2.08"],
             }
         ],

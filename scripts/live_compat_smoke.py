@@ -61,7 +61,11 @@ def prime_has_module_data(payload: Mapping[str, Any], devid: str) -> bool:
 
 
 def collect_param_map_tokens(catalog: LiveAssetsCatalog) -> list[str]:
-    """Return sorted ParamMap token names from the loaded SPA index (same set as live_contract)."""
+    """Return sorted ParamMap token names from the loaded SPA index.
+
+    Token filter must stay aligned with ``scripts/live_contract.collect_symbol_tokens``
+    (``_SYMBOL_TOKEN_RE``).
+    """
     assets = catalog._idx.assets_by_basename
     inline_maps = catalog._parse_index_token_raw_maps(catalog._idx.index_bytes or b"")
     tokens: set[str] = set()
@@ -171,8 +175,8 @@ async def smoke_module(
     perms = [str(p) for p in permissions]
     menu_devices = device_menu_refs_from_module(devices)
     device_menu_refs = [ref.fingerprint() for ref in menu_devices]
-    # With Module.devices, catalog prefers device-specific REST then default 0/0/0.0.0 (#438).
-    menu_source = "rest_device_refs_then_default" if menu_devices else "legacy_js_or_default_rest"
+    # Load *policy* only (#438) — not which URL actually returned routes (device REST may 404).
+    menu_source = "policy:device_refs_then_default_rest" if menu_devices else "policy:legacy_js_or_default_rest"
 
     groups_all = await resolver.build_panel_groups(
         device_menu=device_menu,
@@ -322,22 +326,17 @@ async def smoke_catalog_quality(
     resolved_none = 0
     resolve_errors = 0
     resolve_error: str | None = None
-    try:
-        for symbol in symbols:
-            try:
-                value = await resolver.resolve_value(symbol)
-                if getattr(value, "value", value) is None:
-                    resolved_none += 1
-                else:
-                    resolved_ok += 1
-            except Exception as exc:
-                resolve_errors += 1
-                if resolve_error is None:
-                    resolve_error = f"{symbol}: {type(exc).__name__}: {exc}"
-    except Exception as exc:
-        # Defensive: outer loop should not raise; keep a bulk marker if it does.
-        resolve_error = f"{type(exc).__name__}: {exc}"
-        resolve_errors += 1
+    for symbol in symbols:
+        try:
+            value = await resolver.resolve_value(symbol)
+            if getattr(value, "value", value) is None:
+                resolved_none += 1
+            else:
+                resolved_ok += 1
+        except Exception as exc:
+            resolve_errors += 1
+            if resolve_error is None:
+                resolve_error = f"{symbol}: {type(exc).__name__}: {exc}"
 
     payload["resolved_ok"] = resolved_ok
     payload["resolved_none"] = resolved_none
